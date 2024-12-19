@@ -18,6 +18,11 @@ The current setup is aimed to support intellect-2 with a limited number of valid
 > **Status**: Planned
 - Allow miner to register on-chain with encrypted IP and capabilities 
 
+### 📅 Milestone 4: On-Chain Validator and Master Integration  
+> **Status**: Planned
+- Allow validator to validate the miner's registration 
+- Integrate Master node to listen for accepted miners and send tasks to them 
+
 ## System architecture (WIP)
 The following system architecture still misses crucial components (e.g. terminations) and is simplified for the MVP / intellect-2 run.
 
