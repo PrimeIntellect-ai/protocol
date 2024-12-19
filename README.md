@@ -1,13 +1,21 @@
+# Prime Miner / Validator / Master 
+The current setup is aimed to support intellect-2 with a limited number of validators and a central master that coordinates the workload on the miners.
+
 ```mermaid
 sequenceDiagram  
 
-participant M as Miner  
+participant B as Buyer
 participant MA as Master 
+participant MA as Master 
+participant M as Miner  
 participant V as Validator
 participant C as Chain  
 
+B -->> C: Create training run with node requirements
+B -->> MA: Share Private Key 
+
 rect rgb(100, 0, 255)
-    Note over M: Miner registers with IP<br />(encrypted for master + validator)<br/>and capabilities
+    Note over M: Miner registers with IP<br />(encrypted for master + validator)<br/>and capabilities (GPU / CPU / RAM)
     M -->> C: Register for specific training run
 end 
 
@@ -20,7 +28,7 @@ V -->> M: Send challenge
 activate M
 M -->> V: Send Solution 
 deactivate M
-V -->> C: Report Challenge Status
+V -->> C: Report Challenge Status <br /> (approve / reject )
 
 end  
 
