@@ -19,6 +19,8 @@ The current setup is aimed to support intellect-2 with a limited number of valid
 - Allow miner to register on-chain with encrypted IP and capabilities 
 
 ## System architecture (WIP)
+The following system architecture still misses crucial components (e.g. terminations) and is simplified for the MVP / intellect-2 run.
+
 ```mermaid
 sequenceDiagram  
 participant B as Buyer <br />(via CLI / API)
@@ -28,7 +30,7 @@ participant V as Validator
 participant A as Arbitrum
 
 rect rgb(0, 0, 0)
-  Note over M,A: 0. Preparation Phase 
+  Note over B,A: 0. Preparation Phase 
 B-->>A: Create training run with node requirements
 end
 rect rgb(0, 0, 100)
