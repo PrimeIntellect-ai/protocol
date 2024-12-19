@@ -1,6 +1,22 @@
 # Prime Miner / Validator / Master 
 The current setup is aimed to support intellect-2 with a limited number of validators and a central master that coordinates the workload on the miners.
 
+
+## Development Milestones 
+### 🚧 Milestone 1: Off-chain Miner and Master Node interaction  
+> **Status**: In Progress
+- Build a simple ability to control the docker container running on the miners 
+- Basic hardware detection and system check
+
+### 📅 Milestone 2: Off-Chain Validator <> Miner Interaction 
+> **Status**: Planned
+- Allow validator to validate the miner's registration 
+- Allow validator to send tasks to the miner and collect results 
+
+### 📅 Milestone 3: On-Chain Miner Registration 
+> **Status**: Planned
+- Allow miner to register on-chain with encrypted IP and capabilities 
+
 ## System architecture
 ```mermaid
 sequenceDiagram  
