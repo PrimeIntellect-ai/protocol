@@ -17,7 +17,7 @@ The current setup is aimed to support intellect-2 with a limited number of valid
 > **Status**: Planned
 - Allow miner to register on-chain with encrypted IP and capabilities 
 
-## System architecture
+## System architecture (WIP)
 ```mermaid
 sequenceDiagram  
 participant B as Buyer
