@@ -70,10 +70,14 @@ pub fn execute_command(command: &Commands) {
             println!("\n[NET] {}", "Network connectivity check".bright_magenta());
 
             // 5. Run Miner registration
-            println!(
-                "\n[REG] {}",
-                "Registering miner on network...".bright_yellow()
-            );
+            if !*dry_run {
+                println!(
+                    "\n[REG] {}",
+                    "Registering miner on network...".bright_yellow()
+                );
+            } else {
+                println!("\n[REG] {}", "Skipping miner registration (dry run mode)".bright_yellow());
+            }
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             println!("\n[SRV] {}", "Starting endpoint service".bright_white());
