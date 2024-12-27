@@ -21,6 +21,7 @@ gpu-setup:
 	ssh $(SSH_CONN) 'sudo apt-get update && sudo apt-get install -y rsync'
 	ssh $(SSH_CONN) 'which cargo || curl -sSf https://sh.rustup.rs | sh -s -- -y'
 	ssh $(SSH_CONN) 'mkdir -p ~/miner'
+	ssh $(SSH_CONN) 'sudo ln -sf /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1 /usr/lib/x86_64-linux-gnu/libnvidia-ml.so'
 
 # Run on GPU server and stream output locally
 gpu-run:
@@ -31,9 +32,9 @@ gpu-run:
 	@echo "🚀 Deploying to GPU server..."
 	rsync -avz --exclude 'target/' --exclude '.git/' -e "ssh $(SSH_CONN)" ./ $(SSH_CONN | cut -d@ -f2 | cut -d' ' -f1):~/miner/
 	@echo "🔨 Building on GPU server..."
-	ssh $(SSH_CONN) 'cd ~/miner && . ~/.cargo/env && cargo build --release'
+	ssh $(SSH_CONN) 'cd ~/miner && . ~/.cargo/env && LD_LIBRARY_PATH=/usr/lib cargo build --release'
 	@echo "▶️  Running on GPU..."
-	ssh -t $(SSH_CONN) 'cd ~/miner && ./target/release/miner $(MINER_CMD)'
+	ssh -t $(SSH_CONN) 'cd ~/miner && LD_LIBRARY_PATH=/usr/lib ./target/release/miner $(MINER_CMD)'
 
 # Watch mode - automatically deploy and run on file changes  
 gpu-watch:
