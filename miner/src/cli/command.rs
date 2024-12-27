@@ -56,7 +56,10 @@ pub enum Commands {
 
 pub fn execute_command(command: &Commands) {
     match command {
-        Commands::Check { hardware_only, software_only } => {
+        Commands::Check {
+            hardware_only,
+            software_only,
+        } => {
             println!("\n{}", "🔍 PRIME MINER SYSTEM CHECK".bright_cyan().bold());
             println!("{}", "═".repeat(50).bright_cyan());
 

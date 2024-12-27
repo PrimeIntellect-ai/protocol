@@ -1,6 +1,6 @@
 mod api;
-mod cli;
 mod checks;
+mod cli;
 use clap::Parser;
 use cli::{execute_command, Cli};
 
