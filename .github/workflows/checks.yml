@@ -1,0 +1,46 @@
+name: Check Format & Lint
+
+on:
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - '**.rs'
+      - 'miner/**'
+      - 'Cargo.*'
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - '**.rs'
+      - 'miner/**'
+      - 'Cargo.*'
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: "-C debuginfo=0"
+
+jobs:
+  check:
+    name: Format & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: "miner/target"
+          cache-on-failure: true
+          
+      - name: Run format check
+        working-directory: ./miner
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        if: success() || failure()  # Run even if fmt fails
+        working-directory: ./miner
+        run: cargo clippy -- -D warnings
