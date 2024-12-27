@@ -1,11 +1,10 @@
 use super::docker::check_docker_installed;
 use super::gpu::detect_gpu;
 use super::memory::{get_memory_info, print_memory_info};
+use super::storage::{get_storage_info, print_storage_info};
 use super::types::{SystemCheckError, SystemInfo};
 use colored::*;
 use std::error::Error;
-use std::fs;
-use std::path::Path;
 use sysinfo::{self, System};
 
 const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
@@ -25,7 +24,7 @@ impl std::fmt::Display for SystemCheckError {
 impl Error for SystemCheckError {}
 
 pub fn run_system_check() -> Result<SystemInfo, SystemCheckError> {
-    check_docker_installed()?;
+    // check_docker_installed()?;
 
     let mut sys = System::new_all();
     sys.refresh_all();
@@ -64,27 +63,6 @@ fn collect_system_info(sys: &System) -> Result<SystemInfo, SystemCheckError> {
     })
 }
 
-fn get_storage_info() -> Result<(u64, u64), SystemCheckError> {
-    let path = Path::new("/");
-    let fs_stats = fs::metadata(path)
-        .map_err(|e| SystemCheckError::Other(format!("Failed to get storage info: {}", e)))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        let total = fs_stats.blocks() * fs_stats.blksize();
-        let free = fs_stats.blocks() * fs_stats.blksize();
-        Ok((total, free))
-    }
-
-    #[cfg(not(unix))]
-    {
-        Err(SystemCheckError::Other(
-            "Storage detection not supported on this platform".to_string(),
-        ))
-    }
-}
-
 fn print_system_info(info: &SystemInfo) {
     println!("\n{}", "System Requirements Check:".blue().bold());
 
@@ -93,16 +71,8 @@ fn print_system_info(info: &SystemInfo) {
     println!("  Model: {}", info.cpu_brand);
 
     print_memory_info(info.total_memory, info.free_memory);
-
-    println!("\n{}", "Storage Information:".blue().bold());
-    println!(
-        "  Total Storage: {:.1} GB",
-        info.total_storage as f64 / BYTES_TO_GB
-    );
-    println!(
-        "  Free Storage: {:.1} GB",
-        info.free_storage as f64 / BYTES_TO_GB
-    );
+    
+    print_storage_info(info.total_storage, info.free_storage);
 
     match &info.gpu_info {
         Some(gpu) => {

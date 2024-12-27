@@ -16,7 +16,6 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     Run {
-        // FIXME: Remove this
         /// Subnet ID to run the miner on
         #[arg(long)]
         subnet_id: String,

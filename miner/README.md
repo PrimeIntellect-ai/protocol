@@ -13,3 +13,13 @@ cargo run -- run \
   --external-ip <your-public-ip> \  # Your node's public IP address
 ```
 
+### Run on GPU
+```
+export SSH_CONN="root@78.130.201.2 -p 10100 -i private_key.pem"
+```
+```
+make gpu-setup
+```
+```
+make gpu-run 
+```
