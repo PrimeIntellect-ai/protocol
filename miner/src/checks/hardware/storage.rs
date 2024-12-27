@@ -7,7 +7,7 @@ pub fn get_storage_info() -> Result<(u64, u64), SystemCheckError> {
     {
         let statvfs = unsafe {
             let mut stat: libc::statvfs = std::mem::zeroed();
-            if libc::statvfs(b".\0".as_ptr() as *const i8, &mut stat) == 0 {
+            if libc::statvfs(c".".as_ptr(), &mut stat) == 0 {
                 Ok(stat)
             } else {
                 Err(SystemCheckError::Other(
