@@ -15,7 +15,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Run {
+    Run { 
+        // FIXME: Remove this 
         /// Subnet ID to run the miner on
         #[arg(long)]
         subnet_id: String,
@@ -41,17 +42,32 @@ pub enum Commands {
         #[arg(default_value = "false")]
         dry_run: bool,
     },
+    /// Run system checks to verify hardware compatibility
+    Check,
 }
 
 pub fn execute_command(command: &Commands) {
     match command {
+        Commands::Check => {
+            println!("\n{}", "🔍 PRIME MINER SYSTEM CHECK".bright_cyan().bold());
+            println!("{}", "═".repeat(50).bright_cyan());
+
+            println!("\n[SYS] {}", "Running hardware detection...".bright_blue());
+
+            if let Err(err) = run_system_check() {
+                eprintln!("{}", format!("System check failed: {}", err).red().bold());
+                std::process::exit(1);
+            }
+
+            println!("\n[SYS] {}", "✅ System check passed!".bright_green().bold());
+        }
         Commands::Run {
             subnet_id: _,
             wallet_address: _,
             private_key: _,
             port,
             external_ip,
-            dry_run: _,
+            dry_run,
         } => {
             println!("\n{}", "🚀 PRIME MINER INITIALIZATION".bright_cyan().bold());
             println!("{}", "═".repeat(50).bright_cyan());
@@ -61,7 +77,13 @@ pub fn execute_command(command: &Commands) {
             println!("\n[ETH] {}", "Checking wallet balance...".bright_green());
 
             // 2. Run Hardware detection and check
-            println!("\n[SYS] {}", "Hardware detection".bright_blue());
+            println!("\n[SYS] {}", "Hardware detection".bright_blue()); 
+
+            if let Err(err) = run_system_check() {
+                eprintln!("{}", format!("System check failed: {}", err).red().bold());
+                std::process::exit(1);
+            }
+
 
             // 3. Run Software check
             println!("\n[SYS] {}", "Software verification".bright_blue());
@@ -70,7 +92,7 @@ pub fn execute_command(command: &Commands) {
             println!("\n[NET] {}", "Network connectivity check".bright_magenta());
 
             // 5. Run Miner registration
-            if !*dry_run {
+            if !dry_run {
                 println!(
                     "\n[REG] {}",
                     "Registering miner on network...".bright_yellow()
@@ -108,12 +130,8 @@ pub fn execute_command(command: &Commands) {
                 i = (i + 1) % spinner.len();
             }
 
+            
             /*
-            if let Err(err) = run_system_check() {
-                eprintln!("{}", format!("System check failed: {}", err).red().bold());
-                std::process::exit(1);
-            }
-
             // Start HTTP server
             let runtime = tokio::runtime::Runtime::new().unwrap();
             if let Err(err) = runtime.block_on(start_server(external_ip, *port)) {
