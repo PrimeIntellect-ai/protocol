@@ -15,8 +15,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Run { 
-        // FIXME: Remove this 
+    Run {
+        // FIXME: Remove this
         /// Subnet ID to run the miner on
         #[arg(long)]
         subnet_id: String,
@@ -59,7 +59,10 @@ pub fn execute_command(command: &Commands) {
                 std::process::exit(1);
             }
 
-            println!("\n[SYS] {}", "✅ System check passed!".bright_green().bold());
+            println!(
+                "\n[SYS] {}",
+                "✅ System check passed!".bright_green().bold()
+            );
         }
         Commands::Run {
             subnet_id: _,
@@ -77,13 +80,12 @@ pub fn execute_command(command: &Commands) {
             println!("\n[ETH] {}", "Checking wallet balance...".bright_green());
 
             // 2. Run Hardware detection and check
-            println!("\n[SYS] {}", "Hardware detection".bright_blue()); 
+            println!("\n[SYS] {}", "Hardware detection".bright_blue());
 
             if let Err(err) = run_system_check() {
                 eprintln!("{}", format!("System check failed: {}", err).red().bold());
                 std::process::exit(1);
             }
-
 
             // 3. Run Software check
             println!("\n[SYS] {}", "Software verification".bright_blue());
@@ -98,7 +100,10 @@ pub fn execute_command(command: &Commands) {
                     "Registering miner on network...".bright_yellow()
                 );
             } else {
-                println!("\n[REG] {}", "Skipping miner registration (dry run mode)".bright_yellow());
+                println!(
+                    "\n[REG] {}",
+                    "Skipping miner registration (dry run mode)".bright_yellow()
+                );
             }
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
@@ -130,7 +135,6 @@ pub fn execute_command(command: &Commands) {
                 i = (i + 1) % spinner.len();
             }
 
-            
             /*
             // Start HTTP server
             let runtime = tokio::runtime::Runtime::new().unwrap();
