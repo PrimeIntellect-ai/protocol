@@ -1,0 +1,3 @@
+[workspace]
+members = ["miner"]
+resolver = "2"
