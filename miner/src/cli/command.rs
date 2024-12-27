@@ -1,11 +1,9 @@
-use crate::api::start_server;
 use crate::checks::hardware::run_hardware_check;
 use crate::checks::software::run_software_check;
 use clap::{Parser, Subcommand};
 use colored::*;
 use std::io::Write;
 use std::path::PathBuf;
-use tokio;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -54,6 +52,26 @@ pub enum Commands {
     },
 }
 
+fn run_system_checks(hardware_only: bool, software_only: bool) -> Result<(), String> {
+    if !software_only {
+        println!("\n[SYS] {}", "Running hardware detection...".bright_blue());
+        if let Err(err) = run_hardware_check() {
+            eprintln!("{}", format!("Hardware check failed: {}", err).red().bold());
+            return Err(err.to_string());
+        }
+    }
+
+    if !hardware_only {
+        println!("\n[SYS] {}", "Running software detection...".bright_blue());
+        if let Err(err) = run_software_check() {
+            eprintln!("{}", format!("Software check failed: {}", err).red().bold());
+            return Err(err.to_string());
+        }
+    }
+
+    Ok(())
+}
+
 pub fn execute_command(command: &Commands) {
     match command {
         Commands::Check {
@@ -63,22 +81,8 @@ pub fn execute_command(command: &Commands) {
             println!("\n{}", "🔍 PRIME MINER SYSTEM CHECK".bright_cyan().bold());
             println!("{}", "═".repeat(50).bright_cyan());
 
-            if !software_only {
-                println!("\n[SYS] {}", "Running hardware detection...".bright_blue());
-
-                if let Err(err) = run_hardware_check() {
-                    eprintln!("{}", format!("Hardware check failed: {}", err).red().bold());
-                    std::process::exit(1);
-                }
-            }
-
-            if !hardware_only {
-                println!("\n[SYS] {}", "Running software detection...".bright_blue());
-
-                if let Err(err) = run_software_check() {
-                    eprintln!("{}", format!("Software check failed: {}", err).red().bold());
-                    std::process::exit(1);
-                }
+            if let Err(_) = run_system_checks(*hardware_only, *software_only) {
+                std::process::exit(1);
             }
 
             println!(
@@ -101,19 +105,8 @@ pub fn execute_command(command: &Commands) {
             // 1. Ensure we have enough eth in our wallet to register on training run
             println!("\n[ETH] {}", "Checking wallet balance...".bright_green());
 
-            // 2. Run Hardware detection and check
-            println!("\n[SYS] {}", "Hardware detection".bright_blue());
-
-            if let Err(err) = run_hardware_check() {
-                eprintln!("{}", format!("Hardware check failed: {}", err).red().bold());
-                std::process::exit(1);
-            }
-
-            // 3. Run Software check
-            println!("\n[SYS] {}", "Software verification".bright_blue());
-
-            if let Err(err) = run_software_check() {
-                eprintln!("{}", format!("Software check failed: {}", err).red().bold());
+            // 2. Run system checks
+            if let Err(_) = run_system_checks(false, false) {
                 std::process::exit(1);
             }
 

@@ -4,7 +4,7 @@ use actix_web::{
 };
 use serde::{Deserialize, Serialize};
 use uuid;
-use validator::{Validate, ValidationError};
+use validator::Validate;
 
 /// Request payload for creating a new task
 #[derive(Deserialize, Serialize, Validate)]

@@ -1,5 +1,3 @@
-use sysinfo::{self, System};
-
 #[derive(Debug)]
 pub struct SystemInfo {
     pub cpu_cores: usize,

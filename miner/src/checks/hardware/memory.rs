@@ -1,4 +1,3 @@
-use super::types::SystemCheckError;
 use sysinfo::System;
 
 const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
