@@ -1,14 +1,8 @@
 use super::types::SystemCheckError;
-use std::fs;
-use std::path::Path;
 
 const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 pub fn get_storage_info() -> Result<(u64, u64), SystemCheckError> {
-    let path = Path::new(".");
-    let fs_stats = fs::metadata(path)
-        .map_err(|e| SystemCheckError::Other(format!("Failed to get storage info: {}", e)))?;
-
     #[cfg(unix)]
     {
         let statvfs = unsafe {

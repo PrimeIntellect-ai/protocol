@@ -17,7 +17,7 @@ gpu-setup:
 		exit 1; \
 	fi
 	@echo "🔧 Setting up GPU server..."
-	ssh $(SSH_CONN) 'apt-get update && apt-get install -y rsync'
+	ssh $(SSH_CONN) 'sudo apt-get update && sudo apt-get install -y rsync'
 	ssh $(SSH_CONN) 'which cargo || curl -sSf https://sh.rustup.rs | sh -s -- -y'
 	ssh $(SSH_CONN) 'mkdir -p ~/miner'
 

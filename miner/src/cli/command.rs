@@ -81,7 +81,7 @@ pub fn execute_command(command: &Commands) {
             println!("\n{}", "🔍 PRIME MINER SYSTEM CHECK".bright_cyan().bold());
             println!("{}", "═".repeat(50).bright_cyan());
 
-            if let Err(_) = run_system_checks(*hardware_only, *software_only) {
+            if run_system_checks(*hardware_only, *software_only).is_err() {
                 std::process::exit(1);
             }
 
@@ -94,8 +94,8 @@ pub fn execute_command(command: &Commands) {
             subnet_id: _,
             wallet_address: _,
             private_key: _,
-            port,
-            external_ip,
+            port: _,
+            external_ip: _,
             dry_run,
         } => {
             println!("\n{}", "🚀 PRIME MINER INITIALIZATION".bright_cyan().bold());
@@ -106,7 +106,7 @@ pub fn execute_command(command: &Commands) {
             println!("\n[ETH] {}", "Checking wallet balance...".bright_green());
 
             // 2. Run system checks
-            if let Err(_) = run_system_checks(false, false) {
+            if run_system_checks(false, false).is_err() {
                 std::process::exit(1);
             }
 

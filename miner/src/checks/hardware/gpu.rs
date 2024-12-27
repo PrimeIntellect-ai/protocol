@@ -1,42 +1,37 @@
 use super::types::GpuInfo;
+use colored::*;
+use nvml_wrapper::Nvml;
+
+const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 pub fn detect_gpu() -> Option<GpuInfo> {
-    let output = std::process::Command::new("nvidia-smi")
-        .args([
-            "--query-gpu=name,memory.total,driver_version",
-            "--format=csv,noheader",
-        ])
-        .output()
-        .ok()?;
+    let nvml = Nvml::init().ok()?;
+    let device_count = nvml.device_count().ok().filter(|&count| count > 0)?;
+    let device = nvml.device_by_index(0).ok()?;
 
-    if !output.status.success() {
-        return None;
-    }
+    let name = device
+        .name()
+        .ok()?
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join("_");
 
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    let parts: Vec<&str> = output_str.trim().split(',').collect();
-
-    if parts.len() != 3 {
-        return None;
-    }
+    let memory = device.memory_info().ok()?;
+    let driver_version = nvml.sys_driver_version().ok()?;
 
     Some(GpuInfo {
-        name: parts[0].trim().to_string(),
-        memory: parse_gpu_memory(parts[1].trim()),
-        cuda_version: parts[2].trim().to_string(),
+        name,
+        memory: memory.total,
+        cuda_version: driver_version,
+        gpu_count: device_count as usize,
     })
 }
 
-fn parse_gpu_memory(mem_str: &str) -> u64 {
-    const MIB_TO_BYTES: u64 = 1024 * 1024;
-
-    let parts: Vec<&str> = mem_str.split_whitespace().collect();
-    if parts.len() != 2 {
-        return 0;
-    }
-
-    parts[0]
-        .parse::<u64>()
-        .map(|mib| mib * MIB_TO_BYTES)
-        .unwrap_or(0)
+pub fn print_gpu_info(gpu_info: &GpuInfo) {
+    println!("\n{}", "GPU Information:".blue().bold());
+    println!("  Model: {}", gpu_info.name);
+    println!("  Count: {}", gpu_info.gpu_count);
+    println!("  Memory: {:.1} GB", gpu_info.memory as f64 / BYTES_TO_GB);
+    println!("  Driver Version: {}", gpu_info.cuda_version);
 }

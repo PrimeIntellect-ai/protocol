@@ -14,10 +14,10 @@ pub struct GpuInfo {
     pub name: String,
     pub memory: u64, // In bytes
     pub cuda_version: String,
+    pub gpu_count: usize,
 }
 
 #[derive(Debug)]
 pub enum SystemCheckError {
-    GPUDriversNotFound,
     Other(String),
 }
