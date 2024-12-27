@@ -4,28 +4,86 @@ use nvml_wrapper::Nvml;
 
 const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
+enum GpuDevice {
+    Available {
+        name: String,
+        memory: u64,
+        driver_version: String,
+        device_count: usize,
+    },
+    NotAvailable(String),
+}
+
 pub fn detect_gpu() -> Option<GpuInfo> {
-    let nvml = Nvml::init().ok()?;
-    let device_count = nvml.device_count().ok().filter(|&count| count > 0)?;
-    let device = nvml.device_by_index(0).ok()?;
+    match get_gpu_status() {
+        GpuDevice::Available {
+            name,
+            memory,
+            driver_version,
+            device_count,
+        } => {
+            println!("Successfully collected GPU information:");
+            println!("  Name: {}", name);
+            println!("  Memory: {} bytes", memory);
+            println!("  Driver Version: {}", driver_version);
+            println!("  Device Count: {}", device_count);
 
-    let name = device
-        .name()
-        .ok()?
-        .to_lowercase()
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join("_");
+            Some(GpuInfo {
+                name: name
+                    .to_lowercase()
+                    .split_whitespace()
+                    .collect::<Vec<&str>>()
+                    .join("_"),
+                memory,
+                cuda_version: driver_version,
+                gpu_count: device_count,
+            })
+        }
+        GpuDevice::NotAvailable(err) => {
+            println!("GPU not available: {}", err);
+            None
+        }
+    }
+}
 
-    let memory = device.memory_info().ok()?;
-    let driver_version = nvml.sys_driver_version().ok()?;
+fn get_gpu_status() -> GpuDevice {
+    match Nvml::init() {
+        Ok(nvml) => {
+            // Get device count first
+            let device_count = match nvml.device_count() {
+                Ok(count) => count as usize,
+                Err(e) => {
+                    return GpuDevice::NotAvailable(format!("Failed to get device count: {}", e))
+                }
+            };
 
-    Some(GpuInfo {
-        name,
-        memory: memory.total,
-        cuda_version: driver_version,
-        gpu_count: device_count as usize,
-    })
+            if device_count == 0 {
+                return GpuDevice::NotAvailable("No GPU devices detected".to_string());
+            }
+
+            // Get first device
+            match nvml.device_by_index(0) {
+                Ok(device) => {
+                    let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
+
+                    let memory = device.memory_info().map(|m| m.total).unwrap_or(0);
+
+                    let driver_version = nvml
+                        .sys_driver_version()
+                        .unwrap_or_else(|_| "Unknown".to_string());
+
+                    GpuDevice::Available {
+                        name,
+                        memory,
+                        driver_version,
+                        device_count,
+                    }
+                }
+                Err(e) => GpuDevice::NotAvailable(format!("Failed to get device: {}", e)),
+            }
+        }
+        Err(e) => GpuDevice::NotAvailable(format!("Failed to initialize NVML: {}", e)),
+    }
 }
 
 pub fn print_gpu_info(gpu_info: &GpuInfo) {
