@@ -1197,6 +1197,7 @@ dependencies = [
  "clap",
  "colored",
  "lazy_static",
+ "libc",
  "regex",
  "serde",
  "sysinfo",

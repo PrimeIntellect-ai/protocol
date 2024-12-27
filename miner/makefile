@@ -1,6 +1,14 @@
 SSH_CONN ?=
+MINER_CMD ?= check
 
-.PHONY: gpu-setup gpu-run gpu-watch
+.PHONY: gpu-setup gpu-run gpu-watch run
+
+# Run locally
+run:
+	@echo "🔨 Building locally..."
+	cargo build --release
+	@echo "▶️  Running locally..."
+	./target/release/miner $(MINER_CMD)
 
 # Setup GPU server with required dependencies
 gpu-setup:
@@ -24,7 +32,7 @@ gpu-run:
 	@echo "🔨 Building on GPU server..."
 	ssh $(SSH_CONN) 'cd ~/miner && . ~/.cargo/env && cargo build --release'
 	@echo "▶️  Running on GPU..."
-	ssh -t $(SSH_CONN) 'cd ~/miner && ./target/release/miner check'
+	ssh -t $(SSH_CONN) 'cd ~/miner && ./target/release/miner $(MINER_CMD)'
 
 # Watch mode - automatically deploy and run on file changes  
 gpu-watch:

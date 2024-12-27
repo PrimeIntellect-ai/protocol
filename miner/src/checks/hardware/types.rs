@@ -20,9 +20,6 @@ pub struct GpuInfo {
 
 #[derive(Debug)]
 pub enum SystemCheckError {
-    DockerNotInstalled,
-    InsufficientDiskSpace,
-    InsufficientMemory,
     GPUDriversNotFound,
     Other(String),
 }

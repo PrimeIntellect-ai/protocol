@@ -1,5 +1,6 @@
 use crate::api::start_server;
-use crate::system::run_system_check;
+use crate::checks::hardware::run_hardware_check;
+use crate::checks::software::run_software_check;
 use clap::{Parser, Subcommand};
 use colored::*;
 use std::io::Write;
@@ -41,21 +42,40 @@ pub enum Commands {
         #[arg(default_value = "false")]
         dry_run: bool,
     },
-    /// Run system checks to verify hardware compatibility
-    Check,
+    /// Run system checks to verify hardware and software compatibility
+    Check {
+        /// Run only hardware checks
+        #[arg(long)]
+        hardware_only: bool,
+
+        /// Run only software checks  
+        #[arg(long)]
+        software_only: bool,
+    },
 }
 
 pub fn execute_command(command: &Commands) {
     match command {
-        Commands::Check => {
+        Commands::Check { hardware_only, software_only } => {
             println!("\n{}", "🔍 PRIME MINER SYSTEM CHECK".bright_cyan().bold());
             println!("{}", "═".repeat(50).bright_cyan());
 
-            println!("\n[SYS] {}", "Running hardware detection...".bright_blue());
+            if !software_only {
+                println!("\n[SYS] {}", "Running hardware detection...".bright_blue());
 
-            if let Err(err) = run_system_check() {
-                eprintln!("{}", format!("System check failed: {}", err).red().bold());
-                std::process::exit(1);
+                if let Err(err) = run_hardware_check() {
+                    eprintln!("{}", format!("Hardware check failed: {}", err).red().bold());
+                    std::process::exit(1);
+                }
+            }
+
+            if !hardware_only {
+                println!("\n[SYS] {}", "Running software detection...".bright_blue());
+
+                if let Err(err) = run_software_check() {
+                    eprintln!("{}", format!("Software check failed: {}", err).red().bold());
+                    std::process::exit(1);
+                }
             }
 
             println!(
@@ -81,13 +101,18 @@ pub fn execute_command(command: &Commands) {
             // 2. Run Hardware detection and check
             println!("\n[SYS] {}", "Hardware detection".bright_blue());
 
-            if let Err(err) = run_system_check() {
-                eprintln!("{}", format!("System check failed: {}", err).red().bold());
+            if let Err(err) = run_hardware_check() {
+                eprintln!("{}", format!("Hardware check failed: {}", err).red().bold());
                 std::process::exit(1);
             }
 
             // 3. Run Software check
             println!("\n[SYS] {}", "Software verification".bright_blue());
+
+            if let Err(err) = run_software_check() {
+                eprintln!("{}", format!("Software check failed: {}", err).red().bold());
+                std::process::exit(1);
+            }
 
             // 4. Run Network check
             println!("\n[NET] {}", "Network connectivity check".bright_magenta());
