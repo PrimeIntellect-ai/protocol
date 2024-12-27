@@ -1,5 +1,6 @@
 mod docker;
 mod gpu;
+mod memory;
 mod system_check;
 mod types;
 

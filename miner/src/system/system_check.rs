@@ -1,5 +1,6 @@
 use super::docker::check_docker_installed;
 use super::gpu::detect_gpu;
+use super::memory::{get_memory_info, print_memory_info};
 use super::types::{SystemCheckError, SystemInfo};
 use colored::*;
 use std::error::Error;
@@ -46,8 +47,7 @@ fn collect_system_info(sys: &System) -> Result<SystemInfo, SystemCheckError> {
     let cpu_cores = sys.cpus().len();
     let cpu_brand = sys.cpus()[0].brand().to_string();
 
-    let total_memory = sys.total_memory();
-    let free_memory = sys.available_memory();
+    let (total_memory, free_memory) = get_memory_info(sys);
 
     let storage_info = get_storage_info()?;
 
@@ -92,15 +92,7 @@ fn print_system_info(info: &SystemInfo) {
     println!("  Cores: {}", info.cpu_cores);
     println!("  Model: {}", info.cpu_brand);
 
-    println!("\n{}", "Memory Information:".blue().bold());
-    println!(
-        "  Total Memory: {:.1} GB",
-        info.total_memory as f64 / BYTES_TO_GB
-    );
-    println!(
-        "  Free Memory: {:.1} GB",
-        info.free_memory as f64 / BYTES_TO_GB
-    );
+    print_memory_info(info.total_memory, info.free_memory);
 
     println!("\n{}", "Storage Information:".blue().bold());
     println!(
