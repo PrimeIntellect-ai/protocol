@@ -1,11 +1,13 @@
 use super::types::ErrorResponse;
 use actix_web::{
-    web::{self, delete, get, post},
+    web::{self, delete, get, post, Data},
     HttpResponse, Scope,
 };
 use serde::{Deserialize, Serialize};
 use uuid;
 use validator::Validate;
+use crate::docker::handler::DockerHandler;
+use log::{debug, info};
 
 /// Request payload for creating a new task
 #[derive(Deserialize, Serialize, Validate)]
@@ -47,23 +49,45 @@ pub struct TaskResponse {
 /// - 202 Accepted: Task created successfully
 /// - 400 Bad Request: Invalid input
 /// - 500 Internal Server Error: Server-side error
-async fn create_task(task: web::Json<CreateTaskRequest>) -> HttpResponse {
+async fn create_task(
+    task: web::Json<CreateTaskRequest>,
+    docker_handler: Data<DockerHandler>,
+) -> HttpResponse {
     // Validate input
-    if let Err(errors) = task.0.validate() {
+    if let Err(errors) = task.validate() {
         return HttpResponse::BadRequest().json(ErrorResponse {
             error: errors.to_string(),
         });
     }
 
-    // Create placeholder task response
-    let response = TaskResponse {
-        id: format!("task_{}", uuid::Uuid::new_v4()),
-        name: task.name.clone(),
-        status: "pending".to_string(),
-        error: None,
-    };
+    let task_id = format!("task_{}", uuid::Uuid::new_v4());
+    let task_name = task.name.clone();
+    let task_params = task.parameters.clone(); 
 
-    HttpResponse::Accepted().json(response)
+    debug!("Attempting to start container with task_id: {}", task_id);
+    info!("Creating new task with ID: {}", task_id);
+
+    // Start container for the task
+    match docker_handler.start_container(
+        "open-webui:4d6775d8830d",
+        &task_id,
+        task_params,
+    ).await {
+        Ok(_) => {
+            let response = TaskResponse {
+                id: task_id,
+                name: task_name,
+                status: "running".to_string(),
+                error: None,
+            };
+            HttpResponse::Accepted().json(response)
+        },
+        Err(e) => {
+            HttpResponse::InternalServerError().json(ErrorResponse {
+                error: format!("Failed to start task container: {}", e),
+            })
+        }
+    }
 }
 
 /// Get status of a task
@@ -75,7 +99,10 @@ async fn create_task(task: web::Json<CreateTaskRequest>) -> HttpResponse {
 /// - 200 OK: Task found
 /// - 404 Not Found: Task not found
 /// - 500 Internal Server Error: Server-side error
-async fn get_task(path: web::Path<String>) -> HttpResponse {
+async fn get_task(
+    path: web::Path<String>,
+    docker_handler: Data<DockerHandler>,
+) -> HttpResponse {
     let task_id = path.into_inner();
 
     // Validate task ID format
@@ -85,7 +112,7 @@ async fn get_task(path: web::Path<String>) -> HttpResponse {
         });
     }
 
-    // Return placeholder task status
+    // TODO: Implement actual container status check
     let response = TaskResponse {
         id: task_id,
         name: "Example Task".to_string(),
@@ -105,7 +132,10 @@ async fn get_task(path: web::Path<String>) -> HttpResponse {
 /// - 200 OK: Task deleted successfully
 /// - 404 Not Found: Task not found
 /// - 500 Internal Server Error: Server-side error
-async fn delete_task(path: web::Path<String>) -> HttpResponse {
+async fn delete_task(
+    path: web::Path<String>,
+    docker_handler: Data<DockerHandler>,
+) -> HttpResponse {
     let task_id = path.into_inner();
 
     // Validate task ID format
@@ -115,19 +145,31 @@ async fn delete_task(path: web::Path<String>) -> HttpResponse {
         });
     }
 
-    // Return placeholder deleted task response
-    let response = TaskResponse {
-        id: task_id,
-        name: "Example Task".to_string(),
-        status: "deleted".to_string(),
-        error: None,
-    };
-
-    HttpResponse::Ok().json(response)
+    // Remove the container
+    match docker_handler.remove_container(&task_id).await {
+        Ok(_) => {
+            let response = TaskResponse {
+                id: task_id,
+                name: "Example Task".to_string(),
+                status: "deleted".to_string(),
+                error: None,
+            };
+            HttpResponse::Ok().json(response)
+        },
+        Err(e) => {
+            HttpResponse::InternalServerError().json(ErrorResponse {
+                error: format!("Failed to remove task container: {}", e),
+            })
+        }
+    }
 }
 
 pub fn task_routes() -> Scope {
+    // Create Docker handler once during route setup
+    let docker_handler = Data::new(DockerHandler::new().expect("Failed to initialize Docker handler"));
+
     web::scope("/task")
+        .app_data(docker_handler.clone()) // Clone the Arc internally
         .route("", post().to(create_task))
         .route("/{id}", get().to(get_task))
         .route("/{id}", delete().to(delete_task))

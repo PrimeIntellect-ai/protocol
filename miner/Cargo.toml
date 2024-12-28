@@ -17,3 +17,5 @@ validator = { version = "0.16", features = ["derive"] }
 sysinfo = "0.30"
 libc = "0.2"
 nvml-wrapper = "0.10.0"
+log = "0.4"
+env_logger = "0.10.0"
