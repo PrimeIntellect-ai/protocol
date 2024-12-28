@@ -1,6 +1,7 @@
 use bollard::Docker;
 use bollard::container::{Config, CreateContainerOptions, StartContainerOptions};
 use bollard::errors::Error as DockerError;
+use bollard::image::CreateImageOptions;
 use std::collections::HashMap;
 use log::{debug, info, error};
 
@@ -12,11 +13,18 @@ impl DockerHandler {
     /// Create a new DockerHandler instance
     pub fn new() -> Result<Self, DockerError> {
         debug!("Initializing Docker handler...");
-        let docker = Docker::connect_with_local_defaults()?;
-        info!("Successfully connected to Docker daemon");
+        let docker = match Docker::connect_with_unix_defaults() {
+            Ok(docker) => {
+                info!("Successfully connected to Docker daemon");
+                docker
+            },
+            Err(e) => {
+                error!("Failed to connect to Docker daemon: {}", e);
+                return Err(e);
+            }
+        };
         Ok(Self { docker })
     }
-
     /// Start a new container with the given image and configuration
     pub async fn start_container(
         &self,
@@ -28,52 +36,52 @@ impl DockerHandler {
         debug!("  Image: {}", image);
         debug!("  Container name: {}", name);
 
-        // Prepare environment variables
-        let env = env_vars.map(|vars| {
-            debug!("  Setting environment variables:");
-            vars.iter()
-                .map(|(k, v)| {
-                    debug!("    {}={}", k, v);
-                    format!("{}={}", k, v)
-                })
-                .collect::<Vec<String>>()
-        });
+        // Pull image if not exists
+        debug!("Checking if image needs to be pulled: {}", image);
+        if self.docker.inspect_image(image).await.is_err() {
+            info!("Image {} not found locally, pulling...", image);
+            let options = Some(CreateImageOptions {
+                from_image: image,
+                ..Default::default()
+            });
 
-        // Convert Vec<String> to Vec<&str> for the config
-        let env_str = env.as_ref().map(|e| {
-            e.iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<&str>>()
+            self.docker.create_image(options, None, None);
+
+            info!("Successfully pulled image {}", image);
+        } else {
+            debug!("Image {} already exists locally", image);
+        }
+
+        let env = env_vars.map(|vars| {
+            debug!("Setting environment variables");
+            vars.iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<String>>()
         });
 
         // Create container configuration
         let config = Config {
             image: Some(image),
-            env: env_str,
+            env: env.as_ref().map(|e| e.iter().map(String::as_str).collect()),
             ..Default::default()
         };
 
-        // Create container options
-        let options = Some(CreateContainerOptions {
-            name,
-            platform: None,
-        });
+        // Create and start container
+        let container = self.docker.create_container(
+            Some(CreateContainerOptions {
+                name,
+                platform: None,
+            }),
+            config
+        ).await.map_err(|e| {
+            error!("Failed to create container: {}", e);
+            e
+        })?;
 
-        // Create and start the container
-        debug!("Creating container with name: {}", name);
-        let container = match self.docker.create_container(options, config).await {
-            Ok(container) => {
-                info!("Container created successfully with ID: {}", container.id);
-                container
-            },
-            Err(e) => {
-                error!("Failed to create container: {}", e);
-                return Err(DockerError::from(e));
-            }
-        };
-        
+        info!("Container created successfully with ID: {}", container.id);
         debug!("Starting container {}", container.id);
-        self.docker.start_container(&container.id, Some(StartContainerOptions::<String>::default())).await?;
+
+        self.docker.start_container(&container.id, None::<StartContainerOptions<String>>).await?;
         info!("Container {} started successfully", container.id);
 
         Ok(container.id)
