@@ -4,8 +4,8 @@ mod cli;
 mod docker;
 use clap::Parser;
 use cli::{execute_command, Cli};
-use log::{debug, LevelFilter};
 use env_logger;
+use log::{debug, LevelFilter};
 
 fn main() {
     // Initialize logging with debug level and console output
@@ -16,7 +16,7 @@ fn main() {
 
     debug!("Parsing CLI arguments");
     let cli = Cli::parse();
-    
+
     debug!("Executing command");
     execute_command(&cli.command);
 }

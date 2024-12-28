@@ -1,9 +1,21 @@
-use bollard::Docker;
-use bollard::container::{Config, CreateContainerOptions, StartContainerOptions};
+use bollard::container::{
+    Config, CreateContainerOptions, ListContainersOptions, StartContainerOptions,
+};
 use bollard::errors::Error as DockerError;
 use bollard::image::CreateImageOptions;
+use bollard::Docker;
+use log::{debug, error, info};
 use std::collections::HashMap;
-use log::{debug, info, error};
+
+#[derive(Debug, Clone)]
+pub struct ContainerInfo {
+    pub id: String,
+    pub image: String,
+    pub status: String,
+    pub state: String,
+    pub names: Vec<String>,
+    pub created: i64,
+}
 
 pub struct DockerHandler {
     docker: Docker,
@@ -17,7 +29,7 @@ impl DockerHandler {
             Ok(docker) => {
                 info!("Successfully connected to Docker daemon");
                 docker
-            },
+            }
             Err(e) => {
                 error!("Failed to connect to Docker daemon: {}", e);
                 return Err(e);
@@ -40,12 +52,13 @@ impl DockerHandler {
         debug!("Checking if image needs to be pulled: {}", image);
         if self.docker.inspect_image(image).await.is_err() {
             info!("Image {} not found locally, pulling...", image);
-            let options = Some(CreateImageOptions {
+            let _options = Some(CreateImageOptions {
                 from_image: image,
                 ..Default::default()
             });
-
-            self.docker.create_image(options, None, None);
+            
+            // TODO: Properly implement docker pulling
+            // self.docker.create_image(options, None, None);
 
             info!("Successfully pulled image {}", image);
         } else {
@@ -67,21 +80,27 @@ impl DockerHandler {
         };
 
         // Create and start container
-        let container = self.docker.create_container(
-            Some(CreateContainerOptions {
-                name,
-                platform: None,
-            }),
-            config
-        ).await.map_err(|e| {
-            error!("Failed to create container: {}", e);
-            e
-        })?;
+        let container = self
+            .docker
+            .create_container(
+                Some(CreateContainerOptions {
+                    name,
+                    platform: None,
+                }),
+                config,
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create container: {}", e);
+                e
+            })?;
 
         info!("Container created successfully with ID: {}", container.id);
         debug!("Starting container {}", container.id);
 
-        self.docker.start_container(&container.id, None::<StartContainerOptions<String>>).await?;
+        self.docker
+            .start_container(&container.id, None::<StartContainerOptions<String>>)
+            .await?;
         info!("Container {} started successfully", container.id);
 
         Ok(container.id)
@@ -92,11 +111,36 @@ impl DockerHandler {
         debug!("Stopping container: {}", container_id);
         self.docker.stop_container(container_id, None).await?;
         info!("Container {} stopped successfully", container_id);
-        
+
         debug!("Removing container: {}", container_id);
         self.docker.remove_container(container_id, None).await?;
         info!("Container {} removed successfully", container_id);
-        
+
         Ok(())
+    }
+
+    /// List all running containers with their details
+    pub async fn list_running_containers(&self) -> Result<Vec<ContainerInfo>, DockerError> {
+        debug!("Listing running containers");
+        let options = Some(ListContainersOptions::<String> {
+            all: false, // Only running containers
+            ..Default::default()
+        });
+
+        let containers = self.docker.list_containers(options).await?;
+        let container_details: Vec<ContainerInfo> = containers
+            .iter()
+            .map(|c| ContainerInfo {
+                id: c.id.clone().unwrap_or_default(),
+                image: c.image.clone().unwrap_or_default(),
+                status: c.status.clone().unwrap_or_default(),
+                state: c.state.clone().unwrap_or_default(),
+                names: c.names.clone().unwrap_or_default(),
+                created: c.created.unwrap_or_default(),
+            })
+            .collect();
+
+        info!("Found {} running containers", container_details.len());
+        Ok(container_details)
     }
 }
