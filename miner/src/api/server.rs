@@ -1,6 +1,7 @@
 use crate::api::routes::task::task_routes;
 use actix_web::{middleware, App, HttpServer};
 
+#[allow(dead_code)]
 pub async fn start_server(host: &str, port: u16) -> std::io::Result<()> {
     println!("Starting server at http://{}:{}", host, port);
 

@@ -1,10 +1,9 @@
-use crate::api::start_server;
-use crate::system::run_system_check;
+use crate::checks::hardware::run_hardware_check;
+use crate::checks::software::run_software_check;
 use clap::{Parser, Subcommand};
 use colored::*;
 use std::io::Write;
 use std::path::PathBuf;
-use tokio;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -41,17 +40,63 @@ pub enum Commands {
         #[arg(default_value = "false")]
         dry_run: bool,
     },
+    /// Run system checks to verify hardware and software compatibility
+    Check {
+        /// Run only hardware checks
+        #[arg(long)]
+        hardware_only: bool,
+
+        /// Run only software checks  
+        #[arg(long)]
+        software_only: bool,
+    },
+}
+
+fn run_system_checks(hardware_only: bool, software_only: bool) -> Result<(), String> {
+    if !software_only {
+        println!("\n[SYS] {}", "Running hardware detection...".bright_blue());
+        if let Err(err) = run_hardware_check() {
+            eprintln!("{}", format!("Hardware check failed: {}", err).red().bold());
+            return Err(err.to_string());
+        }
+    }
+
+    if !hardware_only {
+        println!("\n[SYS] {}", "Running software detection...".bright_blue());
+        if let Err(err) = run_software_check() {
+            eprintln!("{}", format!("Software check failed: {}", err).red().bold());
+            return Err(err.to_string());
+        }
+    }
+
+    Ok(())
 }
 
 pub fn execute_command(command: &Commands) {
     match command {
+        Commands::Check {
+            hardware_only,
+            software_only,
+        } => {
+            println!("\n{}", "🔍 PRIME MINER SYSTEM CHECK".bright_cyan().bold());
+            println!("{}", "═".repeat(50).bright_cyan());
+
+            if run_system_checks(*hardware_only, *software_only).is_err() {
+                std::process::exit(1);
+            }
+
+            println!(
+                "\n[SYS] {}",
+                "✅ System check passed!".bright_green().bold()
+            );
+        }
         Commands::Run {
             subnet_id: _,
             wallet_address: _,
             private_key: _,
-            port,
-            external_ip,
-            dry_run: _,
+            port: _,
+            external_ip: _,
+            dry_run,
         } => {
             println!("\n{}", "🚀 PRIME MINER INITIALIZATION".bright_cyan().bold());
             println!("{}", "═".repeat(50).bright_cyan());
@@ -60,23 +105,25 @@ pub fn execute_command(command: &Commands) {
             // 1. Ensure we have enough eth in our wallet to register on training run
             println!("\n[ETH] {}", "Checking wallet balance...".bright_green());
 
-            // 2. Run Hardware detection and check
-            println!("\n[SYS] {}", "Hardware detection".bright_blue());
-
-            // 3. Run Software check
-            println!("\n[SYS] {}", "Software verification".bright_blue());
+            // 2. Run system checks
+            if run_system_checks(false, false).is_err() {
+                std::process::exit(1);
+            }
 
             // 4. Run Network check
             println!("\n[NET] {}", "Network connectivity check".bright_magenta());
 
             // 5. Run Miner registration
-            if !*dry_run {
+            if !dry_run {
                 println!(
                     "\n[REG] {}",
                     "Registering miner on network...".bright_yellow()
                 );
             } else {
-                println!("\n[REG] {}", "Skipping miner registration (dry run mode)".bright_yellow());
+                println!(
+                    "\n[REG] {}",
+                    "Skipping miner registration (dry run mode)".bright_yellow()
+                );
             }
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
@@ -109,11 +156,6 @@ pub fn execute_command(command: &Commands) {
             }
 
             /*
-            if let Err(err) = run_system_check() {
-                eprintln!("{}", format!("System check failed: {}", err).red().bold());
-                std::process::exit(1);
-            }
-
             // Start HTTP server
             let runtime = tokio::runtime::Runtime::new().unwrap();
             if let Err(err) = runtime.block_on(start_server(external_ip, *port)) {

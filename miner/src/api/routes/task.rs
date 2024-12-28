@@ -4,7 +4,7 @@ use actix_web::{
 };
 use serde::{Deserialize, Serialize};
 use uuid;
-use validator::{Validate, ValidationError};
+use validator::Validate;
 
 /// Request payload for creating a new task
 #[derive(Deserialize, Serialize, Validate)]
@@ -36,7 +36,6 @@ pub struct TaskResponse {
     error: Option<String>,
 }
 
-/// Error response for validation failures
 #[derive(Serialize)]
 struct ErrorResponse {
     error: String,
@@ -52,6 +51,7 @@ struct ErrorResponse {
 /// - 202 Accepted: Task created successfully
 /// - 400 Bad Request: Invalid input
 /// - 500 Internal Server Error: Server-side error
+#[allow(dead_code)]
 async fn create_task(task: web::Json<CreateTaskRequest>) -> HttpResponse {
     // Validate input
     if let Err(errors) = task.0.validate() {
@@ -80,6 +80,7 @@ async fn create_task(task: web::Json<CreateTaskRequest>) -> HttpResponse {
 /// - 200 OK: Task found
 /// - 404 Not Found: Task not found
 /// - 500 Internal Server Error: Server-side error
+#[allow(dead_code)]
 async fn get_task(path: web::Path<String>) -> HttpResponse {
     let task_id = path.into_inner();
 
@@ -110,6 +111,7 @@ async fn get_task(path: web::Path<String>) -> HttpResponse {
 /// - 200 OK: Task deleted successfully
 /// - 404 Not Found: Task not found
 /// - 500 Internal Server Error: Server-side error
+#[allow(dead_code)]
 async fn delete_task(path: web::Path<String>) -> HttpResponse {
     let task_id = path.into_inner();
 
@@ -131,6 +133,7 @@ async fn delete_task(path: web::Path<String>) -> HttpResponse {
     HttpResponse::Ok().json(response)
 }
 
+#[allow(dead_code)]
 pub fn task_routes() -> Scope {
     web::scope("/task")
         .route("", post().to(create_task))
