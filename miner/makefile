@@ -4,11 +4,17 @@ MINER_CMD ?= check
 .PHONY: gpu-setup gpu-run gpu-watch run
 
 # Run locally
-run:
+run-check:
 	@echo "🔨 Building locally..."
 	cargo build --release
 	@echo "▶️  Running locally..."
-	./target/release/miner $(MINER_CMD)
+	./target/release/miner check 
+
+run: 
+	@echo "🔨 Building locally..."
+	cargo build --release
+	@echo "▶️  Running locally..."
+	./target/release/miner run --subnet-id 1 --wallet-address 0x --private-key ./keys/eth-private-key.json --port 8080 --external-ip 0.0.0.0 
 
 # Setup GPU server with required dependencies
 gpu-setup:
