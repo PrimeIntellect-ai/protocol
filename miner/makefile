@@ -12,9 +12,7 @@ run-check:
 
 run: 
 	@echo "🔨 Building locally..."
-	cargo build --release
-	@echo "▶️  Running locally..."
-	./target/release/miner run --subnet-id 1 --wallet-address 0x --private-key ./keys/eth-private-key.json --port 8080 --external-ip 0.0.0.0 
+	cargo run -- run --subnet-id 1 --wallet-address 0x --private-key ./keys/eth-private-key.json --port 8089 --external-ip 0.0.0.0
 
 # Setup GPU server with required dependencies
 gpu-setup:

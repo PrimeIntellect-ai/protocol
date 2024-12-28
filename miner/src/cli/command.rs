@@ -1,8 +1,8 @@
+use crate::api::server::start_server;
 use crate::checks::hardware::run_hardware_check;
 use crate::checks::software::run_software_check;
 use clap::{Parser, Subcommand};
 use colored::*;
-use std::io::Write;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -94,8 +94,8 @@ pub fn execute_command(command: &Commands) {
             subnet_id: _,
             wallet_address: _,
             private_key: _,
-            port: _,
-            external_ip: _,
+            port,
+            external_ip,
             dry_run,
         } => {
             println!("\n{}", "🚀 PRIME MINER INITIALIZATION".bright_cyan().bold());
@@ -135,13 +135,13 @@ pub fn execute_command(command: &Commands) {
                 "Broadcasting node to discovery service...".bright_cyan()
             );
 
-            print!(
+            /* print!(
                 "\n[VAL] {}",
                 "Waiting for validation challenge... ".bright_green()
-            );
+            );*/
 
             // 8. Wait for validation challenge and monitor status on chain
-            std::io::stdout().flush().unwrap();
+            /* std::io::stdout().flush().unwrap();
             let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let mut i = 0;
             loop {
@@ -153,10 +153,8 @@ pub fn execute_command(command: &Commands) {
                 std::io::stdout().flush().unwrap();
                 std::thread::sleep(std::time::Duration::from_millis(100));
                 i = (i + 1) % spinner.len();
-            }
+            }*/
 
-            /*
-            // Start HTTP server
             let runtime = tokio::runtime::Runtime::new().unwrap();
             if let Err(err) = runtime.block_on(start_server(external_ip, *port)) {
                 eprintln!(
@@ -165,7 +163,6 @@ pub fn execute_command(command: &Commands) {
                 );
                 std::process::exit(1);
             }
-            */
         }
     }
 }
