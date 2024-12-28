@@ -13,7 +13,18 @@ cargo run -- run \
   --external-ip <your-public-ip> \  # Your node's public IP address
 ```
 
-### Run on GPU Server
+### Run Hardware check 
+``` 
+# Run all checks
+cargo run -- check
+
+# Hardware checks only
+cargo run -- check --hardware-only
+
+# Software checks only 
+cargo run -- check --software-only
+```
+### Develop on GPU Server
 
 The miner can be deployed and run on a remote GPU server using the provided Makefile commands.
 
