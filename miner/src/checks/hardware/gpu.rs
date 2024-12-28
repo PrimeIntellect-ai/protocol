@@ -44,13 +44,17 @@ pub fn detect_gpu() -> Option<GpuInfo> {
         }
     }
 }
-
 fn get_gpu_status() -> GpuDevice {
     let mut nvml_guard = NVML.lock().unwrap();
 
     // Initialize NVML if not already initialized
     if nvml_guard.is_none() {
-        match Nvml::init() {
+        match Nvml::builder()
+            .lib_path(std::ffi::OsStr::new(
+                "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1",
+            ))
+            .init()
+        {
             Ok(nvml) => *nvml_guard = Some(nvml),
             Err(e) => return GpuDevice::NotAvailable(format!("Failed to initialize NVML: {}", e)),
         }
