@@ -3,26 +3,31 @@ The current setup is aimed to support intellect-2 with a limited number of valid
 
 
 ## Development Milestones 
-### 📅 Milestone 1: Off-chain Miner and Master Node interaction  
-> **Status**: Planned
+### 📅 Milestone 1: Off-chain Miner and Master Node interaction with discovery service 
+> **Status**: In Progress 
 > **Target Release**: January 5th, 2025
-- See System Architecture Step 3. and 4.
+- *See System Architecture Step 3. and 4.*
 - Build a simple ability to control the docker container running on the miners 
 - Basic hardware detection and system check
+- Basic discovery service 
 
-### 📅 Milestone 2: Off-Chain Validator <> Miner Interaction 
+### 📅 Milestone 2: Off-Chain Miner Validation using Master node 
 > **Status**: Planned
+> **Target Release**: January 10th, 2025
+- *See System Architecture Step 2.*
 - Allow validator to validate the miner's registration 
 - Allow validator to send tasks to the miner and collect results 
 
-### 📅 Milestone 3: On-Chain Miner Registration 
+### 📅 Milestone 3: Full contract integration with on-chain miner integration 
 > **Status**: Planned
-- Allow miner to register on-chain with encrypted IP and capabilities 
+> **Target Release**: January 14th, 2025
+- *See System Architecture Step 1.*
+- Allow miner to register on-chain with end-to-end test cases 
 
-### 📅 Milestone 4: On-Chain Validator and Master Integration  
+### 📅 Milestone 4: Intellect-2 Training Add-on Support 
 > **Status**: Planned
-- Allow validator to validate the miner's registration 
-- Integrate Master node to listen for accepted miners and send tasks to them 
+> **Target Release**: TBD 
+- Support requested features for intellect-2 including logging and storage capabilities
 
 ## System architecture (WIP)
 The following system architecture still misses crucial components (e.g. terminations) and is simplified for the MVP / intellect-2 run.
