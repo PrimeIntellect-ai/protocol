@@ -5,7 +5,7 @@ The current setup is aimed to support intellect-2 with a limited number of valid
 ## Development Milestones 
 ### 📅 Milestone 1: Off-chain Miner and Master Node interaction with discovery service 
 > **Status**: In Progress 
-> **Target Release**: January 5th, 2025
+> **Target Release**: January 10th, 2025
 - *See System Architecture Step 3. and 4.*
 - Build a simple ability to control the docker container running on the miners 
 - Basic hardware detection and system check
