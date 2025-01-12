@@ -1,5 +1,5 @@
 SSH_CONN ?=
-MINER_CMD ?= check
+MINER_CMD ?= run --subnet-id 1 --wallet-address 0x --private-key ./keys/eth-private-key.json --port 8089 --external-ip 0.0.0.0
 
 .PHONY: gpu-setup gpu-run gpu-watch run
 
