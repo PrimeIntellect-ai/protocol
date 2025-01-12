@@ -4,7 +4,6 @@ mod cli;
 mod docker;
 use clap::Parser;
 use cli::{execute_command, Cli};
-use env_logger;
 use log::{debug, LevelFilter};
 
 fn main() {

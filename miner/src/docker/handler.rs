@@ -38,7 +38,6 @@ impl DockerHandler {
     }
 
     /// Pull a Docker image if it doesn't exist locally
-
     pub async fn pull_image(&self, image: &str) -> Result<(), DockerError> {
         debug!("Checking if image needs to be pulled: {}", image);
         if self.docker.inspect_image(image).await.is_err() {
@@ -52,7 +51,7 @@ impl DockerHandler {
 
             let options = CreateImageOptions {
                 from_image: image_name,
-                tag: tag,
+                tag,
                 ..Default::default()
             };
 
@@ -63,7 +62,7 @@ impl DockerHandler {
                     Ok(create_info) => {
                         debug!("Pull progress: {:?}", create_info);
                     }
-                    Err(e) => return Err(e.into()),
+                    Err(e) => return Err(e),
                 }
             }
 

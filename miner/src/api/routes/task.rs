@@ -134,7 +134,7 @@ async fn get_task(path: web::Path<String>, docker_handler: Data<DockerHandler>) 
                 id: task_id,
                 name: container
                     .names
-                    .get(0)
+                    .first()
                     .map(|n| n.trim_start_matches('/').to_string())
                     .unwrap_or_default(),
                 status: container.status,
@@ -168,7 +168,7 @@ async fn list_tasks(docker_handler: Data<DockerHandler>) -> HttpResponse {
                 .map(|c| {
                     let name = c
                         .names
-                        .get(0)
+                        .first()
                         .map(|n| n.trim_start_matches('/').to_string())
                         .unwrap_or_default();
                     debug!(
@@ -178,7 +178,7 @@ async fn list_tasks(docker_handler: Data<DockerHandler>) -> HttpResponse {
                     TaskResponse {
                         id: c
                             .names
-                            .get(0)
+                            .first()
                             .map(|n| n.trim_start_matches('/').to_string())
                             .unwrap_or(c.id),
                         name,
