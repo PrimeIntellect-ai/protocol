@@ -2,7 +2,6 @@ use super::types::SoftwareCheckError;
 use colored::*;
 
 pub fn check_docker_installed() -> Result<(), SoftwareCheckError> {
-    // Check if docker is installed
     let docker_path = std::process::Command::new("which")
         .arg("docker")
         .output()
@@ -15,7 +14,6 @@ pub fn check_docker_installed() -> Result<(), SoftwareCheckError> {
     }
 
     let docker_info = std::process::Command::new("docker")
-        .arg("ps")  // Using 'ps' instead of 'info' as it's a simpler check
         .output()
         .map_err(|e| {
             SoftwareCheckError::Other(format!("Failed to execute 'docker ps': {}. You may need to add your user to the docker group.", e))
