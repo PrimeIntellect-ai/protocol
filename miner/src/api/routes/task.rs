@@ -20,12 +20,17 @@ pub struct CreateTaskRequest {
         message = "Task name must be between 1 and 256 characters"
     ))]
     name: String,
+    /// Docker image to use
     #[validate(length(min = 1, message = "Image name cannot be empty"))]
     image: String,
 
     /// Task parameters (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     parameters: Option<std::collections::HashMap<String, String>>,
+
+    /// Docker environment variables (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    env_vars: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Response structure for task operations
@@ -74,14 +79,14 @@ async fn create_task(
 
     let task_id = format!("task_{}", uuid::Uuid::new_v4());
     let task_name = task.name.clone();
-    let task_params = task.parameters.clone();
+    let task_env_vars = task.env_vars.clone();
 
     debug!("Attempting to start container with task_id: {}", task_id);
     info!("Creating new task with ID: {}", task_id);
 
     // Start container for the task
     match docker_handler
-        .start_container(&task.image, &task_id, task_params)
+        .start_container(&task.image, &task_id, task_env_vars)
         .await
     {
         Ok(_) => {
