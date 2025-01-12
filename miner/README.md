@@ -22,7 +22,8 @@ cargo run -- check
 cargo run -- check --hardware-only
 
 # Software checks only 
-cargo run -- check --software-only
+cargo run -- check --software-only 
+
 ```
 ### Develop on GPU Server
 

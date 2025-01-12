@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.4"
-bollard = "0.15"
+bollard = "0.18.1"
 clap = { version = "4.4", features = ["derive"] }
 colored = "2.0"
 lazy_static = "1.4"
@@ -17,3 +17,8 @@ validator = { version = "0.16", features = ["derive"] }
 sysinfo = "0.30"
 libc = "0.2"
 nvml-wrapper = "0.10.0"
+log = "0.4"
+env_logger = "0.10.0"
+cargo-watch = "8.4.1"
+futures-core = "0.3"
+futures-util = "0.3"
