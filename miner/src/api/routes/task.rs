@@ -11,6 +11,7 @@ use validator::Validate;
 
 /// Request payload for creating a new task
 #[derive(Deserialize, Serialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct CreateTaskRequest {
     /// Task name
     #[validate(length(
@@ -19,6 +20,8 @@ pub struct CreateTaskRequest {
         message = "Task name must be between 1 and 256 characters"
     ))]
     name: String,
+    #[validate(length(min = 1, message = "Image name cannot be empty"))]
+    image: String,
 
     /// Task parameters (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,6 +62,9 @@ async fn create_task(
     task: web::Json<CreateTaskRequest>,
     docker_handler: Data<DockerHandler>,
 ) -> HttpResponse {
+    // Extract task from JSON wrapper
+    let task = task.into_inner();
+
     // Validate input
     if let Err(errors) = task.validate() {
         return HttpResponse::BadRequest().json(ErrorResponse {
@@ -75,7 +81,7 @@ async fn create_task(
 
     // Start container for the task
     match docker_handler
-        .start_container("ghcr.io/open-webui/open-webui:main", &task_id, task_params)
+        .start_container(&task.image, &task_id, task_params)
         .await
     {
         Ok(_) => {
