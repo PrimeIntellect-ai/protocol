@@ -42,6 +42,10 @@ pub struct TaskResponse {
     name: String,
     /// Current status of the task (pending, running, completed, failed)
     status: String,
+    /// Docker image used
+    image: String,
+    /// Creation time of the task
+    created: i64,
     /// Optional error message if task failed
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
@@ -95,6 +99,8 @@ async fn create_task(
                 name: task_name,
                 status: "running".to_string(),
                 error: None,
+                image: task.image,
+                created: 0,
             };
             HttpResponse::Accepted().json(response)
         }
@@ -103,7 +109,6 @@ async fn create_task(
         }),
     }
 }
-
 /// Get status of a task
 ///
 /// # Path Parameters
@@ -123,15 +128,29 @@ async fn get_task(path: web::Path<String>, docker_handler: Data<DockerHandler>) 
         });
     }
 
-    // TODO: Implement actual container status check
-    let response = TaskResponse {
-        id: task_id,
-        name: "Example Task".to_string(),
-        status: "running".to_string(),
-        error: None,
-    };
-
-    HttpResponse::Ok().json(response)
+    match docker_handler.get_container_details(&task_id).await {
+        Ok(container) => {
+            let response = TaskResponse {
+                id: task_id,
+                name: container
+                    .names
+                    .get(0)
+                    .map(|n| n.trim_start_matches('/').to_string())
+                    .unwrap_or_default(),
+                status: container.status,
+                image: container.image,
+                created: container.created,
+                error: None,
+            };
+            HttpResponse::Ok().json(response)
+        }
+        Err(e) => {
+            debug!("Failed to get container details: {}", e);
+            HttpResponse::NotFound().json(ErrorResponse {
+                error: format!("Task {} not found", task_id),
+            })
+        }
+    }
 }
 
 /// List all running tasks
@@ -163,7 +182,9 @@ async fn list_tasks(docker_handler: Data<DockerHandler>) -> HttpResponse {
                             .map(|n| n.trim_start_matches('/').to_string())
                             .unwrap_or(c.id),
                         name,
-                        status: c.state,
+                        status: c.status,
+                        image: c.image,
+                        created: c.created,
                         error: None,
                     }
                 })
@@ -205,6 +226,8 @@ async fn delete_task(path: web::Path<String>, docker_handler: Data<DockerHandler
                 name: "Example Task".to_string(),
                 status: "deleted".to_string(),
                 error: None,
+                image: "".to_string(),
+                created: 0,
             };
             HttpResponse::Ok().json(response)
         }

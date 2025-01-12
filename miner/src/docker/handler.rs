@@ -5,7 +5,6 @@ use bollard::errors::Error as DockerError;
 use bollard::image::CreateImageOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
-use futures_util::TryStreamExt;
 use log::{debug, error, info};
 use std::collections::HashMap;
 #[derive(Debug, Clone)]
@@ -13,7 +12,6 @@ pub struct ContainerInfo {
     pub id: String,
     pub image: String,
     pub status: String,
-    pub state: String,
     pub names: Vec<String>,
     pub created: i64,
 }
@@ -160,7 +158,6 @@ impl DockerHandler {
                 id: c.id.clone().unwrap_or_default(),
                 image: c.image.clone().unwrap_or_default(),
                 status: c.status.clone().unwrap_or_default(),
-                state: c.state.clone().unwrap_or_default(),
                 names: c.names.clone().unwrap_or_default(),
                 created: c.created.unwrap_or_default(),
             })
@@ -168,5 +165,32 @@ impl DockerHandler {
 
         info!("Found {} running containers", container_details.len());
         Ok(container_details)
+    }
+
+    /// Get details for a specific container by ID
+    pub async fn get_container_details(
+        &self,
+        container_id: &str,
+    ) -> Result<ContainerInfo, DockerError> {
+        debug!("Getting details for container: {}", container_id);
+        let container = self.docker.inspect_container(container_id, None).await?;
+
+        let info = ContainerInfo {
+            id: container.id.unwrap_or_default(),
+            image: container.image.unwrap_or_default(),
+            status: container
+                .state
+                .and_then(|s| s.status)
+                .map(|s| s.to_string())
+                .unwrap_or_default(),
+            names: vec![container.name.unwrap_or_default()],
+            created: container
+                .created
+                .and_then(|c| c.parse::<i64>().ok())
+                .unwrap_or_default(),
+        };
+
+        info!("Retrieved details for container {}", container_id);
+        Ok(info)
     }
 }
