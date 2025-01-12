@@ -13,11 +13,12 @@ pub fn check_docker_installed() -> Result<(), SoftwareCheckError> {
         return Err(SoftwareCheckError::DockerNotInstalled);
     }
 
-    let docker_info = std::process::Command::new("docker")
-        .output()
-        .map_err(|e| {
-            SoftwareCheckError::Other(format!("Failed to execute 'docker ps': {}. You may need to add your user to the docker group.", e))
-        })?;
+    let docker_info = std::process::Command::new("docker").output().map_err(|e| {
+        SoftwareCheckError::Other(format!(
+            "Failed to execute 'docker ps': {}. You may need to add your user to the docker group.",
+            e
+        ))
+    })?;
 
     if !docker_info.status.success() {
         return Err(SoftwareCheckError::DockerNotRunning);
