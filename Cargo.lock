@@ -2044,6 +2044,8 @@ dependencies = [
  "clap 4.5.23",
  "colored",
  "env_logger",
+ "futures-core",
+ "futures-util",
  "lazy_static",
  "libc",
  "log",
