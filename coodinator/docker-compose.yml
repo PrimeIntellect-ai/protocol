@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.0
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd0
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-cluster=etcd0=http://etcd:2380
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+
+  coordinator:
+    build: .
+    command: npm run dev
+    volumes:
+      - ./:/app
+    environment:
+      - ETCD_HOSTS=http://etcd:2379
+    depends_on:
+      - etcd
