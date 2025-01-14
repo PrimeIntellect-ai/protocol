@@ -25,6 +25,19 @@ services:
     depends_on:
       - redis
 
+  test:
+    build: .
+    command: npm test
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    networks:
+      - redis-net
+    profiles:
+      - test
+
 networks:
   redis-net:
     driver: bridge

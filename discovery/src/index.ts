@@ -1,9 +1,9 @@
 import express, { Request, Response, NextFunction } from 'express'
-import Redis from 'ioredis'
 import helmet from 'helmet'
 import morgan from 'morgan'
 import { z } from 'zod'
-
+import { verifySignature } from './middleware/auth'
+import { redis } from './config/redis'
 // Type definitions
 interface ApiResponse<T> {
   success: boolean
@@ -27,16 +27,15 @@ app.use(express.json())
 app.use(helmet())
 app.use(morgan('combined'))
 
-// Redis client setup
-const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: Number(process.env.REDIS_PORT) || 6379,
-})
-
 // Register/update a node
 app.put<{ nodeId: string }>(
   '/nodes/:nodeId',
-  async (req: Request, res: Response<ApiResponse<Node & { nodeId: string }>>, next: NextFunction) => {
+  verifySignature,
+  async (
+    req: Request,
+    res: Response<ApiResponse<Node & { nodeId: string }>>,
+    next: NextFunction
+  ) => {
     try {
       const nodeId = req.params.nodeId
       const result = NodeSchema.safeParse(req.body)
@@ -45,7 +44,7 @@ app.put<{ nodeId: string }>(
         res.status(400).json({
           success: false,
           message: 'Invalid request body',
-          error: result.error.errors.map(e => e.message).join(', ')
+          error: result.error.errors.map((e) => e.message).join(', '),
         })
         return
       }
@@ -53,12 +52,16 @@ app.put<{ nodeId: string }>(
       const node: Node = result.data
       await redis.hset(
         `node:${nodeId}`,
-        'ipAddress', node.ipAddress,
-        'port', node.port,
-        'capacity', node.capacity,
-        'lastSeen', Date.now()
+        'ipAddress',
+        node.ipAddress,
+        'port',
+        node.port,
+        'capacity',
+        node.capacity,
+        'lastSeen',
+        Date.now()
       )
-      
+
       await redis.expire(`node:${nodeId}`, 300)
 
       res.status(200).json({
@@ -77,11 +80,15 @@ app.put<{ nodeId: string }>(
 
 // Get specific node
 app.get<{ nodeId: string }>(
-  '/nodes/:nodeId', 
-  async (req: Request, res: Response<ApiResponse<Node>>, next: NextFunction) => {
+  '/nodes/:nodeId',
+  async (
+    req: Request,
+    res: Response<ApiResponse<Node>>,
+    next: NextFunction
+  ) => {
     try {
       const node = await redis.hgetall(`node:${req.params.nodeId}`)
-      
+
       if (!node.ipAddress) {
         res.status(404).json({
           success: false,
@@ -97,7 +104,7 @@ app.get<{ nodeId: string }>(
           ipAddress: node.ipAddress,
           port: parseInt(node.port),
           capacity: parseInt(node.capacity),
-        }
+        },
       })
     } catch (error) {
       next(error)
@@ -107,8 +114,12 @@ app.get<{ nodeId: string }>(
 
 // List all nodes
 app.get(
-  '/nodes', 
-  async (req: Request, res: Response<ApiResponse<Node[]>>, next: NextFunction) => {
+  '/nodes',
+  async (
+    req: Request,
+    res: Response<ApiResponse<Node[]>>,
+    next: NextFunction
+  ) => {
     try {
       const keys = await redis.keys('node:*')
       const nodes = await Promise.all(
@@ -135,14 +146,25 @@ app.get(
 )
 
 // Error handling middleware
-app.use((error: Error, req: Request, res: Response<ApiResponse<never>>, next: NextFunction) => {
-  console.error('Unhandled error:', error)
-  res.status(500).json({
-    success: false,
-    message: 'Internal server error',
-    error: error.message
-  })
-})
+app.use(
+  (
+    error: Error,
+    req: Request,
+    res: Response<ApiResponse<never>>,
+    next: NextFunction
+  ) => {
+    console.error('Unhandled error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+    })
+  }
+)
 
 const port = process.env.PORT || 8089
-app.listen(port, () => console.log(`Discovery service running on ${port}`))
+if (require.main === module) {
+  app.listen(port, () => console.log(`Discovery service running on ${port}`))
+}
+
+export { app, redis }

@@ -6,21 +6,30 @@
         "lint": "eslint . --ext .ts",
         "format": "prettier --write \"src/**/*.ts\"",
         "docker:up": "docker-compose up",
-        "docker:down": "docker-compose down"
+        "docker:down": "docker-compose down",
+        "test": "jest",
+        "test:watch": "jest --watch",
+        "test:coverage": "jest --coverage"
     },
     "devDependencies": {
         "@types/express": "^5.0.0",
+        "@types/jest": "^29.5.14",
+        "@types/supertest": "^6.0.2",
         "@typescript-eslint/eslint-plugin": "^6.0.0",
         "@typescript-eslint/parser": "^6.0.0",
         "eslint": "^8.45.0",
         "eslint-config-prettier": "^8.8.0",
+        "jest": "^29.7.0",
         "prettier": "^3.0.0",
+        "supertest": "^7.0.0",
+        "ts-jest": "^29.2.5",
         "ts-node": "^10.9.2",
         "ts-node-dev": "^2.0.0",
         "typescript": "^5.3.3"
     },
     "dependencies": {
         "@types/morgan": "^1.9.9",
+        "ethers": "^6.13.5",
         "express": "^4.21.2",
         "helmet": "^8.0.0",
         "ioredis": "^5.4.2",
