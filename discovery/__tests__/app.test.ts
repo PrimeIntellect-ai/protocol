@@ -24,7 +24,6 @@ describe('Node API', () => {
       const requestBody = {
         ...nodeData,
         signature,
-        address: wallet.address
       }
 
       const response = await request(app)

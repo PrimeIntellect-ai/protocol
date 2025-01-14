@@ -28,16 +28,16 @@ app.use(helmet())
 app.use(morgan('combined'))
 
 // Register/update a node
-app.put<{ nodeId: string }>(
-  '/nodes/:nodeId',
+app.put<{ addrees: string }>(
+  '/nodes/:addrees',
   verifySignature,
   async (
     req: Request,
-    res: Response<ApiResponse<Node & { nodeId: string }>>,
+    res: Response<ApiResponse<Node & { addrees: string }>>,
     next: NextFunction
   ) => {
     try {
-      const nodeId = req.params.nodeId
+      const addrees = req.params.addrees
       const result = NodeSchema.safeParse(req.body)
 
       if (!result.success) {
@@ -51,7 +51,7 @@ app.put<{ nodeId: string }>(
 
       const node: Node = result.data
       await redis.hset(
-        `node:${nodeId}`,
+        `node:${addrees}`,
         'ipAddress',
         node.ipAddress,
         'port',
@@ -62,15 +62,9 @@ app.put<{ nodeId: string }>(
         Date.now()
       )
 
-      await redis.expire(`node:${nodeId}`, 300)
-
       res.status(200).json({
         success: true,
         message: 'Node registered successfully',
-        data: {
-          nodeId,
-          ...node,
-        },
       })
     } catch (error) {
       next(error)
@@ -79,15 +73,15 @@ app.put<{ nodeId: string }>(
 )
 
 // Get specific node
-app.get<{ nodeId: string }>(
-  '/nodes/:nodeId',
+app.get<{ address: string }>(
+  '/nodes/:addrees',
   async (
     req: Request,
     res: Response<ApiResponse<Node>>,
     next: NextFunction
   ) => {
     try {
-      const node = await redis.hgetall(`node:${req.params.nodeId}`)
+      const node = await redis.hgetall(`node:${req.params.address}`)
 
       if (!node.ipAddress) {
         res.status(404).json({
