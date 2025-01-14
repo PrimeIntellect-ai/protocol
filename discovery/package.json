@@ -1,0 +1,30 @@
+{
+    "scripts": {
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+        "lint": "eslint . --ext .ts",
+        "format": "prettier --write \"src/**/*.ts\"",
+        "docker:up": "docker-compose up",
+        "docker:down": "docker-compose down"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.0",
+        "@typescript-eslint/eslint-plugin": "^6.0.0",
+        "@typescript-eslint/parser": "^6.0.0",
+        "eslint": "^8.45.0",
+        "eslint-config-prettier": "^8.8.0",
+        "prettier": "^3.0.0",
+        "ts-node": "^10.9.2",
+        "ts-node-dev": "^2.0.0",
+        "typescript": "^5.3.3"
+    },
+    "dependencies": {
+        "@types/morgan": "^1.9.9",
+        "express": "^4.21.2",
+        "helmet": "^8.0.0",
+        "ioredis": "^5.4.2",
+        "morgan": "^1.10.0",
+        "zod": "^3.24.1"
+    }
+}

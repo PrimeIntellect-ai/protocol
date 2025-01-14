@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - redis-net
+    volumes:
+      - redis-data:/data
+
+  discovery:
+    build: .
+    command: npm run dev
+    volumes:
+      - ./:/app
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "8089:8089"
+    networks:
+      - redis-net
+    depends_on:
+      - redis
+
+networks:
+  redis-net:
+    driver: bridge
+
+volumes:
+  redis-data:
