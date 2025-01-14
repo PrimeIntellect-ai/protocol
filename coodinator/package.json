@@ -5,7 +5,12 @@
     "scripts": {
         "build": "tsc",
         "start": "node dist/index.js",
-        "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
+        "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+        "lint": "eslint \"src/**/*.ts\"",
+        "lint:fix": "eslint \"src/**/*.ts\" --fix",
+        "format": "prettier --write \"src/**/*.ts\"",
+        "check-format": "prettier --check \"src/**/*.ts\"",
+        "check": "npm run lint && npm run check-format && npm run build"
     },
     "dependencies": {
         "@types/express": "^5.0.0",
