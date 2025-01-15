@@ -35,12 +35,14 @@ export const verifySignature = async (
       return
     }
 
-    const payload=
-      req.method === 'POST' || req.method === 'PUT' ? JSON.stringify({ ...req.body }, Object.keys(req.body).sort()) : "" 
+    const payload =
+      req.method === 'POST' || req.method === 'PUT'
+        ? JSON.stringify({ ...req.body }, Object.keys(req.body).sort())
+        : ''
 
     const url = req.originalUrl.split('?')[0] // Remove query parameters if any
     console.log(url)
-    const message = url + payload;
+    const message = url + payload
 
     if (!verifyEthereumSignature(message, signature, address)) {
       res.status(401)
@@ -94,7 +96,7 @@ export async function checkComputeAccess(
     )
   } catch (error) {
     console.error(`Error checking compute access for pool ${poolId}:`, error)
-    return false;
+    return false
   }
 }
 
