@@ -3,6 +3,7 @@ import { verifyEthereumSignature } from '../utils/ethereum'
 import { ethers } from 'ethers'
 import { config } from '../config/environment'
 import { abi as ComputePoolABI } from '../abi/ComputePool.json'
+import { abi as PrimeNetworkABI } from '../abi/PrimeNetwork.json'
 
 /**
  * Middleware to verify the Ethereum signature of a request.
@@ -41,7 +42,6 @@ export const verifySignature = async (
         : ''
 
     const url = req.originalUrl.split('?')[0] // Remove query parameters if any
-    console.log(url)
     const message = url + payload
 
     if (!verifyEthereumSignature(message, signature, address)) {
@@ -63,8 +63,6 @@ export const verifySignature = async (
       return
     }
 
-    // Set the verified address in the request header for use in the next middleware
-    req.headers['x-verified-address'] = address
     next()
   } catch (error) {
     res.status(400)
@@ -77,7 +75,7 @@ export const verifySignature = async (
   }
 }
 
-export async function checkComputeAccess(
+export async function isComputePoolOwner(
   poolId: number,
   verifiedAddress: string
 ): Promise<boolean> {
@@ -117,17 +115,10 @@ export const verifyPoolOwner = async (
     return
   }
 
-  const verifiedAddress = req.headers['x-verified-address'] as string
-  if (!verifiedAddress) {
-    res.status(401)
-    res.json({
-      success: false,
-      message: 'Missing verified address',
-    })
-    return
-  }
-
-  const isPoolOwner = await checkComputeAccess(computePoolId, verifiedAddress)
+  const isPoolOwner = await isComputePoolOwner(
+    computePoolId,
+    req.headers['x-address'] as string
+  )
   if (!isPoolOwner) {
     res.status(403)
     res.json({
@@ -137,5 +128,33 @@ export const verifyPoolOwner = async (
     return
   }
 
+  next()
+}
+
+export async function isValidator(address: string): Promise<boolean> {
+  const provider = new ethers.JsonRpcProvider(config.rpcUrl)
+  const contract = new ethers.Contract(
+    config.contracts.primeNetwork,
+    ethers.Interface.from(PrimeNetworkABI),
+    provider
+  )
+
+  const validatorRole = await contract.VALIDATOR_ROLE() // Assuming VALIDATOR_ROLE is a public constant in the contract
+
+  const result = await contract.hasRole(validatorRole, address)
+  return result
+}
+
+export const verifyPrimeValidator = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const isPrimeValidator = await isValidator(req.headers['x-address'] as string)
+  if (!isPrimeValidator) {
+    res.status(403)
+    res.json({ success: false, message: 'Unauthorized' })
+    return
+  }
   next()
 }

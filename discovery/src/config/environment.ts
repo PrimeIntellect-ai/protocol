@@ -5,6 +5,7 @@ export const config = {
   rpcUrl: process.env.RPC_URL!,
   networkId: Number(process.env.NETWORK_ID!),
   contracts: {
+    primeNetwork: process.env.PRIME_NETWORK_ADDRESS!,
     computePool: process.env.COMPUTE_POOL_ADDRESS!,
   },
 } as const

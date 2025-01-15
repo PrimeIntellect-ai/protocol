@@ -6,6 +6,7 @@
 - [ ] Rate limiting
 - [ ] Linting 
 - [ ] Pre-commit hooks & github actions 
+- [ ] Protocol Service Access
 
 ## Blocked for testnet:
 - [ ] Cache compute pools from chain 

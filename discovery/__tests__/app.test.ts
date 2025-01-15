@@ -10,7 +10,6 @@ describe('Node API', () => {
       const nodeData = {
         ipAddress: '192.168.1.100',
         port: 8545,
-        capacity: 100,
         computePoolId: 0,
       }
       const message = `/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())
@@ -26,7 +25,6 @@ describe('Node API', () => {
       expect(response.body.success).toBe(true)
       expect(response.body.data).toMatchObject({
         address: wallet.address,
-        capacity: nodeData.capacity,
         computePoolId: 0,
         ipAddress: nodeData.ipAddress,
         port: nodeData.port,
@@ -39,7 +37,6 @@ describe('Node API', () => {
       const nodeData = {
         ipAddress: '192.168.1.100',
         port: 8545,
-        capacity: 100
       }
       const message = `/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())
       const signature = await wallet.signMessage(message)
@@ -60,7 +57,6 @@ describe('Node API', () => {
       const nodeData = {
         ipAddress: '192.168.1.100',
         port: 8545,
-        capacity: 100,
         computePoolId: 0,
       }
       const message = `/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())

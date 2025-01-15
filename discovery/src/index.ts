@@ -5,7 +5,8 @@ import { z } from 'zod'
 import {
   verifyPoolOwner,
   verifySignature,
-  checkComputeAccess,
+  verifyPrimeValidator,
+  isValidator,
 } from './middleware/auth'
 import { redis } from './config/redis'
 import { isAddress } from 'ethers'
@@ -18,10 +19,11 @@ interface ApiResponse<T> {
 
 // Validation schemas
 const NodeSchema = z.object({
+  id: z.string().optional(),
   ipAddress: z.string().ip(),
   port: z.number().int().min(1).max(65535),
-  capacity: z.number().int().min(0).optional().default(0),
   computePoolId: z.number().int().min(0).optional(),
+  lastSeen: z.number().int().min(0).optional(),
 })
 
 type Node = z.infer<typeof NodeSchema>
@@ -43,13 +45,6 @@ app.put<{ address: string }>(
   ) => {
     try {
       const address = req.params.address
-      if (address !== req.headers['x-verified-address']) {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid signature',
-        })
-        return
-      }
       const result = NodeSchema.safeParse(req.body)
 
       if (!result.success) {
@@ -87,7 +82,6 @@ app.put<{ address: string }>(
         data: {
           ipAddress: node.ipAddress,
           port: node.port,
-          capacity: node.capacity,
           computePoolId: node.computePoolId,
           address: address,
         },
@@ -100,7 +94,7 @@ app.put<{ address: string }>(
 
 // Get specific node
 app.get<{ address: string }>(
-  '/nodes/:address',
+  '/nodes/single/:address',
   async (
     req: Request,
     res: Response<ApiResponse<Node>>,
@@ -140,7 +134,40 @@ app.get<{ address: string }>(
   }
 )
 
-// List all nodes
+// List all nodes for validator
+app.get(
+  '/nodes/validator',
+  verifySignature,
+  verifyPrimeValidator,
+  async (req, res, next) => {
+    try {
+      const keys = await redis.keys('node:*')
+      const nodes = await Promise.all(
+        keys.map(async (key) => {
+          const rawNode = await redis.get(key)
+          if (!rawNode) return null
+
+          const node = JSON.parse(rawNode)
+          return {
+            id: key.replace('node:', ''),
+            ...node,
+          } as Node
+        })
+      )
+
+      const filteredNodes = nodes.filter((node): node is Node => node !== null)
+      res.status(200).json({
+        success: true,
+        message: 'Nodes retrieved successfully for validator',
+        data: filteredNodes,
+      })
+    } catch (error) {
+      next(error)
+    }
+  }
+)
+
+// List all nodes for a specific compute pool
 app.get<{ computePoolId: string }>(
   '/nodes/pool/:computePoolId',
   verifySignature,
@@ -174,9 +201,9 @@ app.get<{ computePoolId: string }>(
 
       res.json({
         success: true,
-        message: 'Nodes retrieved successfully',
+        message: 'Nodes retrieved successfully for compute pool',
         data: filteredNodes,
-      })
+      } as ApiResponse<Node[]>) // Cast to ApiResponse<Node[]> to satisfy TypeScript
     } catch (error) {
       next(error)
     }
