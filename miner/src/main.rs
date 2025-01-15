@@ -2,6 +2,7 @@ mod api;
 mod checks;
 mod cli;
 mod docker;
+mod web3;
 use clap::Parser;
 use cli::{execute_command, Cli};
 use log::{debug, LevelFilter};

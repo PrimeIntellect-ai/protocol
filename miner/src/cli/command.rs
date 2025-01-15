@@ -3,7 +3,16 @@ use crate::checks::hardware::run_hardware_check;
 use crate::checks::software::run_software_check;
 use clap::{Parser, Subcommand};
 use colored::*;
-use std::path::PathBuf;
+use std::str::FromStr;
+use alloy::{
+    network::{EthereumWallet, NetworkWallet, TransactionBuilder},
+    primitives::{address, U256},
+    providers::{Provider, ProviderBuilder},
+    rpc::types::TransactionRequest,
+    signers::local::PrivateKeySigner,
+};
+use url::Url;
+use crate::web3::wallet::Wallet; // Import the Wallet struct
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -19,13 +28,9 @@ pub enum Commands {
         #[arg(long)]
         subnet_id: String,
 
-        /// Wallet address
+        /// Wallet private key (as a hex string)
         #[arg(long)]
-        wallet_address: String,
-
-        /// Path to wallet private key file (e.g. ./keys/eth-private-key.json)
-        #[arg(long)]
-        private_key: PathBuf,
+        private_key: String, 
 
         /// Port number for the miner to listen on
         #[arg(long, default_value = "8080")]
@@ -36,18 +41,17 @@ pub enum Commands {
         external_ip: String,
 
         /// Dry run the command without starting the miner
-        #[arg(long)]
-        #[arg(default_value = "false")]
+        #[arg(long, default_value = "false")]
         dry_run: bool,
     },
     /// Run system checks to verify hardware and software compatibility
     Check {
         /// Run only hardware checks
-        #[arg(long)]
+        #[arg(long, default_value = "false")]
         hardware_only: bool,
 
         /// Run only software checks  
-        #[arg(long)]
+        #[arg(long, default_value = "false")]
         software_only: bool,
     },
 }
@@ -92,20 +96,25 @@ pub fn execute_command(command: &Commands) {
         }
         Commands::Run {
             subnet_id: _,
-            wallet_address: _,
-            private_key: _,
+            private_key,
             port,
             external_ip,
             dry_run,
         } => {
             println!("\n{}", "🚀 PRIME MINER INITIALIZATION".bright_cyan().bold());
             println!("{}", "═".repeat(50).bright_cyan());
-
             // Steps:
             // 1. Ensure we have enough eth in our wallet to register on training run
-            println!("\n[ETH] {}", "Checking wallet balance...".bright_green());
 
-            // 2. Run system checks
+            // [RISK WARNING! Writing a private key in the code file is insecure behavior.]
+            let signer: PrivateKeySigner = private_key.parse().expect("Invalid private key format");
+            let wallet: EthereumWallet = EthereumWallet::from(signer);
+            let address = wallet.default_signer().address();
+            println!("{}", address);
+
+            // Display the public address of the wallet
+            let wallet_instance = Wallet::new(private_key, Url::parse("https://your.provider.url").unwrap()); 
+
             if run_system_checks(false, false).is_err() {
                 std::process::exit(1);
             }
