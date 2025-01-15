@@ -1,16 +1,16 @@
 # Discovery Service
 
 ## TODO:
+- [ ] Protocol Service Access via custom API Key
 - [ ] Ability to test compute pool request 
-- [ ] API Doc?
-- [ ] Rate limiting
 - [ ] Linting 
 - [ ] Pre-commit hooks & github actions 
-- [ ] Protocol Service Access
-- [ ] Better testing
-- [ ] Swagger on prod / node env?
 
-## Blocked for testnet:
+- [ ] Rate limiting: PRI-906 
+- [ ] Better testing
+
+## Blocked until testnet:
+- [ ] Deployment
 - [ ] Cache compute pools from chain 
 
 ## Sending Requests with Signature Creation

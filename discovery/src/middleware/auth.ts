@@ -1,9 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import { verifyEthereumSignature } from '../utils/ethereum'
 import { ethers } from 'ethers'
-import { config } from '../config/environment'
-import { abi as ComputePoolABI } from '../abi/ComputePool.json'
-import { abi as PrimeNetworkABI } from '../abi/PrimeNetwork.json'
+import { isComputePoolOwner, isValidator } from '../service/contract.service'
 
 /**
  * Middleware to verify the Ethereum signature of a request.
@@ -99,29 +97,6 @@ export const verifySignature = async (
   }
 }
 
-export async function isComputePoolOwner(
-  poolId: number,
-  verifiedAddress: string
-): Promise<boolean> {
-  const provider = new ethers.JsonRpcProvider(config.rpcUrl)
-  const contract = new ethers.Contract(
-    config.contracts.computePool,
-    ethers.Interface.from(ComputePoolABI),
-    provider
-  )
-
-  try {
-    const pool = await contract.getComputePool(poolId)
-    return (
-      verifiedAddress.toLowerCase() === pool.creator.toLowerCase() ||
-      verifiedAddress.toLowerCase() === pool.computeManagerKey.toLowerCase()
-    )
-  } catch (error) {
-    console.error(`Error checking compute access for pool ${poolId}:`, error)
-    return false
-  }
-}
-
 export const verifyPoolOwner = async (
   req: Request,
   res: Response,
@@ -153,20 +128,6 @@ export const verifyPoolOwner = async (
   }
 
   next()
-}
-
-export async function isValidator(address: string): Promise<boolean> {
-  const provider = new ethers.JsonRpcProvider(config.rpcUrl)
-  const contract = new ethers.Contract(
-    config.contracts.primeNetwork,
-    ethers.Interface.from(PrimeNetworkABI),
-    provider
-  )
-
-  const validatorRole = await contract.VALIDATOR_ROLE() // Assuming VALIDATOR_ROLE is a public constant in the contract
-
-  const result = await contract.hasRole(validatorRole, address)
-  return result
 }
 
 export const verifyPrimeValidator = async (
