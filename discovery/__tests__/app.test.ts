@@ -24,8 +24,6 @@ describe('Node API', () => {
 
       expect(response.status).toBe(200)
       expect(response.body.success).toBe(true)
-      console.log(response.body.data)
-      console.log(wallet.address)
       expect(response.body.data).toMatchObject({
         address: wallet.address,
         capacity: nodeData.capacity,
