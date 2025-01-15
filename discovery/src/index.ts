@@ -152,10 +152,7 @@ app.get<{ computePoolId: string }>(
   ) => {
     try {
       const computePoolId = parseInt(req.params.computePoolId)
-      const access = await checkComputeAccess(
-        computePoolId,
-        process.env.POOL_OWNER_ADDRESS!
-      )
+      
       const keys = await redis.keys('node:*')
       const nodes = await Promise.all(
         keys.map(async (key) => {

@@ -94,7 +94,7 @@ export async function checkComputeAccess(
     )
   } catch (error) {
     console.error(`Error checking compute access for pool ${poolId}:`, error)
-    throw error
+    return false;
   }
 }
 
