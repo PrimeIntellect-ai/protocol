@@ -1,5 +1,5 @@
-import dotenv from 'dotenv'
-dotenv.config()
+import dotenv from "dotenv";
+dotenv.config();
 
 export const config = {
   rpcUrl: process.env.RPC_URL!,
@@ -13,11 +13,11 @@ export const config = {
     port: Number(process.env.REDIS_PORT!),
     password: process.env.REDIS_PASSWORD || undefined,
   },
-} as const
+} as const;
 
 // Validate all required environment variables are present, excluding redis password
 Object.entries(config).forEach(([key, value]) => {
   if (value === undefined) {
-    throw new Error(`Missing environment variable: ${key}`)
+    throw new Error(`Missing environment variable: ${key}`);
   }
-})
+});

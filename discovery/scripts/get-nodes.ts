@@ -1,3 +1,4 @@
+/* eslint-disable */
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -84,8 +85,8 @@ async function main() {
     await getPoolNodes(wallet, poolId);
 
     // Example usage of getting validator nodes
-    //await getValidatorNodes();
-    //await getValidatorNodes(wallet.address);
+    await getValidatorNodes();
+    await getValidatorNodes(wallet.address);
 }
 
 main().catch(console.error);

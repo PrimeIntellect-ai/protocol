@@ -1,6 +1,7 @@
 # Discovery Service
 
 ## TODO:
+- [ ] Better logging
 - [ ] Protocol Service Access via custom API Key
 - [ ] Ability to test compute pool request 
 - [ ] Linting 
@@ -8,6 +9,7 @@
 
 - [ ] Rate limiting: PRI-906 
 - [ ] Better testing
+
 
 ## Blocked until testnet:
 - [ ] Deployment

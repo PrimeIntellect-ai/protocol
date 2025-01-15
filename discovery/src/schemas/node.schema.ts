@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from "zod";
 
 export const ComputeNodeSchema = z.object({
   id: z.string().optional(),
@@ -32,6 +32,6 @@ export const ComputeNodeSchema = z.object({
       storageGB: z.number().int().min(0).optional(), // Storage in GB
     })
     .optional(),
-})
+});
 
-export type ComputeNode = z.infer<typeof ComputeNodeSchema>
+export type ComputeNode = z.infer<typeof ComputeNodeSchema>;

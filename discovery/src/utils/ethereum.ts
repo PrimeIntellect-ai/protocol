@@ -1,14 +1,21 @@
-import { ethers } from 'ethers'
+import { ethers } from "ethers";
 
 export const verifyEthereumSignature = (
   message: string,
   signature: string,
-  expectedAddress: string
+  expectedAddress: string,
 ): boolean => {
-  try {
-    const recoveredAddress = ethers.verifyMessage(message, signature)
-    return recoveredAddress.toLowerCase() === expectedAddress.toLowerCase()
-  } catch (error) {
-    return false
+  if (!ethers.isHexString(signature)) {
+    return false;
   }
-}
+
+  try {
+    const recoveredAddress = ethers.verifyMessage(message, signature);
+    if (!ethers.isAddress(recoveredAddress)) {
+      return false;
+    }
+    return recoveredAddress.toLowerCase() === expectedAddress.toLowerCase();
+  } catch {
+    return false;
+  }
+};
