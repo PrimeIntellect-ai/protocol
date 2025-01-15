@@ -4,7 +4,7 @@ import { app } from '../src/index'
 import { describe, it, expect } from '@jest/globals';
 
 describe('Node API', () => {
-  describe('PUT /nodes/:nodeId', () => {
+  describe('PUT /api/nodes/:nodeId', () => {
     it('should register a node with valid signature', async () => {
       const wallet = ethers.Wallet.createRandom()
       const nodeData = {
@@ -12,12 +12,12 @@ describe('Node API', () => {
         port: 8545,
         computePoolId: 0,
       }
-      const message = `/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())
+      const message = `/api/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())
       const signature = await wallet.signMessage(message)
 
       const response = await request(app)
-        .put(`/nodes/${wallet.address}`)
-        .set('x-eth-address', wallet.address)
+        .put(`/api/nodes/${wallet.address}`)
+        .set('x-address', wallet.address)
         .set('x-signature', signature)
         .send(nodeData)
 
@@ -38,12 +38,12 @@ describe('Node API', () => {
         ipAddress: '192.168.1.100',
         port: 8545,
       }
-      const message = `/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())
+      const message = `/api/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())
       const signature = await wallet.signMessage(message)
 
       const response = await request(app)
-        .put(`/nodes/${wrongAddress}`)
-        .set('x-eth-address', wallet.address)
+        .put(`/api/nodes/${wrongAddress}`)
+        .set('x-address', wallet.address)
         .set('x-signature', signature)
         .send(nodeData)
 
@@ -59,20 +59,20 @@ describe('Node API', () => {
         port: 8545,
         computePoolId: 0,
       }
-      const message = `/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())
+      const message = `/api/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())
       const signature = await wallet.signMessage(message)
 
       // First update
       await request(app)
-        .put(`/nodes/${wallet.address}`)
-        .set('x-eth-address', wallet.address)
+        .put(`/api/nodes/${wallet.address}`)
+        .set('x-address', wallet.address)
         .set('x-signature', signature)
         .send(nodeData)
 
       // Attempt to update again immediately
       const response = await request(app)
-        .put(`/nodes/${wallet.address}`)
-        .set('x-eth-address', wallet.address)
+        .put(`/api/nodes/${wallet.address}`)
+        .set('x-address', wallet.address)
         .set('x-signature', signature)
         .send(nodeData)
 

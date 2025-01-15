@@ -1,12 +1,13 @@
 # Discovery Service
 
 ## TODO:
-- [ ] Ability to get nodes for validation
 - [ ] Ability to test compute pool request 
+- [ ] API Doc?
 - [ ] Rate limiting
 - [ ] Linting 
 - [ ] Pre-commit hooks & github actions 
 - [ ] Protocol Service Access
+- [ ] Better testing
 
 ## Blocked for testnet:
 - [ ] Cache compute pools from chain 
@@ -28,7 +29,7 @@ To send requests that require signature verification, follow these steps:
   ``` 
 
 3. **Include in Request Headers**: Add the signature and the user's Ethereum address in the request headers:
-   - `x-eth-address`: The user's Ethereum address (e.g., `0x1234567890abcdef1234567890abcdef12345678`).
+   - `x-address`: The user's Ethereum address (e.g., `0x1234567890abcdef1234567890abcdef12345678`).
    - `x-signature`: The signed message.
 
 Make sure to include these headers in your requests to ensure proper authentication and authorization.

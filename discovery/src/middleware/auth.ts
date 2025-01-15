@@ -9,7 +9,7 @@ import { abi as PrimeNetworkABI } from '../abi/PrimeNetwork.json'
  * Middleware to verify the Ethereum signature of a request.
  *
  * The user must create a signature by signing a message that includes the request URL and the payload.
- * The address of the user should be included in the request headers as 'x-eth-address'.
+ * The address of the user should be included in the request headers as 'x-address'.
  *
  * Example of creating a signature:
  * 1. Construct the message: `const message = url + JSON.stringify(payload);`
@@ -24,7 +24,7 @@ export const verifySignature = async (
   next: NextFunction
 ) => {
   try {
-    const address = req.headers['x-eth-address'] as string
+    const address = req.headers['x-address'] as string
     const signature = req.headers['x-signature'] as string
 
     if (!signature || !address) {
@@ -36,13 +36,26 @@ export const verifySignature = async (
       return
     }
 
+    // Security check for req.params.address
+    const paramAddress = req.params.address
+    if (paramAddress && !ethers.isAddress(paramAddress)) {
+      res.status(400)
+      res.json({
+        success: false,
+        message: 'Invalid address in parameters',
+      })
+      return
+    }
+
     const payload =
       req.method === 'POST' || req.method === 'PUT'
         ? JSON.stringify({ ...req.body }, Object.keys(req.body).sort())
         : ''
 
     const url = req.originalUrl.split('?')[0] // Remove query parameters if any
+
     const message = url + payload
+    console.log('message', message)
 
     if (!verifyEthereumSignature(message, signature, address)) {
       res.status(401)
@@ -59,6 +72,17 @@ export const verifySignature = async (
       res.json({
         success: false,
         message: 'Invalid Ethereum address',
+      })
+      return
+    }
+
+    // Check if the address in the parameters matches the x-address header
+    if (paramAddress && paramAddress.toLowerCase() !== address.toLowerCase()) {
+      res.status(403)
+      res.json({
+        success: false,
+        message:
+          'Address mismatch: You are not authorized to edit this address',
       })
       return
     }

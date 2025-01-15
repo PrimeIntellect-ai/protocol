@@ -7,8 +7,8 @@ import { ethers } from 'ethers';
 const BASE_URL = 'http://localhost:8089';
 
 async function getPoolNodes(wallet: ethers.Wallet, poolId: number) {
-    const url = `${BASE_URL}/nodes/pool/${poolId}`;
-    const message = `/nodes/pool/${poolId}`; // Updated to exclude BASE_URL
+    const url = `${BASE_URL}/api/nodes/pool/${poolId}`;
+    const message = `/api/nodes/pool/${poolId}`; // Updated to exclude BASE_URL
     const signature = await wallet.signMessage(message);
     console.log('Signature for getting nodes:', signature);
 
@@ -16,7 +16,7 @@ async function getPoolNodes(wallet: ethers.Wallet, poolId: number) {
     const response = await fetch(url, {
         headers: {
             'Content-Type': 'application/json',
-            'x-eth-address': wallet.address,
+            'x-address': wallet.address,
             'x-signature': signature
         },
     });
@@ -28,15 +28,15 @@ async function getValidatorNodes(testAddress?: string) {
     const wallet = new ethers.Wallet(process.env.PRIVATE_KEY_VALIDATOR!);
     const validatorAddress = testAddress || wallet.address;
 
-    const url = `${BASE_URL}/nodes/validator`;
-    const message = `/nodes/validator`; // Updated to exclude BASE_URL
+    const url = `${BASE_URL}/api/nodes/validator`;
+    const message = `/api/nodes/validator`; // Updated to exclude BASE_URL
     const signature = await wallet.signMessage(message);
 
     // Call the API to get nodes for the specific validator
     const response = await fetch(url, {
         headers: {
             'Content-Type': 'application/json',
-            'x-eth-address': validatorAddress,
+            'x-address': validatorAddress,
             'x-signature': signature,
         },
     });
@@ -45,8 +45,8 @@ async function getValidatorNodes(testAddress?: string) {
 }
 
 async function addNode(wallet: ethers.Wallet, nodeData: { ipAddress: string; port: number; capacity: number; computePoolId: number; }) {
-    const addNodeUrl = `${BASE_URL}/nodes/${wallet.address}`; // Include the full URL
-    const addNodeMessage = `/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort()); // Updated to exclude BASE_URL
+    const addNodeUrl = `${BASE_URL}/api/nodes/${wallet.address}`; // Include the full URL
+    const addNodeMessage = `/api/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort()); // Updated to exclude BASE_URL
     const addNodeSignature = await wallet.signMessage(addNodeMessage);
     console.log('Add Node Signature:', addNodeSignature);
 
@@ -54,7 +54,7 @@ async function addNode(wallet: ethers.Wallet, nodeData: { ipAddress: string; por
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
-            'x-eth-address': wallet.address,
+            'x-address': wallet.address,
             'x-signature': addNodeSignature
         },
         body: JSON.stringify(nodeData),
@@ -79,13 +79,13 @@ async function main() {
         capacity: 100,
         computePoolId: poolId,
     };
-    //await addNode(wallet, newNode);
+    await addNode(wallet, newNode);
 
     await getPoolNodes(wallet, poolId);
 
     // Example usage of getting validator nodes
-    await getValidatorNodes();
-    await getValidatorNodes(wallet.address);
+    //await getValidatorNodes();
+    //await getValidatorNodes(wallet.address);
 }
 
 main().catch(console.error);
