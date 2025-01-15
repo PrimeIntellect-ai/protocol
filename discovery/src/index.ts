@@ -2,9 +2,13 @@ import express, { Request, Response, NextFunction } from 'express'
 import helmet from 'helmet'
 import morgan from 'morgan'
 import { z } from 'zod'
-import { verifySignature } from './middleware/auth'
+import {
+  verifyPoolOwner,
+  verifySignature,
+  checkComputeAccess,
+} from './middleware/auth'
 import { redis } from './config/redis'
-// Type definitions
+import { isAddress } from 'ethers'
 interface ApiResponse<T> {
   success: boolean
   message: string
@@ -17,6 +21,7 @@ const NodeSchema = z.object({
   ipAddress: z.string().ip(),
   port: z.number().int().min(1).max(65535),
   capacity: z.number().int().min(0).optional().default(0),
+  computePoolId: z.number().int().min(0).optional(),
 })
 
 type Node = z.infer<typeof NodeSchema>
@@ -28,16 +33,23 @@ app.use(helmet())
 app.use(morgan('combined'))
 
 // Register/update a node
-app.put<{ addrees: string }>(
-  '/nodes/:addrees',
+app.put<{ address: string }>(
+  '/nodes/:address',
   verifySignature,
   async (
     req: Request,
-    res: Response<ApiResponse<Node & { addrees: string }>>,
+    res: Response<ApiResponse<Node & { address: string }>>,
     next: NextFunction
   ) => {
     try {
-      const addrees = req.params.addrees
+      const address = req.params.address
+      if (address !== req.headers['x-verified-address']) {
+        res.status(401).json({
+          success: false,
+          message: 'Invalid signature',
+        })
+        return
+      }
       const result = NodeSchema.safeParse(req.body)
 
       if (!result.success) {
@@ -49,22 +61,36 @@ app.put<{ addrees: string }>(
         return
       }
 
+      const lastSeen = await redis.hget(`node:${address}`, 'lastSeen')
+      const now = Date.now()
+      if (lastSeen && now - parseInt(lastSeen) < 5 * 60 * 1000) {
+        res.status(429).json({
+          success: false,
+          message: 'Please wait 5 minutes between updates',
+        })
+        return
+      }
+
       const node: Node = result.data
-      await redis.hset(
-        `node:${addrees}`,
-        'ipAddress',
-        node.ipAddress,
-        'port',
-        node.port,
-        'capacity',
-        node.capacity,
-        'lastSeen',
-        Date.now()
+      // Store as JSON string to preserve types
+      await redis.set(
+        `node:${address}`,
+        JSON.stringify({
+          ...node,
+          lastSeen: now,
+        })
       )
 
       res.status(200).json({
         success: true,
         message: 'Node registered successfully',
+        data: {
+          ipAddress: node.ipAddress,
+          port: node.port,
+          capacity: node.capacity,
+          computePoolId: node.computePoolId,
+          address: address,
+        },
       })
     } catch (error) {
       next(error)
@@ -74,16 +100,16 @@ app.put<{ addrees: string }>(
 
 // Get specific node
 app.get<{ address: string }>(
-  '/nodes/:addrees',
+  '/nodes/:address',
   async (
     req: Request,
     res: Response<ApiResponse<Node>>,
     next: NextFunction
   ) => {
     try {
-      const node = await redis.hgetall(`node:${req.params.address}`)
+      const rawNode = await redis.get(`node:${req.params.address}`)
 
-      if (!node.ipAddress) {
+      if (!rawNode) {
         res.status(404).json({
           success: false,
           message: 'Node not found',
@@ -91,14 +117,22 @@ app.get<{ address: string }>(
         return
       }
 
+      // Parse the JSON string from Redis
+      const nodeResult = NodeSchema.safeParse(JSON.parse(rawNode))
+
+      if (!nodeResult.success) {
+        res.status(500).json({
+          success: false,
+          message: 'Error parsing node data',
+          error: nodeResult.error.errors.map((e) => e.message).join(', '),
+        })
+        return
+      }
+
       res.json({
         success: true,
         message: 'Node retrieved successfully',
-        data: {
-          ipAddress: node.ipAddress,
-          port: parseInt(node.port),
-          capacity: parseInt(node.capacity),
-        },
+        data: nodeResult.data,
       })
     } catch (error) {
       next(error)
@@ -107,31 +141,44 @@ app.get<{ address: string }>(
 )
 
 // List all nodes
-app.get(
-  '/nodes',
+app.get<{ computePoolId: string }>(
+  '/nodes/pool/:computePoolId',
+  verifySignature,
+  verifyPoolOwner,
   async (
-    req: Request,
+    req: Request<{ computePoolId: string }>,
     res: Response<ApiResponse<Node[]>>,
     next: NextFunction
   ) => {
     try {
+      const computePoolId = parseInt(req.params.computePoolId)
+      const access = await checkComputeAccess(
+        computePoolId,
+        process.env.POOL_OWNER_ADDRESS!
+      )
       const keys = await redis.keys('node:*')
       const nodes = await Promise.all(
         keys.map(async (key) => {
-          const node = await redis.hgetall(key)
-          return {
-            id: key.replace('node:', ''),
-            ipAddress: node.ipAddress,
-            port: parseInt(node.port),
-            capacity: parseInt(node.capacity),
-          } as Node
+          const rawNode = await redis.get(key)
+          if (!rawNode) return null
+
+          const node = JSON.parse(rawNode)
+          if (node.computePoolId === computePoolId) {
+            return {
+              id: key.replace('node:', ''),
+              ...node,
+            } as Node
+          }
+          return null
         })
       )
+
+      const filteredNodes = nodes.filter((node): node is Node => node !== null)
 
       res.json({
         success: true,
         message: 'Nodes retrieved successfully',
-        data: nodes,
+        data: filteredNodes,
       })
     } catch (error) {
       next(error)

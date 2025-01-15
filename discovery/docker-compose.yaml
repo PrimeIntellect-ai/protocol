@@ -18,25 +18,33 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - RPC_URL=http://host.docker.internal:8545
     ports:
       - "8089:8089"
     networks:
       - redis-net
     depends_on:
       - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   test:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: npm test
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - NODE_ENV=test
     depends_on:
       - redis
     networks:
       - redis-net
     profiles:
       - test
+    volumes:
+      - ./:/app
 
 networks:
   redis-net:
