@@ -54,5 +54,35 @@ describe('Node API', () => {
       expect(response.body.success).toBe(false)
       expect(response.body.message).toBe('Invalid signature')
     })
+
+    it('should not allow updating a node too quickly', async () => {
+      const wallet = ethers.Wallet.createRandom()
+      const nodeData = {
+        ipAddress: '192.168.1.100',
+        port: 8545,
+        capacity: 100,
+        computePoolId: 0,
+      }
+      const message = `/nodes/${wallet.address}` + JSON.stringify(nodeData, Object.keys(nodeData).sort())
+      const signature = await wallet.signMessage(message)
+
+      // First update
+      await request(app)
+        .put(`/nodes/${wallet.address}`)
+        .set('x-eth-address', wallet.address)
+        .set('x-signature', signature)
+        .send(nodeData)
+
+      // Attempt to update again immediately
+      const response = await request(app)
+        .put(`/nodes/${wallet.address}`)
+        .set('x-eth-address', wallet.address)
+        .set('x-signature', signature)
+        .send(nodeData)
+
+      expect(response.status).toBe(429)
+      expect(response.body.success).toBe(false)
+      expect(response.body.message).toBe('Please wait 5 minutes between updates')
+    })
   })
 })

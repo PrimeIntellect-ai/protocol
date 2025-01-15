@@ -60,10 +60,10 @@ app.put<{ address: string }>(
         })
         return
       }
-
-      const lastSeen = await redis.hget(`node:${address}`, 'lastSeen')
+      const nodeData = await redis.get(`node:${address}`)
+      const lastSeen = nodeData ? JSON.parse(nodeData).lastSeen : null
       const now = Date.now()
-      if (lastSeen && now - parseInt(lastSeen) < 5 * 60 * 1000) {
+      if (lastSeen !== null && now - Number(lastSeen) < 5 * 60 * 1000) {
         res.status(429).json({
           success: false,
           message: 'Please wait 5 minutes between updates',

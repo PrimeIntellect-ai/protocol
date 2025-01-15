@@ -35,12 +35,12 @@ export const verifySignature = async (
       return
     }
 
-    const data =
-      req.method === 'POST' || req.method === 'PUT' ? { ...req.body } : {}
-    delete data.signature
+    const payload=
+      req.method === 'POST' || req.method === 'PUT' ? JSON.stringify({ ...req.body }, Object.keys(req.body).sort()) : "" 
 
     const url = req.originalUrl.split('?')[0] // Remove query parameters if any
-    const message = url + JSON.stringify(data, Object.keys(data).sort())
+    console.log(url)
+    const message = url + payload;
 
     if (!verifyEthereumSignature(message, signature, address)) {
       res.status(401)
