@@ -3,10 +3,6 @@ import { verifyEthereumSignature } from '../utils/ethereum'
 import { ethers } from 'ethers'
 import { config } from '../config/environment'
 import { abi as ComputePoolABI } from '../abi/ComputePool.json'
-export interface SignedRequest {
-  signature: string
-  address: string
-}
 
 /**
  * Middleware to verify the Ethereum signature of a request.
@@ -19,8 +15,7 @@ export interface SignedRequest {
  * 2. Sign the message using the user's private key: `const signature = await wallet.signMessage(message);`
  *
  * The request should include:
- * - The signature in the body (for PUT/POST requests) or query (for GET requests).
- * - The user's Ethereum address in the request headers as 'x-eth-address'.
+ * - The signature and address in the request headers.
  */
 export const verifySignature = async (
   req: Request,
@@ -29,13 +24,11 @@ export const verifySignature = async (
 ) => {
   try {
     const address = req.headers['x-eth-address'] as string
-    const signature =
-      req.method === 'PUT' || req.method === 'POST'
-        ? (req.body as SignedRequest).signature
-        : (req.query as unknown as SignedRequest).signature
+    const signature = req.headers['x-signature'] as string
 
     if (!signature || !address) {
-      res.status(400).json({
+      res.status(400)
+      res.json({
         success: false,
         message: 'Missing signature or address',
       })
@@ -50,31 +43,35 @@ export const verifySignature = async (
     const message = url + JSON.stringify(data, Object.keys(data).sort())
 
     if (!verifyEthereumSignature(message, signature, address)) {
-      res.status(401).json({
+      res.status(401)
+      res.json({
         success: false,
         message: 'Invalid signature',
       })
       return
     }
 
-    // Set the verified address in the request header for use in the next middleware
-    req.headers['x-verified-address'] = address
-
     // Additional security check: Ensure the address is a valid Ethereum address
     if (!ethers.isAddress(address)) {
-      res.status(400).json({
+      res.status(400)
+      res.json({
         success: false,
         message: 'Invalid Ethereum address',
       })
       return
     }
+
+    // Set the verified address in the request header for use in the next middleware
+    req.headers['x-verified-address'] = address
     next()
   } catch (error) {
-    res.status(400).json({
+    res.status(400)
+    res.json({
       success: false,
       message: 'Invalid signature',
       error: error instanceof Error ? error.message : 'Unknown error',
     })
+    return
   }
 }
 
@@ -82,7 +79,6 @@ export async function checkComputeAccess(
   poolId: number,
   verifiedAddress: string
 ): Promise<boolean> {
-  // TODO: Replay attacks?
   const provider = new ethers.JsonRpcProvider(config.rpcUrl)
   const contract = new ethers.Contract(
     config.contracts.computePool,
@@ -111,7 +107,8 @@ export const verifyPoolOwner = async (
     req.params.computePoolId || req.body.computePoolId
   )
   if (isNaN(computePoolId)) {
-    res.status(400).json({
+    res.status(400)
+    res.json({
       success: false,
       message: 'Invalid or missing compute pool ID',
     })
@@ -120,7 +117,8 @@ export const verifyPoolOwner = async (
 
   const verifiedAddress = req.headers['x-verified-address'] as string
   if (!verifiedAddress) {
-    res.status(401).json({
+    res.status(401)
+    res.json({
       success: false,
       message: 'Missing verified address',
     })
@@ -129,7 +127,8 @@ export const verifyPoolOwner = async (
 
   const isPoolOwner = await checkComputeAccess(computePoolId, verifiedAddress)
   if (!isPoolOwner) {
-    res.status(403).json({
+    res.status(403)
+    res.json({
       success: false,
       message: 'Unauthorized',
     })
