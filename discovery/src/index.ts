@@ -3,7 +3,30 @@ import helmet from 'helmet'
 import morgan from 'morgan'
 import { redis } from './config/redis'
 import { ApiResponse } from './schemas/apiResponse.schema'
-import nodesRouter from './routes/nodes.route' // Importing the nodes route
+import nodesRouter from './routes/nodes.route'
+import swaggerUi from 'swagger-ui-express'
+import swaggerJSDoc from 'swagger-jsdoc'
+
+const swaggerDefinition = {
+  openapi: '3.0.0',
+  info: {
+    title: 'Discovery Service API',
+    version: '1.0.0',
+    description: 'API documentation for the Discovery Service',
+  },
+  servers: [
+    {
+      url: `http://localhost:${process.env.PORT || 8089}`,
+    },
+  ],
+}
+
+const options = {
+  swaggerDefinition,
+  apis: ['./src/routes/*.ts'],
+}
+
+const swaggerSpec = swaggerJSDoc(options)
 
 const app = express()
 app.use(express.json())
@@ -11,7 +34,12 @@ app.use(helmet())
 app.use(morgan('combined'))
 app.use('/api', nodesRouter)
 
-// Error handling middleware
+// Disable Swagger documentation in production environment
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec))
+  console.log('API documentation available at /docs')
+}
+
 app.use(
   (
     error: Error,

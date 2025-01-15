@@ -15,6 +15,61 @@ import { ComputeNode } from '../schemas/node.schema'
 
 const router = express.Router()
 
+/**
+ * @swagger
+ * /nodes/{address}:
+ *   put:
+ *     summary: Register a new node
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         description: The address of the node owner
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ComputeNode'
+ *     responses:
+ *       200:
+ *         description: Node registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     address:
+ *                       type: string
+ *                     ipAddress:
+ *                       type: string
+ *                     port:
+ *                       type: integer
+ *                     computePoolId:
+ *                       type: integer
+ *                     lastSeen:
+ *                       type: integer
+ *       429:
+ *         description: Too many requests
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ */
 router.put<{ address: string }, ApiResponse<{ address: string }>>(
   '/nodes/:address',
   verifySignature,
@@ -52,7 +107,33 @@ router.put<{ address: string }, ApiResponse<{ address: string }>>(
   }
 )
 
-// Get specific node
+/**
+ * @swagger
+ * /nodes/single/{address}:
+ *   get:
+ *     summary: Get a specific node
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         description: The address of the node
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Node retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/ComputeNode'
+ */
 router.get<{ address: string }, ApiResponse<ComputeNode>>(
   '/nodes/single/:address',
   verifySignature,
@@ -75,7 +156,28 @@ router.get<{ address: string }, ApiResponse<ComputeNode>>(
   }
 )
 
-// List all nodes for validator
+/**
+ * @swagger
+ * /nodes/validator:
+ *   get:
+ *     summary: List all nodes for validator
+ *     responses:
+ *       200:
+ *         description: Nodes retrieved successfully for validator
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ComputeNode'
+ */
 router.get<{}, ApiResponse<ComputeNode[]>>(
   '/nodes/validator',
   verifySignature,
@@ -95,7 +197,35 @@ router.get<{}, ApiResponse<ComputeNode[]>>(
   }
 )
 
-// List all nodes for a specific compute pool
+/**
+ * @swagger
+ * /nodes/pool/{computePoolId}:
+ *   get:
+ *     summary: List all nodes for a specific compute pool
+ *     parameters:
+ *       - in: path
+ *         name: computePoolId
+ *         required: true
+ *         description: The ID of the compute pool
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Nodes retrieved successfully for compute pool
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ComputeNode'
+ */
 router.get<{ computePoolId: string }, ApiResponse<ComputeNode[]>>(
   '/nodes/pool/:computePoolId',
   verifySignature,

@@ -8,6 +8,7 @@
 - [ ] Pre-commit hooks & github actions 
 - [ ] Protocol Service Access
 - [ ] Better testing
+- [ ] Swagger on prod / node env?
 
 ## Blocked for testnet:
 - [ ] Cache compute pools from chain 
