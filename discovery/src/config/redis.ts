@@ -1,8 +1,10 @@
 import Redis from 'ioredis'
+import { config } from './environment'
 
 export const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: Number(process.env.REDIS_PORT) || 6379,
+  host: config.redis.host,
+  port: config.redis.port,
+  password: config.redis.password,
 })
 
 // Add a health check function
