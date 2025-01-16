@@ -39,7 +39,7 @@ impl<'a> ContractBuilder<'a> {
     pub fn with_compute_registry(mut self) -> Self {
         self.compute_registry = Some(ComputeRegistryContract::new(
             self.wallet,
-            &format!("{}/ComputeRegistry.json", self.abi_base_path)
+            &format!("{}/ComputeRegistry.json", self.abi_base_path),
         ));
         self
     }
@@ -47,7 +47,7 @@ impl<'a> ContractBuilder<'a> {
     pub fn with_ai_token(mut self) -> Self {
         self.ai_token = Some(AIToken::new(
             self.wallet,
-            &format!("{}/AIToken.json", self.abi_base_path)
+            &format!("{}/AIToken.json", self.abi_base_path),
         ));
         self
     }
@@ -55,7 +55,7 @@ impl<'a> ContractBuilder<'a> {
     pub fn with_prime_network(mut self) -> Self {
         self.prime_network = Some(PrimeNetworkContract::new(
             self.wallet,
-            &format!("{}/PrimeNetwork.json", self.abi_base_path)
+            &format!("{}/PrimeNetwork.json", self.abi_base_path),
         ));
         self
     }

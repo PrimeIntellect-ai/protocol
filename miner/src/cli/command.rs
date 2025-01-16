@@ -1,6 +1,8 @@
 use crate::api::server::start_server;
 use crate::checks::hardware::run_hardware_check;
 use crate::checks::software::run_software_check;
+use crate::node::config::NodeConfig;
+use crate::services::discovery::DiscoveryService;
 // Import the Wallet struct
 use crate::web3::contracts::{
     core::builder::ContractBuilder,
@@ -290,112 +292,26 @@ pub fn execute_command(command: &Commands) {
             if run_system_checks(false, false).is_err() {
                 std::process::exit(1);
             }
+            let node_config = NodeConfig {
+                ip_address: "127.0.0.1".to_string(),
+                port: 8080,
+                compute_specs: None,
+                compute_pool_id: compute_pool_id.clone(),
+            };
 
             println!("Uploading discovery info");
-            pub async fn upload_discovery_info(
-                wallet: &Wallet,
-                compute_pool_id: &u64,
-            ) -> Result<(), Box<dyn std::error::Error>> {
-                // TODO[MOVE]: Move discovery info upload logic to a separate module for better organization
-                println!(
-                    "\n[P2P] {}",
-                    "Broadcasting node to discovery service...".bright_cyan()
-                );
+            let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
 
-                let base_url = "http://localhost:8089";
-                let endpoint = format!("/api/nodes/{}", wallet.wallet.default_signer().address());
-                let url = format!("{}{}", base_url, endpoint);
-
-                println!("URL: {:?}", url);
-                let node_data = serde_json::json!({
-                    "capacity": 100,
-                    "computePoolId": compute_pool_id,
-                    "ipAddress": "127.0.0.1",
-                    "port": 8080,
-                });
-
-                let node_data_string = serde_json::to_string(&node_data).unwrap().replace("\\", "");
-                let message = format!(
-                    "/api/nodes/{}{}",
-                    wallet.wallet.default_signer().address(),
-                    node_data_string
-                );
-                println!("Message: {:?}", message);
-                let signature = wallet
-                    .signer
-                    .sign_message(message.as_bytes())
-                    .await?
-                    .as_bytes();
-                let signature_string = format!("0x{}", hex::encode(signature));
-
-                println!("Signature: {:?}", signature_string);
-                let response = reqwest::Client::new()
-                    .put(&url)
-                    .header(
-                        "x-address",
-                        wallet.wallet.default_signer().address().to_string(),
-                    )
-                    .header("x-signature", signature_string)
-                    .json(&node_data)
-                    .send()
-                    .await?;
-
-                if !response.status().is_success() {
-                    eprintln!(
-                        "Error: Received response with status code {}",
-                        response.status()
-                    );
-                    std::process::exit(1);
-                }
-
-                Ok(())
-            }
-
-            if let Err(e) = runtime.block_on(upload_discovery_info(
-                &node_wallet_instance,
-                compute_pool_id,
-            )) {
+            if let Err(e) = runtime.block_on(discovery_service.upload_discovery_info(&node_config))
+            {
                 eprintln!("Failed to upload discovery info: {}", e);
                 std::process::exit(1);
             }
-            println!("{}", "Discovery info uploaded".bright_green().bold());
 
-            // 5. Run Miner registration
-            /*if !dry_run {
-                println!(
-                    "\n[REG] {}",
-                    "Registering miner on network...".bright_yellow()
-                );
-            } else {
-                println!(
-                    "\n[REG] {}",
-                    "Skipping miner registration (dry run mode)".bright_yellow()
-                );
-            }*/
+            println!("{}", "Discovery info uploaded".bright_green().bold());
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             println!("\n[SRV] {}", "Starting endpoint service".bright_white());
-
-            // 7. Share Node IP with discovery service
-            /* print!(
-                "\n[VAL] {}",
-                "Waiting for validation challenge... ".bright_green()
-            );*/
-
-            // 8. Wait for validation challenge and monitor status on chain
-            /* std::io::stdout().flush().unwrap();
-            let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-            let mut i = 0;
-            loop {
-                print!(
-                    "\r[VAL] {}",
-                    "Waiting for validation challenge... ".yellow().bold()
-                );
-                print!("{}", spinner[i].yellow().bold());
-                std::io::stdout().flush().unwrap();
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                i = (i + 1) % spinner.len();
-            }*/
 
             if let Err(err) = runtime.block_on(start_server(external_ip, *port)) {
                 eprintln!(

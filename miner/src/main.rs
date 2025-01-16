@@ -2,6 +2,8 @@ mod api;
 mod checks;
 mod cli;
 mod docker;
+mod node;
+mod services;
 mod web3;
 use clap::Parser;
 use cli::{execute_command, Cli};
