@@ -1,13 +1,6 @@
 use crate::operations::structs::node::NodeConfig;
 use crate::web3::wallet::Wallet;
-use alloy::signers::local::LocalSigner;
-use alloy::{
-    network::TransactionBuilder,
-    primitives::utils::keccak256 as keccak,
-    primitives::{Address, U256},
-    providers::Provider,
-    signers::Signer,
-};
+use alloy::signers::Signer;
 
 pub struct DiscoveryService<'b> {
     wallet: &'b Wallet,

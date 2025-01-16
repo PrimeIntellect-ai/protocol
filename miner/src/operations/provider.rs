@@ -5,9 +5,7 @@ use crate::web3::contracts::implementations::{
 use crate::web3::wallet::Wallet;
 use alloy::{
     network::TransactionBuilder,
-    primitives::utils::keccak256 as keccak,
     primitives::{Address, U256},
-    providers::Provider,
     signers::Signer,
 };
 

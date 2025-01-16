@@ -1,13 +1,12 @@
 use crate::web3::contracts::implementations::{
-    ai_token_contract::AIToken, compute_registry_contract::ComputeRegistryContract,
+    compute_registry_contract::ComputeRegistryContract,
     prime_network_contract::PrimeNetworkContract,
 };
 use crate::web3::wallet::Wallet;
 use alloy::{
     network::TransactionBuilder,
     primitives::utils::keccak256 as keccak,
-    primitives::{Address, U256},
-    providers::Provider,
+    primitives::U256,
     signers::Signer,
 };
 

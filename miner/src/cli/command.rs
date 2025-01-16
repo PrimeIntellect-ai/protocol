@@ -1,27 +1,16 @@
-use std::fs::hard_link;
 
 use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
-use crate::checks::software::run_software_check;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::provider::ProviderOperations;
 use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
 // Import the Wallet struct
-use crate::web3::contracts::{
-    core::builder::ContractBuilder,
-    implementations::{
-        ai_token_contract::AIToken, compute_registry_contract::ComputeRegistryContract,
-        prime_network_contract::PrimeNetworkContract,
-    },
-};
+use crate::web3::contracts::core::builder::ContractBuilder;
 use crate::web3::wallet::Wallet;
 use alloy::{
     network::TransactionBuilder,
-    primitives::utils::keccak256 as keccak,
-    primitives::{Address, U256},
     providers::Provider,
-    signers::Signer,
 };
 use clap::{Parser, Subcommand};
 use colored::*;

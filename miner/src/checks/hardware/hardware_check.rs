@@ -1,8 +1,8 @@
 use super::{
-    gpu::{detect_gpu, print_gpu_info},
+    gpu::detect_gpu,
     memory::{get_memory_info, print_memory_info},
     storage::{get_storage_info, print_storage_info},
-    types::{SystemCheckError, SystemInfo},
+    types::SystemCheckError,
 };
 use crate::operations::structs::node::{ComputeSpecs, CpuSpecs, GpuSpecs, NodeConfig};
 use colored::*;
