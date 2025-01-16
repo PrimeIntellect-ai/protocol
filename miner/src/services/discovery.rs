@@ -1,4 +1,4 @@
-use crate::node::config::NodeConfig;
+use crate::operations::structs::node::NodeConfig;
 use crate::web3::wallet::Wallet;
 use alloy::signers::local::LocalSigner;
 use alloy::{
@@ -43,6 +43,7 @@ impl<'b> DiscoveryService<'b> {
         node_config: &NodeConfig,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let url = format!("{}{}", self.base_url, self.endpoint);
+        println!("Node config: {:?}", node_config);
 
         let request_data = serde_json::to_value(&node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;

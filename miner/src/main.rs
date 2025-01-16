@@ -2,7 +2,7 @@ mod api;
 mod checks;
 mod cli;
 mod docker;
-mod node;
+mod operations;
 mod services;
 mod web3;
 use clap::Parser;
