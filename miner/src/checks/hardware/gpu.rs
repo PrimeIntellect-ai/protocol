@@ -1,4 +1,4 @@
-use super::types::GpuInfo;
+use crate::operations::structs::node::GpuSpecs;
 use colored::*;
 use lazy_static::lazy_static;
 use nvml_wrapper::Nvml;
@@ -21,22 +21,24 @@ enum GpuDevice {
     NotAvailable(String),
 }
 
-pub fn detect_gpu() -> Option<GpuInfo> {
+pub fn detect_gpu() -> Option<GpuSpecs> {
+    // Changed return type to GpuSpecs
     match get_gpu_status() {
         GpuDevice::Available {
             name,
             memory,
             driver_version,
             device_count,
-        } => Some(GpuInfo {
-            name: name
-                .to_lowercase()
-                .split_whitespace()
-                .collect::<Vec<&str>>()
-                .join("_"),
-            memory,
-            cuda_version: driver_version,
-            gpu_count: device_count,
+        } => Some(GpuSpecs {
+            // Create GpuSpecs directly
+            count: Some(device_count as u32),
+            model: Some(
+                name.to_lowercase()
+                    .split_whitespace()
+                    .collect::<Vec<&str>>()
+                    .join("_"),
+            ),
+            memory_mb: Some((memory / 1024) as u32), // Convert bytes to MB
         }),
         GpuDevice::NotAvailable(err) => {
             println!("GPU not available: {}", err);
@@ -44,6 +46,7 @@ pub fn detect_gpu() -> Option<GpuInfo> {
         }
     }
 }
+
 fn get_gpu_status() -> GpuDevice {
     let mut nvml_guard = NVML.lock().unwrap();
 
@@ -73,6 +76,7 @@ fn get_gpu_status() -> GpuDevice {
     }
 
     // Get first device info
+    // TODO: Get all devices
     match nvml.device_by_index(0) {
         Ok(device) => {
             let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
@@ -92,10 +96,16 @@ fn get_gpu_status() -> GpuDevice {
     }
 }
 
-pub fn print_gpu_info(gpu_info: &GpuInfo) {
+pub fn print_gpu_info(gpu_info: &GpuSpecs) {
+    // Changed parameter type to GpuSpecs
     println!("\n{}", "GPU Information:".blue().bold());
-    println!("  Model: {}", gpu_info.name);
-    println!("  Count: {}", gpu_info.gpu_count);
-    println!("  Memory: {:.1} GB", gpu_info.memory as f64 / BYTES_TO_GB);
-    println!("  Driver Version: {}", gpu_info.cuda_version);
+    println!(
+        "  Model: {}",
+        gpu_info.model.as_ref().unwrap_or(&"Unknown".to_string())
+    );
+    println!("  Count: {}", gpu_info.count.unwrap_or(0));
+    println!(
+        "  Memory: {:.1} GB",
+        gpu_info.memory_mb.unwrap_or(0) as f64 / BYTES_TO_GB
+    );
 }

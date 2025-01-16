@@ -1,16 +1,16 @@
-use crate::api::server::start_server;
+use crate::{api::server::start_server, operations::structs::node};
 use crate::checks::hardware::HardwareChecker;
+use crate::checks::software::software_check;
+use crate::console::Console;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::provider::ProviderOperations;
 use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
-// Import the Wallet struct
 use crate::web3::contracts::core::builder::ContractBuilder;
 use crate::web3::wallet::Wallet;
 use clap::{Parser, Subcommand};
 use colored::*;
-use url::Url;
-use crate::checks::software::software_check; 
+use url::Url; // Import Console for logging
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -55,31 +55,36 @@ pub enum Commands {
         dry_run: bool,
     },
     /// Run system checks to verify hardware and software compatibility
-    Check {
-        /// Run only hardware checks
-        #[arg(long, default_value = "false")]
-        hardware_only: bool,
-
-        /// Run only software checks  
-        #[arg(long, default_value = "false")]
-        software_only: bool,
-    },
+    Check {},
 }
 
 pub fn execute_command(command: &Commands) {
     match command {
-        Commands::Check {
-            hardware_only,
-            software_only,
-        } => {
-            println!("\n{}", "🔍 PRIME MINER SYSTEM CHECK".bright_cyan().bold());
-            println!("{}", "═".repeat(50).bright_cyan());
-            std::process::exit(1);
+        Commands::Check {} => {
+            Console::section("🔍 PRIME MINER SYSTEM CHECK");
+            Console::info("═", &"═".repeat(50));
 
-            println!(
-                "\n[SYS] {}",
-                "✅ System check passed!".bright_green().bold()
-            );
+            // Run hardware checks
+            let hardware_checker = HardwareChecker::new();
+            let node_config = NodeConfig {
+                ip_address: String::new(), // Placeholder, adjust as necessary
+                port: 0,                   // Placeholder, adjust as necessary
+                compute_specs: None,
+                compute_pool_id: 0, // Placeholder, adjust as necessary
+            };
+
+            match hardware_checker.enrich_node_config(node_config) {
+                Ok(_) => {
+                    Console::success("✅ Hardware check passed!");
+                }
+                Err(err) => {
+                    Console::error(&format!("❌ Hardware check failed: {}", err));
+                    std::process::exit(1);
+                }
+            }
+            let _ = software_check::run_software_check();
+
+            std::process::exit(0);
         }
 
         Commands::Run {
@@ -92,7 +97,7 @@ pub fn execute_command(command: &Commands) {
             dry_run,
             rpc_url,
         } => {
-            println!("\n{}", "🚀 PRIME MINER INITIALIZATION".bright_cyan().bold());
+            Console::section("🚀 PRIME MINER INITIALIZATION");
             /*
              Initialize Wallet instances
             */
@@ -100,7 +105,7 @@ pub fn execute_command(command: &Commands) {
                 match Wallet::new(private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        eprintln!("Failed to create wallet: {}", err);
+                        Console::error(&format!("❌ Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
                 };
@@ -109,7 +114,7 @@ pub fn execute_command(command: &Commands) {
                 match Wallet::new(private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        eprintln!("Failed to create wallet: {}", err);
+                        Console::error(&format!("❌ Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
                 };
@@ -140,7 +145,7 @@ pub fn execute_command(command: &Commands) {
 
             let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
 
-            println!("{}", "═".repeat(50).bright_cyan());
+            Console::info("═", &"═".repeat(50));
             // Steps:
             // 1. Ensure we have enough eth in our wallet to register on training run
             // Display the public address of the wallet
@@ -156,41 +161,37 @@ pub fn execute_command(command: &Commands) {
             let hardware_check = HardwareChecker::new();
             let node_config = hardware_check.enrich_node_config(node_config).unwrap();
 
-            // TODO: Move to proper check 
-            software_check::run_software_check();
+            // TODO: Move to proper check
+            let _ = software_check::run_software_check();
 
             let balance = runtime
                 .block_on(provider_wallet_instance.get_balance())
                 .unwrap();
-            println!("Balance: {:?}", balance);
+            Console::info("💰 Balance", &format!("{:?}", balance));
 
             if let Err(e) = runtime.block_on(provider_ops.register_provider()) {
-                eprintln!("Failed to register provider: {}", e);
+                Console::error(&format!("❌ Failed to register provider: {}", e));
                 std::process::exit(1);
             }
 
             if let Err(e) = runtime.block_on(compute_node_ops.add_compute_node()) {
-                eprintln!("Failed to add compute node: {}", e);
+                Console::error(&format!("❌ Failed to add compute node: {}", e));
                 std::process::exit(1);
             }
 
-            println!("Uploading discovery info");
             if let Err(e) = runtime.block_on(discovery_service.upload_discovery_info(&node_config))
             {
-                eprintln!("Failed to upload discovery info: {}", e);
+                Console::error(&format!("❌ Failed to upload discovery info: {}", e));
                 std::process::exit(1);
             }
 
-            println!("{}", "Discovery info uploaded".bright_green().bold());
+            Console::success("✅ Discovery info uploaded");
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
-            println!("\n[SRV] {}", "Starting endpoint service".bright_white());
+            Console::info("🌐 Starting endpoint service", "");
 
             if let Err(err) = runtime.block_on(start_server(external_ip, *port)) {
-                eprintln!(
-                    "{}",
-                    format!("Failed to start server: {}", err).red().bold()
-                );
+                Console::error(&format!("❌ Failed to start server: {}", err));
                 std::process::exit(1);
             }
         }

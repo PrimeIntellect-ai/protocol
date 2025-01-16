@@ -2,10 +2,9 @@ use super::{
     gpu::detect_gpu,
     memory::{get_memory_info, print_memory_info},
     storage::{get_storage_info, print_storage_info},
-    types::SystemCheckError,
 };
+use crate::console::Console; // Import Console for logging
 use crate::operations::structs::node::{ComputeSpecs, CpuSpecs, GpuSpecs, NodeConfig};
-use colored::*;
 use sysinfo::{self, System};
 
 pub struct HardwareChecker {
@@ -22,18 +21,22 @@ impl HardwareChecker {
     pub fn enrich_node_config(
         &self,
         mut node_config: NodeConfig,
-    ) -> Result<NodeConfig, SystemCheckError> {
+    ) -> Result<NodeConfig, Box<dyn std::error::Error>> {
         self.collect_system_info(&mut node_config)?;
         self.print_system_info(&node_config);
-        println!("\n{}", "✓ All hardware checks passed".green().bold());
+        Console::success("✓ All hardware checks passed");
         Ok(node_config)
     }
 
-    fn collect_system_info(&self, node_config: &mut NodeConfig) -> Result<(), SystemCheckError> {
+    fn collect_system_info(
+        &self,
+        node_config: &mut NodeConfig,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if self.sys.cpus().is_empty() {
-            return Err(SystemCheckError::Other(
-                "Failed to detect CPU information".to_string(),
-            ));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to detect CPU information",
+            )));
         }
 
         let cpu_specs = self.collect_cpu_specs()?;
@@ -50,38 +53,38 @@ impl HardwareChecker {
         Ok(())
     }
 
-    fn collect_cpu_specs(&self) -> Result<CpuSpecs, SystemCheckError> {
+    fn collect_cpu_specs(&self) -> Result<CpuSpecs, Box<dyn std::error::Error>> {
         Ok(CpuSpecs {
             cores: Some(self.sys.cpus().len() as u32),
             model: Some(self.sys.cpus()[0].brand().to_string()),
         })
     }
 
-    fn collect_gpu_specs(&self) -> Result<Option<GpuSpecs>, SystemCheckError> {
+    fn collect_gpu_specs(&self) -> Result<Option<GpuSpecs>, Box<dyn std::error::Error>> {
         Ok(detect_gpu().map(|gpu| GpuSpecs {
-            count: Some(gpu.gpu_count as u32),
-            model: Some(gpu.name),
-            memory_mb: Some((gpu.memory / 1024) as u32), // Convert bytes to MB
+            count: Some(gpu.count.unwrap_or(0)),
+            model: gpu.model,
+            memory_mb: gpu.memory_mb,
         }))
     }
 
-    fn collect_memory_specs(&self) -> Result<(u32, u32), SystemCheckError> {
+    fn collect_memory_specs(&self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
         let (total_memory, _) = get_memory_info(&self.sys);
         let (total_storage, _) = get_storage_info()?;
         Ok((total_memory as u32, total_storage as u32))
     }
 
     fn print_system_info(&self, node_config: &NodeConfig) {
-        println!("\n{}", "Hardware Requirements Check:".blue().bold());
+        Console::section("Hardware Requirements Check");
 
         // Print CPU Info
-        println!("\n{}", "CPU Information:".blue().bold());
+        Console::section("CPU Information:");
         if let Some(compute_specs) = &node_config.compute_specs {
             if let Some(cpu) = &compute_specs.cpu {
-                println!("  Cores: {}", cpu.cores.unwrap_or(0));
-                println!(
-                    "  Model: {}",
-                    cpu.model.as_ref().unwrap_or(&"Unknown".to_string())
+                Console::info("Cores", &cpu.cores.unwrap_or(0).to_string());
+                Console::info(
+                    "Model",
+                    cpu.model.as_ref().unwrap_or(&"Unknown".to_string()),
                 );
             }
         }
@@ -96,29 +99,18 @@ impl HardwareChecker {
         match &node_config.compute_specs {
             Some(compute_specs) => {
                 if let Some(gpu) = &compute_specs.gpu {
-                    println!("\n{}", "GPU Information:".blue().bold());
-                    println!("  Count: {}", gpu.count.unwrap_or(0));
-                    println!(
-                        "  Model: {}",
-                        gpu.model.as_ref().unwrap_or(&"Unknown".to_string())
+                    Console::title("GPU Information:");
+                    Console::info("Count", &gpu.count.unwrap_or(0).to_string());
+                    Console::info(
+                        "Model",
+                        gpu.model.as_ref().unwrap_or(&"Unknown".to_string()),
                     );
-                    println!("  Memory: {} MB", gpu.memory_mb.unwrap_or(0));
+                    Console::info("Memory", &gpu.memory_mb.unwrap_or(0).to_string());
                 } else {
-                    println!(
-                        "\n{}",
-                        "Warning: No compatible GPU detected".yellow().bold()
-                    );
+                    Console::warning("No compatible GPU detected");
                 }
             }
-            None => println!(
-                "\n{}",
-                "Warning: No compute specs available".yellow().bold()
-            ),
+            None => Console::warning("No compute specs available"),
         }
     }
-}
-
-// Public interface
-pub fn run_hardware_check(node_config: NodeConfig) -> Result<NodeConfig, SystemCheckError> {
-    HardwareChecker::new().enrich_node_config(node_config)
 }

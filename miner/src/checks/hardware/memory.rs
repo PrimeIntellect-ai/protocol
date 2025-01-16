@@ -1,4 +1,5 @@
-use sysinfo::System;
+use crate::console::Console;
+use sysinfo::System; // Import Console for logging
 
 const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
@@ -9,13 +10,15 @@ pub fn get_memory_info(sys: &System) -> (u64, u64) {
 }
 
 pub fn print_memory_info(total_memory: u64, free_memory: u64) {
-    use colored::*;
-    println!("\n{}", "Memory Information:".blue().bold());
-    println!(
-        "  Total Memory: {:.1} GB",
-        total_memory as f64 / BYTES_TO_GB
+    Console::section("Memory Information:");
+    Console::info(
+        "Total Memory",
+        &format!("{:.1} GB", total_memory as f64 / BYTES_TO_GB),
     );
-    println!("  Free Memory: {:.1} GB", free_memory as f64 / BYTES_TO_GB);
+    Console::info(
+        "Free Memory",
+        &format!("{:.1} GB", free_memory as f64 / BYTES_TO_GB),
+    );
 }
 
 #[cfg(test)]

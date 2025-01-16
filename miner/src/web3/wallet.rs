@@ -53,10 +53,9 @@ impl Wallet {
     }
 
     pub async fn get_balance(&self) -> Result<U256, Box<dyn std::error::Error>> {
-        let balance = self
-            .provider
-            .get_balance(self.wallet.default_signer().address())
-            .await?;
+        let address = self.wallet.default_signer().address();
+        let balance = self.provider.get_balance(address).await?;
+
         Ok(balance)
     }
 }

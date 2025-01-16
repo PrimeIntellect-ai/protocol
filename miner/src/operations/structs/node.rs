@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 pub struct ComputeSpecs {
     pub gpu: Option<GpuSpecs>,
     pub cpu: Option<CpuSpecs>,
+    #[serde(rename = "ramMB")]
     pub ram_mb: Option<u32>,
+    #[serde(rename = "storageGB")]
     pub storage_gb: Option<u32>,
 }
 
@@ -12,6 +14,7 @@ pub struct ComputeSpecs {
 pub struct GpuSpecs {
     pub count: Option<u32>,
     pub model: Option<String>,
+    #[serde(rename = "memoryMB")]
     pub memory_mb: Option<u32>,
 }
 
@@ -23,8 +26,11 @@ pub struct CpuSpecs {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NodeConfig {
+    #[serde(rename = "ipAddress")]
     pub ip_address: String,
     pub port: u16,
+    #[serde(rename = "computeSpecs")]
     pub compute_specs: Option<ComputeSpecs>,
+    #[serde(rename = "computePoolId")]
     pub compute_pool_id: u64,
 }

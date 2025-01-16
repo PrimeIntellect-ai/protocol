@@ -1,3 +1,4 @@
+use crate::console::Console;
 use crate::operations::structs::node::NodeConfig;
 use crate::web3::wallet::Wallet;
 use alloy::signers::Signer;
@@ -21,6 +22,7 @@ impl<'b> DiscoveryService<'b> {
         &self,
         message: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
+        println!("Signin with address: {:?}", self.wallet.wallet.default_signer().address());
         let signature = &self
             .wallet
             .signer
@@ -35,21 +37,37 @@ impl<'b> DiscoveryService<'b> {
         &self,
         node_config: &NodeConfig,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let url = format!("{}{}", self.base_url, self.endpoint);
-        println!("Node config: {:?}", node_config);
+        Console::section("📦 Uploading discovery info");
+        Console::info("Node config", &format!("{:?}", node_config)); // Use Console for logging
 
-        let request_data = serde_json::to_value(node_config)
+        let mut request_data = serde_json::to_value(node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-        let request_data_string = serde_json::to_string(&request_data)
-            .unwrap()
-            .replace("\\", "");
+        
+        // Sort the keys of the request_data
+        if let Some(obj) = request_data.as_object_mut() {
+            let sorted_keys: Vec<String> = obj.keys().cloned().collect();
+            let sorted_obj: serde_json::Map<String, serde_json::Value> = sorted_keys
+                .into_iter()
+                .map(|key| (key.clone(), obj.remove(&key).unwrap()))
+                .collect();
+            *obj = sorted_obj;
+        }
 
-        let message = format!(
-            "/api/nodes/{}{}",
-            self.wallet.wallet.default_signer().address(),
-            request_data_string
+        let request_data_string = serde_json::to_string(&request_data)
+            .unwrap();
+        println!("Request data string: {}", request_data_string);
+
+        let url = format!(
+            "{}/{}",
+            self.endpoint,
+            self.wallet.wallet.default_signer().address()
         );
+        println!("URL: {}", url);
+        println!("Wallet: {:?}", self.wallet.wallet.default_signer().address());
+        let message = format!("{}{}", url, request_data_string);
+        println!("Message: {}", message);
         let signature_string = self._generate_signature(&message).await?;
+        println!("Signature string: {}", signature_string);
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -63,11 +81,14 @@ impl<'b> DiscoveryService<'b> {
                 .unwrap(),
         );
         headers.insert("x-signature", signature_string.parse().unwrap());
+        let request_url = format!("{}{}", self.base_url, &url);
+        println!("Request URL: {}", request_url);
+        println!("data: {:?}", request_data);
 
         let response = reqwest::Client::new()
-            .put(&url)
+            .put(&request_url)
             .headers(headers)
-            .json(&node_config)
+            .json(&request_data)
             .send()
             .await?;
 
@@ -79,6 +100,7 @@ impl<'b> DiscoveryService<'b> {
             .into());
         }
 
+        Console::success("✓ Discovery info uploaded successfully"); // Log success message
         Ok(())
     }
 }

@@ -1,6 +1,7 @@
 mod api;
 mod checks;
 mod cli;
+mod console;
 mod docker;
 mod operations;
 mod services;
@@ -12,7 +13,7 @@ use log::{debug, LevelFilter};
 fn main() {
     // Initialize logging with debug level and console output
     env_logger::Builder::new()
-        .filter_level(LevelFilter::Debug)
+        .filter_level(LevelFilter::Info)
         .format_timestamp(None)
         .init();
 
