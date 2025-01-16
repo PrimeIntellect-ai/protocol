@@ -5,7 +5,7 @@ use alloy::{
         BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller, WalletFiller,
     },
     providers::{Identity, Provider, ProviderBuilder, RootProvider},
-    signers::local::{PrivateKeySigner},
+    signers::local::PrivateKeySigner,
     transports::http::{Client, Http},
 };
 use url::Url;
