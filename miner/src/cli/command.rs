@@ -1,4 +1,3 @@
-
 use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::operations::compute_node::ComputeNodeOperations;
@@ -8,13 +7,11 @@ use crate::services::discovery::DiscoveryService;
 // Import the Wallet struct
 use crate::web3::contracts::core::builder::ContractBuilder;
 use crate::web3::wallet::Wallet;
-use alloy::{
-    network::TransactionBuilder,
-    providers::Provider,
-};
 use clap::{Parser, Subcommand};
 use colored::*;
 use url::Url;
+use crate::checks::software::software_check; 
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -153,11 +150,14 @@ pub fn execute_command(command: &Commands) {
                 ip_address: external_ip.to_string(),
                 port: *port,
                 compute_specs: None,
-                compute_pool_id: compute_pool_id.clone(),
+                compute_pool_id: *compute_pool_id,
             };
 
             let hardware_check = HardwareChecker::new();
             let node_config = hardware_check.enrich_node_config(node_config).unwrap();
+
+            // TODO: Move to proper check 
+            software_check::run_software_check();
 
             let balance = runtime
                 .block_on(provider_wallet_instance.get_balance())
@@ -186,7 +186,7 @@ pub fn execute_command(command: &Commands) {
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             println!("\n[SRV] {}", "Starting endpoint service".bright_white());
 
-            if let Err(err) = runtime.block_on(start_server(external_ip, *port as u16)) {
+            if let Err(err) = runtime.block_on(start_server(external_ip, *port)) {
                 eprintln!(
                     "{}",
                     format!("Failed to start server: {}", err).red().bold()

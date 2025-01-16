@@ -5,9 +5,6 @@ use alloy::{
     primitives::Address,
     transports::http::{Client, Http},
 };
-
-pub type ContractResult<T> = Result<T, Box<dyn std::error::Error>>;
-
 pub struct Contract {
     instance: ContractInstance<Http<Client>, WalletProvider, Ethereum>,
 }

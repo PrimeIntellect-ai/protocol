@@ -38,7 +38,7 @@ impl<'b> DiscoveryService<'b> {
         let url = format!("{}{}", self.base_url, self.endpoint);
         println!("Node config: {:?}", node_config);
 
-        let request_data = serde_json::to_value(&node_config)
+        let request_data = serde_json::to_value(node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
         let request_data_string = serde_json::to_string(&request_data)
             .unwrap()

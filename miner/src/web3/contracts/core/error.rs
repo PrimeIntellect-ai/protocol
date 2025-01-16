@@ -6,7 +6,6 @@ pub enum ContractError {
     // Initialization errors
     AbiParseError(String),
     ArtifactReadError(String),
-    InvalidAbiPath(String),
 
     // Contract interaction errors
     CallError(String),
@@ -34,7 +33,6 @@ impl fmt::Display for ContractError {
             // Initialization errors
             ContractError::AbiParseError(msg) => write!(f, "Failed to parse ABI: {}", msg),
             ContractError::ArtifactReadError(msg) => write!(f, "Failed to read artifact: {}", msg),
-            ContractError::InvalidAbiPath(path) => write!(f, "Invalid ABI path: {}", path),
 
             // Contract interaction errors
             ContractError::CallError(msg) => write!(f, "Contract call failed: {}", msg),
@@ -77,16 +75,5 @@ impl From<std::io::Error> for ContractError {
 impl From<serde_json::Error> for ContractError {
     fn from(err: serde_json::Error) -> Self {
         ContractError::AbiParseError(err.to_string())
-    }
-}
-
-// Helper methods for error creation
-impl ContractError {
-    pub fn invalid_response(msg: impl Into<String>) -> Self {
-        ContractError::InvalidResponse(msg.into())
-    }
-
-    pub fn decoding_error(msg: impl Into<String>) -> Self {
-        ContractError::DecodingError(msg.into())
     }
 }
