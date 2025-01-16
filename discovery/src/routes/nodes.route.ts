@@ -197,6 +197,23 @@ router.get<{}, ApiResponse<ComputeNode[]>>(
   },
 );
 
+router.get<{}, ApiResponse<ComputeNode[]>>(
+    "/nodes/platform",
+    async (req, res, next) => {
+      try {
+        const nodes = await getAllNodes();
+  
+        res.status(200).json({
+          success: true,
+          message: "Nodes retrieved successfully for validator",
+          data: nodes,
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
 /**
  * @swagger
  * /nodes/pool/{computePoolId}:

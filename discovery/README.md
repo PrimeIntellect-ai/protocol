@@ -4,7 +4,6 @@
 - [ ] Better logging
 - [ ] Protocol Service Access via custom API Key
 - [ ] Ability to test compute pool request 
-- [ ] Linting 
 - [ ] Pre-commit hooks & github actions 
 
 - [ ] Rate limiting: PRI-906 

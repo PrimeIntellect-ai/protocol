@@ -53,8 +53,10 @@ export const verifySignature = async (
     const url = req.originalUrl.split("?")[0]; // Remove query parameters if any
 
     const message = url + payload;
+    console.log("Message: ", message);
 
     if (!verifyEthereumSignature(message, signature, address)) {
+      console.log("Invalid signature");
       res.status(401);
       res.json({
         success: false,
