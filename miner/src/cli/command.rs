@@ -19,8 +19,6 @@ use alloy::{
 };
 use clap::{Parser, Subcommand};
 use colored::*;
-use hex;
-use serde_json;
 use url::Url;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -260,11 +258,11 @@ pub fn execute_command(command: &Commands) {
                 let provider_address = provider_wallet.wallet.default_signer().address();
                 let node_address = node_wallet.wallet.default_signer().address();
                 let digest =
-                    keccak(&[provider_address.as_slice(), node_address.as_slice()].concat());
+                    keccak([provider_address.as_slice(), node_address.as_slice()].concat());
 
                 let signature = node_wallet
                     .signer
-                    .sign_message(&digest.as_slice())
+                    .sign_message(digest.as_slice())
                     .await?
                     .as_bytes();
                 println!("Signature: {:?}", signature);
@@ -325,7 +323,7 @@ pub fn execute_command(command: &Commands) {
                 println!("Message: {:?}", message);
                 let signature = wallet
                     .signer
-                    .sign_message(&message.as_bytes())
+                    .sign_message(message.as_bytes())
                     .await?
                     .as_bytes();
                 let signature_string = format!("0x{}", hex::encode(signature));

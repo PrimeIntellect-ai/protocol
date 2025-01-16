@@ -65,7 +65,7 @@ impl ComputeRegistryContract {
                     println!("Is active: {:?}", is_active);
                     println!("Is validated: {:?}", is_validated);
                     // TODO: Actually return a properly parsed node
-                    return Ok(()); // Return Ok if the node is registered
+                    Ok(())// Return Ok if the node is registered
                 } else {
                     println!("Node is not registered. Proceeding to add the node.");
                     Err("Node is not registered".into())

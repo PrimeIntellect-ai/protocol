@@ -39,7 +39,7 @@ impl Contract {
             .expect("Failed to get ABI from artifact");
 
         let abi = serde_json::from_str(&abi_value.to_string()).unwrap();
-        ContractInstance::new(address.into(), wallet.provider.clone(), Interface::new(abi))
+        ContractInstance::new(address, wallet.provider.clone(), Interface::new(abi))
     }
 
     pub fn instance(&self) -> &ContractInstance<Http<Client>, WalletProvider, Ethereum> {
