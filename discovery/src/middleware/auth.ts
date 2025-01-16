@@ -47,13 +47,11 @@ export const verifySignature = async (
 
     const payload =
       req.method === "POST" || req.method === "PUT"
-        ? JSON.stringify({ ...req.body }, Object.keys(req.body).sort())
+        ? JSON.stringify(req.body)
         : "";
-
     const url = req.originalUrl.split("?")[0]; // Remove query parameters if any
 
-    const message = url + payload;
-    console.log("Message: ", message);
+    const message = url + payload.replace(/\\/g, "");
 
     if (!verifyEthereumSignature(message, signature, address)) {
       console.log("Invalid signature");

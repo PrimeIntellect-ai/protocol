@@ -6,11 +6,9 @@ export const registerNode = async (address: string, nodeData: ComputeNode) => {
   if (!address || typeof address !== "string") {
     throw new Error("Invalid address");
   }
-
   const result = ComputeNodeSchema.safeParse(nodeData);
-
   if (!result.success) {
-    throw new Error("Invalid request body");
+    throw new Error("Parsing error: Invalid request body");
   }
 
   const lastSeen = await getLastSeen(address);

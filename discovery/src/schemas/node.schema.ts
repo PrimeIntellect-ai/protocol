@@ -13,10 +13,11 @@ export const ComputeNodeSchema = z.object({
       // GPU specifications
       gpu: z
         .object({
-          count: z.number().int().min(0).optional(), // Number of GPUs available
-          model: z.string().optional(), // Model of the GPU
-          memoryMB: z.number().int().min(0).optional(), // Memory of the GPU in MB
+          count: z.number().int().min(0).nullable().optional(), // Number of GPUs available
+          model: z.string().nullable().optional(), // Model of the GPU
+          memoryMB: z.number().int().min(0).nullable().optional(), // Memory of the GPU in MB
         })
+        .nullable()
         .optional(),
 
       // CPU specifications
@@ -26,7 +27,6 @@ export const ComputeNodeSchema = z.object({
           model: z.string().optional(), // Model of the CPU
         })
         .optional(),
-
       // Memory and storage specifications
       ramMB: z.number().int().min(0).optional(), // RAM in MB
       storageGB: z.number().int().min(0).optional(), // Storage in GB
