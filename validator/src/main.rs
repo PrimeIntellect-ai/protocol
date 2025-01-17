@@ -1,13 +1,9 @@
 use alloy::primitives::{hex, Address};
 use alloy::signers::Signer;
-use serde;
-use serde_json;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::env;
-use tokio;
 use url::Url;
-use std::time::Duration;
 
 #[derive(serde::Deserialize, Debug, Clone)]
 struct ComputeNode {
@@ -56,12 +52,14 @@ struct CpuSpecs {
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
-    let private_key_validator = env::var("PRIVATE_KEY_VALIDATOR").expect("PRIVATE_KEY_VALIDATOR not set");
+    let private_key_validator =
+        env::var("PRIVATE_KEY_VALIDATOR").expect("PRIVATE_KEY_VALIDATOR not set");
     let rpc_url = "http://localhost:8545";
-    let validator_wallet = Wallet::new(&private_key_validator, Url::parse(rpc_url).unwrap()).unwrap_or_else(|err| {
-        eprintln!("Error creating wallet: {:?}", err);
-        std::process::exit(1);
-    });
+    let validator_wallet = Wallet::new(&private_key_validator, Url::parse(rpc_url).unwrap())
+        .unwrap_or_else(|err| {
+            eprintln!("Error creating wallet: {:?}", err);
+            std::process::exit(1);
+        });
 
     let contracts = ContractBuilder::new(&validator_wallet)
         .with_compute_registry()
@@ -71,16 +69,29 @@ fn main() {
         .unwrap();
 
     loop {
-        async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String, Box<dyn std::error::Error>> {
-            let signature = wallet.signer.sign_message(message.as_bytes()).await?.as_bytes();
+        async fn _generate_signature(
+            wallet: &Wallet,
+            message: &str,
+        ) -> Result<String, Box<dyn std::error::Error>> {
+            let signature = wallet
+                .signer
+                .sign_message(message.as_bytes())
+                .await?
+                .as_bytes();
             Ok(format!("0x{}", hex::encode(signature)))
         }
 
         let nodes: Result<Vec<ComputeNode>, Box<dyn std::error::Error>> = runtime.block_on(async {
             let discovery_url = "http://localhost:8089";
             let discovery_route = "/api/nodes/validator";
-            let address = validator_wallet.wallet.default_signer().address().to_string();
-            let signature = _generate_signature(&validator_wallet, discovery_route).await.unwrap();
+            let address = validator_wallet
+                .wallet
+                .default_signer()
+                .address()
+                .to_string();
+            let signature = _generate_signature(&validator_wallet, discovery_route)
+                .await
+                .unwrap();
 
             let mut headers = reqwest::header::HeaderMap::new();
             headers.insert("x-address", address.parse().unwrap());
@@ -110,11 +121,26 @@ fn main() {
 
         for compute_node in non_validated_nodes {
             if !compute_node.provider_address.is_empty() && !compute_node.id.is_empty() {
-                let provider_address = compute_node.provider_address.trim_start_matches("0x").parse::<Address>().unwrap();
-                let node_address = compute_node.id.trim_start_matches("0x").parse::<Address>().unwrap();
+                let provider_address = compute_node
+                    .provider_address
+                    .trim_start_matches("0x")
+                    .parse::<Address>()
+                    .unwrap();
+                let node_address = compute_node
+                    .id
+                    .trim_start_matches("0x")
+                    .parse::<Address>()
+                    .unwrap();
 
-                println!("Validating node: {} for provider: {}", compute_node.id, compute_node.provider_address);
-                if let Err(e) = runtime.block_on(contracts.prime_network.validate_node(provider_address.into(), node_address.into())) {
+                println!(
+                    "Validating node: {} for provider: {}",
+                    compute_node.id, compute_node.provider_address
+                );
+                if let Err(e) = runtime.block_on(
+                    contracts
+                        .prime_network
+                        .validate_node(provider_address, node_address),
+                ) {
                     eprintln!("Failed to validate node {}: {}", compute_node.id, e);
                 } else {
                     println!("Successfully validated node: {}", compute_node.id);
