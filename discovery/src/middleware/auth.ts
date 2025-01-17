@@ -71,7 +71,11 @@ export const verifySignature = async (
         message: "Invalid Ethereum address",
       });
       return;
-    }
+    } 
+
+    console.log("Signature verified");
+    console.log("Address: ", address);
+    console.log("Param Address: ", paramAddress);
 
     // Check if the address in the parameters matches the x-address header
     if (paramAddress && paramAddress.toLowerCase() !== address.toLowerCase()) {

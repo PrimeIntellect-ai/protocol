@@ -17,6 +17,7 @@ export async function isComputePoolOwner(
 
   try {
     const pool = await contract.getComputePool(poolId);
+    console.log("Pool: ", pool);
     return (
       verifiedAddress.toLowerCase() === pool.creator.toLowerCase() ||
       verifiedAddress.toLowerCase() === pool.computeManagerKey.toLowerCase()
