@@ -41,7 +41,6 @@ impl Contract {
             .get("abi")
             .expect("Failed to get ABI from artifact"); 
 
-        println!("ABI: {:?}", abi_value);
         let abi = serde_json::from_str(&abi_value.to_string()).unwrap();
         ContractInstance::new(address, wallet.provider.clone(), Interface::new(abi))
     }

@@ -7,6 +7,8 @@ use shared::web3::wallet::Wallet;
 use std::env;
 use tokio;
 use url::Url;
+use std::time::Duration;
+
 #[derive(serde::Deserialize, Debug, Clone)]
 struct ComputeNode {
     id: String,
@@ -18,7 +20,7 @@ struct ComputeNode {
     #[serde(rename = "computePoolId")]
     compute_pool_id: u64,
     #[serde(rename = "computeSpecs")]
-    compute_specs: ComputeSpecs, // Fixed field name to match the JSON response
+    compute_specs: ComputeSpecs,
     #[serde(rename = "lastSeen")]
     last_seen: u64,
     #[serde(rename = "isActive")]
@@ -50,21 +52,16 @@ struct CpuSpecs {
     cores: Option<u32>,
     model: Option<String>,
 }
+
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
-    // Load private key validator from environment variable
-    let private_key_validator =
-        env::var("PRIVATE_KEY_VALIDATOR").expect("PRIVATE_KEY_VALIDATOR not set");
-
+    let private_key_validator = env::var("PRIVATE_KEY_VALIDATOR").expect("PRIVATE_KEY_VALIDATOR not set");
     let rpc_url = "http://localhost:8545";
-    let validator_wallet = match Wallet::new(&private_key_validator, Url::parse(rpc_url).unwrap()) {
-        Ok(wallet) => wallet,
-        Err(err) => {
-            println!("Error creating wallet: {:?}", err);
-            std::process::exit(1);
-        }
-    };
+    let validator_wallet = Wallet::new(&private_key_validator, Url::parse(rpc_url).unwrap()).unwrap_or_else(|err| {
+        eprintln!("Error creating wallet: {:?}", err);
+        std::process::exit(1);
+    });
 
     let contracts = ContractBuilder::new(&validator_wallet)
         .with_compute_registry()
@@ -73,101 +70,59 @@ fn main() {
         .build()
         .unwrap();
 
-    let response = runtime.block_on(async {
-        let address = Address::new(hex!("0x0000000000000000000000000000000000000000"));
-        match contracts.ai_token.balance_of(address).await {
-            Ok(balance) => println!("Balance: {:?}", balance),
-            Err(err) => eprintln!("Error fetching balance: {:?}", err),
+    loop {
+        async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String, Box<dyn std::error::Error>> {
+            let signature = wallet.signer.sign_message(message.as_bytes()).await?.as_bytes();
+            Ok(format!("0x{}", hex::encode(signature)))
         }
-    });
 
-    async fn _generate_signature(
-        wallet: &Wallet,
-        message: &str,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        println!(
-            "Signin with address: {:?}",
-            wallet.wallet.default_signer().address()
-        );
-        let signature = wallet
-            .signer
-            .sign_message(message.as_bytes())
-            .await?
-            .as_bytes();
-        let signature_string = format!("0x{}", hex::encode(signature));
-        Ok(signature_string)
-    }
+        let nodes: Result<Vec<ComputeNode>, Box<dyn std::error::Error>> = runtime.block_on(async {
+            let discovery_url = "http://localhost:8089";
+            let discovery_route = "/api/nodes/validator";
+            let address = validator_wallet.wallet.default_signer().address().to_string();
+            let signature = _generate_signature(&validator_wallet, discovery_route).await.unwrap();
 
-    let nodes: Result<Vec<ComputeNode>, Box<dyn std::error::Error>> = runtime.block_on(async {
-        let discovery_url = "http://localhost:8089";
-        let discovery_route = "/api/nodes/validator";
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("x-address", address.parse().unwrap());
+            headers.insert("x-signature", signature.parse().unwrap());
 
-        let address = validator_wallet
-            .wallet
-            .default_signer()
-            .address()
-            .to_string();
-        let signature = _generate_signature(&validator_wallet, discovery_route)
-            .await
-            .unwrap(); // Replace with actual signature generation logic
-        println!("Signature: {:?}", signature);
+            println!("Fetching nodes from: {}{}", discovery_url, discovery_route);
+            let response = reqwest::Client::new()
+                .get(format!("{}{}", discovery_url, discovery_route))
+                .headers(headers)
+                .send()
+                .await?;
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("x-address", address.parse().unwrap());
-        headers.insert("x-signature", signature.parse().unwrap());
-        let response = reqwest::Client::new()
-            .get(format!("{}{}", discovery_url, discovery_route))
-            .headers(headers)
-            .send()
-            .await
-            .expect("Failed to send request");
+            let response_text = response.text().await?;
+            println!("Response received: {}", response_text);
+            let parsed_response: serde_json::Value = serde_json::from_str(&response_text)?;
+            serde_json::from_value(parsed_response["data"].clone()).map_err(Into::into)
+        });
 
-        let response_text = response.text().await.expect("Failed to read response text");
-        println!("Response: {:?}", response_text);
+        let non_validated_nodes: Vec<ComputeNode> = nodes
+            .iter()
+            .filter_map(|node_vec| node_vec.first())
+            .filter(|node| !node.is_validated)
+            .cloned()
+            .collect();
 
-        // Define the struct to parse the response
+        println!("Non validated nodes: {:?}", non_validated_nodes);
 
-        // Parse the JSON response
-        let parsed_response: serde_json::Value =
-            serde_json::from_str(&response_text).expect("Failed to parse JSON response");
-        let nodes: Vec<ComputeNode> = serde_json::from_value(parsed_response["data"].clone())
-            .expect("Failed to deserialize nodes");
-        Ok(nodes)
-    });
+        for compute_node in non_validated_nodes {
+            if !compute_node.provider_address.is_empty() && !compute_node.id.is_empty() {
+                let provider_address = compute_node.provider_address.trim_start_matches("0x").parse::<Address>().unwrap();
+                let node_address = compute_node.id.trim_start_matches("0x").parse::<Address>().unwrap();
 
-    let non_validated_nodes: Vec<ComputeNode> = nodes
-        .iter()
-        .filter_map(|node_vec| node_vec.first()) // Get first node if it exists
-        .filter(|node| !node.is_validated)
-        .cloned()
-        .collect();
-
-    println!("Non validated nodes: {:?}", non_validated_nodes);
-
-    for compute_node in non_validated_nodes {
-        // Call validate contract function only if provider_address and id are valid
-        if !compute_node.provider_address.is_empty() && !compute_node.id.is_empty() {
-            let provider_address = compute_node
-                .provider_address
-                .trim_start_matches("0x")
-                .parse::<Address>()
-                .unwrap();
-            let node_address = compute_node
-                .id
-                .trim_start_matches("0x")
-                .parse::<Address>()
-                .unwrap();
-
-            let result = runtime.block_on(
-                contracts
-                    .prime_network
-                    .validate_node(provider_address.into(), node_address.into()),
-            );
-            if let Err(e) = result {
-                eprintln!("Failed to validate node {}: {}", compute_node.id, e);
+                println!("Validating node: {} for provider: {}", compute_node.id, compute_node.provider_address);
+                if let Err(e) = runtime.block_on(contracts.prime_network.validate_node(provider_address.into(), node_address.into())) {
+                    eprintln!("Failed to validate node {}: {}", compute_node.id, e);
+                } else {
+                    println!("Successfully validated node: {}", compute_node.id);
+                }
             }
         }
-    }
 
-    println!("Response: {:?}", response);
+        println!("Sleeping for 30 seconds before the next iteration...");
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    }
 }
