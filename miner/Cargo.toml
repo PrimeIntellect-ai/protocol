@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+shared = { path = "../shared" }
 actix-web = "4.4"
 bollard = "0.18.1"
 clap = { version = "4.4", features = ["derive"] }

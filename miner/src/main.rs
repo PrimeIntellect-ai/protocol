@@ -5,7 +5,6 @@ mod console;
 mod docker;
 mod operations;
 mod services;
-mod web3;
 use clap::Parser;
 use cli::{execute_command, Cli};
 use log::{debug, LevelFilter};

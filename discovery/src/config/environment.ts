@@ -7,6 +7,7 @@ export const config = {
   contracts: {
     primeNetwork: process.env.PRIME_NETWORK_ADDRESS!,
     computePool: process.env.COMPUTE_POOL_ADDRESS!,
+    computeRegistry: process.env.COMPUTE_REGISTRY_ADDRESS!,
   },
   redis: {
     host: process.env.REDIS_HOST!,

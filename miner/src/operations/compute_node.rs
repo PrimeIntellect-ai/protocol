@@ -1,15 +1,15 @@
 use crate::console::Console;
-use crate::web3::contracts::implementations::{
-    compute_registry_contract::ComputeRegistryContract,
-    prime_network_contract::PrimeNetworkContract,
-};
-use crate::web3::wallet::Wallet;
 use alloy::{
     network::TransactionBuilder,
     primitives::utils::keccak256 as keccak,
     primitives::{Address, U256},
     signers::Signer,
-}; // Import Console for logging
+};
+use shared::web3::contracts::implementations::{
+    compute_registry_contract::ComputeRegistryContract,
+    prime_network_contract::PrimeNetworkContract,
+};
+use shared::web3::wallet::Wallet; // Import Console for logging
 
 pub struct ComputeNodeOperations<'c> {
     provider_wallet: &'c Wallet,

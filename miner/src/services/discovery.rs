@@ -1,7 +1,7 @@
 use crate::console::Console;
 use crate::operations::structs::node::NodeConfig;
-use crate::web3::wallet::Wallet;
 use alloy::signers::Signer;
+use shared::web3::wallet::Wallet;
 
 pub struct DiscoveryService<'b> {
     wallet: &'b Wallet,
@@ -22,7 +22,10 @@ impl<'b> DiscoveryService<'b> {
         &self,
         message: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        println!("Signin with address: {:?}", self.wallet.wallet.default_signer().address());
+        println!(
+            "Signin with address: {:?}",
+            self.wallet.wallet.default_signer().address()
+        );
         let signature = &self
             .wallet
             .signer
@@ -42,7 +45,7 @@ impl<'b> DiscoveryService<'b> {
 
         let mut request_data = serde_json::to_value(node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-        
+
         // Sort the keys of the request_data
         if let Some(obj) = request_data.as_object_mut() {
             let sorted_keys: Vec<String> = obj.keys().cloned().collect();
@@ -53,8 +56,7 @@ impl<'b> DiscoveryService<'b> {
             *obj = sorted_obj;
         }
 
-        let request_data_string = serde_json::to_string(&request_data)
-            .unwrap();
+        let request_data_string = serde_json::to_string(&request_data).unwrap();
         println!("Request data string: {}", request_data_string);
 
         let url = format!(
@@ -63,7 +65,10 @@ impl<'b> DiscoveryService<'b> {
             self.wallet.wallet.default_signer().address()
         );
         println!("URL: {}", url);
-        println!("Wallet: {:?}", self.wallet.wallet.default_signer().address());
+        println!(
+            "Wallet: {:?}",
+            self.wallet.wallet.default_signer().address()
+        );
         let message = format!("{}{}", url, request_data_string);
         println!("Message: {}", message);
         let signature_string = self._generate_signature(&message).await?;

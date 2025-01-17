@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-
+use alloy::primitives::Address;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ComputeSpecs {
     pub gpu: Option<GpuSpecs>,
@@ -26,6 +26,8 @@ pub struct CpuSpecs {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NodeConfig {
+    #[serde(rename = "providerAddress")]
+    pub provider_address: Option<Address>,
     #[serde(rename = "ipAddress")]
     pub ip_address: String,
     pub port: u16,

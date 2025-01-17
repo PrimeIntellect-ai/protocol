@@ -12,6 +12,7 @@ import {
   getNodesForPool,
   registerNode,
 } from "../service/nodes.service";
+import { getValidationStatus } from "../service/contract.service";
 
 const router = express.Router();
 
@@ -180,23 +181,45 @@ router.get<{ address: string }, ApiResponse<ComputeNode>>(
  */
 router.get<{}, ApiResponse<ComputeNode[]>>(
   "/nodes/validator",
-  verifySignature,
-  verifyPrimeValidator,
-  async (req, res, next) => {
+  // verifySignature,
+  // verifyPrimeValidator,
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const nodes = await getAllNodes();
 
+      if (nodes.length > 0) {
+        const validationStatusPromises = nodes.map(node => 
+          node.providerAddress ? getValidationStatus(node.id!, node.providerAddress!) : Promise.resolve({ isActive: null, isValidated: null })
+        );
+        const validationStatuses = await Promise.all(validationStatusPromises);
+        
+        const nodesWithValidationStatus = nodes.map((node, index) => ({
+          ...node,
+          isActive: validationStatuses[index]?.isActive,
+          isValidated: validationStatuses[index]?.isValidated,
+        }));
+
+        res.status(200).json({
+          success: true,
+          message: "Nodes retrieved successfully for validator",
+          data: nodesWithValidationStatus,
+        });
+        return;
+      }
+
       res.status(200).json({
         success: true,
-        message: "Nodes retrieved successfully for validator",
-        data: nodes,
+        message: "No nodes found for validator",
+        data: [],
       });
     } catch (error) {
       next(error);
     }
   },
-);
+); 
 
+
+// TODO: Missing auth
 router.get<{}, ApiResponse<ComputeNode[]>>(
   "/nodes/platform",
   async (req, res, next) => {

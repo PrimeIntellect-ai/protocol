@@ -20,7 +20,13 @@ impl Contract {
         wallet: &Wallet,
         address: Address,
     ) -> ContractInstance<Http<Client>, WalletProvider, Ethereum> {
-        let artifact = std::fs::read(path).expect("Failed to read artifact");
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("artifacts")
+            .join("abi")
+            .join(path);
+            
+        let artifact = std::fs::read(&path)
+            .unwrap_or_else(|_| panic!("Failed to read artifact at: {}", path.display()));
         let abi_json: serde_json::Value = serde_json::from_slice(&artifact)
             .map_err(|err| {
                 eprintln!("Failed to parse JSON: {}", err);
@@ -33,8 +39,9 @@ impl Contract {
 
         let abi_value = abi_json
             .get("abi")
-            .expect("Failed to get ABI from artifact");
+            .expect("Failed to get ABI from artifact"); 
 
+        println!("ABI: {:?}", abi_value);
         let abi = serde_json::from_str(&abi_value.to_string()).unwrap();
         ContractInstance::new(address, wallet.provider.clone(), Interface::new(abi))
     }

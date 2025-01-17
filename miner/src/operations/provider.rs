@@ -1,14 +1,14 @@
 use crate::console::Console;
-use crate::web3::contracts::implementations::{
-    ai_token_contract::AIToken, compute_registry_contract::ComputeRegistryContract,
-    prime_network_contract::PrimeNetworkContract,
-};
-use crate::web3::wallet::Wallet;
 use alloy::{
     network::TransactionBuilder,
     primitives::{Address, U256},
     signers::Signer,
-}; // Import Console for logging
+};
+use shared::web3::contracts::implementations::{
+    ai_token_contract::AIToken, compute_registry_contract::ComputeRegistryContract,
+    prime_network_contract::PrimeNetworkContract,
+};
+use shared::web3::wallet::Wallet; // Import Console for logging
 
 pub struct ProviderOperations<'c> {
     wallet: &'c Wallet,

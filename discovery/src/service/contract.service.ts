@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { abi as ComputePoolABI } from "../abi/ComputePool.json";
 import { abi as PrimeNetworkABI } from "../abi/PrimeNetwork.json";
+import { abi as ComputeRegistryABI } from "../abi/ComputeRegistry.json";
 import { config } from "../config/environment";
 
 export async function isComputePoolOwner(
@@ -38,4 +39,22 @@ export async function isValidator(address: string): Promise<boolean> {
 
   const result = await contract.hasRole(validatorRole, address);
   return result;
+}
+
+export async function getValidationStatus(computeNodeAddress: string, providerAddress: string): Promise<{ isActive: boolean; isValidated: boolean }> {
+    const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    const contract = new ethers.Contract(
+        config.contracts.computeRegistry,
+        ethers.Interface.from(ComputeRegistryABI),
+        provider,
+    );
+
+    console.log(computeNodeAddress);
+    const result = await contract.getNode(providerAddress, computeNodeAddress);
+    console.log(result);
+
+    return {
+        isActive: result.isActive,
+        isValidated: result.isValidated,
+    };
 }

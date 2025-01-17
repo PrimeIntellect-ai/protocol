@@ -19,7 +19,6 @@ pub struct Contracts {
 
 pub struct ContractBuilder<'a> {
     wallet: &'a Wallet,
-    abi_base_path: String,
     compute_registry: Option<ComputeRegistryContract>,
     ai_token: Option<AIToken>,
     prime_network: Option<PrimeNetworkContract>,
@@ -29,7 +28,6 @@ impl<'a> ContractBuilder<'a> {
     pub fn new(wallet: &'a Wallet) -> Self {
         Self {
             wallet,
-            abi_base_path: "artifacts/abi".to_string(),
             compute_registry: None,
             ai_token: None,
             prime_network: None,
@@ -39,7 +37,7 @@ impl<'a> ContractBuilder<'a> {
     pub fn with_compute_registry(mut self) -> Self {
         self.compute_registry = Some(ComputeRegistryContract::new(
             self.wallet,
-            &format!("{}/ComputeRegistry.json", self.abi_base_path),
+            "ComputeRegistry.json",
         ));
         self
     }
@@ -47,7 +45,7 @@ impl<'a> ContractBuilder<'a> {
     pub fn with_ai_token(mut self) -> Self {
         self.ai_token = Some(AIToken::new(
             self.wallet,
-            &format!("{}/AIToken.json", self.abi_base_path),
+            "AIToken.json",
         ));
         self
     }
@@ -55,7 +53,7 @@ impl<'a> ContractBuilder<'a> {
     pub fn with_prime_network(mut self) -> Self {
         self.prime_network = Some(PrimeNetworkContract::new(
             self.wallet,
-            &format!("{}/PrimeNetwork.json", self.abi_base_path),
+            "PrimeNetwork.json",
         ));
         self
     }

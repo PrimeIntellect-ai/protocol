@@ -1,4 +1,3 @@
-use crate::{api::server::start_server, operations::structs::node};
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::software::software_check;
 use crate::console::Console;
@@ -6,10 +5,13 @@ use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::provider::ProviderOperations;
 use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
-use crate::web3::contracts::core::builder::ContractBuilder;
-use crate::web3::wallet::Wallet;
+use crate::{api::server::start_server, operations::structs::node};
+use alloy::network::NetworkWallet;
+use alloy::primitives::Address;
 use clap::{Parser, Subcommand};
 use colored::*;
+use shared::web3::contracts::core::builder::ContractBuilder;
+use shared::web3::wallet::Wallet;
 use url::Url; // Import Console for logging
 
 #[derive(Parser)]
@@ -70,6 +72,7 @@ pub fn execute_command(command: &Commands) {
                 ip_address: String::new(), // Placeholder, adjust as necessary
                 port: 0,                   // Placeholder, adjust as necessary
                 compute_specs: None,
+                provider_address: None,
                 compute_pool_id: 0, // Placeholder, adjust as necessary
             };
 
@@ -154,6 +157,7 @@ pub fn execute_command(command: &Commands) {
             let node_config = NodeConfig {
                 ip_address: external_ip.to_string(),
                 port: *port,
+                provider_address: Some(provider_wallet_instance.wallet.default_signer().address()),
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id,
             };
