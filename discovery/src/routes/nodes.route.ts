@@ -181,8 +181,8 @@ router.get<{ address: string }, ApiResponse<ComputeNode>>(
  */
 router.get<{}, ApiResponse<ComputeNode[]>>(
   "/nodes/validator",
-  // verifySignature,
-  // verifyPrimeValidator,
+  verifySignature,
+  verifyPrimeValidator,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const nodes = await getAllNodes();
