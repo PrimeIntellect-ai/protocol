@@ -74,4 +74,28 @@ impl PrimeNetworkContract {
             .await?;
         Ok(validate_node_tx)
     }
+
+    pub async fn create_domain(
+        &self,
+        domain_name: String,
+        validation_logic: Address,
+        domain_uri: String,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let create_domain_tx = self
+            .instance
+            .instance()
+            .function(
+                "createDomain",
+                &[
+                    domain_name.into(),
+                    validation_logic.into(),
+                    domain_uri.into(),
+                ],
+            )?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        Ok(create_domain_tx)
+    }
 }
