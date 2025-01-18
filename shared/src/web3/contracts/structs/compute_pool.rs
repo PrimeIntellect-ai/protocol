@@ -1,7 +1,6 @@
 use alloy::primitives::Address;
 use alloy::primitives::U256;
-use tokio::join; 
-
+use tokio::join;
 
 #[derive(Debug)]
 pub enum PoolStatus {

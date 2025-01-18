@@ -43,14 +43,7 @@ impl<'a> NodeInviter<'a> {
         let domain_id: [u8; 32] = U256::from(self.domain_id).to_be_bytes();
         let pool_id: [u8; 32] = U256::from(self.pool_id).to_be_bytes();
 
-        let digest = keccak(
-            [
-                &domain_id, 
-                &pool_id,
-                node.address.as_slice(),
-            ]
-            .concat(),
-        );
+        let digest = keccak([&domain_id, &pool_id, node.address.as_slice()].concat());
 
         let signature = self
             .wallet
@@ -111,15 +104,23 @@ impl<'a> NodeInviter<'a> {
                     .collect();
                 *obj = sorted_obj;
             }
-            let payload_string = serde_json::to_string(&payload_data).unwrap(); 
+            let payload_string = serde_json::to_string(&payload_data).unwrap();
             let message = format!("{}{}", invite_path, payload_string);
             println!("Message!!! {:?}", message);
             let message_signature = self._generate_msg_signature(&message).await.unwrap();
 
             let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert("x-address", self.wallet.wallet.default_signer().address().to_string().parse().unwrap());
+            headers.insert(
+                "x-address",
+                self.wallet
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string()
+                    .parse()
+                    .unwrap(),
+            );
             headers.insert("x-signature", message_signature.parse().unwrap());
-
 
             match reqwest::Client::new()
                 .post(invite_url)

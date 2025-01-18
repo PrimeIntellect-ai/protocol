@@ -21,7 +21,7 @@ struct Args {
     #[arg(short = 'r', long)]
     rpc_url: String,
 
-    /// Amount to mint 
+    /// Amount to mint
     #[arg(short = 'm', long, default_value = "1000")]
     amount: u64,
 }

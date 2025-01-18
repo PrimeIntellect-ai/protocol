@@ -112,7 +112,8 @@ pub fn execute_command(command: &Commands) {
                         Console::error(&format!("❌ Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
-                });
+                },
+            );
 
             let node_wallet_instance = Arc::new(
                 match Wallet::new(private_key_node, Url::parse(rpc_url).unwrap()) {
@@ -121,7 +122,7 @@ pub fn execute_command(command: &Commands) {
                         Console::error(&format!("❌ Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
-                }
+                },
             );
 
             /*
@@ -199,8 +200,13 @@ pub fn execute_command(command: &Commands) {
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             Console::info("🌐 Starting endpoint service", "");
 
-            if let Err(err) = runtime.block_on(start_server(external_ip, *port, contracts.clone(), node_wallet_instance.clone(), provider_wallet_instance.clone()))
-            {
+            if let Err(err) = runtime.block_on(start_server(
+                external_ip,
+                *port,
+                contracts.clone(),
+                node_wallet_instance.clone(),
+                provider_wallet_instance.clone(),
+            )) {
                 Console::error(&format!("❌ Failed to start server: {}", err));
                 std::process::exit(1);
             }

@@ -39,7 +39,12 @@ async fn main() -> Result<()> {
     println!("Tx: {:?}", tx);
     let store = RedisStore::new("redis://localhost:6379");
     let monitor = DiscoveryMonitor::new(store.clone(), &coordinator_wallet, compute_pool_id);
-    let inviter = NodeInviter::new(store.clone(), &coordinator_wallet, compute_pool_id, domain_id);
+    let inviter = NodeInviter::new(
+        store.clone(),
+        &coordinator_wallet,
+        compute_pool_id,
+        domain_id,
+    );
 
     tokio::try_join!(monitor.run(), inviter.run())?;
     Ok(())

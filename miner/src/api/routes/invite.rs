@@ -4,17 +4,17 @@ use actix_web::{
     web::{self, delete, get, post, Data},
     HttpRequest, HttpResponse, Scope,
 };
+use alloy::primitives::Address;
 use alloy::primitives::FixedBytes;
+use alloy::primitives::PrimitiveSignature;
 use alloy::primitives::U256;
 use hex;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
+use std::str::FromStr;
 use validator::Validate;
-use alloy::primitives::PrimitiveSignature;
-use std::str::FromStr; 
-use alloy::primitives::Address; 
 
 pub async fn invite_node(
     invite: web::Json<InviteRequest>,
@@ -27,16 +27,15 @@ pub async fn invite_node(
         }));
     }
 
-    // Tasks to finish compute onboarding mvp 
+    // Tasks to finish compute onboarding mvp
     // TODO: Implement logic to verify the sender - maybe middleware? - Added bug looks like shit right now codewise
     // TODO: Check if we actually want to join the pool - based on the compute pool var that we set on cmd startup
     // TODO: Start heartbeat sending incl. state store logic
     // TODO: Check for hardcoded values on orchestrator side
-    // TODO: Fix redis setup on provider side 
+    // TODO: Fix redis setup on provider side
 
     // Future Questions:
     // TODO: What happens when a compute pools switches to be finished?
-
 
     let invite_bytes = hex::decode(invite.invite.clone()).unwrap();
     let contracts = &app_state.contracts;
