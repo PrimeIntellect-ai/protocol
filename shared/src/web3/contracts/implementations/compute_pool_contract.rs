@@ -1,10 +1,7 @@
-use crate::web3::contracts::constants::addresses::{
-    AI_TOKEN_ADDRESS, COMPUTE_POOL_ADDRESS, PRIME_NETWORK_ADDRESS,
-};
+use crate::web3::contracts::constants::addresses::COMPUTE_POOL_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
 use crate::web3::contracts::structs::compute_pool::{PoolInfo, PoolStatus};
 use crate::web3::wallet::Wallet;
-use alloy::dyn_abi::DynSolType;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, FixedBytes, Uint, U256, U8};
 
@@ -71,21 +68,6 @@ impl ComputePool {
         Ok(pool_info)
     }
 
-    pub async fn start_compute_pool(
-        &self,
-        pool_id: U256,
-    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        let result = self
-            .instance
-            .instance()
-            .function("startComputePool", &[pool_id.into()])?
-            .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(result)
-    }
-
     pub async fn join_compute_pool(
         &self,
         pool_id: U256,
@@ -122,6 +104,47 @@ impl ComputePool {
             .watch()
             .await?;
         println!("Result: {:?}", result);
+        Ok(result)
+    }
+
+    pub async fn create_compute_pool(
+        &self,
+        domain_id: U256,
+        compute_manager_key: Address,
+        pool_name: String,
+        pool_data_uri: String,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let result = self
+            .instance
+            .instance()
+            .function(
+                "createComputePool",
+                &[
+                    domain_id.into(),
+                    compute_manager_key.into(),
+                    pool_name.into(),
+                    pool_data_uri.into(),
+                ],
+            )?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn start_compute_pool(
+        &self,
+        pool_id: U256,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let result = self
+            .instance
+            .instance()
+            .function("startComputePool", &[pool_id.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
         Ok(result)
     }
 }

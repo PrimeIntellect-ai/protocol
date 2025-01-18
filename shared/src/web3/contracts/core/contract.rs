@@ -5,14 +5,19 @@ use alloy::{
     primitives::Address,
     transports::http::{Client, Http},
 };
+
 pub struct Contract {
     instance: ContractInstance<Http<Client>, WalletProvider, Ethereum>,
+    provider: WalletProvider,
 }
 
 impl Contract {
     pub fn new(address: Address, wallet: &Wallet, abi_file_path: &str) -> Self {
         let instance = Self::parse_abi(abi_file_path, wallet, address);
-        Self { instance }
+        Self {
+            instance,
+            provider: wallet.provider.clone(),
+        }
     }
 
     fn parse_abi(
@@ -47,5 +52,9 @@ impl Contract {
 
     pub fn instance(&self) -> &ContractInstance<Http<Client>, WalletProvider, Ethereum> {
         &self.instance
+    }
+
+    pub fn provider(&self) -> &WalletProvider {
+        &self.provider
     }
 }

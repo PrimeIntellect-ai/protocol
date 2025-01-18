@@ -9,23 +9,25 @@ use url::Url;
 
 #[derive(Parser)]
 struct Args {
-    /// Domain name to create
+    /// Domain ID to create the compute pool for
     #[arg(short = 'd', long)]
-    domain_name: String,
+    domain_id: U256,
 
-    /// Validation logic address
-    #[arg(
-        short = 'v',
-        long,
-        default_value = "0x0000000000000000000000000000000000000000"
-    )]
-    validation_logic: String,
+    /// Compute manager key address
+    #[arg(short = 'm', long)]
+    compute_manager_key: String,
 
-    /// Domain URI
+    /// Pool name
+    #[arg(short = 'n', long)]
+    pool_name: String,
+
+    /// Pool data URI
     #[arg(short = 'u', long)]
-    domain_uri: String,
+    pool_data_uri: String,
 
     /// Private key for transaction signing
+    /// The address of this key will be the creator of the compute pool
+    /// They are the only one who can actually set the pool to active
     #[arg(short = 'k', long)]
     key: String,
 
@@ -48,17 +50,20 @@ async fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    let domain_name = args.domain_name.clone();
-    let validation_logic = Address::from_str(&args.validation_logic).unwrap();
-    let domain_uri = args.domain_uri.clone();
+    let domain_id = args.domain_id;
+    let compute_manager_key = Address::from_str(&args.compute_manager_key).unwrap();
+    let pool_name = args.pool_name.clone();
+    let pool_data_uri = args.pool_data_uri.clone();
 
     let tx = contracts
-        .prime_network
-        .create_domain(domain_name, validation_logic, domain_uri)
+        .compute_pool
+        .create_compute_pool(domain_id, compute_manager_key, pool_name, pool_data_uri)
         .await;
-    println!("Creating domain: {}", args.domain_name);
     println!("Transaction: {:?}", tx);
 
-    // TODO: Should print actual domain id here
+    // TODO: Get this pools id and show pool info
+    //let pool_info = contracts.compute_pool.get_pool_info(U256::from(0)).await;
+    //println!("Pool info: {:?}", pool_info);
+
     Ok(())
 }

@@ -3,6 +3,7 @@ use crate::web3::contracts::core::contract::Contract;
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, FixedBytes, U256};
+use alloy::providers::Provider;
 
 pub struct PrimeNetworkContract {
     pub instance: Contract,
@@ -96,6 +97,7 @@ impl PrimeNetworkContract {
             .await?
             .watch()
             .await?;
+
         Ok(create_domain_tx)
     }
 }
