@@ -21,17 +21,12 @@ transfer-eth-to-pool-owner:
 	cargo run -p dev-utils --example transfer_eth -- --address $${POOL_OWNER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
 
 create-domain:
-	@read -p "Enter domain name: " DOMAIN_NAME; \
-	read -p "Enter domain URI: " DOMAIN_URI; \
 	set -a; source .env; set +a; \
-	cargo run -p dev-utils --example create_domain -- --domain-name "$$DOMAIN_NAME" --domain-uri "$$DOMAIN_URI" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-default_domain}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
 
 create-compute-pool:
-	@read -p "Enter domain ID: " DOMAIN_ID; \
-	read -p "Enter pool name: " POOL_NAME; \
-	read -p "Enter pool data URI: " POOL_DATA_URI; \
 	set -a; source .env; set +a; \
-	cargo run -p dev-utils --example compute_pool -- --domain-id "$$DOMAIN_ID" --compute-manager-key "$$POOL_OWNER_ADDRESS" --pool-name "$$POOL_NAME" --pool-data-uri "$$POOL_DATA_URI" --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL}
+	cargo run -p dev-utils --example compute_pool -- --domain-id "$${DOMAIN_ID:-0}" --compute-manager-key "$${POOL_OWNER_ADDRESS}" --pool-name "$${POOL_NAME:-default_pool}" --pool-data-uri "$${POOL_DATA_URI:-http://default.pool.data}" --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL}
 
 setup: 
 	make set-min-stake-amount
@@ -56,4 +51,3 @@ watch-miner:
 watch-validator:
 	set -a; source .env; set +a; \
 	cargo watch -w validator/src -x "run --bin validator"
-
