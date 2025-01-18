@@ -14,7 +14,7 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use url::Url;
-
+use crate::operations::provider::ProviderError;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -25,10 +25,6 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     Run {
-        /// Subnet ID to run the miner on
-        #[arg(long)]
-        subnet_id: String,
-
         /// Wallet private key (as a hex string)
         #[arg(long)]
         private_key_provider: String,
@@ -92,7 +88,6 @@ pub fn execute_command(command: &Commands) {
         }
 
         Commands::Run {
-            subnet_id: _,
             private_key_provider,
             private_key_node,
             port,
@@ -179,10 +174,29 @@ pub fn execute_command(command: &Commands) {
                 .unwrap();
             Console::info("💰 Balance", &format!("{:?}", balance));
 
-            if let Err(e) = runtime.block_on(provider_ops.register_provider()) {
-                Console::error(&format!("❌ Failed to register provider: {}", e));
+            let mut attempts = 0;
+            let max_attempts = 10; 
+            while attempts < max_attempts {
+                let spinner = Console::spinner("Registering provider...");
+                if let Err(e) = runtime.block_on(provider_ops.register_provider()) {
+                    spinner.finish_and_clear(); // Finish spinner before logging error
+                    if let ProviderError::NotWhitelisted = e {
+                        Console::error("❌ Provider not whitelisted, retrying in 15 seconds...");
+                        std::thread::sleep(std::time::Duration::from_secs(15));
+                        attempts += 1;
+                        continue; // Retry registration
+                    } else {
+                        Console::error(&format!("❌ Failed to register provider: {}", e));
+                        std::process::exit(1);
+                    }
+                }
+                spinner.finish_and_clear(); // Finish spinner if registration is successful
+                break; // Exit loop if registration is successful
+            };
+            if attempts >= max_attempts {
+                Console::error(&format!("❌ Failed to register provider after {} attempts", attempts));
                 std::process::exit(1);
-            }
+            };
 
             if let Err(e) = runtime.block_on(compute_node_ops.add_compute_node()) {
                 Console::error(&format!("❌ Failed to add compute node: {}", e));

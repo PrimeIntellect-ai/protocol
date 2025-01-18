@@ -1,21 +1,21 @@
 use crate::console::Console;
 use alloy::{
-    network::TransactionBuilder,
     primitives::{Address, U256},
-    signers::Signer,
 };
 use shared::web3::contracts::implementations::{
     ai_token_contract::AIToken, compute_registry_contract::ComputeRegistryContract,
     prime_network_contract::PrimeNetworkContract,
 };
+use std::fmt;
 use shared::web3::wallet::Wallet; // Import Console for logging
-
 pub struct ProviderOperations<'c> {
     wallet: &'c Wallet,
     compute_registry: &'c ComputeRegistryContract,
     ai_token: &'c AIToken,
     prime_network: &'c PrimeNetworkContract,
 }
+
+
 
 impl<'c> ProviderOperations<'c> {
     pub fn new(
@@ -32,14 +32,14 @@ impl<'c> ProviderOperations<'c> {
         }
     }
 
-    pub async fn register_provider(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn register_provider(&self) -> Result<(), ProviderError> {
         Console::section("🏗️ Registering Provider");
 
         let address = self.wallet.wallet.default_signer().address();
-        let balance: U256 = self.ai_token.balance_of(address).await?;
+        let balance: U256 = self.ai_token.balance_of(address).await.map_err(|_| ProviderError::Other)?;
 
         // Check if we are already provider
-        let provider = self.compute_registry.get_provider(address).await?;
+        let provider = self.compute_registry.get_provider(address).await.map_err(|_| ProviderError::Other)?;
 
         let provider_exists = provider.provider_address != Address::default();
 
@@ -54,33 +54,48 @@ impl<'c> ProviderOperations<'c> {
         if !provider_exists {
             let stake: U256 = U256::from(100);
             let spinner = Console::spinner("Approving AI Token");
-            let approve_tx = self.ai_token.approve(stake).await?;
+            let approve_tx = self.ai_token.approve(stake).await.map_err(|_| ProviderError::Other)?;
             Console::info("Transaction approved", &format!("{:?}", approve_tx));
             spinner.finish();
 
             let spinner = Console::spinner("Registering Provider");
-            let register_tx = self.prime_network.register_provider(stake).await?;
+            let register_tx = self.prime_network.register_provider(stake).await.map_err(|_| ProviderError::Other)?;
             spinner.finish();
             Console::success(format!("Provider registered: {:?}", register_tx).as_str());
         }
 
         // Get provider details again  - cleanup later
         let spinner = Console::spinner("Getting provider details");
-        let provider = self.compute_registry.get_provider(address).await?;
+        let provider = self.compute_registry.get_provider(address).await.map_err(|_| ProviderError::Other)?;
         spinner.finish();
         Console::info("Is whitelisted", &format!("{:?}", provider.is_whitelisted));
 
         let provider_exists = provider.provider_address != Address::default();
         if !provider_exists {
             Console::error("Provider could not be registered.");
-            std::process::exit(1);
+            return Err(ProviderError::Other);
         }
 
         if !provider.is_whitelisted {
-            Console::error("Provider is not whitelisted. Cannot proceed.");
-            std::process::exit(1);
+            return Err(ProviderError::NotWhitelisted);
         }
 
         Ok(())
     }
 }
+
+#[derive(Debug)]
+pub enum ProviderError {
+    NotWhitelisted,
+    Other,
+}
+
+impl fmt::Display for ProviderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotWhitelisted => write!(f, "Provider is not whitelisted"),
+            Self::Other => write!(f, "Provider could not be registered"),
+        }
+    }
+}
+

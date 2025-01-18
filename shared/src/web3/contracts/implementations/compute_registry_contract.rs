@@ -27,6 +27,7 @@ impl ComputeRegistryContract {
             .call()
             .await?;
 
+        println!("Provider response: {:?}", provider_response);
         // TODO: What if we do not have a provider?
         // TODO: Data incomplete - vec is currently empty
         let provider_tuple: &[DynSolValue] = provider_response.first().unwrap().as_tuple().unwrap();

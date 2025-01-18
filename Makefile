@@ -1,10 +1,14 @@
 
 .PHONY: setup pool domain fund
 
-mint-ai-tokens-to-provider:
-	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+reset-anvil:
+	anvil --reset
 
-setup-provider:
+set-min-stake-amount:
+	set -a; source .env; set +a; \
+	cargo run -p dev-utils --example set_min_stake_amount -- --min-stake-amount $${MIN_STAKE_AMOUNT} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+
+mint-ai-tokens-to-provider:
 	set -a; source .env; set +a; \
 	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
 
@@ -28,3 +32,28 @@ create-compute-pool:
 	read -p "Enter pool data URI: " POOL_DATA_URI; \
 	set -a; source .env; set +a; \
 	cargo run -p dev-utils --example compute_pool -- --domain-id "$$DOMAIN_ID" --compute-manager-key "$$POOL_OWNER_ADDRESS" --pool-name "$$POOL_NAME" --pool-data-uri "$$POOL_DATA_URI" --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL}
+
+setup: 
+	make set-min-stake-amount
+	make mint-ai-tokens-to-provider
+	make transfer-eth-to-provider
+	make transfer-eth-to-pool-owner
+	make create-domain
+	make create-compute-pool
+
+whitelist-provider:
+	set -a; source .env; set +a; \
+	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
+
+watch-discovery:
+	# TODO - find proper way of passing in the env 
+	docker-compose up --env-file .env discovery
+
+watch-miner:
+	set -a; source .env; set +a; \
+	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8090 --external-ip 0.0.0.0 --compute-pool-id 0"
+
+watch-validator:
+	set -a; source .env; set +a; \
+	cargo watch -w validator/src -x "run --bin validator"
+

@@ -14,8 +14,8 @@ export const registerNode = async (address: string, nodeData: ComputeNode) => {
   const lastSeen = await getLastSeen(address);
   const now = Date.now();
   /**
-   * Temp disabling this until we have proper error handling on the client side  
-   * We should just share the data we currently have and the client can 
+   * Temp disabling this until we have proper error handling on the client side
+   * We should just share the data we currently have and the client can
    * then compare with local state. If state matches client simply continues
    */
 
