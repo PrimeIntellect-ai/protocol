@@ -50,4 +50,15 @@ impl AIToken {
 
         Ok(tx)
     }
+    pub async fn mint(&self, to: Address, amount: U256) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let tx = self
+            .instance
+            .instance()
+            .function("mint", &[to.into(), amount.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        Ok(tx)
+    }
 }

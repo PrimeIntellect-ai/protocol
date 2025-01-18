@@ -20,3 +20,7 @@
 # OS specific files
 .DS_Store
 Thumbs.db
+
+/private/
+
+.env
