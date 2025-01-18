@@ -65,6 +65,7 @@ fn main() {
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
+        .with_compute_pool()
         .build()
         .unwrap();
 

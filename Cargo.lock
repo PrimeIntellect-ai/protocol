@@ -3471,6 +3471,7 @@ dependencies = [
  "actix-web",
  "alloy",
  "bollard",
+ "bytes",
  "cargo-watch",
  "clap 4.5.23",
  "colored",
@@ -3876,6 +3877,7 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "anyhow",
+ "hex",
  "redis",
  "reqwest",
  "serde",

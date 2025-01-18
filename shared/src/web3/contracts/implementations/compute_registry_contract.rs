@@ -26,8 +26,9 @@ impl ComputeRegistryContract {
             .function("getProvider", &[address.into()])?
             .call()
             .await?;
-        // TODO: What if we do not have a provider?
 
+        // TODO: What if we do not have a provider?
+        // TODO: Data incomplete - vec is currently empty
         let provider_tuple: &[DynSolValue] = provider_response.first().unwrap().as_tuple().unwrap();
         let provider_address: Address = provider_tuple[0].as_address().unwrap();
         let is_whitelisted: bool = provider_tuple[1].as_bool().unwrap();

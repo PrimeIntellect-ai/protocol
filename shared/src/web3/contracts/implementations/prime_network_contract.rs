@@ -61,7 +61,17 @@ impl PrimeNetworkContract {
         provider_address: Address,
         node_address: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        let validate_node_tx = self.instance.instance().function("validateNode", &[provider_address.into(), node_address.into()])?.send().await?.watch().await?;
+        let validate_node_tx = self
+            .instance
+            .instance()
+            .function(
+                "validateNode",
+                &[provider_address.into(), node_address.into()],
+            )?
+            .send()
+            .await?
+            .watch()
+            .await?;
         Ok(validate_node_tx)
     }
 }

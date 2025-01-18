@@ -5,7 +5,9 @@ mod types;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
 use crate::store::redis::RedisStore;
+use alloy::primitives::U256;
 use anyhow::Result;
+use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::env;
 use url::Url;
@@ -13,6 +15,7 @@ use url::Url;
 #[tokio::main]
 async fn main() -> Result<()> {
     let compute_pool_id = 0;
+    let domain_id = 0;
     let coordinator_key = env::var("COORDINATOR_PRIVATE_KEY").unwrap();
     let rpc_url = "http://localhost:8545";
 
@@ -22,9 +25,21 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         });
 
+    let contracts = ContractBuilder::new(&coordinator_wallet)
+        .with_compute_registry()
+        .with_ai_token()
+        .with_prime_network()
+        .with_compute_pool()
+        .build()?;
+
+    let tx = contracts
+        .compute_pool
+        .start_compute_pool(U256::from(compute_pool_id))
+        .await;
+    println!("Tx: {:?}", tx);
     let store = RedisStore::new("redis://localhost:6379");
-    let monitor = DiscoveryMonitor::new(store.clone(), coordinator_wallet, &compute_pool_id);
-    let inviter = NodeInviter::new(store.clone());
+    let monitor = DiscoveryMonitor::new(store.clone(), &coordinator_wallet, compute_pool_id);
+    let inviter = NodeInviter::new(store.clone(), &coordinator_wallet, compute_pool_id, domain_id);
 
     tokio::try_join!(monitor.run(), inviter.run())?;
     Ok(())

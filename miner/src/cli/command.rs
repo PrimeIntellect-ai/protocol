@@ -12,7 +12,8 @@ use clap::{Parser, Subcommand};
 use colored::*;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
-use url::Url; // Import Console for logging
+use std::sync::Arc;
+use url::Url;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -104,34 +105,38 @@ pub fn execute_command(command: &Commands) {
             /*
              Initialize Wallet instances
             */
-            let provider_wallet_instance =
+            let provider_wallet_instance = Arc::new(
                 match Wallet::new(private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         Console::error(&format!("❌ Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
-                };
+                });
 
-            let node_wallet_instance =
+            let node_wallet_instance = Arc::new(
                 match Wallet::new(private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         Console::error(&format!("❌ Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
-                };
+                }
+            );
 
             /*
              Initialize dependencies - services, contracts, operations
             */
             let runtime = tokio::runtime::Runtime::new().unwrap();
-            let contracts = ContractBuilder::new(&provider_wallet_instance)
-                .with_compute_registry()
-                .with_ai_token()
-                .with_prime_network()
-                .build()
-                .unwrap();
+            let contracts = Arc::new(
+                ContractBuilder::new(&provider_wallet_instance)
+                    .with_compute_registry()
+                    .with_ai_token()
+                    .with_prime_network()
+                    .with_compute_pool()
+                    .build()
+                    .unwrap(),
+            );
 
             let provider_ops = ProviderOperations::new(
                 &provider_wallet_instance,
@@ -194,7 +199,8 @@ pub fn execute_command(command: &Commands) {
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             Console::info("🌐 Starting endpoint service", "");
 
-            if let Err(err) = runtime.block_on(start_server(external_ip, *port)) {
+            if let Err(err) = runtime.block_on(start_server(external_ip, *port, contracts.clone(), node_wallet_instance.clone(), provider_wallet_instance.clone()))
+            {
                 Console::error(&format!("❌ Failed to start server: {}", err));
                 std::process::exit(1);
             }

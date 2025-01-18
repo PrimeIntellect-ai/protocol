@@ -10,18 +10,18 @@ use shared::web3::wallet::Wallet;
 use std::time::Duration;
 use tokio::time::interval;
 
-pub struct DiscoveryMonitor {
+pub struct DiscoveryMonitor<'b> {
     store: RedisStore,
-    coordinator_wallet: Wallet,
+    coordinator_wallet: &'b Wallet,
     compute_pool_id: u32,
 }
 
-impl DiscoveryMonitor {
-    pub fn new(store: RedisStore, coordinator_wallet: Wallet, compute_pool_id: &u32) -> Self {
+impl<'b> DiscoveryMonitor<'b> {
+    pub fn new(store: RedisStore, coordinator_wallet: &'b Wallet, compute_pool_id: u32) -> Self {
         Self {
             store,
             coordinator_wallet,
-            compute_pool_id: compute_pool_id.clone(),
+            compute_pool_id,
         }
     }
 

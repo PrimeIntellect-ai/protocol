@@ -8,6 +8,7 @@ pub struct Node {
     pub address: Address,
     #[serde(rename = "ipAddress")]
     pub ip_address: String,
+    pub port: u16,
     #[serde(rename = "status")]
     pub status: Option<NodeStatus>,
 }

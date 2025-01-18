@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use alloy::primitives::Address;
+use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ComputeSpecs {
     pub gpu: Option<GpuSpecs>,

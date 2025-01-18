@@ -75,6 +75,8 @@ async function main() {
   }
   const pool = await computePool.getComputePool(0)
   console.log('Pool:', pool)
+
+  // Bigger bug here in script - pool is created by federator
   return;
   const poolTx = await computePool.createComputePool(
     domain.domainId,

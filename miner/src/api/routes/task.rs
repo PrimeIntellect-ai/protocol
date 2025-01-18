@@ -1,3 +1,4 @@
+use super::super::models::task::{CreateTaskRequest, ListTasksResponse, TaskResponse};
 use super::types::ErrorResponse;
 use crate::docker::handler::DockerHandler;
 use actix_web::{
@@ -8,54 +9,6 @@ use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use uuid;
 use validator::Validate;
-
-/// Request payload for creating a new task
-#[derive(Deserialize, Serialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct CreateTaskRequest {
-    /// Task name
-    #[validate(length(
-        min = 1,
-        max = 256,
-        message = "Task name must be between 1 and 256 characters"
-    ))]
-    name: String,
-    /// Docker image to use
-    #[validate(length(min = 1, message = "Image name cannot be empty"))]
-    image: String,
-
-    /// Task parameters (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    parameters: Option<std::collections::HashMap<String, String>>,
-
-    /// Docker environment variables (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    env_vars: Option<std::collections::HashMap<String, String>>,
-}
-
-/// Response structure for task operations
-#[derive(Deserialize, Serialize)]
-pub struct TaskResponse {
-    /// Unique task identifier
-    id: String,
-    /// Task name
-    name: String,
-    /// Current status of the task (pending, running, completed, failed)
-    status: String,
-    /// Docker image used
-    image: String,
-    /// Creation time of the task
-    created: i64,
-    /// Optional error message if task failed
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-}
-
-/// Response structure for listing tasks
-#[derive(Serialize)]
-pub struct ListTasksResponse {
-    tasks: Vec<TaskResponse>,
-}
 
 /// Create a new task
 ///
@@ -109,6 +62,7 @@ async fn create_task(
         }),
     }
 }
+
 /// Get status of a task
 ///
 /// # Path Parameters

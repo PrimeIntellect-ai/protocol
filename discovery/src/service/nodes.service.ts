@@ -13,9 +13,15 @@ export const registerNode = async (address: string, nodeData: ComputeNode) => {
 
   const lastSeen = await getLastSeen(address);
   const now = Date.now();
-  if (lastSeen !== null && now - lastSeen < 5 * 60 * 1000) {
+  /**
+   * Temp disabling this until we have proper error handling on the client side  
+   * We should just share the data we currently have and the client can 
+   * then compare with local state. If state matches client simply continues
+   */
+
+  /*if (lastSeen !== null && now - lastSeen < 5 * 60 * 1000) {
     throw new Error("Please wait 5 minutes between updates");
-  }
+  }*/
 
   await redis.set(
     `node:${address}`,
