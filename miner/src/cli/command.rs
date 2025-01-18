@@ -2,6 +2,7 @@ use crate::checks::hardware::HardwareChecker;
 use crate::checks::software::software_check;
 use crate::console::Console;
 use crate::operations::compute_node::ComputeNodeOperations;
+use crate::operations::provider::ProviderError;
 use crate::operations::provider::ProviderOperations;
 use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
@@ -14,7 +15,6 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use url::Url;
-use crate::operations::provider::ProviderError;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -175,7 +175,7 @@ pub fn execute_command(command: &Commands) {
             Console::info("💰 Balance", &format!("{:?}", balance));
 
             let mut attempts = 0;
-            let max_attempts = 10; 
+            let max_attempts = 10;
             while attempts < max_attempts {
                 let spinner = Console::spinner("Registering provider...");
                 if let Err(e) = runtime.block_on(provider_ops.register_provider()) {
@@ -192,9 +192,12 @@ pub fn execute_command(command: &Commands) {
                 }
                 spinner.finish_and_clear(); // Finish spinner if registration is successful
                 break; // Exit loop if registration is successful
-            };
+            }
             if attempts >= max_attempts {
-                Console::error(&format!("❌ Failed to register provider after {} attempts", attempts));
+                Console::error(&format!(
+                    "❌ Failed to register provider after {} attempts",
+                    attempts
+                ));
                 std::process::exit(1);
             };
 

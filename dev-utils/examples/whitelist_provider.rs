@@ -41,7 +41,6 @@ async fn main() -> Result<()> {
         .whitelist_provider(provider_address)
         .await;
     println!("Whitelisting provider: {}", args.provider_address);
-    
 
     Ok(())
 }

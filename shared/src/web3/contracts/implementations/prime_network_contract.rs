@@ -101,7 +101,10 @@ impl PrimeNetworkContract {
         Ok(create_domain_tx)
     }
 
-    pub async fn set_stake_minimum(&self, min_stake_amount: U256) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+    pub async fn set_stake_minimum(
+        &self,
+        min_stake_amount: U256,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         let set_stake_minimum_tx = self
             .instance
             .instance()
@@ -113,7 +116,10 @@ impl PrimeNetworkContract {
         Ok(set_stake_minimum_tx)
     }
 
-    pub async fn whitelist_provider(&self, provider_address: Address) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+    pub async fn whitelist_provider(
+        &self,
+        provider_address: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         let whitelist_provider_tx = self
             .instance
             .instance()
@@ -123,7 +129,11 @@ impl PrimeNetworkContract {
             .watch()
             .await?;
 
-        let receipt = self.instance.provider().get_transaction_receipt(whitelist_provider_tx).await?;
+        let receipt = self
+            .instance
+            .provider()
+            .get_transaction_receipt(whitelist_provider_tx)
+            .await?;
         println!("Receipt: {:?}", receipt);
 
         Ok(whitelist_provider_tx)
