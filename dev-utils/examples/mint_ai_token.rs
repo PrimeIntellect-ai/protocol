@@ -10,16 +10,20 @@ use url::Url;
 #[derive(Parser)]
 struct Args {
     /// Address to mint tokens to
-    #[arg(short, long)]
+    #[arg(short = 'a', long)]
     address: String,
 
     /// Private key for transaction signing
-    #[arg(short, long)]
+    #[arg(short = 'k', long)]
     key: String,
 
     /// RPC URL
-    #[arg(short, long)]
+    #[arg(short = 'r', long)]
     rpc_url: String,
+
+    /// Amount to mint 
+    #[arg(short = 'm', long, default_value = "1000")]
+    amount: u64,
 }
 
 #[tokio::main]
@@ -37,7 +41,7 @@ async fn main() -> Result<()> {
         .unwrap();
 
     let address = Address::from_str(&args.address).unwrap();
-    let amount = U256::from(1000);
+    let amount = U256::from(args.amount);
     let tx = contracts.ai_token.mint(address, amount).await;
     println!("Minting to address: {}", args.address);
     println!("Transaction: {:?}", tx);
