@@ -6,7 +6,6 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use log::{debug, info};
-use serde::{Deserialize, Serialize};
 use uuid;
 use validator::Validate;
 

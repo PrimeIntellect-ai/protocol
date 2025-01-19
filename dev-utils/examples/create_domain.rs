@@ -1,5 +1,4 @@
 use alloy::primitives::Address;
-use alloy::primitives::U256;
 use clap::Parser;
 use eyre::Result;
 use shared::web3::contracts::core::builder::ContractBuilder;

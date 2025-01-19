@@ -1,23 +1,21 @@
 // src/console/logger.rs
 use colored::*;
-use console::{style, Term};
-use indicatif::ProgressBar;
-use std::io::{self, Write};
+use console::style;
 use std::time::Duration;
 pub struct Console;
 
 impl Console {
     pub fn section(title: &str) {
-        println!("");
+        println!();
         println!(
             "{}",
-            style(format!("─── {} ", title)).bold().blue().to_string()
+            style(format!("─── {} ", title)).bold().blue()
         );
     }
 
     pub fn title(text: &str) {
-        println!("");
-        println!("│ {}", style(text).bold().white().to_string());
+        println!();
+        println!("│ {}", style(text).bold().white());
     }
 
     pub fn info(label: &str, value: &str) {

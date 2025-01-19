@@ -1,4 +1,3 @@
-use alloy::primitives::U256;
 use serde::Deserialize;
 use serde::Serialize;
 use validator::Validate;

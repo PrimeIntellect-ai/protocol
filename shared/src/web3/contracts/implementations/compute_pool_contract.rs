@@ -3,7 +3,7 @@ use crate::web3::contracts::core::contract::Contract;
 use crate::web3::contracts::structs::compute_pool::{PoolInfo, PoolStatus};
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
-use alloy::primitives::{Address, FixedBytes, Uint, U256, U8};
+use alloy::primitives::{Address, FixedBytes, U256};
 
 pub struct ComputePool {
     pub instance: Contract,

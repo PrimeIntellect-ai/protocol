@@ -51,3 +51,7 @@ watch-miner:
 watch-validator:
 	set -a; source .env; set +a; \
 	cargo watch -w validator/src -x "run --bin validator"
+
+watch-orchestrator:
+	set -a; source .env; set +a; \
+	cargo watch -w orchestrator/src -x "run --bin orchestrator"

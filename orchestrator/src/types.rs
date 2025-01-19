@@ -1,5 +1,4 @@
 use alloy::primitives::Address;
-use redis::Client;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -16,7 +16,7 @@ use url::Url;
 async fn main() -> Result<()> {
     let compute_pool_id = 0;
     let domain_id = 0;
-    let coordinator_key = env::var("COORDINATOR_PRIVATE_KEY").unwrap();
+    let coordinator_key = env::var("POOL_OWNER_PRIVATE_KEY").unwrap();
     let rpc_url = "http://localhost:8545";
 
     let coordinator_wallet = Wallet::new(&coordinator_key, Url::parse(rpc_url).unwrap())

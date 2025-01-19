@@ -84,7 +84,7 @@ impl<'a> NodeInviter<'a> {
         for node in nodes {
             println!("Node: {:?}", node);
             let node_url = format!("http://{}:{}", node.ip_address, node.port);
-            let invite_path = format!("/invite");
+            let invite_path = "/invite".to_string();
             let invite_url = format!("{}{}", node_url, invite_path);
 
             let invite_signature = self._generate_invite(node).await?;

@@ -1,19 +1,13 @@
 use crate::api::models::invite::InviteRequest;
 use crate::api::server::AppState;
 use actix_web::{
-    web::{self, delete, get, post, Data},
-    HttpRequest, HttpResponse, Scope,
+    web::{self, post, Data}, HttpResponse, Scope,
 };
-use alloy::primitives::Address;
 use alloy::primitives::FixedBytes;
-use alloy::primitives::PrimitiveSignature;
 use alloy::primitives::U256;
 use hex;
-use log::{debug, info};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
-use std::str::FromStr;
 use validator::Validate;
 
 pub async fn invite_node(

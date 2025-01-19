@@ -1,8 +1,7 @@
 use crate::api::middleware::validate_signature::ValidateSignature;
-use crate::api::middleware::validate_signature::ValidateSignatureMiddleware;
 use crate::api::routes::invite::invite_routes;
 use crate::api::routes::task::task_routes;
-use actix_web::{middleware, web::Data, App, Error, HttpServer};
+use actix_web::{middleware, web::Data, App, HttpServer};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc; // Import Arc for shared ownership
@@ -13,7 +12,6 @@ pub struct AppState {
     pub node_wallet: Arc<Wallet>,
     pub provider_wallet: Arc<Wallet>,
 }
-use actix_web::{dev::Service, web, HttpRequest, HttpResponse, Result};
 
 pub async fn start_server(
     host: &str,
