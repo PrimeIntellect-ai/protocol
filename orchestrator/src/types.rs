@@ -9,11 +9,14 @@ pub struct Node {
     pub ip_address: String,
     pub port: u16,
     #[serde(rename = "status")]
-    pub status: Option<NodeStatus>,
+    pub status: NodeStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NodeStatus {
     Discovered,
-    Invited,
+    WaitingForHeartbeat,
+    Healthy,
+    Unhealthy,
+    Dead,
 }

@@ -45,6 +45,8 @@ export async function getValidationStatus(
   computeNodeAddress: string,
   providerAddress: string,
 ): Promise<{ isActive: boolean | null; isValidated: boolean | null }> {
+  console.log("Getting validation status for node: ", computeNodeAddress);
+  console.log("Provider address: ", providerAddress);
   if (!config.contracts.computeRegistry) {
     console.error("Invalid contract address for computeRegistry");
     throw new Error("Invalid contract address");

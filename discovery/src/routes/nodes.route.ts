@@ -6,7 +6,6 @@ import {
 } from "../middleware/auth";
 import { ApiResponse } from "../schemas/apiResponse.schema";
 import { ComputeNode } from "../schemas/node.schema";
-import { getValidationStatus } from "../service/contract.service";
 import {
   getAllNodes,
   getNode,
@@ -200,24 +199,10 @@ router.get<{}, ApiResponse<ComputeNode[]>>(
         return;
       }
 
-      const nodesWithValidationStatus = await Promise.all(
-        nodes.map(async (node) => {
-          const validationStatus = await getValidationStatus(
-            node.providerAddress ? node.id! : "",
-            node.providerAddress || "",
-          );
-          return {
-            ...node,
-            isActive: validationStatus.isActive,
-            isValidated: validationStatus.isValidated,
-          };
-        }),
-      );
-
       res.status(200).json({
         success: true,
         message: "Nodes retrieved successfully for validator",
-        data: nodesWithValidationStatus,
+        data: nodes,
       });
     } catch (error) {
       next(error);

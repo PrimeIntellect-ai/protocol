@@ -1,3 +1,4 @@
+use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::software::software_check;
 use crate::console::Console;
@@ -6,7 +7,6 @@ use crate::operations::provider::ProviderError;
 use crate::operations::provider::ProviderOperations;
 use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
-use crate::api::server::start_server;
 use clap::{Parser, Subcommand};
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;

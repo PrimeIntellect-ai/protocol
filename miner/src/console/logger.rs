@@ -7,10 +7,7 @@ pub struct Console;
 impl Console {
     pub fn section(title: &str) {
         println!();
-        println!(
-            "{}",
-            style(format!("─── {} ", title)).bold().blue()
-        );
+        println!("{}", style(format!("─── {} ", title)).bold().blue());
     }
 
     pub fn title(text: &str) {

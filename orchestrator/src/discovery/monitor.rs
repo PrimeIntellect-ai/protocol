@@ -1,12 +1,15 @@
 use crate::store::redis::RedisStore;
 use crate::types::Node;
+use crate::types::NodeStatus;
 use alloy::primitives::hex;
+use alloy::primitives::Address;
 use alloy::signers::Signer;
 use anyhow::Error;
 use anyhow::Result;
 use redis::Commands;
 use serde_json;
 use shared::web3::wallet::Wallet;
+use std::str::FromStr;
 use std::time::Duration;
 use tokio::time::interval;
 
@@ -76,7 +79,33 @@ impl<'b> DiscoveryMonitor<'b> {
         let response_text: String = response.text().await?;
         println!("Response: {:?}", response_text);
         let parsed_response: serde_json::Value = serde_json::from_str(&response_text)?;
-        let nodes: Vec<Node> = serde_json::from_value(parsed_response["data"].clone())?;
+        let nodes: Vec<Node> = parsed_response["data"]
+            .as_array()
+            .ok_or_else(|| Error::msg("Invalid data format"))?
+            .iter()
+            .filter(|node_json| node_json["isValidated"].as_bool() == Some(true))
+            .map(|node_json| {
+                let id = node_json["id"]
+                    .as_str()
+                    .ok_or_else(|| Error::msg("Missing id"))?;
+                let ip_address = node_json["ipAddress"]
+                    .as_str()
+                    .ok_or_else(|| Error::msg("Missing ipAddress"))?;
+                let port: u16 = node_json["port"]
+                    .as_u64()
+                    .ok_or_else(|| Error::msg("Missing port"))?
+                    as u16;
+                let address: Address =
+                    Address::from_str(id).map_err(|_| Error::msg("Invalid address format"))?;
+
+                Ok(Node {
+                    address,
+                    ip_address: ip_address.to_string(),
+                    port,
+                    status: NodeStatus::Discovered,
+                })
+            })
+            .collect::<Result<Vec<Node>, anyhow::Error>>()?;
         println!("Nodes: {:?}", nodes);
         Ok(nodes)
     }
@@ -85,7 +114,7 @@ impl<'b> DiscoveryMonitor<'b> {
         let mut con = self.store.client.get_connection()?;
         let nodes = self.fetch_nodes_from_discovery().await?;
         for node in &nodes {
-            println!("Node: {:?}", node.address);
+            println!("Node: {:?}", node);
             let key = format!("orchestrator:node:{}", node.address);
             let exists: Option<String> = con.get(&key)?;
             if exists.is_some() {

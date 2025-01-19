@@ -1,14 +1,16 @@
 use crate::api::models::invite::InviteRequest;
 use crate::api::server::AppState;
+use crate::console::Console;
 use actix_web::{
-    web::{self, post, Data}, HttpResponse, Scope,
+    web::{self, post, Data},
+    HttpResponse, Scope,
 };
 use alloy::primitives::FixedBytes;
 use alloy::primitives::U256;
 use hex;
 use serde_json::json;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
-use validator::Validate;
+use validator::Validate; // Importing the Console for logging
 
 pub async fn invite_node(
     invite: web::Json<InviteRequest>,
@@ -44,7 +46,7 @@ pub async fn invite_node(
 
     let pool_info = contracts.compute_pool.get_pool_info(pool_id).await.unwrap();
     if let PoolStatus::PENDING = pool_info.status {
-        println!("Pool is pending - Invite is invalid");
+        Console::error("Pool is pending - Invite is invalid");
         return HttpResponse::BadRequest().json(json!({
             "error": "Pool is pending - Invite is invalid"
         }));
@@ -56,11 +58,11 @@ pub async fn invite_node(
         .await
     {
         Ok(result) => {
-            println!("Successfully joined compute pool: {:?}", result);
-            println!("Starting to send heartbeats now.");
+            Console::success(&format!("Successfully joined compute pool: {:?}", result));
+            Console::info("Starting to send heartbeats now.", "");
         }
         Err(err) => {
-            println!("Error joining compute pool: {:?}", err);
+            Console::error(&format!("Error joining compute pool: {:?}", err));
             return HttpResponse::InternalServerError().json(json!({
                 "error": "Failed to join compute pool"
             }));

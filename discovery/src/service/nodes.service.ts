@@ -1,5 +1,6 @@
 import { redis } from "../config/redis";
 import { ComputeNodeSchema, type ComputeNode } from "../schemas/node.schema";
+import { getValidationStatus } from "./contract.service";
 
 // Function to register a node
 export const registerNode = async (address: string, nodeData: ComputeNode) => {
@@ -80,9 +81,13 @@ const _getNodes = async (
       if (!rawNode) return null;
 
       const node = JSON.parse(rawNode);
+      const address = key.replace("node:", "");
+      const validationStatus = await getValidationStatus(address, node.providerAddress || "");
       return {
-        id: key.replace("node:", ""),
+        id: address,
         ...node,
+        isActive: validationStatus.isActive,
+        isValidated: validationStatus.isValidated,
       } as ComputeNode;
     }),
   );
