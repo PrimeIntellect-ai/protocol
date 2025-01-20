@@ -29,9 +29,9 @@ pub enum HeartbeatError {
 impl HeartbeatService {
     pub fn new(interval: Duration, state_dir: Option<String>) -> Result<Arc<Self>, HeartbeatError> {
         let state: HeartbeatState = if state_dir.is_some() {
-             HeartbeatState::new(state_dir)
+            HeartbeatState::new(state_dir)
         } else {
-             HeartbeatState::new(None)
+            HeartbeatState::new(None)
         };
 
         let client = Client::builder()
