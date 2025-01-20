@@ -9,14 +9,14 @@ impl Console {
         println!();
         println!(
             "{}",
-            style(format!("╔═══════════════════════════════════╗"))
+            style("╔═══════════════════════════════════╗".to_string())
                 .bold()
                 .magenta()
         );
         println!("{}", style(format!("║  {}  ", title)).bold().cyan()); // Changed bright_cyan to cyan
         println!(
             "{}",
-            style(format!("╚═══════════════════════════════════╝"))
+            style("╚═══════════════════════════════════╝".to_string())
                 .bold()
                 .magenta()
         );
@@ -26,14 +26,14 @@ impl Console {
         println!();
         println!(
             "{}",
-            style(format!("╔═══════════════════════════════════╗"))
+            style("╔═══════════════════════════════════╗".to_string())
                 .bold()
                 .magenta()
         );
         println!("║ {}", style(text).bold().green()); // Changed bright_green to green
         println!(
             "{}",
-            style(format!("╚═══════════════════════════════════╝"))
+            style("╚═══════════════════════════════════╝".to_string())
                 .bold()
                 .magenta()
         );
