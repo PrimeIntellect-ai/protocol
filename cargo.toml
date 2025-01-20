@@ -1,3 +1,0 @@
-[workspace]
-members = ["miner", "validator", "shared", "orchestrator", "dev-utils"]
-resolver = "2"
