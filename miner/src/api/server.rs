@@ -24,6 +24,7 @@ pub async fn start_server(
     heartbeat_service: Arc<HeartbeatService>,
 ) -> std::io::Result<()> {
     println!("Starting server at http://{}:{}", host, port);
+    println!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
         contracts,
         node_wallet,
@@ -36,8 +37,6 @@ pub async fn start_server(
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
             .wrap(ValidateSignature)
-            // TODO: Add authentication middleware
-            // TODO: Add rate limiting middleware
             .service(task_routes())
             .service(invite_routes())
     })

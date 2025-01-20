@@ -8,13 +8,15 @@ use crate::operations::provider::ProviderError;
 use crate::operations::provider::ProviderOperations;
 use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
+use crate::TaskHandles;
 use clap::{Parser, Subcommand};
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio_util::sync::CancellationToken;
 use url::Url;
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -61,7 +63,11 @@ pub enum Commands {
     Check {},
 }
 
-pub fn execute_command(command: &Commands) {
+pub async fn execute_command(
+    command: &Commands,
+    cancellation_token: CancellationToken,
+    task_handles: TaskHandles,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match command {
         Commands::Check {} => {
             Console::section("🔍 PRIME MINER SYSTEM CHECK");
@@ -87,8 +93,7 @@ pub fn execute_command(command: &Commands) {
                 }
             }
             let _ = software_check::run_software_check();
-
-            std::process::exit(0);
+            Ok(())
         }
 
         Commands::Run {
@@ -128,7 +133,6 @@ pub fn execute_command(command: &Commands) {
             /*
              Initialize dependencies - services, contracts, operations
             */
-            let runtime = tokio::runtime::Runtime::new().unwrap();
             let contracts = Arc::new(
                 ContractBuilder::new(&provider_wallet_instance)
                     .with_compute_registry()
@@ -153,8 +157,12 @@ pub fn execute_command(command: &Commands) {
             );
 
             let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
-            let heartbeat_service =
-                HeartbeatService::new(Duration::from_secs(10), state_dir.clone());
+            let heartbeat_service = HeartbeatService::new(
+                Duration::from_secs(10),
+                state_dir.clone(),
+                cancellation_token.clone(),
+                task_handles.clone(),
+            );
 
             Console::info("═", &"═".repeat(50));
             // Steps:
@@ -176,20 +184,20 @@ pub fn execute_command(command: &Commands) {
             // TODO: Move to proper check
             let _ = software_check::run_software_check();
 
-            /*let balance = runtime
-                .block_on(provider_wallet_instance.get_balance())
-                .unwrap();
-            Console::info("💰 ETH Balance", &format!("{:?}", balance));*/
-
             let mut attempts = 0;
             let max_attempts = 10;
             while attempts < max_attempts {
                 let spinner = Console::spinner("Registering provider...");
-                if let Err(e) = runtime.block_on(provider_ops.register_provider()) {
+                if let Err(e) = provider_ops.register_provider().await {
                     spinner.finish_and_clear(); // Finish spinner before logging error
                     if let ProviderError::NotWhitelisted = e {
                         Console::error("❌ Provider not whitelisted, retrying in 15 seconds...");
-                        std::thread::sleep(std::time::Duration::from_secs(15));
+                        tokio::select! {
+                            _ = tokio::time::sleep(tokio::time::Duration::from_secs(15)) => {}
+                            _ = cancellation_token.cancelled() => {
+                                return Ok(());  // or return an error if you prefer
+                            }
+                        }
                         attempts += 1;
                         continue; // Retry registration
                     } else {
@@ -208,13 +216,12 @@ pub fn execute_command(command: &Commands) {
                 std::process::exit(1);
             };
 
-            if let Err(e) = runtime.block_on(compute_node_ops.add_compute_node()) {
+            if let Err(e) = compute_node_ops.add_compute_node().await {
                 Console::error(&format!("❌ Failed to add compute node: {}", e));
                 std::process::exit(1);
             }
 
-            if let Err(e) = runtime.block_on(discovery_service.upload_discovery_info(&node_config))
-            {
+            if let Err(e) = discovery_service.upload_discovery_info(&node_config).await {
                 Console::error(&format!("❌ Failed to upload discovery info: {}", e));
                 std::process::exit(1);
             }
@@ -224,49 +231,21 @@ pub fn execute_command(command: &Commands) {
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             Console::info("🌐 Starting endpoint service", "");
 
-            if let Err(err) = runtime.block_on(async {
-                // Create handlers for all signals we want to catch
-                let mut sig_term = signal(SignalKind::terminate()).unwrap();
-                let mut sig_int = signal(SignalKind::interrupt()).unwrap();
-                let mut sig_hup = signal(SignalKind::hangup()).unwrap();
-                let mut sig_quit = signal(SignalKind::quit()).unwrap();
-
+            if let Err(err) = {
                 let heartbeat_clone = heartbeat_service.unwrap().clone();
-                let server_future = start_server(
+                start_server(
                     external_ip,
                     *port,
                     contracts.clone(),
                     node_wallet_instance.clone(),
                     provider_wallet_instance.clone(),
                     heartbeat_clone.clone(),
-                );
-                tokio::select! {
-                    res = server_future => res,
-                    _ = sig_term.recv() => {
-                        log::info!("Received SIGTERM");
-                        heartbeat_clone.stop().await;
-                        Ok(())
-                    }
-                    _ = sig_int.recv() => {
-                        log::info!("Received SIGINT");
-                        heartbeat_clone.stop().await;
-                        Ok(())
-                    }
-                    _ = sig_hup.recv() => {
-                        log::info!("Received SIGHUP");
-                        heartbeat_clone.stop().await;
-                        Ok(())
-                    }
-                    _ = sig_quit.recv() => {
-                        log::info!("Received SIGQUIT");
-                        heartbeat_clone.stop().await;
-                        Ok(())
-                    }
-                }
-            }) {
+                )
+                .await
+            } {
                 Console::error(&format!("❌ Failed to start server: {}", err));
-                std::process::exit(1);
             }
+            Ok(())
         }
     }
 }

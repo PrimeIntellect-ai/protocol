@@ -69,10 +69,7 @@ impl ComputeRegistryContract {
                     Err("Node is not registered".into())
                 }
             }
-            Err(e) => {
-                println!("Expected failure when calling getNode: {}", e);
-                Err("Node is not registered".into())
-            }
+            Err(_) => Err("Node is not registered".into()),
         }
     }
 }

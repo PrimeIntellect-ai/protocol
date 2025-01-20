@@ -2104,6 +2104,7 @@ dependencies = [
  "eyre",
  "shared",
  "tokio",
+ "tokio-util",
  "url",
 ]
 
@@ -3534,6 +3535,7 @@ dependencies = [
  "sysinfo",
  "thiserror 2.0.11",
  "tokio",
+ "tokio-util",
  "toml",
  "url",
  "uuid",

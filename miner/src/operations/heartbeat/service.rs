@@ -1,22 +1,27 @@
 use super::state::HeartbeatState;
+use crate::TaskHandles;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::broadcast;
-use tokio::sync::broadcast::Sender;
 use tokio::time::{interval, Duration};
+use tokio_util::sync::CancellationToken;
+
 #[derive(Debug, Serialize)]
 struct HeartbeatRequest {}
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-struct HeartbeatResponse;
+struct HeartbeatResponse {
+    success: bool,
+}
 
 #[derive(Clone)]
 pub struct HeartbeatService {
     state: HeartbeatState,
     interval: Duration,
     client: Client,
-    shutdown: Sender<()>,
+    cancellation_token: CancellationToken,
+    task_handles: TaskHandles,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -27,7 +32,12 @@ pub enum HeartbeatError {
     InitFailed,
 }
 impl HeartbeatService {
-    pub fn new(interval: Duration, state_dir: Option<String>) -> Result<Arc<Self>, HeartbeatError> {
+    pub fn new(
+        interval: Duration,
+        state_dir: Option<String>,
+        cancellation_token: CancellationToken,
+        task_handles: TaskHandles,
+    ) -> Result<Arc<Self>, HeartbeatError> {
         let state: HeartbeatState = if state_dir.is_some() {
             HeartbeatState::new(state_dir)
         } else {
@@ -39,12 +49,12 @@ impl HeartbeatService {
             .build()
             .map_err(|_| HeartbeatError::InitFailed)?; // Adjusted to match the expected error type
 
-        let (shutdown, _) = broadcast::channel(1);
         Ok(Arc::new(Self {
             state,
             interval,
             client,
-            shutdown,
+            cancellation_token,
+            task_handles,
         }))
     }
 
@@ -54,12 +64,11 @@ impl HeartbeatService {
         }
 
         self.state.set_running(true, Some(endpoint)).await;
-        let mut shutdown_rx = self.shutdown.subscribe();
         let state = self.state.clone();
         let client = self.client.clone();
         let interval_duration = self.interval;
-
-        tokio::spawn(async move {
+        let cancellation_token = self.cancellation_token.clone();
+        let handle = tokio::spawn(async move {
             let mut interval = interval(interval_duration);
             loop {
                 tokio::select! {
@@ -77,11 +86,8 @@ impl HeartbeatService {
                             }
                         }
                     }
-                    result = shutdown_rx.recv() => {
-                        match result {
-                            Ok(_) => log::info!("Heartbeat service received shutdown signal"),
-                            Err(e) => log::error!("Shutdown channel error: {:?}", e),
-                        }
+                    _ = cancellation_token.cancelled() => {
+                        log::info!("Heartbeat service received cancellation signal");
                         state.set_running(false, None).await;
                         break;
                     }
@@ -89,11 +95,15 @@ impl HeartbeatService {
             }
             log::info!("Heartbeat service stopped");
         });
+
+        let mut task_handles = self.task_handles.lock().await;
+        task_handles.push(handle);
+
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn stop(&self) {
-        let _ = self.shutdown.send(());
         self.state.set_running(false, None).await;
     }
 
