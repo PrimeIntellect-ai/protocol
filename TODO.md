@@ -3,7 +3,7 @@
 - [ ] Latest state storing could make sense to simplify heartbeat dev
 - [ ] heartbeat loop and heartbeat api 
 - [ ] Heartbeat based status updater
-- [ ] Random dangling processes?
+- [x] Random dangling processes?
 - [ ] Bug overwriting nodes in redis
 - [ ] Signature verification currently allows access if you simply have a valid signature
 - [ ] Secure API for platform (manveer access)

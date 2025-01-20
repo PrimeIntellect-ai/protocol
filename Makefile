@@ -33,6 +33,11 @@ setup:
 	make create-domain
 	make create-compute-pool
 
+up:
+	tmuxinator start prime-dev
+down:
+	tmuxinator stop prime-dev
+
 whitelist-provider:
 	set -a; source .env; set +a; \
 	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}

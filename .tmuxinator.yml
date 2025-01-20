@@ -1,0 +1,11 @@
+name: prime-dev
+root: .
+
+windows:
+- services:
+      layout: even-horizontal
+      panes:
+        - docker-compose up
+        - sleep 10 && make setup && clear 
+        - sleep 20 && make watch-validator
+        - sleep 20 && make watch-orchestrator

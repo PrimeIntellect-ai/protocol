@@ -1,48 +1,43 @@
-# docker-compose.yml
 version: "3.8"
 
 networks:
   prime:
     driver: bridge
+    attachable: true  
+
+volumes:
+  redis-data:
 
 services:
   anvil:
     image: ghcr.io/foundry-rs/foundry:latest
-    command: anvil --host 0.0.0.0
+    entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545"]
     ports:
       - "8545:8545"
     networks:
       - prime
 
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - prime
+
   discovery:
-    extends:
-      file: ./discovery/docker-compose.yml
-      service: discovery
-    networks:
-      - prime
-
-  validator:
     build: 
-      context: .
-      dockerfile: Dockerfile.dev
-    command: cargo watch -x 'run --bin validator'
+      context: ./discovery
+    command: npm run dev
     volumes:
-      - .:/app
-    depends_on:
-      - anvil
-      - discovery
+      - ./discovery:/app
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RPC_URL=http://anvil:8545
+    ports:
+      - "8089:8089"
     networks:
       - prime
-
-  orchestrator:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    command: cargo watch -x 'run --bin orchestrator'
-    volumes:
-      - .:/app
     depends_on:
+      - redis
       - anvil
-      - discovery
-    networks:
-      - prime
