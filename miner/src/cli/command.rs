@@ -3,6 +3,7 @@ use crate::checks::hardware::HardwareChecker;
 use crate::checks::software::software_check;
 use crate::console::Console;
 use crate::operations::compute_node::ComputeNodeOperations;
+use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderError;
 use crate::operations::provider::ProviderOperations;
 use crate::operations::structs::node::NodeConfig;
@@ -11,6 +12,7 @@ use clap::{Parser, Subcommand};
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
+use std::time::Duration;
 use url::Url;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -145,6 +147,7 @@ pub fn execute_command(command: &Commands) {
             );
 
             let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
+            let heartbeat_service = HeartbeatService::new(Duration::from_secs(10));
 
             Console::info("═", &"═".repeat(50));
             // Steps:
@@ -220,6 +223,7 @@ pub fn execute_command(command: &Commands) {
                 contracts.clone(),
                 node_wallet_instance.clone(),
                 provider_wallet_instance.clone(),
+                heartbeat_service.unwrap().clone(),
             )) {
                 Console::error(&format!("❌ Failed to start server: {}", err));
                 std::process::exit(1);

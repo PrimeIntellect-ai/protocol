@@ -1,6 +1,8 @@
 
 # General for MVP
 - [ ] heartbeat loop and heartbeat api 
+- [ ] Random dangling processes?
+- [ ] Bug overwriting nodes in redis
 
 - [ ] Secure API for platform
 - [ ] Cleanup contracts builder
@@ -13,7 +15,9 @@
 - [ ] Validator functionality testing
 - [ ] Edge case testing when services are down (especially discovery service)
 - [ ] Proper logging in discovery service
-
+- [ ] pubsub listening in discovery
+- [ ] better startup of discovery service
+- [ ] node loosing heartbeat state after reastart 
 # To be discussed
 - [ ] Termination cases
 

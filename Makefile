@@ -1,9 +1,6 @@
 
 .PHONY: setup pool domain fund
 
-reset-anvil:
-	anvil --reset
-
 set-min-stake-amount:
 	set -a; source .env; set +a; \
 	cargo run -p dev-utils --example set_min_stake_amount -- --min-stake-amount $${MIN_STAKE_AMOUNT} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
@@ -46,7 +43,7 @@ watch-discovery:
 
 watch-miner:
 	set -a; source .env; set +a; \
-	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8090 --external-ip 0.0.0.0 --compute-pool-id 0"
+	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0"
 
 watch-validator:
 	set -a; source .env; set +a; \

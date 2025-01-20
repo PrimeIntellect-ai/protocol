@@ -77,7 +77,6 @@ impl<'b> DiscoveryMonitor<'b> {
             .await?;
 
         let response_text: String = response.text().await?;
-        println!("Response: {:?}", response_text);
         let parsed_response: serde_json::Value = serde_json::from_str(&response_text)?;
         let nodes: Vec<Node> = parsed_response["data"]
             .as_array()
@@ -114,13 +113,13 @@ impl<'b> DiscoveryMonitor<'b> {
         let mut con = self.store.client.get_connection()?;
         let nodes = self.fetch_nodes_from_discovery().await?;
         for node in &nodes {
-            println!("Node: {:?}", node);
             let key = format!("orchestrator:node:{}", node.address);
             let exists: Option<String> = con.get(&key)?;
             if exists.is_some() {
                 println!("Node {} already exists in the database.", node.address);
                 continue; // Skip processing this node
             } else {
+                println!("Node: {:?}", node);
                 // TODO: Only temp - make nice
                 con.set(&key, serde_json::to_string(node)?)?;
             }

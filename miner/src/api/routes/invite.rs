@@ -23,8 +23,9 @@ pub async fn invite_node(
         }));
     }
 
+    println!("Invite Request: {:?}", invite);
+
     // Tasks to finish compute onboarding mvp
-    // TODO: Implement logic to verify the sender - maybe middleware? - Added bug looks like shit right now codewise
     // TODO: Check if we actually want to join the pool - based on the compute pool var that we set on cmd startup
     // TODO: Start heartbeat sending incl. state store logic
     // TODO: Check for hardcoded values on orchestrator side
@@ -70,6 +71,12 @@ pub async fn invite_node(
     }
 
     // TODO: Start heartbeat sending
+    let endpoint = format!(
+        "http://{}:{}/heartbeat",
+        invite.master_ip, invite.master_port
+    );
+    println!("Starting heartbeat service with endpoint: {}", endpoint);
+    let _ = app_state.heartbeat_service.start(endpoint).await;
 
     HttpResponse::Accepted().json(json!({
         "status": "ok"

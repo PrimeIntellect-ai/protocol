@@ -96,10 +96,12 @@ impl<'a> NodeInviter<'a> {
             // TODO: Payload to send to node - must clean up with proper node information
             let payload = json!({
                 "invite": hex::encode(invite_signature),
-                "master_ip": "127.0.0.1",
-                "master_port": 8099,
+                "master_ip": "0.0.0.0",
+                "master_port": 8090,
                 "pool_id": self.pool_id,
             });
+
+            println!("Invite Payload: {:?}", payload);
 
             let mut payload_data = payload.clone();
             if let Some(obj) = payload_data.as_object_mut() {
