@@ -5,12 +5,12 @@ on:
     branches: [ main, master, develop ]
     paths:
       - '**.rs'
-      - '**/cargo.*'
+      - '**/Cargo.*'
   push:
     branches: [ main, master, develop ]
     paths:
       - '**.rs'
-      - '**/cargo.*'
+      - '**/Cargo.*'
 
 env:
   CARGO_TERM_COLOR: always
