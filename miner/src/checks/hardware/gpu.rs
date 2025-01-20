@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use nvml_wrapper::Nvml;
 use std::sync::Mutex;
 
+#[allow(dead_code)]
 const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 // Use lazy_static to initialize NVML once and reuse it
@@ -12,6 +13,7 @@ lazy_static! {
     static ref NVML: Mutex<Option<Nvml>> = Mutex::new(None);
 }
 
+#[allow(dead_code)]
 enum GpuDevice {
     Available {
         name: String,
@@ -28,7 +30,7 @@ pub fn detect_gpu() -> Option<GpuSpecs> {
         GpuDevice::Available {
             name,
             memory,
-            driver_version,
+            driver_version: _,
             device_count,
         } => Some(GpuSpecs {
             // Create GpuSpecs directly
@@ -41,7 +43,7 @@ pub fn detect_gpu() -> Option<GpuSpecs> {
             ),
             memory_mb: Some((memory / 1024) as u32), // Convert bytes to MB
         }),
-        GpuDevice::NotAvailable(err) => {
+        GpuDevice::NotAvailable(_) => {
             //println!("GPU not available: {}", err);
             Console::error("GPU not available");
             None
@@ -98,6 +100,7 @@ fn get_gpu_status() -> GpuDevice {
     }
 }
 
+#[allow(dead_code)]
 pub fn print_gpu_info(gpu_info: &GpuSpecs) {
     // Changed parameter type to GpuSpecs
     println!("\n{}", "GPU Information:".blue().bold());

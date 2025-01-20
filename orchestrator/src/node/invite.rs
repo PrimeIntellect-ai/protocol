@@ -52,8 +52,7 @@ impl<'a> NodeInviter<'a> {
             .sign_message(digest.as_slice())
             .await?
             .as_bytes()
-            .try_into()
-            .unwrap();
+            .to_owned();
 
         Ok(signature)
     }
@@ -155,7 +154,7 @@ impl<'a> NodeInviter<'a> {
                         println!("Updating node status to WaitingForHeartbeat");
                         println!("Redis value: {:?}", json_payload);
                         let mut con = self.store.client.get_connection()?;
-                        con.set(&redis_key, json_payload)?;
+                        let _: () = con.set(&redis_key, json_payload)?;
                     } else {
                         println!("Received non-success status: {:?}", response.status());
                     }

@@ -118,11 +118,11 @@ impl<'b> DiscoveryMonitor<'b> {
             if exists.is_some() {
                 println!("Node {} already exists in the database.", node.address);
                 continue; // Skip processing this node
-            } else {
-                println!("Node: {:?}", node);
-                // TODO: Only temp - make nice
-                con.set(&key, serde_json::to_string(node)?)?;
             }
+
+            println!("Node: {:?}", node);
+            // TODO: Only temp - make nice
+            let _: () = con.set(&key, serde_json::to_string(node)?)?;
         }
         Ok(nodes)
     }

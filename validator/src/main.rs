@@ -4,7 +4,7 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::env;
 use url::Url;
-
+#[allow(dead_code)]
 #[derive(serde::Deserialize, Debug, Clone)]
 struct ComputeNode {
     id: String,
@@ -25,6 +25,7 @@ struct ComputeNode {
     is_validated: bool,
 }
 
+#[allow(dead_code)]
 #[derive(serde::Deserialize, Debug, Clone)]
 struct ComputeSpecs {
     gpu: Option<GpuSpecs>,
@@ -35,6 +36,7 @@ struct ComputeSpecs {
     storage_gb: Option<u32>,
 }
 
+#[allow(dead_code)]
 #[derive(serde::Deserialize, Debug, Clone)]
 struct GpuSpecs {
     count: Option<u32>,
@@ -42,7 +44,7 @@ struct GpuSpecs {
     #[serde(rename = "memoryMB")]
     memory_mb: Option<u32>,
 }
-
+#[allow(dead_code)]
 #[derive(serde::Deserialize, Debug, Clone)]
 struct CpuSpecs {
     cores: Option<u32>,

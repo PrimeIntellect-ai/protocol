@@ -1,5 +1,3 @@
-// src/console/logger.rs
-use colored::*;
 use console::style;
 use std::time::Duration;
 pub struct Console;

@@ -24,7 +24,8 @@
 - [ ] Proper logging in discovery service
 - [ ] pubsub listening in discovery
 - [ ] better startup of discovery service
-- [ ] node loosing heartbeat state after reastart 
+- [ ] node loosing heartbeat state after restart 
+- [ ] readd dry-mode
 
 # To be discussed
 - [ ] Termination cases

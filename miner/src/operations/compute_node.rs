@@ -1,8 +1,5 @@
 use crate::console::Console;
-use alloy::{
-    network::TransactionBuilder, primitives::utils::keccak256 as keccak, primitives::U256,
-    signers::Signer,
-};
+use alloy::{primitives::utils::keccak256 as keccak, primitives::U256, signers::Signer};
 use shared::web3::contracts::implementations::{
     compute_registry_contract::ComputeRegistryContract,
     prime_network_contract::PrimeNetworkContract,

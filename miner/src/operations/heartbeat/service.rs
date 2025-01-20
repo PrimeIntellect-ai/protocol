@@ -2,17 +2,14 @@ use super::state::HeartbeatState;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
-type HeartbeatResult<T> = Result<T, String>;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
+use tokio::time::{interval, Duration};
 #[derive(Debug, Serialize)]
 struct HeartbeatRequest {}
 
 #[derive(Debug, Deserialize)]
-struct HeartbeatResponse {
-    success: bool,
-}
+struct HeartbeatResponse;
 
 #[derive(Clone)]
 pub struct HeartbeatService {
@@ -31,12 +28,12 @@ pub enum HeartbeatError {
 }
 impl HeartbeatService {
     pub fn new(interval: Duration, state_dir: Option<String>) -> Result<Arc<Self>, HeartbeatError> {
-        let state: HeartbeatState;
-        if state_dir.is_some() {
-            state = HeartbeatState::new(state_dir);
+        let state: HeartbeatState = if state_dir.is_some() {
+             HeartbeatState::new(state_dir)
         } else {
-            state = HeartbeatState::new(None);
-        }
+             HeartbeatState::new(None)
+        };
+
         let client = Client::builder()
             .timeout(Duration::from_secs(5)) // 5 second timeout
             .build()

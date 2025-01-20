@@ -57,7 +57,7 @@ impl ComputeRegistryContract {
         // TODO: This should be cleaned up - either we add additional check if this is actually the no-exist error or work on the contract response
         match node_response {
             Ok(response) => {
-                if let Some(node_data) = response.first() {
+                if let Some(_node_data) = response.first() {
                     // Process node data if it exists
                     // let node_tuple = node_data.as_tuple().unwrap();
                     // let is_active: bool = node_tuple.get(5).unwrap().as_bool().unwrap();

@@ -97,7 +97,7 @@ pub fn execute_command(command: &Commands) {
             port,
             external_ip,
             compute_pool_id,
-            dry_run,
+            dry_run: _,
             rpc_url,
             state_dir,
         } => {

@@ -10,7 +10,6 @@ use alloy::primitives::Address;
 use alloy::primitives::PrimitiveSignature;
 use futures_util::future::LocalBoxFuture;
 use futures_util::future::{self};
-use futures_util::FutureExt;
 use futures_util::Stream;
 use futures_util::StreamExt;
 use std::future::{ready, Ready};
