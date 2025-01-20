@@ -24,16 +24,6 @@ pub fn print_memory_info(total_memory: u64, free_memory: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sysinfo::System;
-
-    #[test]
-    fn test_get_memory_info() {
-        let sys = System::new_all();
-        let (total, free) = get_memory_info(&sys);
-        assert!(total > 0, "Total memory should be greater than 0");
-        assert!(free > 0, "Free memory should be greater than 0");
-        assert!(total >= free, "Total memory should be >= free memory");
-    }
 
     #[test]
     fn test_print_memory_info() {

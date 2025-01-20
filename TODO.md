@@ -1,5 +1,6 @@
 
 # General for MVP
+- [ ] Starting compute pool seems a bit flaky - currently called from orchestrator script
 - [ ] Discovery service still using old env?
 - [ ] Latest state storing could make sense to simplify heartbeat dev
 - [ ] Heartbeat loop is lost and still running

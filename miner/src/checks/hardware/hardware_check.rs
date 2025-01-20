@@ -1,7 +1,7 @@
 use super::{
     gpu::detect_gpu,
     memory::{get_memory_info, print_memory_info},
-    storage::{get_storage_info, print_storage_info},
+    storage::get_storage_info,
 };
 use crate::console::Console; // Import Console for logging
 use crate::operations::structs::node::{ComputeSpecs, CpuSpecs, GpuSpecs, NodeConfig};
@@ -92,7 +92,7 @@ impl HardwareChecker {
         // Print Memory and Storage Info
         if let Some(compute_specs) = &node_config.compute_specs {
             print_memory_info(compute_specs.ram_mb.unwrap_or(0) as u64, 0);
-            print_storage_info(compute_specs.storage_gb.unwrap_or(0) as u64, 0);
+            // TODO: Print sotrage info
         }
 
         // Print GPU Info
