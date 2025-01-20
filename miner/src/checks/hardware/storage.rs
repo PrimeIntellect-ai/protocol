@@ -17,8 +17,10 @@ pub fn get_storage_info() -> Result<(f64, f64), std::io::Error> {
 
     #[cfg(target_os = "macos")]
     {
+        #[allow(clippy::useless_conversion)]
         let blocks = u64::from(stat.f_blocks);
         let frsize = stat.f_frsize;
+        #[allow(clippy::useless_conversion)]
         let bavail = u64::from(stat.f_bavail);
         let total_gb = (blocks * frsize) as f64 / BYTES_TO_GB;
         let free_gb = (bavail * frsize) as f64 / BYTES_TO_GB;
@@ -34,8 +36,11 @@ pub fn get_storage_info() -> Result<(f64, f64), std::io::Error> {
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
+        #[allow(clippy::useless_conversion)]
         let blocks = u64::from(stat.f_blocks);
+        #[allow(clippy::useless_conversion)]
         let frsize = u64::from(stat.f_frsize);
+        #[allow(clippy::useless_conversion)]
         let bavail = u64::from(stat.f_bavail);
         let total_gb = (blocks * frsize) as f64 / BYTES_TO_GB;
         let free_gb = (bavail * frsize) as f64 / BYTES_TO_GB;
