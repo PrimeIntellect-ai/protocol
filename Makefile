@@ -37,6 +37,7 @@ up:
 	tmuxinator start prime-dev
 down:
 	tmuxinator stop prime-dev
+	pkill -f "target/debug/miner"
 	docker-compose down
 
 whitelist-provider:
@@ -62,3 +63,11 @@ watch-validator:
 watch-orchestrator:
 	set -a; source .env; set +a; \
 	cargo watch -w orchestrator/src -x "run --bin orchestrator"
+
+# Release
+build-miner:
+	cargo build --release --bin miner
+
+run-miner-bin:
+	set -a; source .env; set +a; \
+	./target/release/miner run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0	
