@@ -1,9 +1,9 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use serde::{Serialize, Deserialize};
-use std::path::PathBuf;
-use std::fs;
-use anyhow::Result;
 
 const STATE_FILENAME: &str = "heartbeat_state.toml";
 
@@ -35,7 +35,10 @@ impl HeartbeatState {
         if let Some(path) = &state_path {
             let state_file = path.join(STATE_FILENAME);
             if !state_file.exists() {
-                println!("No state file found at {:?}, will create on first state change", state_file);
+                println!(
+                    "No state file found at {:?}, will create on first state change",
+                    state_file
+                );
             } else if let Ok(Some(loaded_state)) = state.load_state() {
                 println!("Loaded previous state from {:?}", state_file);
                 let is_running = loaded_state.is_running;
@@ -54,7 +57,7 @@ impl HeartbeatState {
             // Get values without block_on
             let is_running = *self.is_running.blocking_read();
             let endpoint = self.endpoint.blocking_read().clone();
-            
+
             let state = PersistedHeartbeatState {
                 is_running,
                 endpoint,
@@ -101,7 +104,7 @@ impl HeartbeatState {
             let mut endpoint = self.endpoint.write().await;
             *is_running = running;
             *endpoint = heartbeat_endpoint;
-            
+
             if let Err(e) = self.save_state() {
                 eprintln!("Failed to save heartbeat state: {}", e);
             }

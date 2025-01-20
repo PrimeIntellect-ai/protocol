@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 type HeartbeatResult<T> = Result<T, String>;
-
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::Sender;
 #[derive(Debug, Serialize)]
 struct HeartbeatRequest {}
 
@@ -18,6 +19,7 @@ pub struct HeartbeatService {
     state: HeartbeatState,
     interval: Duration,
     client: Client,
+    shutdown: Sender<()>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -32,8 +34,7 @@ impl HeartbeatService {
         let state: HeartbeatState;
         if state_dir.is_some() {
             state = HeartbeatState::new(state_dir);
-        }
-        else {
+        } else {
             state = HeartbeatState::new(None);
         }
         let client = Client::builder()
@@ -41,10 +42,12 @@ impl HeartbeatService {
             .build()
             .map_err(|_| HeartbeatError::InitFailed)?; // Adjusted to match the expected error type
 
+        let (shutdown, _) = broadcast::channel(1);
         Ok(Arc::new(Self {
             state,
             interval,
             client,
+            shutdown,
         }))
     }
 
@@ -54,32 +57,46 @@ impl HeartbeatService {
         }
 
         self.state.set_running(true, Some(endpoint)).await;
+        let mut shutdown_rx = self.shutdown.subscribe();
         let state = self.state.clone();
         let client = self.client.clone();
         let interval_duration = self.interval;
 
         tokio::spawn(async move {
             let mut interval = interval(interval_duration);
-
-            while state.is_running().await {
-                interval.tick().await;
-
-                match Self::send_heartbeat(&client, state.get_endpoint().await).await {
-                    Ok(_) => {
-                        state.update_last_heartbeat().await;
-                        log::debug!("Heartbeat sent successfully");
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        if !state.is_running().await {
+                            break;
+                        }
+                        match Self::send_heartbeat(&client, state.get_endpoint().await).await {
+                            Ok(_) => {
+                                state.update_last_heartbeat().await;
+                                log::debug!("Heartbeat sent successfully");
+                            }
+                            Err(e) => {
+                                log::error!("Heartbeat failed: {:?}", e);
+                            }
+                        }
                     }
-                    Err(e) => {
-                        log::error!("Heartbeat failed: {:?}", e);
+                    result = shutdown_rx.recv() => {
+                        match result {
+                            Ok(_) => log::info!("Heartbeat service received shutdown signal"),
+                            Err(e) => log::error!("Shutdown channel error: {:?}", e),
+                        }
+                        state.set_running(false, None).await;
+                        break;
                     }
                 }
             }
+            log::info!("Heartbeat service stopped");
         });
-
         Ok(())
     }
 
     pub async fn stop(&self) {
+        let _ = self.shutdown.send(());
         self.state.set_running(false, None).await;
     }
 

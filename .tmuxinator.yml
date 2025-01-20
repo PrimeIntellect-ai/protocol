@@ -1,11 +1,14 @@
 name: prime-dev
 root: .
-
 windows:
-- services:
-      layout: even-horizontal
+  - services:
+      layout: even-horizontal 
       panes:
-        - docker-compose up
-        - sleep 10 && make setup && clear 
-        - sleep 20 && make watch-validator
-        - sleep 20 && make watch-orchestrator
+        - bash -c 'tmux select-pane -T "Miner" && sleep 5 && cd smart-contracts && sh deploy.sh && cd .. && make setup && clear' 
+        - bash -c 'tmux select-pane -T "Validator" && sleep 15 && make watch-validator' 
+        - bash -c 'tmux select-pane -T "Orchestrator" && sleep 15 && make watch-orchestrator' 
+  - background:
+      layout: even-horizontal 
+      panes:
+        - bash -c 'tmux rename-window "Prime Dev Services" && docker-compose up'
+        - bash -c 'while true; do make whitelist-provider; sleep 10; done'

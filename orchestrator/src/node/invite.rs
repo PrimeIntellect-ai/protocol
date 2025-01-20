@@ -29,7 +29,7 @@ impl<'a> NodeInviter<'a> {
     }
 
     pub async fn run(&self) -> Result<()> {
-        let mut interval = interval(Duration::from_secs(30));
+        let mut interval = interval(Duration::from_secs(15));
 
         loop {
             interval.tick().await;

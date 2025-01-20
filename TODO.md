@@ -1,9 +1,13 @@
 
 # General for MVP
+- [ ] Discovery service still using old env?
 - [ ] Latest state storing could make sense to simplify heartbeat dev
+- [ ] Heartbeat loop is lost and still running
 - [ ] heartbeat loop and heartbeat api 
 - [ ] Heartbeat based status updater
+- [ ] Hardcoded addresses in conracts
 - [x] Random dangling processes?
+- [ ] Share abi files in one folder
 - [ ] Bug overwriting nodes in redis
 - [ ] Signature verification currently allows access if you simply have a valid signature
 - [ ] Secure API for platform (manveer access)

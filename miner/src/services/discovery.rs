@@ -57,22 +57,14 @@ impl<'b> DiscoveryService<'b> {
         }
 
         let request_data_string = serde_json::to_string(&request_data).unwrap();
-        println!("Request data string: {}", request_data_string);
 
         let url = format!(
             "{}/{}",
             self.endpoint,
             self.wallet.wallet.default_signer().address()
         );
-        println!("URL: {}", url);
-        println!(
-            "Wallet: {:?}",
-            self.wallet.wallet.default_signer().address()
-        );
         let message = format!("{}{}", url, request_data_string);
-        println!("Message: {}", message);
         let signature_string = self._generate_signature(&message).await?;
-        println!("Signature string: {}", signature_string);
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -87,8 +79,6 @@ impl<'b> DiscoveryService<'b> {
         );
         headers.insert("x-signature", signature_string.parse().unwrap());
         let request_url = format!("{}{}", self.base_url, &url);
-        println!("Request URL: {}", request_url);
-        println!("data: {:?}", request_data);
 
         let response = reqwest::Client::new()
             .put(&request_url)
@@ -105,7 +95,6 @@ impl<'b> DiscoveryService<'b> {
             .into());
         }
 
-        Console::success("✓ Discovery info uploaded successfully"); // Log success message
         Ok(())
     }
 }

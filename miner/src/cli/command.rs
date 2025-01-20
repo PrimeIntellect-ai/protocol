@@ -9,10 +9,12 @@ use crate::operations::provider::ProviderOperations;
 use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
 use clap::{Parser, Subcommand};
+use futures::future::join_all;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::signal::unix::{signal, SignalKind};
 use url::Url;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -152,7 +154,8 @@ pub fn execute_command(command: &Commands) {
             );
 
             let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
-            let heartbeat_service = HeartbeatService::new(Duration::from_secs(10), state_dir.clone());
+            let heartbeat_service =
+                HeartbeatService::new(Duration::from_secs(10), state_dir.clone());
 
             Console::info("═", &"═".repeat(50));
             // Steps:
@@ -222,14 +225,46 @@ pub fn execute_command(command: &Commands) {
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             Console::info("🌐 Starting endpoint service", "");
 
-            if let Err(err) = runtime.block_on(start_server(
-                external_ip,
-                *port,
-                contracts.clone(),
-                node_wallet_instance.clone(),
-                provider_wallet_instance.clone(),
-                heartbeat_service.unwrap().clone(),
-            )) {
+            if let Err(err) = runtime.block_on(async {
+                // Create handlers for all signals we want to catch
+                let mut sig_term = signal(SignalKind::terminate()).unwrap();
+                let mut sig_int = signal(SignalKind::interrupt()).unwrap();
+                let mut sig_hup = signal(SignalKind::hangup()).unwrap();
+                let mut sig_quit = signal(SignalKind::quit()).unwrap();
+
+                let heartbeat_clone = heartbeat_service.unwrap().clone();
+                let server_future = start_server(
+                    external_ip,
+                    *port,
+                    contracts.clone(),
+                    node_wallet_instance.clone(),
+                    provider_wallet_instance.clone(),
+                    heartbeat_clone.clone(),
+                );
+                tokio::select! {
+                    res = server_future => res,
+                    _ = sig_term.recv() => {
+                        log::info!("Received SIGTERM");
+                        heartbeat_clone.stop().await;
+                        Ok(())
+                    }
+                    _ = sig_int.recv() => {
+                        log::info!("Received SIGINT");
+                        heartbeat_clone.stop().await;
+                        Ok(())
+                    }
+                    _ = sig_hup.recv() => {
+                        log::info!("Received SIGHUP");
+                        heartbeat_clone.stop().await;
+                        Ok(())
+                    }
+                    _ = sig_quit.recv() => {
+                        log::info!("Received SIGQUIT");
+                        heartbeat_clone.stop().await;
+                        Ok(())
+                    }
+                }
+            }) {
                 Console::error(&format!("❌ Failed to start server: {}", err));
                 std::process::exit(1);
             }

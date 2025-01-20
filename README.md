@@ -1,7 +1,6 @@
 # Prime Miner / Validator / Master 
 The current setup is aimed to support intellect-2 with a limited number of validators and a central master that coordinates the workload on the miners.
-
-## Pull repo with submodules 
+## Clone the repository with submodules 
 ```
 git clone --recurse-submodules https://github.com/prime-ai/prime-miner-validator.git
 ```
@@ -9,11 +8,23 @@ git clone --recurse-submodules https://github.com/prime-ai/prime-miner-validator
 ```
 git submodule update --init --recursive
 ```
-## setup:
-- Prereqs:
+## Setup:
+- Prerequisites:
     - Docker 
-    - tmuxinator 
-    - Rust
+    - tmuxinator: Install via `gem install tmuxinator`
+    - Rust: Install via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+
+## Run locally: 
+```
+make up
+``` - starts all services but not the miner
+```
+make watch-miner
+``` - starts the miner
+```
+make down
+``` - stops all services
+
 ## System architecture (WIP)
 The following system architecture still misses crucial components (e.g. terminations) and is simplified for the MVP / intellect-2 run.
 

@@ -21,5 +21,6 @@ pub struct PoolInfo {
     pub pool_data_uri: String,
     pub pool_validation_logic: Address,
     pub total_compute: U256,
+    pub compute_limit: U256,
     pub status: PoolStatus,
 }

@@ -94,7 +94,6 @@ where
 
             // Combine path and payload
             let msg = format!("{}{}", path, payload_string);
-            println!("msg to verify: {}", msg);
 
             // Validate signature
             if let (Some(address), Some(signature)) = (x_address, x_signature) {

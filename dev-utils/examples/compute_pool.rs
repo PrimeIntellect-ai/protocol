@@ -55,9 +55,17 @@ async fn main() -> Result<()> {
     let pool_name = args.pool_name.clone();
     let pool_data_uri = args.pool_data_uri.clone();
 
+    let compute_limit = U256::from(0);
+
     let tx = contracts
         .compute_pool
-        .create_compute_pool(domain_id, compute_manager_key, pool_name, pool_data_uri)
+        .create_compute_pool(
+            domain_id,
+            compute_manager_key,
+            pool_name,
+            pool_data_uri,
+            compute_limit,
+        )
         .await;
     println!("Transaction: {:?}", tx);
 

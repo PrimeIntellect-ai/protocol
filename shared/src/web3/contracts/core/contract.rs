@@ -41,12 +41,8 @@ impl Contract {
                 eprintln!("Error parsing JSON, exiting.");
                 std::process::exit(1);
             });
-
-        let abi_value = abi_json
-            .get("abi")
-            .expect("Failed to get ABI from artifact");
-
-        let abi = serde_json::from_str(&abi_value.to_string()).unwrap();
+        let abi =
+            serde_json::from_value(abi_json.clone()).expect("Failed to parse ABI from artifact");
         ContractInstance::new(address, wallet.provider.clone(), Interface::new(abi))
     }
 

@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
         .compute_pool
         .start_compute_pool(U256::from(compute_pool_id))
         .await;
-    println!("Tx: {:?}", tx);
+    println!("Start pool Tx: {:?}", tx);
 
     let store = RedisStore::new("redis://localhost:6379");
     let store_clone = store.clone();

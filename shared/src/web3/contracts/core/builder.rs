@@ -41,23 +41,23 @@ impl<'a> ContractBuilder<'a> {
     pub fn with_compute_registry(mut self) -> Self {
         self.compute_registry = Some(ComputeRegistryContract::new(
             self.wallet,
-            "ComputeRegistry.json",
+            "compute_registry.json",
         ));
         self
     }
 
     pub fn with_ai_token(mut self) -> Self {
-        self.ai_token = Some(AIToken::new(self.wallet, "AIToken.json"));
+        self.ai_token = Some(AIToken::new(self.wallet, "ai_token.json"));
         self
     }
 
     pub fn with_prime_network(mut self) -> Self {
-        self.prime_network = Some(PrimeNetworkContract::new(self.wallet, "PrimeNetwork.json"));
+        self.prime_network = Some(PrimeNetworkContract::new(self.wallet, "prime_network.json"));
         self
     }
 
     pub fn with_compute_pool(mut self) -> Self {
-        self.compute_pool = Some(ComputePool::new(self.wallet, "ComputePool.json"));
+        self.compute_pool = Some(ComputePool::new(self.wallet, "compute_pool.json"));
         self
     }
 

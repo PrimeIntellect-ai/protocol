@@ -16,6 +16,7 @@ services:
       - "8545:8545"
     networks:
       - prime
+    restart: always
 
   redis:
     image: redis:alpine

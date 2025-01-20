@@ -42,7 +42,12 @@ impl ComputePool {
         let pool_data_uri: String = pool_info_tuple[8].as_str().unwrap().to_string();
         let pool_validation_logic: Address = pool_info_tuple[9].as_address().unwrap();
         let total_compute: U256 = pool_info_tuple[10].as_uint().unwrap().0;
-        let status: u8 = u8::try_from(pool_info_tuple[11].as_uint().unwrap().0).unwrap();
+        let compute_limit: U256 = pool_info_tuple[11].as_uint().unwrap().0;
+        let status: U256 = pool_info_tuple[12].as_uint().unwrap().0;
+        println!("Raw Status: {:?}", status);
+        let status: u8 = status.try_into().expect("Failed to convert status to u8");
+        println!("Parsed Status: {:?}", status);
+        println!("Pool info tuple: {:?}", pool_info_tuple);
         let mapped_status = match status {
             0 => PoolStatus::PENDING,
             1 => PoolStatus::ACTIVE,
@@ -62,6 +67,7 @@ impl ComputePool {
             pool_data_uri,
             pool_validation_logic,
             total_compute,
+            compute_limit,
             status: mapped_status,
         };
         println!("Pool info: {:?}", pool_info);
@@ -113,6 +119,7 @@ impl ComputePool {
         compute_manager_key: Address,
         pool_name: String,
         pool_data_uri: String,
+        compute_limit: U256,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         let result = self
             .instance
@@ -124,6 +131,7 @@ impl ComputePool {
                     compute_manager_key.into(),
                     pool_name.into(),
                     pool_data_uri.into(),
+                    compute_limit.into(),
                 ],
             )?
             .send()

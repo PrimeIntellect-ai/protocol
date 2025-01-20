@@ -77,7 +77,6 @@ impl<'c> ComputeNodeOperations<'c> {
             .sign_message(digest.as_slice())
             .await?
             .as_bytes();
-        Console::info("Signature", &format!("{:?}", signature));
 
         // Create the signature bytes
         let compute_units: U256 = U256::from(10);

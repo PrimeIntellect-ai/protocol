@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
-import { abi as ComputePoolABI } from "../abi/ComputePool.json";
-import { abi as ComputeRegistryABI } from "../abi/ComputeRegistry.json";
-import { abi as PrimeNetworkABI } from "../abi/PrimeNetwork.json";
+import ComputePoolABI from "../abi/compute_pool.json";
+import ComputeRegistryABI from "../abi/compute_registry.json";
+import PrimeNetworkABI from "../abi/prime_network.json";
 import { config } from "../config/environment";
 
 export async function isComputePoolOwner(
@@ -14,10 +14,11 @@ export async function isComputePoolOwner(
     ethers.Interface.from(ComputePoolABI),
     provider,
   );
+  console.log("Checking compute pool owner for pool: ", poolId);
 
   try {
     const pool = await contract.getComputePool(poolId);
-    console.log("Pool: ", pool);
+    console.log("Pool creator address ",pool.creator)
     return (
       verifiedAddress.toLowerCase() === pool.creator.toLowerCase() ||
       verifiedAddress.toLowerCase() === pool.computeManagerKey.toLowerCase()

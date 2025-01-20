@@ -13,15 +13,16 @@ impl AIToken {
         Self { instance }
     }
 
-    pub async fn balance_of(&self, address: Address) -> Result<U256, Box<dyn std::error::Error>> {
+    pub async fn balance_of(&self, account: Address) -> Result<U256, Box<dyn std::error::Error>> {
         let balance: U256 = self
             .instance
             .instance()
-            .function("balanceOf", &[address.into()])?
+            .function("balanceOf", &[account.into()])?
             .call()
             .await?
-            .first()
-            .and_then(|value| value.as_uint())
+            .into_iter()
+            .next()
+            .map(|value| value.as_uint().unwrap_or_default())
             .unwrap_or_default()
             .0;
         Ok(balance)
