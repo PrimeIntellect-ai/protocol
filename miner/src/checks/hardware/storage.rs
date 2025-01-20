@@ -13,8 +13,8 @@ pub fn get_storage_info() -> Result<(u64, u64), Box<dyn std::error::Error>> {
             )));
         }
 
-        let total = (stat.f_blocks as u64) * (stat.f_frsize as u64);
-        let free = (stat.f_bavail as u64) * (stat.f_frsize as u64);
+        let total = (stat.f_blocks as u64) * (stat.f_frsize);
+        let free = (stat.f_bavail as u64) * (stat.f_frsize);
         Ok((total, free))
     }
 
