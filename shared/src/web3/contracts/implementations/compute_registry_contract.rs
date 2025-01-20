@@ -27,7 +27,6 @@ impl ComputeRegistryContract {
             .call()
             .await?;
 
-        println!("Provider response: {:?}", provider_response);
         // TODO: What if we do not have a provider?
         // TODO: Data incomplete - vec is currently empty
         let provider_tuple: &[DynSolValue] = provider_response.first().unwrap().as_tuple().unwrap();
@@ -58,14 +57,11 @@ impl ComputeRegistryContract {
         // TODO: This should be cleaned up - either we add additional check if this is actually the no-exist error or work on the contract response
         match node_response {
             Ok(response) => {
-                println!("Node response: {:?}", response);
                 if let Some(node_data) = response.first() {
                     // Process node data if it exists
-                    let node_tuple = node_data.as_tuple().unwrap();
-                    let is_active: bool = node_tuple.get(5).unwrap().as_bool().unwrap();
-                    let is_validated: bool = node_tuple.get(6).unwrap().as_bool().unwrap();
-                    println!("Is active: {:?}", is_active);
-                    println!("Is validated: {:?}", is_validated);
+                    // let node_tuple = node_data.as_tuple().unwrap();
+                    // let is_active: bool = node_tuple.get(5).unwrap().as_bool().unwrap();
+                    // let is_validated: bool = node_tuple.get(6).unwrap().as_bool().unwrap();
                     // TODO: Actually return a properly parsed node
                     Ok(()) // Return Ok if the node is registered
                 } else {

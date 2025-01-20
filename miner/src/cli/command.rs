@@ -177,10 +177,10 @@ pub fn execute_command(command: &Commands) {
             // TODO: Move to proper check
             let _ = software_check::run_software_check();
 
-            let balance = runtime
+            /*let balance = runtime
                 .block_on(provider_wallet_instance.get_balance())
                 .unwrap();
-            Console::info("💰 Balance", &format!("{:?}", balance));
+            Console::info("💰 ETH Balance", &format!("{:?}", balance));*/
 
             let mut attempts = 0;
             let max_attempts = 10;

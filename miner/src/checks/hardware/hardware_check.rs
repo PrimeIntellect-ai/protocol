@@ -24,7 +24,7 @@ impl HardwareChecker {
     ) -> Result<NodeConfig, Box<dyn std::error::Error>> {
         self.collect_system_info(&mut node_config)?;
         self.print_system_info(&node_config);
-        Console::success("✓ All hardware checks passed");
+        Console::success("All hardware checks passed");
         Ok(node_config)
     }
 

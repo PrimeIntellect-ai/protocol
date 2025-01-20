@@ -22,6 +22,6 @@ pub fn run_software_check() -> Result<(), SoftwareCheckError> {
     Console::title("Docker:");
     check_docker_installed()?;
 
-    Console::success("✓ All software checks passed");
+    Console::success("All software checks passed");
     Ok(())
 }

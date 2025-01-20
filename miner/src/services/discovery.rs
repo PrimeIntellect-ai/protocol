@@ -22,10 +22,6 @@ impl<'b> DiscoveryService<'b> {
         &self,
         message: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        println!(
-            "Signin with address: {:?}",
-            self.wallet.wallet.default_signer().address()
-        );
         let signature = &self
             .wallet
             .signer
@@ -41,7 +37,6 @@ impl<'b> DiscoveryService<'b> {
         node_config: &NodeConfig,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Console::section("📦 Uploading discovery info");
-        Console::info("Node config", &format!("{:?}", node_config)); // Use Console for logging
 
         let mut request_data = serde_json::to_value(node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;

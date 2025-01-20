@@ -149,7 +149,7 @@ fn main() {
             }
         }
 
-        println!("Sleeping for 30 seconds before the next iteration...");
-        std::thread::sleep(std::time::Duration::from_secs(30));
+        println!("Sleeping for 10 seconds before the next iteration...");
+        std::thread::sleep(std::time::Duration::from_secs(10));
     }
 }

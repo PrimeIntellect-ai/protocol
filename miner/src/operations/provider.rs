@@ -64,7 +64,7 @@ impl<'c> ProviderOperations<'c> {
                 .await
                 .map_err(|_| ProviderError::Other)?;
             Console::info("Transaction approved", &format!("{:?}", approve_tx));
-            spinner.finish();
+            spinner.finish_and_clear();
 
             let spinner = Console::spinner("Registering Provider");
             let register_tx = self
@@ -72,7 +72,7 @@ impl<'c> ProviderOperations<'c> {
                 .register_provider(stake)
                 .await
                 .map_err(|_| ProviderError::Other)?;
-            spinner.finish();
+            spinner.finish_and_clear();
             Console::success(format!("Provider registered: {:?}", register_tx).as_str());
         }
 
@@ -83,7 +83,8 @@ impl<'c> ProviderOperations<'c> {
             .get_provider(address)
             .await
             .map_err(|_| ProviderError::Other)?;
-        spinner.finish();
+        spinner.finish_and_clear();
+        spinner.abandon();
         Console::info("Is whitelisted", &format!("{:?}", provider.is_whitelisted));
 
         let provider_exists = provider.provider_address != Address::default();

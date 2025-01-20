@@ -18,7 +18,6 @@ fn cleanup_and_exit() {
     process::exit(0);
 }
 
-
 fn main() {
     std::panic::set_hook(Box::new(|panic_info| {
         log::error!("Process panicked: {:?}", panic_info);
@@ -28,7 +27,9 @@ fn main() {
     ctrlc::set_handler(move || {
         log::info!("Received interrupt signal");
         cleanup_and_exit();
-    }).expect("Error setting Ctrl-C handler");
+    })
+    .expect("Error setting Ctrl-C handler");
+
     // Initialize logging with debug level and console output
     env_logger::Builder::new()
         .filter_level(LevelFilter::Info)

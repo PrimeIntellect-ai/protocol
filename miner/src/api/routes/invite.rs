@@ -23,8 +23,6 @@ pub async fn invite_node(
         }));
     }
 
-    println!("Invite Request: {:?}", invite);
-
     // Tasks to finish compute onboarding mvp
     // TODO: Check if we actually want to join the pool - based on the compute pool var that we set on cmd startup
     // TODO: Start heartbeat sending incl. state store logic

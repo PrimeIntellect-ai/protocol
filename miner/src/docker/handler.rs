@@ -25,10 +25,7 @@ impl DockerHandler {
     pub fn new() -> Result<Self, DockerError> {
         debug!("Initializing Docker handler...");
         let docker = match Docker::connect_with_unix_defaults() {
-            Ok(docker) => {
-                info!("Successfully connected to Docker daemon");
-                docker
-            }
+            Ok(docker) => docker,
             Err(e) => {
                 error!("Failed to connect to Docker daemon: {}", e);
                 return Err(e);

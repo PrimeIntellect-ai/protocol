@@ -1,3 +1,4 @@
+use crate::console::Console;
 use crate::operations::structs::node::GpuSpecs;
 use colored::*;
 use lazy_static::lazy_static;
@@ -41,7 +42,8 @@ pub fn detect_gpu() -> Option<GpuSpecs> {
             memory_mb: Some((memory / 1024) as u32), // Convert bytes to MB
         }),
         GpuDevice::NotAvailable(err) => {
-            println!("GPU not available: {}", err);
+            //println!("GPU not available: {}", err);
+            Console::error("GPU not available");
             None
         }
     }

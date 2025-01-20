@@ -7,6 +7,7 @@
 - [ ] Heartbeat based status updater
 - [ ] Hardcoded addresses in conracts
 - [x] Random dangling processes?
+- [ ] GPU detection / memory - what if we do not detect a gpu?
 - [ ] Share abi files in one folder
 - [ ] Bug overwriting nodes in redis
 - [ ] Signature verification currently allows access if you simply have a valid signature
