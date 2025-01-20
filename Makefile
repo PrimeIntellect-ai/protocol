@@ -45,6 +45,10 @@ watch-miner:
 	set -a; source .env; set +a; \
 	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0"
 
+watch-miner-with-state:
+	set -a; source .env; set +a; \
+	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --state-dir ."
+
 watch-validator:
 	set -a; source .env; set +a; \
 	cargo watch -w validator/src -x "run --bin validator"

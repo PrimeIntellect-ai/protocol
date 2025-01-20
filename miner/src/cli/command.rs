@@ -51,6 +51,10 @@ pub enum Commands {
         /// Dry run the command without starting the miner
         #[arg(long, default_value = "false")]
         dry_run: bool,
+
+        ///  Optional state storage directory
+        #[arg(long)]
+        state_dir: Option<String>,
     },
     /// Run system checks to verify hardware and software compatibility
     Check {},
@@ -94,6 +98,7 @@ pub fn execute_command(command: &Commands) {
             compute_pool_id,
             dry_run,
             rpc_url,
+            state_dir,
         } => {
             Console::section("🚀 PRIME MINER INITIALIZATION");
             /*
@@ -147,7 +152,7 @@ pub fn execute_command(command: &Commands) {
             );
 
             let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
-            let heartbeat_service = HeartbeatService::new(Duration::from_secs(10));
+            let heartbeat_service = HeartbeatService::new(Duration::from_secs(10), state_dir.clone());
 
             Console::info("═", &"═".repeat(50));
             // Steps:

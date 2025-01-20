@@ -1,0 +1,48 @@
+# docker-compose.yml
+version: "3.8"
+
+networks:
+  prime:
+    driver: bridge
+
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    command: anvil --host 0.0.0.0
+    ports:
+      - "8545:8545"
+    networks:
+      - prime
+
+  discovery:
+    extends:
+      file: ./discovery/docker-compose.yml
+      service: discovery
+    networks:
+      - prime
+
+  validator:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    command: cargo watch -x 'run --bin validator'
+    volumes:
+      - .:/app
+    depends_on:
+      - anvil
+      - discovery
+    networks:
+      - prime
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: cargo watch -x 'run --bin orchestrator'
+    volumes:
+      - .:/app
+    depends_on:
+      - anvil
+      - discovery
+    networks:
+      - prime

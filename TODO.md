@@ -1,10 +1,12 @@
 
 # General for MVP
+- [ ] Latest state storing could make sense to simplify heartbeat dev
 - [ ] heartbeat loop and heartbeat api 
+- [ ] Heartbeat based status updater
 - [ ] Random dangling processes?
 - [ ] Bug overwriting nodes in redis
-
-- [ ] Secure API for platform
+- [ ] Signature verification currently allows access if you simply have a valid signature
+- [ ] Secure API for platform (manveer access)
 - [ ] Cleanup contracts builder
 - [ ] Signature creation and cleanup
 - [ ] Cleanup orchestrator script
@@ -18,6 +20,7 @@
 - [ ] pubsub listening in discovery
 - [ ] better startup of discovery service
 - [ ] node loosing heartbeat state after reastart 
+
 # To be discussed
 - [ ] Termination cases
 

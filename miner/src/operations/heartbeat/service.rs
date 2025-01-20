@@ -28,14 +28,21 @@ pub enum HeartbeatError {
     InitFailed,
 }
 impl HeartbeatService {
-    pub fn new(interval: Duration) -> Result<Arc<Self>, HeartbeatError> {
+    pub fn new(interval: Duration, state_dir: Option<String>) -> Result<Arc<Self>, HeartbeatError> {
+        let state: HeartbeatState;
+        if state_dir.is_some() {
+            state = HeartbeatState::new(state_dir);
+        }
+        else {
+            state = HeartbeatState::new(None);
+        }
         let client = Client::builder()
             .timeout(Duration::from_secs(5)) // 5 second timeout
             .build()
             .map_err(|_| HeartbeatError::InitFailed)?; // Adjusted to match the expected error type
 
         Ok(Arc::new(Self {
-            state: HeartbeatState::new(),
+            state,
             interval,
             client,
         }))
