@@ -5,14 +5,12 @@ on:
     branches: [ main, master, develop ]
     paths:
       - '**.rs'
-      - 'miner/**'
-      - 'Cargo.*'
+      - '**/Cargo.*'
   push:
     branches: [ main, master, develop ]
     paths:
       - '**.rs'
-      - 'miner/**'
-      - 'Cargo.*'
+      - '**/Cargo.*'
 
 env:
   CARGO_TERM_COLOR: always
@@ -33,14 +31,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-directories: "miner/target"
+          cache-directories: "**/target"
           cache-on-failure: true
           
       - name: Run format check
-        working-directory: ./miner
         run: cargo fmt -- --check
 
       - name: Run clippy
         if: success() || failure()  # Run even if fmt fails
-        working-directory: ./miner
         run: cargo clippy -- -D warnings
