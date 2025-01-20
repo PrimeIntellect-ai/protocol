@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
 
     let provider_address: Address = args.provider_address.parse()?;
 
-    let tx = contracts
+    let _ = contracts
         .prime_network
         .whitelist_provider(provider_address)
         .await;
