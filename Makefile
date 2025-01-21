@@ -38,6 +38,8 @@ up:
 down:
 	tmuxinator stop prime-dev
 	pkill -f "target/debug/miner"
+	pkill -f "target/debug/orchestrator"
+	pkill -f "target/debug/validator"
 	docker-compose down
 
 whitelist-provider:

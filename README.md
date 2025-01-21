@@ -10,10 +10,13 @@ git submodule update --init --recursive
 ```
 ## Setup:
 - Prerequisites:
-    - Foundry: `curl -L https://foundry.paradigm.xyz | bash`
+    - Foundry: `curl -L https://foundry.paradigm.xyz | bash` - do not forget `foundry up`
     - Docker 
     - tmuxinator: Install via `gem install tmuxinator` - do not use brew, apparently their brew build is broken
     - Rust: Install via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+    - Install cargo watch: `cargo install cargo-watch`
+    - Adjust docker desktop setting: `Allow the default Docker socket to be used (requires password)` must be enabled
+    - .env in base folder and .env in discovery folder (will be replaced shortly)
 
 ## Run locally: 
 ### On very first run we have to pre-build some components:
