@@ -16,6 +16,12 @@ git submodule update --init --recursive
     - Rust: Install via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 
 ## Run locally: 
+### On very first run we have to pre-build some components:
+- `docker compose up` - to pull anvil, redis and start discovery service
+- `make whitelist-provider` - to build the whitelist provider function which runs in the background
+
+Once both commands complete you can terminate and proceed to the official commands:
+### Commands:
 ```
 make up
 ``` - starts all services but not the miner
