@@ -32,6 +32,7 @@ services:
     command: npm run dev
     volumes:
       - ./discovery:/app
+      - /app/node_modules
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
