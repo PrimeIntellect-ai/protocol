@@ -1,14 +1,19 @@
 
 # General for MVP
+
+# Features for MVP:
+- [ ] API to list nodes and status
+- [ ] Ability to dispatch tasks to nodes
+- [ ] Heartbeat based status updater
+- [ ] Heartbeat Verification 
+
+# Cleanup TODOs:
 - [ ] contract call cleanup
 - [ ] Discovery service still using old env?
 - [ ] Latest state storing could make sense to simplify heartbeat dev 
-- [ ] heartbeat loop and heartbeat api 
-- [ ] Heartbeat based status updater
 - [ ] Hardcoded addresses in conracts
 - [ ] GPU detection / memory - what if we do not detect a gpu?
 - [ ] Share abi files in one folder
-- [ ] Signature verification currently allows access if you simply have a valid signature
 - [ ] Secure API for platform (manveer access)
 - [ ] Cleanup contracts builder
 - [ ] Signature creation and cleanup
@@ -27,6 +32,8 @@
 
 - [x] Random dangling processes?
 - [x] Heartbeat loop is lost and still running
+- [x] Signature verification currently allows access if you simply have a valid signature
+
 # To be discussed
 - [ ] Termination cases
 
