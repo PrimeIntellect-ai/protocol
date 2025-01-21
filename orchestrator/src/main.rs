@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
     });
 
     let host = args.host.clone();
-    let port = args.port.clone();
+    let port = args.port;
 
     tasks.spawn(async move {
         let inviter = NodeInviter::new(

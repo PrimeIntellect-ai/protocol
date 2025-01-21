@@ -1,9 +1,7 @@
 use crate::store::redis::RedisStore;
 use crate::types::Node;
 use crate::types::NodeStatus;
-use alloy::primitives::hex;
 use alloy::primitives::Address;
-use alloy::signers::Signer;
 use anyhow::Error;
 use anyhow::Result;
 use redis::Commands;
