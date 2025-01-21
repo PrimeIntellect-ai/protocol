@@ -10,8 +10,9 @@ git submodule update --init --recursive
 ```
 ## Setup:
 - Prerequisites:
+    - Foundry: `curl -L https://foundry.paradigm.xyz | bash`
     - Docker 
-    - tmuxinator: Install via `gem install tmuxinator`
+    - tmuxinator: Install via `gem install tmuxinator` - do not use brew, apparently their brew build is broken
     - Rust: Install via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 
 ## Run locally: 
