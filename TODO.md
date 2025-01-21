@@ -2,9 +2,9 @@
 # General for MVP
 
 # Features for MVP:
-- [ ] API to list nodes and status
-- [ ] Ability to dispatch tasks to nodes
+- [x] API to list nodes and status
 - [ ] Heartbeat based status updater
+- [ ] Ability to dispatch tasks to nodes
 - [ ] Heartbeat Verification 
 
 # Cleanup TODOs:
@@ -30,6 +30,7 @@
 - [ ] node loosing heartbeat state after restart 
 - [ ] readd dry-mode
 - [ ] Secure nodes / orchestrator api
+- [ ] check docker version
 
 - [x] Random dangling processes?
 - [x] Heartbeat loop is lost and still running
