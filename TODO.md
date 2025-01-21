@@ -7,6 +7,8 @@
 - [ ] Ability to dispatch tasks to nodes
 - [ ] Heartbeat Verification 
 
+- [ ] What if a node never becomes healthy? 
+
 # Cleanup TODOs:
 - [ ] contract call cleanup
 - [ ] Discovery service still using old env?
@@ -30,7 +32,7 @@
 - [ ] node loosing heartbeat state after restart 
 - [ ] readd dry-mode
 - [ ] Secure nodes / orchestrator api
-- [ ] check docker version
+- [ ] check docker versiont pu
 
 - [x] Random dangling processes?
 - [x] Heartbeat loop is lost and still running

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node:";
+pub const ORCHESTRATOR_HEARTBEAT_KEY: &str = "orchestrator:heartbeat:";
+pub const ORCHESTRATOR_UNHEALTHY_COUNTER_KEY: &str = "orchestrator:unhealthy_counter:";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
@@ -46,7 +48,7 @@ impl fmt::Display for Node {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum NodeStatus {
     Discovered,
     WaitingForHeartbeat,

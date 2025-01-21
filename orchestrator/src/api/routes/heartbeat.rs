@@ -1,4 +1,5 @@
 use crate::api::server::AppState;
+use crate::types::ORCHESTRATOR_HEARTBEAT_KEY;
 use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,
@@ -19,7 +20,8 @@ async fn heartbeat(
 ) -> HttpResponse {
     println!("Heartbeat incoming for address: {}", heartbeat.address);
     let mut con = app_state.store.client.get_connection().unwrap();
-    let key = format!("orchestrator:heartbeat:{}", heartbeat.address);
+    let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, heartbeat.address);
+    // TODO: Store something meaningful here
     let _: () = con
         .set_options(
             &key,

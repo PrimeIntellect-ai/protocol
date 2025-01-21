@@ -6,6 +6,7 @@ mod types;
 use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
+use crate::node::status_update::NodeStatusUpdater;
 use crate::store::redis::RedisStore;
 use alloy::primitives::U256;
 use anyhow::Result;
@@ -91,6 +92,7 @@ async fn main() -> Result<()> {
     let wallet_clone = coordinator_wallet.clone();
     let discovery_store_clone = store.clone();
     let inviter_store_clone = store.clone();
+    let status_update_store_clone = store.clone();
 
     tasks.spawn(async move {
         let monitor = DiscoveryMonitor::new(
@@ -116,6 +118,11 @@ async fn main() -> Result<()> {
             &args.port,
         );
         inviter.run().await
+    });
+
+    tasks.spawn(async move {
+        let status_updater = NodeStatusUpdater::new(status_update_store_clone, 15, None);
+        status_updater.run().await
     });
 
     tokio::select! {
