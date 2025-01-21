@@ -46,8 +46,8 @@ impl NodeStatusUpdater {
         let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY))?;
         let nodes: Vec<Node> = keys
             .iter()
-            .filter_map(|key| con.get::<_, String>(key).ok())
-            .filter_map(|node_json| Some(Node::from_string(&node_json)))
+            .map(|key| con.get::<_, String>(key).ok())
+            .map(|node_json| Node::from_string(&node_json.unwrap()))
             .collect();
 
         for node in nodes {
@@ -59,9 +59,7 @@ impl NodeStatusUpdater {
 
             let unhealthy_counter_key =
                 format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, node.address);
-            let unhealthy_counter: u32 = con
-                .get::<_, u32>(&unhealthy_counter_key)
-                .unwrap_or(0);
+            let unhealthy_counter: u32 = con.get::<_, u32>(&unhealthy_counter_key).unwrap_or(0);
 
             if heartbeat.is_empty() {
                 // TODO: Cover case waiting for heartbeat
@@ -90,7 +88,9 @@ impl NodeStatusUpdater {
                     }
                 }
             } else {
-                if node.status == NodeStatus::Unhealthy || node.status == NodeStatus::WaitingForHeartbeat {
+                if node.status == NodeStatus::Unhealthy
+                    || node.status == NodeStatus::WaitingForHeartbeat
+                {
                     node.status = NodeStatus::Healthy;
                     let _: () = con.set(node.orchestrator_key(), node.to_string()).unwrap();
                 }
@@ -121,7 +121,7 @@ mod tests {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
-            status: NodeStatus::Discovered,
+            status: NodeStatus::WaitingForHeartbeat,
         };
 
         let heartbeat_key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, node.address);
@@ -138,7 +138,7 @@ mod tests {
         let node = con.get::<_, String>(node.orchestrator_key()).unwrap();
         let node = Node::from_string(&node);
         println!("Node: {:?}", node);
-        assert_eq!(node.status, NodeStatus::Discovered);
+        assert_eq!(node.status, NodeStatus::WaitingForHeartbeat);
 
         tokio::spawn(async move {
             updater
