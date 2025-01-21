@@ -1,7 +1,7 @@
 use alloy::primitives::Address;
 use alloy::primitives::U256;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PoolStatus {
     PENDING,
     ACTIVE,

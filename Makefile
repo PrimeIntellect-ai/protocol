@@ -62,7 +62,7 @@ watch-validator:
 
 watch-orchestrator:
 	set -a; source .env; set +a; \
-	cargo watch -w orchestrator/src -x "run --bin orchestrator"
+	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0 -e 0.0.0.0 -p 8090 -i 10"
 
 # Release
 build-miner:

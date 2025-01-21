@@ -17,7 +17,15 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str::FromStr;
 
-pub struct ValidateSignature;
+pub struct ValidateSignature {
+    allowed_addresses: Vec<Address>,
+}
+
+impl ValidateSignature {
+    pub fn new(allowed_addresses: Vec<Address>) -> Self {
+        Self { allowed_addresses }
+    }
+}
 
 impl<S, B> Transform<S, ServiceRequest> for ValidateSignature
 where
@@ -34,12 +42,14 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ready(Ok(ValidateSignatureMiddleware {
             service: Rc::new(service),
+            allowed_addresses: self.allowed_addresses.clone(),
         }))
     }
 }
 
 pub struct ValidateSignatureMiddleware<S> {
     service: Rc<S>,
+    allowed_addresses: Vec<Address>,
 }
 
 impl<S, B> Service<ServiceRequest> for ValidateSignatureMiddleware<S>
@@ -56,6 +66,7 @@ where
     fn call(&self, mut req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
         let path = req.path().to_string();
+        let allowed_addresses = self.allowed_addresses.clone();
 
         // Extract headers before consuming the request
         let x_address = req
@@ -110,7 +121,9 @@ where
 
                 let recovered_address = match parsed_signature.recover_address_from_msg(msg) {
                     Ok(addr) => addr,
-                    Err(_) => return Err(ErrorBadRequest("Failed to recover address from message")),
+                    Err(_) => {
+                        return Err(ErrorBadRequest("Failed to recover address from message"))
+                    }
                 };
 
                 let expected_address = match Address::from_str(&address) {
@@ -123,6 +136,15 @@ where
                     println!("Expected address: {:?}", expected_address);
                     return Err(ErrorBadRequest("Invalid signature"));
                 }
+
+                if !allowed_addresses.contains(&recovered_address) {
+                    println!(
+                        "Request with valid signature but not authorized. Allowed addresses: {:?}",
+                        allowed_addresses
+                    );
+                    return Err(ErrorBadRequest("Address not authorized"));
+                }
+
                 println!("Signature is valid");
 
                 // Reconstruct request with the original body
@@ -134,7 +156,7 @@ where
 
                 service.call(req).await
             } else {
-               return Err(ErrorBadRequest("Missing signature or address"))
+                Err(ErrorBadRequest("Missing signature or address"))
             }
         })
     }
@@ -143,8 +165,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test, web, App, HttpResponse};
+    use crate::security::request_signer::sign_request;
+    use crate::web3::wallet::Wallet;
     use actix_web::http::StatusCode;
+    use actix_web::{test, web, App, HttpResponse};
+    use std::str::FromStr;
+    use url::Url;
 
     async fn test_handler() -> HttpResponse {
         HttpResponse::Ok().finish()
@@ -154,16 +180,16 @@ mod tests {
     async fn test_missing_headers() {
         let app = test::init_service(
             App::new()
-                .wrap(ValidateSignature)
+                .wrap(ValidateSignature::new(vec![]))
                 .route("/test", web::post().to(test_handler)),
         )
         .await;
-    
+
         let req = test::TestRequest::post()
             .uri("/test")
             .set_json(serde_json::json!({"test": "data"}))
             .to_request();
-    
+
         let err = test::try_call_service(&app, req).await;
         match err {
             Err(e) => {
@@ -174,13 +200,12 @@ mod tests {
             Ok(_) => panic!("Expected an error"),
         }
     }
-    
 
     #[actix_web::test]
     async fn test_invalid_signature() {
         let app = test::init_service(
             App::new()
-                .wrap(ValidateSignature)
+                .wrap(ValidateSignature::new(vec![]))
                 .route("/test", web::post().to(test_handler)),
         )
         .await;
@@ -196,6 +221,92 @@ mod tests {
         match err {
             Err(e) => {
                 assert_eq!(e.to_string(), "Invalid signature format");
+                let error_response = e.error_response();
+                assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
+            }
+            Ok(_) => panic!("Expected an error"),
+        }
+    }
+
+    #[actix_web::test]
+    async fn test_valid_signature() {
+        let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
+        let address = Address::from_str("0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf").unwrap();
+        let wallet = Wallet::new(
+            private_key,
+            Url::parse("https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161").unwrap(),
+        )
+        .unwrap();
+
+        let signature = sign_request("/test", &wallet, Some(&serde_json::json!({"test": "data"})))
+            .await
+            .unwrap();
+        let app = test::init_service(
+            App::new()
+                .wrap(ValidateSignature::new(vec![address]))
+                .route("/test", web::post().to(test_handler)),
+        )
+        .await;
+
+        println!(
+            "Address: {}",
+            wallet.wallet.default_signer().address()
+        );
+        println!("Signature: {}", signature);
+        let req = test::TestRequest::post()
+            .uri("/test")
+            .insert_header((
+                "x-address",
+                wallet.wallet.default_signer().address().to_string(),
+            ))
+            .insert_header(("x-signature", signature))
+            .set_json(serde_json::json!({"test": "data"}))
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[actix_web::test]
+    async fn test_valid_signature_but_not_allowed() {
+        let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
+        let allowed_address =
+            Address::from_str("0xeeFBd3F87405FdADa62de677492a805A8dA1B457").unwrap();
+        let wallet = Wallet::new(
+            private_key,
+            Url::parse("https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161").unwrap(),
+        )
+        .unwrap();
+
+        let signature = sign_request("/test", &wallet, Some(&serde_json::json!({"test": "data"})))
+            .await
+            .unwrap();
+        let app = test::init_service(
+            App::new()
+                .wrap(ValidateSignature::new(vec![allowed_address]))
+                .route("/test", web::post().to(test_handler)),
+        )
+        .await;
+
+        println!(
+            "Address: {}",
+            wallet.wallet.default_signer().address()
+        );
+        println!("Signature: {}", signature);
+        let req = test::TestRequest::post()
+            .uri("/test")
+            .insert_header((
+                "x-address",
+                wallet.wallet.default_signer().address().to_string(),
+            ))
+            .insert_header(("x-signature", signature))
+            .set_json(serde_json::json!({"test": "data"}))
+            .to_request();
+
+        let err = test::try_call_service(&app, req).await;
+        match err {
+            Err(e) => {
+                assert_eq!(e.to_string(), "Address not authorized");
                 let error_response = e.error_response();
                 assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
             }

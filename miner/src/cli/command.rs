@@ -9,8 +9,10 @@ use crate::operations::provider::ProviderOperations;
 use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
 use crate::TaskHandles;
+use alloy::primitives::U256;
 use clap::{Parser, Subcommand};
 use shared::web3::contracts::core::builder::ContractBuilder;
+use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -69,33 +71,6 @@ pub async fn execute_command(
     task_handles: TaskHandles,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match command {
-        Commands::Check {} => {
-            Console::section("🔍 PRIME MINER SYSTEM CHECK");
-            Console::info("═", &"═".repeat(50));
-
-            // Run hardware checks
-            let hardware_checker = HardwareChecker::new();
-            let node_config = NodeConfig {
-                ip_address: String::new(), // Placeholder, adjust as necessary
-                port: 0,                   // Placeholder, adjust as necessary
-                compute_specs: None,
-                provider_address: None,
-                compute_pool_id: 0, // Placeholder, adjust as necessary
-            };
-
-            match hardware_checker.enrich_node_config(node_config) {
-                Ok(_) => {
-                    Console::success("✅ Hardware check passed!");
-                }
-                Err(err) => {
-                    Console::error(&format!("❌ Hardware check failed: {}", err));
-                    std::process::exit(1);
-                }
-            }
-            let _ = software_check::run_software_check();
-            Ok(())
-        }
-
         Commands::Run {
             private_key_provider,
             private_key_node,
@@ -165,11 +140,20 @@ pub async fn execute_command(
             );
 
             Console::info("═", &"═".repeat(50));
-            // Steps:
-            // 1. Ensure we have enough eth in our wallet to register on training run
-            // Display the public address of the wallet
+            let pool_id = U256::from(*compute_pool_id as u32);
+            let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
+                Ok(pool) => Arc::new(pool),
+                Err(e) => {
+                    Console::error(&format!("❌ Failed to get pool info. {}", e));
+                    // TODO: Use proper error
+                    return Ok(());
+                }
+            };
+            if pool_info.status != PoolStatus::ACTIVE {
+                Console::error("❌ Pool is not active.");
+                return Ok(());
+            }
 
-            // 2. Run system checks
             let node_config = NodeConfig {
                 ip_address: external_ip.to_string(),
                 port: *port,
@@ -240,11 +224,38 @@ pub async fn execute_command(
                     node_wallet_instance.clone(),
                     provider_wallet_instance.clone(),
                     heartbeat_clone.clone(),
+                    pool_info,
                 )
                 .await
             } {
                 Console::error(&format!("❌ Failed to start server: {}", err));
             }
+            Ok(())
+        }
+        Commands::Check {} => {
+            Console::section("🔍 PRIME MINER SYSTEM CHECK");
+            Console::info("═", &"═".repeat(50));
+
+            // Run hardware checks
+            let hardware_checker = HardwareChecker::new();
+            let node_config = NodeConfig {
+                ip_address: String::new(), // Placeholder, adjust as necessary
+                port: 0,                   // Placeholder, adjust as necessary
+                compute_specs: None,
+                provider_address: None,
+                compute_pool_id: 0, // Placeholder, adjust as necessary
+            };
+
+            match hardware_checker.enrich_node_config(node_config) {
+                Ok(_) => {
+                    Console::success("✅ Hardware check passed!");
+                }
+                Err(err) => {
+                    Console::error(&format!("❌ Hardware check failed: {}", err));
+                    std::process::exit(1);
+                }
+            }
+            let _ = software_check::run_software_check();
             Ok(())
         }
     }

@@ -8,6 +8,7 @@ use anyhow::Error;
 use anyhow::Result;
 use redis::Commands;
 use serde_json;
+use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
 use std::time::Duration;
@@ -17,19 +18,26 @@ pub struct DiscoveryMonitor<'b> {
     store: RedisStore,
     coordinator_wallet: &'b Wallet,
     compute_pool_id: u32,
+    interval_s: u64,
 }
 
 impl<'b> DiscoveryMonitor<'b> {
-    pub fn new(store: RedisStore, coordinator_wallet: &'b Wallet, compute_pool_id: u32) -> Self {
+    pub fn new(
+        store: RedisStore,
+        coordinator_wallet: &'b Wallet,
+        compute_pool_id: u32,
+        interval_s: u64,
+    ) -> Self {
         Self {
             store,
             coordinator_wallet,
             compute_pool_id,
+            interval_s,
         }
     }
 
     pub async fn run(&self) -> Result<()> {
-        let mut interval = interval(Duration::from_secs(10));
+        let mut interval = interval(Duration::from_secs(self.interval_s));
 
         loop {
             interval.tick().await;
@@ -40,36 +48,19 @@ impl<'b> DiscoveryMonitor<'b> {
         }
     }
 
-    async fn _generate_signature(
-        &self,
-        message: &str,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let signature = self
-            .coordinator_wallet
-            .signer
-            .sign_message(message.as_bytes())
-            .await?
-            .as_bytes();
-        Ok(format!("0x{}", hex::encode(signature)))
-    }
-
     pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<Node>, Error> {
         let discovery_url = "http://localhost:8089";
         let discovery_route = format!("/api/nodes/pool/{}", self.compute_pool_id);
-        let address = self
-            .coordinator_wallet
-            .wallet
-            .default_signer()
-            .address()
-            .to_string();
+        let address = self.coordinator_wallet.address().to_string();
 
-        let signature = self._generate_signature(&discovery_route).await.unwrap();
+        let signature = sign_request(&discovery_route, self.coordinator_wallet, None)
+            .await
+            .unwrap();
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert("x-address", address.parse().unwrap());
         headers.insert("x-signature", signature.parse().unwrap());
 
-        println!("Fetching nodes from: {}{}", discovery_url, discovery_route);
         let response = reqwest::Client::new()
             .get(format!("{}{}", discovery_url, discovery_route))
             .headers(headers)

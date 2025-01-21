@@ -1,16 +1,13 @@
 
 # General for MVP
-- [ ] Starting compute pool seems a bit flaky - currently called from orchestrator script
+- [ ] contract call cleanup
 - [ ] Discovery service still using old env?
-- [ ] Latest state storing could make sense to simplify heartbeat dev
-- [ ] Heartbeat loop is lost and still running
+- [ ] Latest state storing could make sense to simplify heartbeat dev 
 - [ ] heartbeat loop and heartbeat api 
 - [ ] Heartbeat based status updater
 - [ ] Hardcoded addresses in conracts
-- [x] Random dangling processes?
 - [ ] GPU detection / memory - what if we do not detect a gpu?
 - [ ] Share abi files in one folder
-- [ ] Bug overwriting nodes in redis
 - [ ] Signature verification currently allows access if you simply have a valid signature
 - [ ] Secure API for platform (manveer access)
 - [ ] Cleanup contracts builder
@@ -28,12 +25,14 @@
 - [ ] node loosing heartbeat state after restart 
 - [ ] readd dry-mode
 
+- [x] Random dangling processes?
+- [x] Heartbeat loop is lost and still running
 # To be discussed
 - [ ] Termination cases
 
 # Optional nice to have for launch 
 - [ ] Master election 
-
+- [ ] Startup script can fails starting compute pool 
 # Important training / synthetic data generation considerations
 - [ ] How to handle secrets?
 - [ ] How to handle logs / metrics?

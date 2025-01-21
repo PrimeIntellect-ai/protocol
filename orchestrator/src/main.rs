@@ -9,28 +9,64 @@ use crate::node::invite::NodeInviter;
 use crate::store::redis::RedisStore;
 use alloy::primitives::U256;
 use anyhow::Result;
+use clap::Parser;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
-use std::env;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
 
+#[derive(Parser)]
+struct Args {
+    /// RPC URL
+    #[arg(short = 'r', long, default_value = "http://localhost:8545")]
+    rpc_url: String,
+
+    /// Owner key
+    #[arg(short = 'k', long)]
+    coordinator_key: String,
+
+    /// Compute pool id
+    #[arg(long, default_value = "0")]
+    compute_pool_id: u32,
+
+    /// Domain id
+    #[arg(short = 'd', long, default_value = "0")]
+    domain_id: u32,
+
+    /// External ip
+    #[arg(short = 'e', long, default_value = "0.0.0.0")]
+    host: String,
+
+    /// Port
+    #[arg(short = 'p', long, default_value = "8090")]
+    port: u16,
+
+    /// Discovery refresh interval
+    #[arg(short = 'i', long, default_value = "10")]
+    discovery_refresh_interval: u64,
+
+    /// Redis store url
+    #[arg(short = 's', long, default_value = "redis://localhost:6379")]
+    redis_store_url: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let compute_pool_id = 0;
-    let domain_id = 0;
-    let coordinator_key = env::var("POOL_OWNER_PRIVATE_KEY").unwrap();
-    let rpc_url = "http://localhost:8545";
+    let args = Args::parse();
+    let compute_pool_id = args.compute_pool_id;
+    let domain_id = args.domain_id;
+    let coordinator_key = args.coordinator_key;
+    let rpc_url: Url = args.rpc_url.parse().unwrap();
 
     let mut tasks: JoinSet<Result<()>> = JoinSet::new();
 
-    let coordinator_wallet = Arc::new(
-        Wallet::new(&coordinator_key, Url::parse(rpc_url).unwrap()).unwrap_or_else(|err| {
+    let coordinator_wallet = Arc::new(Wallet::new(&coordinator_key, rpc_url).unwrap_or_else(
+        |err| {
             eprintln!("Error creating wallet: {:?}", err);
             std::process::exit(1);
-        }),
-    );
+        },
+    ));
 
     let contracts = ContractBuilder::new(&coordinator_wallet)
         .with_compute_registry()
@@ -39,6 +75,7 @@ async fn main() -> Result<()> {
         .with_compute_pool()
         .build()?;
 
+    // TODO: validate that pool exists and we are owner
     // TODO: Move to utils - only here for debug
     let tx = contracts
         .compute_pool
@@ -46,14 +83,22 @@ async fn main() -> Result<()> {
         .await;
     println!("Start pool Tx: {:?}", tx);
 
-    let store = RedisStore::new("redis://localhost:6379");
+    let store = RedisStore::new(&args.redis_store_url);
     let store_clone = store.clone();
     let wallet_clone = coordinator_wallet.clone();
 
     tasks.spawn(async move {
-        let monitor = DiscoveryMonitor::new(store_clone, wallet_clone.as_ref(), compute_pool_id);
+        let monitor = DiscoveryMonitor::new(
+            store_clone,
+            wallet_clone.as_ref(),
+            compute_pool_id,
+            args.discovery_refresh_interval,
+        );
         monitor.run().await
     });
+
+    let host = args.host.clone();
+    let port = args.port.clone();
 
     tasks.spawn(async move {
         let inviter = NodeInviter::new(
@@ -61,12 +106,14 @@ async fn main() -> Result<()> {
             coordinator_wallet.as_ref(),
             compute_pool_id,
             domain_id,
+            &args.host,
+            &args.port,
         );
         inviter.run().await
     });
 
     tokio::select! {
-        res = start_server("0.0.0.0", 8090) => {
+        res = start_server(&host, port) => {
             if let Err(e) = res {
                 eprintln!("Server error: {}", e);
             }
@@ -82,18 +129,4 @@ async fn main() -> Result<()> {
     }
     tasks.shutdown().await;
     Ok(())
-
-    // Wait for Ctrl+C
-    // First core requirement
-    // The orchestrator automatically sources nodes from chain that are interested in joining - continiously queries discovery service (simple db that gives us the ip)
-    // Get list of nodes from discovery service
-    // Create invite for nodes to join - signing invite here
-    // send invites to nodes
-
-    // Have nodes send heartbeats to orchestrator - keep state of connected and healthy nodes
-    // Have a simple api to accept task and forward to nodes
-
-    // Need to store the current state of connected nodes
-    // Nodes check in with their heartrates and current metrics - might eventually move this out to diff service
-    // This service has an api to accept tasks from the core developer - these tasks are distributed to the nodes
 }

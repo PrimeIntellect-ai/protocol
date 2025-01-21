@@ -8,6 +8,7 @@ use alloy::{
     signers::local::PrivateKeySigner,
     transports::http::{Client, Http},
 };
+use alloy::primitives::Address;
 use url::Url;
 pub type WalletProvider = FillProvider<
     JoinFill<
@@ -50,6 +51,10 @@ impl Wallet {
             signer: signer_clone,
             provider,
         })
+    }
+
+    pub fn address(&self) -> Address {
+        self.wallet.default_signer().address()
     }
 
     pub async fn get_balance(&self) -> Result<U256, Box<dyn std::error::Error>> {

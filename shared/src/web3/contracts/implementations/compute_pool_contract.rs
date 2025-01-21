@@ -26,9 +26,14 @@ impl ComputePool {
             .await?;
         let pool_info_tuple: &[DynSolValue] =
             pool_info_response.first().unwrap().as_tuple().unwrap();
-        // TODO: If we cannot find a cleaner version for this parsing
-        // I'll fix this in the lib myself -_-
-        // abi_encode looks promising
+
+        // Check if pool exists by looking at creator and compute manager addresses
+        if pool_info_tuple[3].as_address().unwrap() == Address::ZERO
+            && pool_info_tuple[4].as_address().unwrap() == Address::ZERO
+        {
+            return Err("Pool does not exist".into());
+        }
+
         println!("Pool info tuple: {:?}", pool_info_tuple);
 
         let pool_id: U256 = pool_info_tuple[0].as_uint().unwrap().0;
