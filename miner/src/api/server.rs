@@ -1,4 +1,3 @@
-use crate::api::middleware::validate_signature::ValidateSignature;
 use crate::api::routes::invite::invite_routes;
 use crate::api::routes::task::task_routes;
 use crate::operations::heartbeat::service::HeartbeatService;
@@ -6,6 +5,7 @@ use actix_web::{middleware, web::Data, App, HttpServer};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
+use shared::security::auth_signature_middleware::ValidateSignature;
 
 #[derive(Clone)]
 pub struct AppState {

@@ -4889,7 +4889,10 @@ dependencies = [
 name = "shared"
 version = "0.1.0"
 dependencies = [
+ "actix-web",
  "alloy",
+ "futures-util",
+ "hex",
  "serde",
  "serde_json",
  "tokio",

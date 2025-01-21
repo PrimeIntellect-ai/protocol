@@ -78,8 +78,10 @@ where
             }
 
             // Parse and sort the payload
-            let payload_value: serde_json::Value =
-                serde_json::from_slice(&body).map_err(ErrorBadRequest)?;
+            let payload_value: serde_json::Value = match serde_json::from_slice(&body) {
+                Ok(val) => val,
+                Err(e) => return Err(ErrorBadRequest(e)),
+            };
             let mut payload_data = payload_value.clone();
             if let Some(obj) = payload_data.as_object_mut() {
                 let sorted_keys: Vec<String> = obj.keys().cloned().collect();
@@ -89,7 +91,11 @@ where
                     .collect();
                 *obj = sorted_obj;
             }
-            let payload_string = serde_json::to_string(&payload_data).map_err(ErrorBadRequest)?;
+
+            let payload_string = match serde_json::to_string(&payload_data) {
+                Ok(s) => s,
+                Err(e) => return Err(ErrorBadRequest(e)),
+            };
 
             // Combine path and payload
             let msg = format!("{}{}", path, payload_string);
@@ -97,15 +103,20 @@ where
             // Validate signature
             if let (Some(address), Some(signature)) = (x_address, x_signature) {
                 let signature = signature.trim_start_matches("0x");
-                let parsed_signature = PrimitiveSignature::from_str(signature)
-                    .map_err(|_| ErrorBadRequest("Invalid signature format"))?;
+                let parsed_signature = match PrimitiveSignature::from_str(signature) {
+                    Ok(sig) => sig,
+                    Err(_) => return Err(ErrorBadRequest("Invalid signature format")),
+                };
 
-                let recovered_address = parsed_signature
-                    .recover_address_from_msg(msg)
-                    .map_err(|_| ErrorBadRequest("Failed to recover address from message"))?;
+                let recovered_address = match parsed_signature.recover_address_from_msg(msg) {
+                    Ok(addr) => addr,
+                    Err(_) => return Err(ErrorBadRequest("Failed to recover address from message")),
+                };
 
-                let expected_address = Address::from_str(&address)
-                    .map_err(|_| ErrorBadRequest("Invalid address format"))?;
+                let expected_address = match Address::from_str(&address) {
+                    Ok(addr) => addr,
+                    Err(_) => return Err(ErrorBadRequest("Invalid address format")),
+                };
 
                 if recovered_address != expected_address {
                     println!("Recovered address: {:?}", recovered_address);
@@ -123,8 +134,72 @@ where
 
                 service.call(req).await
             } else {
-                Err(ErrorBadRequest("Missing signature or address"))
+               return Err(ErrorBadRequest("Missing signature or address"))
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{test, web, App, HttpResponse};
+    use actix_web::http::StatusCode;
+
+    async fn test_handler() -> HttpResponse {
+        HttpResponse::Ok().finish()
+    }
+
+    #[actix_web::test]
+    async fn test_missing_headers() {
+        let app = test::init_service(
+            App::new()
+                .wrap(ValidateSignature)
+                .route("/test", web::post().to(test_handler)),
+        )
+        .await;
+    
+        let req = test::TestRequest::post()
+            .uri("/test")
+            .set_json(serde_json::json!({"test": "data"}))
+            .to_request();
+    
+        let err = test::try_call_service(&app, req).await;
+        match err {
+            Err(e) => {
+                assert_eq!(e.to_string(), "Missing signature or address");
+                let error_response = e.error_response();
+                assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
+            }
+            Ok(_) => panic!("Expected an error"),
+        }
+    }
+    
+
+    #[actix_web::test]
+    async fn test_invalid_signature() {
+        let app = test::init_service(
+            App::new()
+                .wrap(ValidateSignature)
+                .route("/test", web::post().to(test_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::post()
+            .uri("/test")
+            .insert_header(("x-address", "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"))
+            .insert_header(("x-signature", "0xinvalid_signature"))
+            .set_json(serde_json::json!({"test": "data"}))
+            .to_request();
+
+        let err = test::try_call_service(&app, req).await;
+        match err {
+            Err(e) => {
+                assert_eq!(e.to_string(), "Invalid signature format");
+                let error_response = e.error_response();
+                assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
+            }
+            Ok(_) => panic!("Expected an error"),
+        }
     }
 }
