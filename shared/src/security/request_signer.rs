@@ -4,7 +4,7 @@ use alloy::signers::Signer;
 pub async fn sign_request(
     endpoint: &str,
     wallet: &Wallet,
-    data: Option<&serde_json::Value>, 
+    data: Option<&serde_json::Value>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let request_data_string = if let Some(data) = data {
         let mut request_data = serde_json::to_value(data)?;
@@ -42,9 +42,9 @@ pub async fn sign_request(
 mod tests {
     use super::*;
     use crate::web3::wallet::Wallet;
-    
+
     use serde_json::json;
-    
+
     use url::Url;
 
     #[tokio::test]
@@ -65,7 +65,9 @@ mod tests {
         });
 
         // Sign request
-        let signature = sign_request(endpoint, &wallet, Some(&test_data)).await.unwrap();
+        let signature = sign_request(endpoint, &wallet, Some(&test_data))
+            .await
+            .unwrap();
 
         // Verify signature starts with "0x"
         assert!(signature.starts_with("0x"));
@@ -86,7 +88,9 @@ mod tests {
         let endpoint = "/api/test";
         let empty_data = json!({});
 
-        let signature = sign_request(endpoint, &wallet, Some(&empty_data)).await.unwrap();
+        let signature = sign_request(endpoint, &wallet, Some(&empty_data))
+            .await
+            .unwrap();
         println!("Signature: {}", signature);
         assert!(signature.starts_with("0x"));
         assert_eq!(signature.len(), 132);

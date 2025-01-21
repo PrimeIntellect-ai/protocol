@@ -3926,6 +3926,7 @@ dependencies = [
  "clap 4.5.27",
  "hex",
  "redis",
+ "redis-test",
  "reqwest",
  "serde",
  "serde_json",
@@ -4371,6 +4372,18 @@ dependencies = [
  "sha1_smol",
  "socket2",
  "url",
+]
+
+[[package]]
+name = "redis-test"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f9edfc3524eee83ea9043734d59b139f24b6974742e2e23b16faa2b8a33fe36"
+dependencies = [
+ "rand",
+ "redis",
+ "socket2",
+ "tempfile",
 ]
 
 [[package]]
@@ -5161,13 +5174,12 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.15.0"
+version = "3.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a8a559c81686f576e8cd0290cd2a24a2a9ad80c98b3478856500fcbd7acd704"
+checksum = "28cce251fcbc87fac86a866eeb0d6c2d536fc16d06f184bb61aeae11aa4cee0c"
 dependencies = [
  "cfg-if 1.0.0",
  "fastrand",
- "getrandom",
  "once_cell",
  "rustix",
  "windows-sys 0.59.0",

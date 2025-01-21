@@ -83,13 +83,14 @@ async fn main() -> Result<()> {
         .await;
     println!("Start pool Tx: {:?}", tx);
 
-    let store = RedisStore::new(&args.redis_store_url);
-    let store_clone = store.clone();
+    let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let wallet_clone = coordinator_wallet.clone();
+    let discovery_store_clone = store.clone();
+    let inviter_store_clone = store.clone();
 
     tasks.spawn(async move {
         let monitor = DiscoveryMonitor::new(
-            store_clone,
+            discovery_store_clone,
             wallet_clone.as_ref(),
             compute_pool_id,
             args.discovery_refresh_interval,
@@ -102,7 +103,7 @@ async fn main() -> Result<()> {
 
     tasks.spawn(async move {
         let inviter = NodeInviter::new(
-            store.clone(),
+            inviter_store_clone,
             coordinator_wallet.as_ref(),
             compute_pool_id,
             domain_id,
@@ -113,7 +114,7 @@ async fn main() -> Result<()> {
     });
 
     tokio::select! {
-        res = start_server(&host, port) => {
+        res = start_server(&host, port, store.clone()) => {
             if let Err(e) = res {
                 eprintln!("Server error: {}", e);
             }
@@ -123,7 +124,7 @@ async fn main() -> Result<()> {
                 eprintln!("Task error: {}", e);
             }
         }
-        _ = tokio::signal::ctrl_c() => {  // Fix the asterisks here
+        _ = tokio::signal::ctrl_c() => {
             println!("Shutdown signal received");
         }
     }

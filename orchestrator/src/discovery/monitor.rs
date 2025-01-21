@@ -9,11 +9,12 @@ use serde_json;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
 
 pub struct DiscoveryMonitor<'b> {
-    store: RedisStore,
+    store: Arc<RedisStore>,
     coordinator_wallet: &'b Wallet,
     compute_pool_id: u32,
     interval_s: u64,
@@ -21,7 +22,7 @@ pub struct DiscoveryMonitor<'b> {
 
 impl<'b> DiscoveryMonitor<'b> {
     pub fn new(
-        store: RedisStore,
+        store: Arc<RedisStore>,
         coordinator_wallet: &'b Wallet,
         compute_pool_id: u32,
         interval_s: u64,

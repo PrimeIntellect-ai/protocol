@@ -2,12 +2,14 @@ use super::state::HeartbeatState;
 use crate::TaskHandles;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
-
 #[derive(Debug, Serialize)]
-struct HeartbeatRequest {}
+struct HeartbeatRequest {
+    address: String,
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
@@ -22,6 +24,7 @@ pub struct HeartbeatService {
     client: Client,
     cancellation_token: CancellationToken,
     task_handles: TaskHandles,
+    node_wallet: Arc<Wallet>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -37,6 +40,7 @@ impl HeartbeatService {
         state_dir: Option<String>,
         cancellation_token: CancellationToken,
         task_handles: TaskHandles,
+        node_wallet: Arc<Wallet>,
     ) -> Result<Arc<Self>, HeartbeatError> {
         let state: HeartbeatState = if state_dir.is_some() {
             HeartbeatState::new(state_dir)
@@ -55,6 +59,7 @@ impl HeartbeatService {
             client,
             cancellation_token,
             task_handles,
+            node_wallet,
         }))
     }
 
@@ -68,6 +73,7 @@ impl HeartbeatService {
         let client = self.client.clone();
         let interval_duration = self.interval;
         let cancellation_token = self.cancellation_token.clone();
+        let node_address = self.node_wallet.clone().address().to_string();
         let handle = tokio::spawn(async move {
             let mut interval = interval(interval_duration);
             loop {
@@ -76,7 +82,7 @@ impl HeartbeatService {
                         if !state.is_running().await {
                             break;
                         }
-                        match Self::send_heartbeat(&client, state.get_endpoint().await).await {
+                        match Self::send_heartbeat(&client, state.get_endpoint().await, node_address.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
                                 log::debug!("Heartbeat sent successfully");
@@ -110,12 +116,15 @@ impl HeartbeatService {
     async fn send_heartbeat(
         client: &Client,
         endpoint: Option<String>,
+        address: String,
     ) -> Result<HeartbeatResponse, HeartbeatError> {
         if endpoint.is_none() {
             return Err(HeartbeatError::RequestFailed);
         }
 
-        let request = HeartbeatRequest {};
+        let request = HeartbeatRequest {
+            address: address.clone(),
+        };
         let response = client
             .post(endpoint.unwrap())
             .json(&request)

@@ -10,10 +10,10 @@ use redis::Commands;
 use serde_json::json;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
+use std::sync::Arc;
 use tokio::time::{interval, Duration};
-
 pub struct NodeInviter<'a> {
-    store: RedisStore,
+    store: Arc<RedisStore>,
     wallet: &'a Wallet,
     pool_id: u32,
     domain_id: u32,
@@ -23,7 +23,7 @@ pub struct NodeInviter<'a> {
 
 impl<'a> NodeInviter<'a> {
     pub fn new(
-        store: RedisStore,
+        store: Arc<RedisStore>,
         wallet: &'a Wallet,
         pool_id: u32,
         domain_id: u32,

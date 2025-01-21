@@ -1,3 +1,4 @@
+use alloy::primitives::Address;
 use alloy::{
     network::{Ethereum, EthereumWallet},
     primitives::U256,
@@ -8,7 +9,6 @@ use alloy::{
     signers::local::PrivateKeySigner,
     transports::http::{Client, Http},
 };
-use alloy::primitives::Address;
 use url::Url;
 pub type WalletProvider = FillProvider<
     JoinFill<

@@ -137,6 +137,7 @@ pub async fn execute_command(
                 state_dir.clone(),
                 cancellation_token.clone(),
                 task_handles.clone(),
+                node_wallet_instance.clone(),
             );
 
             Console::info("═", &"═".repeat(50));

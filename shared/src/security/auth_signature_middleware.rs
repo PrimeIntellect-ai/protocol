@@ -248,10 +248,7 @@ mod tests {
         )
         .await;
 
-        println!(
-            "Address: {}",
-            wallet.wallet.default_signer().address()
-        );
+        println!("Address: {}", wallet.wallet.default_signer().address());
         println!("Signature: {}", signature);
         let req = test::TestRequest::post()
             .uri("/test")
@@ -288,10 +285,7 @@ mod tests {
         )
         .await;
 
-        println!(
-            "Address: {}",
-            wallet.wallet.default_signer().address()
-        );
+        println!("Address: {}", wallet.wallet.default_signer().address());
         println!("Signature: {}", signature);
         let req = test::TestRequest::post()
             .uri("/test")
