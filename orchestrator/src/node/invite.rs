@@ -1,6 +1,7 @@
 use crate::store::redis::RedisStore;
 use crate::types::Node;
 use crate::types::NodeStatus;
+use crate::types::ORCHESTRATOR_BASE_KEY;
 use alloy::primitives::utils::keccak256 as keccak;
 use alloy::primitives::U256;
 use alloy::signers::Signer;
@@ -12,6 +13,7 @@ use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
+
 pub struct NodeInviter<'a> {
     store: Arc<RedisStore>,
     wallet: &'a Wallet,
@@ -72,7 +74,7 @@ impl<'a> NodeInviter<'a> {
     async fn process_uninvited_nodes(&self) -> Result<()> {
         //let nodes = self.store.get_uninvited_nodes().await?;
         let mut con = self.store.client.get_connection()?;
-        let keys: Vec<String> = con.keys("orchestrator:node:*")?;
+        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY))?;
         let nodes: Vec<Node> = keys
             .iter()
             .filter_map(|key| con.get::<_, String>(key).ok())
@@ -84,7 +86,6 @@ impl<'a> NodeInviter<'a> {
         for node in nodes {
             let node_to_update = node.clone();
             // TODO: Do this in tokio and outside of this big fn call
-            println!("Node: {:?}", node);
             let node_url = format!("http://{}:{}", node.ip_address, node.port);
             let invite_path = "/invite".to_string();
             let invite_url = format!("{}{}", node_url, invite_path);
@@ -127,22 +128,13 @@ impl<'a> NodeInviter<'a> {
             {
                 Ok(response) => {
                     if response.status().is_success() {
-                        let response_body = response.text().await?;
-                        let parsed_response: serde_json::Value =
-                            serde_json::from_str(&response_body)?;
-                        println!("Parsed Response: {:?}", parsed_response);
-
                         let mut updated_node = node_to_update.clone();
                         updated_node.status = NodeStatus::WaitingForHeartbeat;
-
-                        // Create a mutable copy of the node to update its status
-                        let redis_key =
-                            format!("orchestrator:node:{}", &updated_node.address.to_string());
-                        let json_payload = serde_json::to_string(&updated_node)?;
+                        let redis_key = updated_node.orchestrator_key();
+                        let node_string = updated_node.to_string();
                         println!("Updating node status to WaitingForHeartbeat");
-                        println!("Redis value: {:?}", json_payload);
                         let mut con = self.store.client.get_connection()?;
-                        let _: () = con.set(&redis_key, json_payload)?;
+                        let _: () = con.set(&redis_key, node_string)?;
                     } else {
                         println!("Received non-success status: {:?}", response.status());
                     }

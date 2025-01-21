@@ -18,6 +18,7 @@ pub struct DiscoveryMonitor<'b> {
     coordinator_wallet: &'b Wallet,
     compute_pool_id: u32,
     interval_s: u64,
+    discovery_url: String,
 }
 
 impl<'b> DiscoveryMonitor<'b> {
@@ -26,12 +27,14 @@ impl<'b> DiscoveryMonitor<'b> {
         coordinator_wallet: &'b Wallet,
         compute_pool_id: u32,
         interval_s: u64,
+        discovery_url: String,
     ) -> Self {
         Self {
             store,
             coordinator_wallet,
             compute_pool_id,
             interval_s,
+            discovery_url,
         }
     }
 
@@ -48,7 +51,6 @@ impl<'b> DiscoveryMonitor<'b> {
     }
 
     pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<Node>, Error> {
-        let discovery_url = "http://localhost:8089";
         let discovery_route = format!("/api/nodes/pool/{}", self.compute_pool_id);
         let address = self.coordinator_wallet.address().to_string();
 
@@ -61,7 +63,7 @@ impl<'b> DiscoveryMonitor<'b> {
         headers.insert("x-signature", signature.parse().unwrap());
 
         let response = reqwest::Client::new()
-            .get(format!("{}{}", discovery_url, discovery_route))
+            .get(format!("{}{}", self.discovery_url, discovery_route))
             .headers(headers)
             .send()
             .await?;
@@ -103,16 +105,12 @@ impl<'b> DiscoveryMonitor<'b> {
         let mut con = self.store.client.get_connection()?;
         let nodes = self.fetch_nodes_from_discovery().await?;
         for node in &nodes {
-            let key = format!("orchestrator:node:{}", node.address);
-            let exists: Option<String> = con.get(&key)?;
+            let exists: Option<String> = con.get(node.orchestrator_key())?;
             if exists.is_some() {
-                println!("Node {} already exists in the database.", node.address);
-                continue; // Skip processing this node
+                continue;
             }
 
-            println!("Node: {:?}", node);
-            // TODO: Only temp - make nice
-            let _: () = con.set(&key, serde_json::to_string(node)?)?;
+            let _: () = con.set(node.orchestrator_key(), node.to_string())?;
         }
         Ok(nodes)
     }

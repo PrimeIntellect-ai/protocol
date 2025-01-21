@@ -49,6 +49,10 @@ struct Args {
     /// Redis store url
     #[arg(short = 's', long, default_value = "redis://localhost:6379")]
     redis_store_url: String,
+
+    /// Discovery url
+    #[arg(long, default_value = "http://localhost:8089")]
+    discovery_url: String,
 }
 
 #[tokio::main]
@@ -94,6 +98,7 @@ async fn main() -> Result<()> {
             wallet_clone.as_ref(),
             compute_pool_id,
             args.discovery_refresh_interval,
+            args.discovery_url,
         );
         monitor.run().await
     });

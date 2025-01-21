@@ -29,6 +29,7 @@
 - [ ] better startup of discovery service
 - [ ] node loosing heartbeat state after restart 
 - [ ] readd dry-mode
+- [ ] Secure nodes / orchestrator api
 
 - [x] Random dangling processes?
 - [x] Heartbeat loop is lost and still running

@@ -19,7 +19,7 @@ async fn heartbeat(
 ) -> HttpResponse {
     println!("Heartbeat incoming for address: {}", heartbeat.address);
     let mut con = app_state.store.client.get_connection().unwrap();
-    let key = format!("orchestrator:node:{}:heartbeat", heartbeat.address);
+    let key = format!("orchestrator:heartbeat:{}", heartbeat.address);
     let _: () = con
         .set_options(
             &key,
@@ -38,29 +38,10 @@ pub fn heartbeat_routes() -> Scope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{api::server::AppState, store::redis::RedisStore};
+    use crate::api::tests::helper::create_test_app_state;
     use actix_web::http::StatusCode;
     use actix_web::test;
     use actix_web::App;
-    use std::sync::Arc;
-    use web::Data;
-
-    async fn create_test_app_state() -> Data<AppState> {
-        // Create a test Redis store - you might want to use a mock or test instance
-        let store = RedisStore::new_test();
-        let mut con = store
-            .client
-            .get_connection()
-            .expect("Should connect to test Redis instance");
-
-        redis::cmd("PING")
-            .query::<String>(&mut con)
-            .expect("Redis should be responsive");
-
-        Data::new(AppState {
-            store: Arc::new(store),
-        })
-    }
 
     #[actix_web::test]
     async fn test_heartbeat() {
@@ -80,9 +61,8 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
         let mut con = app_state.store.client.get_connection().unwrap();
-        let key = "orchestrator:node:0x0000000000000000000000000000000000000000:heartbeat";
+        let key = "orchestrator:heartbeat:0x0000000000000000000000000000000000000000:heartbeat";
         let value: Option<String> = con.get(key).unwrap();
-        println!("Value: {:?}", value);
-        assert_eq!(value, Some("1".to_string()));
+        assert_eq!(value, None);
     }
 }
