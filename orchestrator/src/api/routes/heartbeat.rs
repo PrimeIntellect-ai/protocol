@@ -98,7 +98,7 @@ mod tests {
         println!("json: {:?}", json);
         assert_eq!(json["success"], serde_json::Value::Bool(true));
         assert_eq!(
-            json["current_task"]["image"],
+            json["data"]["current_task"]["image"],
             serde_json::Value::String("test".to_string())
         );
     }
