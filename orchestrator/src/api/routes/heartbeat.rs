@@ -1,4 +1,6 @@
 use crate::api::server::AppState;
+use crate::types::Node;
+use crate::types::ORCHESTRATOR_BASE_KEY;
 use crate::types::ORCHESTRATOR_HEARTBEAT_KEY;
 use actix_web::{
     web::{self, post, Data},
@@ -15,6 +17,20 @@ async fn heartbeat(
     let mut con = app_state.store.client.get_connection().unwrap();
     let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, heartbeat.address);
     println!("state of machine: {:?}", heartbeat.task_state);
+
+    // TODO: Update node status
+    let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, heartbeat.address);
+    // TODO: Implement node redis
+    let value: String = con.get(node_key).unwrap();
+    let mut node = Node::from_string(&value);
+
+    node.task_state = heartbeat.task_state.clone();
+    node.task_id = heartbeat.task_id.clone();
+
+    let node_string = node.to_string();
+    // TODO: Avoid duplication
+    let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, heartbeat.address);
+    let _: () = con.set(&node_key, node_string).unwrap();
 
     let current_task = app_state.task_store.get_task();
     let _: () = con

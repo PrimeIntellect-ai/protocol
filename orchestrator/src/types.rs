@@ -1,5 +1,6 @@
 use alloy::primitives::Address;
 use serde::{Deserialize, Serialize};
+use shared::models::task::TaskState;
 use std::fmt;
 
 pub const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node:";
@@ -14,6 +15,9 @@ pub struct Node {
     pub port: u16,
     #[serde(rename = "status")]
     pub status: NodeStatus,
+
+    pub task_id: Option<String>,
+    pub task_state: Option<TaskState>,
 }
 
 impl Node {
@@ -24,16 +28,13 @@ impl Node {
             ip_address,
             port,
             status: NodeStatus::Discovered,
+            task_id: None,
+            task_state: None,
         }
     }
 
     pub fn orchestrator_key(&self) -> String {
         format!("{}:{}", ORCHESTRATOR_BASE_KEY, self.address)
-    }
-
-    #[allow(dead_code)]
-    pub fn heartbeat_key(&self) -> String {
-        format!("orchestrator:heartbeat:{}", self.address)
     }
 
     pub fn from_string(s: &str) -> Self {

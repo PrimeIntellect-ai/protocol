@@ -94,6 +94,8 @@ impl<'b> DiscoveryMonitor<'b> {
                     ip_address: ip_address.to_string(),
                     port,
                     status: NodeStatus::Discovered,
+                    task_id: None,
+                    task_state: None,
                 })
             })
             .collect::<Result<Vec<Node>, anyhow::Error>>()?;

@@ -53,6 +53,8 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Discovered,
+            task_id: None,
+            task_state: None,
         };
 
         let mut con = app_state.store.client.get_connection().unwrap();

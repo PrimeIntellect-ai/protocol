@@ -43,8 +43,6 @@ mod tests {
     use actix_web::test;
     use actix_web::App;
     use shared::models::task::Task;
-    use shared::models::task::TaskState;
-    use uuid::Uuid;
 
     #[actix_web::test]
     async fn test_get_current_task() {

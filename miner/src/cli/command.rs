@@ -144,6 +144,7 @@ pub async fn execute_command(
                 node_wallet_instance.clone(),
                 docker_service.clone(),
             );
+
             tokio::spawn(async move {
                 if let Err(e) = docker_service.run().await {
                     Console::error(&format!("❌ Docker service failed: {}", e));

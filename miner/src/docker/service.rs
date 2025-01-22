@@ -32,14 +32,23 @@ impl DockerService {
         let manager = self.docker_manager.clone();
         let cancellation_token = self.cancellation_token.clone();
         let state = self.state.clone();
+
         let starting_container_tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let terminating_container_tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> =
             Arc::new(Mutex::new(Vec::new()));
 
         pub fn generate_task_id(task: &Option<Task>) -> Option<String> {
-            match task {
-                Some(task) => Some(format!("{}-{}", task.id, TASK_PREFIX)),
-                None => None,
+            task.as_ref()
+                .map(|task| format!("{}-{}", task.id, TASK_PREFIX))
+        }
+
+        async fn cleanup_tasks(tasks: &Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>) {
+            let mut tasks_guard = tasks.lock().await;
+            for handle in tasks_guard.iter() {
+                handle.abort();
             }
+            tasks_guard.clear();
         }
 
         // TODO: Move task to tasks state
@@ -49,11 +58,21 @@ impl DockerService {
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
                     println!("Cancellation token cancelled");
+                    cleanup_tasks(&starting_container_tasks).await;
+                    cleanup_tasks(&terminating_container_tasks).await;
                     break;
                 }
                 _ = interval.tick() => {
-                    println!("Checking for new task");
+                    {
+                        let mut tasks = starting_container_tasks.lock().await;
+                        tasks.retain(|handle| !handle.is_finished());
+                    }
+                    {
+                        let mut tasks = terminating_container_tasks.lock().await;
+                        tasks.retain(|handle| !handle.is_finished());
+                    }
 
+                    println!("Checking for new task");
                     let current_task = state.get_current_task().await;
                     let task_id = generate_task_id(&current_task);
                     let task_clone = current_task.clone();
@@ -73,18 +92,18 @@ impl DockerService {
                     .collect();
                     println!("Old tasks: {:?}", old_tasks);
 
-                    if old_tasks.len() > 0 {
+                    if !old_tasks.is_empty() {
                         println!("Terminating old tasks");
                         for task in old_tasks {
                             let terminate_manager_clone = terminate_manager.clone();
-                            // TODO: How to work with handle?
-                            let handle = tokio::spawn(async move {
+                            let handle =tokio::spawn(async move {
                                 let termination = terminate_manager_clone.remove_container(&task.id).await;
                                 match termination {
                                     Ok(_) => println!("Container terminated successfully"),
                                     Err(e) => println!("Error terminating container: {}", e),
                                 }
                             });
+                            terminating_container_tasks.lock().await.push(handle);
                         }
                     }
 
@@ -108,16 +127,13 @@ impl DockerService {
                             let task_clone = task_clone.clone();
                             let manager_clone = manager_clone.clone();
 
-                             // TODO: Update state in store
-                            let h = tokio::spawn(async move {
+                            let handle = tokio::spawn(async move {
                                 let payload = task_clone.unwrap();
                                 let cmd = Some(vec!["sleep".to_string(), "infinity".to_string()]);
                                 let container_id = manager_clone.start_container(&payload.image, &task_id, payload.env_vars, cmd).await.unwrap();
                                 println!("Container started with id: {}", container_id);
                             });
-
-                            println!("Pushing handle to starting container tasks");
-                            starting_container_tasks.lock().await.push(h);
+                            starting_container_tasks.lock().await.push(handle);
                         }
                         } else {
                             let container_status = container_match.unwrap();

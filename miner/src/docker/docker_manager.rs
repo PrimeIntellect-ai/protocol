@@ -12,17 +12,23 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct ContainerInfo {
     pub id: String,
+    #[allow(unused)]
     pub image: String,
     pub names: Vec<String>,
+    #[allow(unused)]
     pub created: i64,
 }
 
 #[derive(Debug, Clone)]
 pub struct ContainerDetails {
+    #[allow(unused)]
     pub id: String,
+    #[allow(unused)]
     pub image: String,
     pub status: Option<ContainerStateStatusEnum>,
+    #[allow(unused)]
     pub names: Vec<String>,
+    #[allow(unused)]
     pub created: i64,
 }
 
