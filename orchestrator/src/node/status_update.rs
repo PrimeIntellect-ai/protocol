@@ -122,6 +122,8 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::WaitingForHeartbeat,
+            task_id: None,
+            task_state: None,
         };
 
         let heartbeat_key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, node.address);
@@ -165,6 +167,8 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Healthy,
+            task_id: None,
+            task_state: None,
         };
 
         let _: () = con.set(node.orchestrator_key(), node.to_string()).unwrap();
@@ -195,6 +199,8 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Unhealthy,
+            task_id: None,
+            task_state: None,
         };
 
         let _: () = con.set(node.orchestrator_key(), node.to_string()).unwrap();
@@ -230,6 +236,8 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Unhealthy,
+            task_id: None,
+            task_state: None,
         };
 
         let _: () = con.set(node.orchestrator_key(), node.to_string()).unwrap();
@@ -264,6 +272,8 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Unhealthy,
+            task_id: None,
+            task_state: None,
         };
         let unhealthy_counter_key =
             format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, node.address);
@@ -311,6 +321,8 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Unhealthy,
+            task_id: None,
+            task_state: None,
         };
         let node1_unhealthy_counter_key =
             format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, node1.address);
@@ -321,6 +333,8 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Healthy,
+            task_id: None,
+            task_state: None,
         };
 
         let _: () = con

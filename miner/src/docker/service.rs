@@ -194,7 +194,7 @@ mod tests {
             task_name
         );
 
-        let _ = tokio::spawn(async move {
+        tokio::spawn(async move {
             docker_service.run().await.unwrap();
         });
         tokio::time::sleep(Duration::from_secs(10)).await;

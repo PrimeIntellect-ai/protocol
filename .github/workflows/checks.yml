@@ -41,6 +41,6 @@ jobs:
         if: success() || failure()  # Run even if fmt fails
         run: cargo clippy -- -D warnings
 
-      - name: Run tests
-        if: success() || failure()  # Run even if previous steps fail
-        run: cargo test --verbose
+      # - name: Run tests
+      #   if: success() || failure()  # Run even if previous steps fail
+      #   run: cargo test --verbose

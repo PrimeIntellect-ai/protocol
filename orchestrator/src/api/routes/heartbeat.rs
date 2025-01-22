@@ -21,16 +21,20 @@ async fn heartbeat(
     // TODO: Update node status
     let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, heartbeat.address);
     // TODO: Implement node redis
-    let value: String = con.get(node_key).unwrap();
-    let mut node = Node::from_string(&value);
-
-    node.task_state = heartbeat.task_state.clone();
-    node.task_id = heartbeat.task_id.clone();
-
-    let node_string = node.to_string();
-    // TODO: Avoid duplication
-    let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, heartbeat.address);
-    let _: () = con.set(&node_key, node_string).unwrap();
+    let value: Option<String> = con.get(node_key).unwrap();
+    match value {
+        Some(value) => {
+            let mut node = Node::from_string(&value);
+            node.task_state = heartbeat.task_state.clone();
+            node.task_id = heartbeat.task_id.clone();
+            let node_string = node.to_string();
+            let node_key = node.orchestrator_key();
+            let _: () = con.set(&node_key, node_string).unwrap();
+        }
+        None => {
+            println!("Node not found to update heartbeat data");
+        }
+    }
 
     let current_task = app_state.task_store.get_task();
     let _: () = con
