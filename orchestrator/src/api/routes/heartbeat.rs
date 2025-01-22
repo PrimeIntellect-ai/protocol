@@ -38,8 +38,8 @@ mod tests {
     use actix_web::http::StatusCode;
     use actix_web::test;
     use actix_web::App;
-    use shared::models::task::TaskRequest;
     use serde_json::json;
+    use shared::models::task::TaskRequest;
 
     #[actix_web::test]
     async fn test_heartbeat() {
