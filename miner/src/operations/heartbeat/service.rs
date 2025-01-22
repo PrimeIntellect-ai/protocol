@@ -1,4 +1,5 @@
 use super::state::HeartbeatState;
+use crate::docker::DockerService;
 use crate::TaskHandles;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
@@ -16,6 +17,7 @@ pub struct HeartbeatService {
     cancellation_token: CancellationToken,
     task_handles: TaskHandles,
     node_wallet: Arc<Wallet>,
+    docker_service: Arc<DockerService>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -32,6 +34,7 @@ impl HeartbeatService {
         cancellation_token: CancellationToken,
         task_handles: TaskHandles,
         node_wallet: Arc<Wallet>,
+        docker_service: Arc<DockerService>,
     ) -> Result<Arc<Self>, HeartbeatError> {
         let state: HeartbeatState = if state_dir.is_some() {
             HeartbeatState::new(state_dir)
@@ -51,6 +54,7 @@ impl HeartbeatService {
             cancellation_token,
             task_handles,
             node_wallet,
+            docker_service,
         }))
     }
 
@@ -65,6 +69,7 @@ impl HeartbeatService {
         let interval_duration = self.interval;
         let cancellation_token = self.cancellation_token.clone();
         let node_address = self.node_wallet.clone().address().to_string();
+        let docker_service = self.docker_service.clone();
         let handle = tokio::spawn(async move {
             let mut interval = interval(interval_duration);
             loop {
@@ -73,7 +78,7 @@ impl HeartbeatService {
                         if !state.is_running().await {
                             break;
                         }
-                        match Self::send_heartbeat(&client, state.get_endpoint().await, node_address.clone()).await {
+                        match Self::send_heartbeat(&client, state.get_endpoint().await, node_address.clone(), docker_service.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
                                 log::debug!("Heartbeat sent successfully");
@@ -108,14 +113,27 @@ impl HeartbeatService {
         client: &Client,
         endpoint: Option<String>,
         address: String,
+        docker_service: Arc<DockerService>,
     ) -> Result<HeartbeatResponse, HeartbeatError> {
         if endpoint.is_none() {
             return Err(HeartbeatError::RequestFailed);
         }
 
-        let request = HeartbeatRequest {
-            address: address.clone(),
+        let current_task_state = docker_service.state.get_current_task().await;
+        let request = if let Some(task) = current_task_state {
+            HeartbeatRequest {
+                address: address.clone(),
+                task_id: Some(task.id.to_string()),
+                task_state: Some(task.state),
+            }
+        } else {
+            HeartbeatRequest {
+                address: address.clone(),
+                task_id: None,
+                task_state: None,
+            }
         };
+
         let response = client
             .post(endpoint.unwrap())
             .json(&request)
@@ -141,7 +159,7 @@ impl HeartbeatService {
         log::info!("Heartbeat response: {:?}", heartbeat_response);
         let response_clone = response.clone();
         println!("Current response: {:?}", response_clone);
-        let _ = match heartbeat_response.current_task {
+        let task = match heartbeat_response.current_task {
             Some(task) => {
                 println!("Current task is to run image: {:?}", task.image);
                 Some(task)
@@ -151,6 +169,8 @@ impl HeartbeatService {
                 None
             }
         };
+
+        docker_service.state.set_current_task(task).await;
 
         Ok(response.data)
     }

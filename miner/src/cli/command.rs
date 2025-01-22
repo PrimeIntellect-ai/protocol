@@ -2,6 +2,7 @@ use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::software::software_check;
 use crate::console::Console;
+use crate::docker::DockerService;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderError;
@@ -124,6 +125,7 @@ pub async fn execute_command(
                 &contracts.ai_token,
                 &contracts.prime_network,
             );
+
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,
                 &node_wallet_instance,
@@ -132,13 +134,21 @@ pub async fn execute_command(
             );
 
             let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
+            let docker_service = Arc::new(DockerService::new(cancellation_token.clone()));
+
             let heartbeat_service = HeartbeatService::new(
                 Duration::from_secs(10),
                 state_dir.clone(),
                 cancellation_token.clone(),
                 task_handles.clone(),
                 node_wallet_instance.clone(),
+                docker_service.clone(),
             );
+            tokio::spawn(async move {
+                if let Err(e) = docker_service.run().await {
+                    Console::error(&format!("❌ Docker service failed: {}", e));
+                }
+            });
 
             Console::info("═", &"═".repeat(50));
             let pool_id = U256::from(*compute_pool_id as u32);

@@ -6,6 +6,7 @@
 - [x] Heartbeat based status updater
 - [ ] Ability to dispatch tasks to nodes
 - [ ] Heartbeat Verification (Signature with dynamic middleware list)
+- [ ] Start command missing in api atm
 
 - [ ] What if a node never becomes healthy? 
 - [ ] General api security - current connections are unsecured
@@ -33,7 +34,7 @@
 - [ ] node loosing heartbeat state after restart 
 - [ ] readd dry-mode
 - [ ] Secure nodes / orchestrator api
-- [ ] check docker versiont pu
+- [ ] check docker version in check 
 
 - [x] Random dangling processes?
 - [x] Heartbeat loop is lost and still running

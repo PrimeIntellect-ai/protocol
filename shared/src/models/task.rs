@@ -3,14 +3,31 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TaskState {
+    PENDING,
+    PULLING,
+    RUNNING,
+    COMPLETED,
+    FAILED,
+    PAUSED,
+    RESTARTING,
+    UNKNOWN,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskRequest {
     pub image: String,
+    pub name: String,
+    pub env_vars: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: Uuid,
     pub image: String,
+    pub name: String,
+    pub env_vars: Option<std::collections::HashMap<String, String>>,
+    pub state: TaskState,
 }
 
 impl From<TaskRequest> for Task {
@@ -18,6 +35,9 @@ impl From<TaskRequest> for Task {
         Task {
             id: Uuid::new_v4(),
             image: request.image,
+            name: request.name,
+            env_vars: request.env_vars,
+            state: TaskState::PENDING,
         }
     }
 }

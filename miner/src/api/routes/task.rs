@@ -1,6 +1,6 @@
-use super::super::models::task::{CreateTaskRequest, ListTasksResponse, TaskResponse};
+/*use super::super::models::task::{CreateTaskRequest, ListTasksResponse, TaskResponse};
 use super::types::ErrorResponse;
-use crate::docker::handler::DockerHandler;
+use crate::docker::docker_manager::DockerManager;
 use actix_web::{
     web::{self, delete, get, post, Data},
     HttpResponse, Scope,
@@ -21,7 +21,7 @@ use validator::Validate;
 /// - 500 Internal Server Error: Server-side error
 async fn create_task(
     task: web::Json<CreateTaskRequest>,
-    docker_handler: Data<DockerHandler>,
+    docker_handler: Data<DockerManager>,
 ) -> HttpResponse {
     // Extract task from JSON wrapper
     let task = task.into_inner();
@@ -71,7 +71,7 @@ async fn create_task(
 /// - 200 OK: Task found
 /// - 404 Not Found: Task not found
 /// - 500 Internal Server Error: Server-side error
-async fn get_task(path: web::Path<String>, docker_handler: Data<DockerHandler>) -> HttpResponse {
+async fn get_task(path: web::Path<String>, docker_handler: Data<DockerManager>) -> HttpResponse {
     let task_id = path.into_inner();
 
     // Validate task ID format
@@ -111,7 +111,7 @@ async fn get_task(path: web::Path<String>, docker_handler: Data<DockerHandler>) 
 /// # Returns
 /// - 200 OK: List of running tasks
 /// - 500 Internal Server Error: Server-side error
-async fn list_tasks(docker_handler: Data<DockerHandler>) -> HttpResponse {
+async fn list_tasks(docker_handler: Data<DockerManager>) -> HttpResponse {
     match docker_handler.list_running_containers().await {
         Ok(containers) => {
             debug!("Found {} total containers", containers.len());
@@ -161,7 +161,7 @@ async fn list_tasks(docker_handler: Data<DockerHandler>) -> HttpResponse {
 /// - 200 OK: Task deleted successfully
 /// - 404 Not Found: Task not found
 /// - 500 Internal Server Error: Server-side error
-async fn delete_task(path: web::Path<String>, docker_handler: Data<DockerHandler>) -> HttpResponse {
+async fn delete_task(path: web::Path<String>, docker_handler: Data<DockerManager>) -> HttpResponse {
     let task_id = path.into_inner();
 
     // Validate task ID format
@@ -193,7 +193,7 @@ async fn delete_task(path: web::Path<String>, docker_handler: Data<DockerHandler
 pub fn task_routes() -> Scope {
     // Create Docker handler once during route setup
     let docker_handler =
-        Data::new(DockerHandler::new().expect("Failed to initialize Docker handler"));
+        Data::new(DockerManager::new().expect("Failed to initialize Docker handler"));
 
     web::scope("/task")
         .app_data(docker_handler.clone()) // Clone the Arc internally
@@ -201,4 +201,4 @@ pub fn task_routes() -> Scope {
         .route("", get().to(list_tasks))
         .route("/{id}", get().to(get_task))
         .route("/{id}", delete().to(delete_task))
-}
+}*/

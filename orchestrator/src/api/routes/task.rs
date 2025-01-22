@@ -42,6 +42,9 @@ mod tests {
     use actix_web::http::StatusCode;
     use actix_web::test;
     use actix_web::App;
+    use shared::models::task::Task;
+    use shared::models::task::TaskState;
+    use uuid::Uuid;
 
     #[actix_web::test]
     async fn test_get_current_task() {
@@ -70,6 +73,8 @@ mod tests {
 
         let payload = TaskRequest {
             image: "test".to_string(),
+            name: "test".to_string(),
+            env_vars: None,
         };
         let req = test::TestRequest::post()
             .uri("/tasks")
@@ -108,6 +113,8 @@ mod tests {
 
         let task: Task = TaskRequest {
             image: "test".to_string(),
+            name: "test".to_string(),
+            env_vars: None,
         }
         .into();
 
@@ -146,6 +153,8 @@ mod tests {
 
         let task: Task = TaskRequest {
             image: "test".to_string(),
+            name: "test".to_string(),
+            env_vars: None,
         }
         .into();
 

@@ -14,6 +14,7 @@ async fn heartbeat(
     println!("Heartbeat incoming for address: {}", heartbeat.address);
     let mut con = app_state.store.client.get_connection().unwrap();
     let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, heartbeat.address);
+    println!("state of machine: {:?}", heartbeat.task_state);
 
     let current_task = app_state.task_store.get_task();
     let _: () = con
@@ -82,6 +83,8 @@ mod tests {
 
         let task = TaskRequest {
             image: "test".to_string(),
+            name: "test".to_string(),
+            env_vars: None,
         };
         app_state.task_store.set_task(task.into());
 

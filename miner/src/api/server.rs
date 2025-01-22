@@ -1,5 +1,4 @@
 use crate::api::routes::invite::invite_routes;
-use crate::api::routes::task::task_routes;
 use crate::operations::heartbeat::service::HeartbeatService;
 use actix_web::{middleware, web::Data, App, HttpServer};
 use shared::security::auth_signature_middleware::ValidateSignature;
@@ -40,7 +39,6 @@ pub async fn start_server(
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
             .wrap(ValidateSignature::new(allowed_addresses.clone()))
-            .service(task_routes())
             .service(invite_routes())
     })
     .bind((host, port))?
