@@ -1,21 +1,12 @@
 use super::state::HeartbeatState;
 use crate::TaskHandles;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use shared::models::api::ApiResponse;
+use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
-#[derive(Debug, Serialize)]
-struct HeartbeatRequest {
-    address: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct HeartbeatResponse {
-    success: bool,
-}
 
 #[derive(Clone)]
 pub struct HeartbeatService {
@@ -139,13 +130,28 @@ impl HeartbeatService {
                 log::error!("Error response received: {:?}", e);
                 HeartbeatError::RequestFailed
             })?
-            .json::<HeartbeatResponse>()
+            .json::<ApiResponse<HeartbeatResponse>>()
             .await
             .map_err(|e| {
                 log::error!("Failed to parse response: {:?}", e);
                 HeartbeatError::RequestFailed
             })?;
 
-        Ok(response)
+        let heartbeat_response = response.data.clone();
+        log::info!("Heartbeat response: {:?}", heartbeat_response);
+        let response_clone = response.clone();
+        println!("Current response: {:?}", response_clone);
+        let _ = match heartbeat_response.current_task {
+            Some(task) => {
+                println!("Current task is to run image: {:?}", task.image);
+                Some(task)
+            }
+            None => {
+                log::info!("No current task found in heartbeat response");
+                None
+            }
+        };
+
+        Ok(response.data)
     }
 }

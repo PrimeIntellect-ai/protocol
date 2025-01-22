@@ -8,6 +8,7 @@ use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
 use crate::node::status_update::NodeStatusUpdater;
 use crate::store::redis::RedisStore;
+use crate::store::task_store::TaskStore;
 use alloy::primitives::U256;
 use anyhow::Result;
 use clap::Parser;
@@ -89,6 +90,7 @@ async fn main() -> Result<()> {
     println!("Start pool Tx: {:?}", tx);
 
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
+    let task_store = Arc::new(TaskStore::new(store.clone()));
     let wallet_clone = coordinator_wallet.clone();
     let discovery_store_clone = store.clone();
     let inviter_store_clone = store.clone();
@@ -126,7 +128,7 @@ async fn main() -> Result<()> {
     });
 
     tokio::select! {
-        res = start_server(&host, port, store.clone()) => {
+        res = start_server(&host, port, store.clone(), task_store.clone()) => {
             if let Err(e) = res {
                 eprintln!("Server error: {}", e);
             }

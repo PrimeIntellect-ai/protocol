@@ -16,3 +16,5 @@ url = "2.5.4"
 actix-web = "4.9.0"
 futures-util = "0.3.31"
 hex = "0.4.3"
+uuid = { version = "1.12.1", features = ["v4", "serde"] }
+redis = "0.28.1"

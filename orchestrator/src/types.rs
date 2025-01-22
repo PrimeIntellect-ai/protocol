@@ -1,11 +1,14 @@
 use alloy::primitives::Address;
+use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
+use shared::models::task::Task;
+use shared::models::task::TaskRequest;
 use std::fmt;
+use uuid::Uuid;
 
 pub const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node:";
 pub const ORCHESTRATOR_HEARTBEAT_KEY: &str = "orchestrator:heartbeat:";
 pub const ORCHESTRATOR_UNHEALTHY_COUNTER_KEY: &str = "orchestrator:unhealthy_counter:";
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     #[serde(rename = "id")]

@@ -3,11 +3,12 @@
 
 # Features for MVP:
 - [x] API to list nodes and status
-- [ ] Heartbeat based status updater
+- [x] Heartbeat based status updater
 - [ ] Ability to dispatch tasks to nodes
-- [ ] Heartbeat Verification 
+- [ ] Heartbeat Verification (Signature with dynamic middleware list)
 
 - [ ] What if a node never becomes healthy? 
+- [ ] General api security - current connections are unsecured
 
 # Cleanup TODOs:
 - [ ] contract call cleanup
