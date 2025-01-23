@@ -3,9 +3,6 @@ use serde::{Deserialize, Serialize};
 use shared::models::task::TaskState;
 use std::fmt;
 
-pub const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node:";
-pub const ORCHESTRATOR_HEARTBEAT_KEY: &str = "orchestrator:heartbeat:";
-pub const ORCHESTRATOR_UNHEALTHY_COUNTER_KEY: &str = "orchestrator:unhealthy_counter:";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     #[serde(rename = "id")]
@@ -31,10 +28,6 @@ impl Node {
             task_id: None,
             task_state: None,
         }
-    }
-
-    pub fn orchestrator_key(&self) -> String {
-        format!("{}:{}", ORCHESTRATOR_BASE_KEY, self.address)
     }
 
     pub fn from_string(s: &str) -> Self {

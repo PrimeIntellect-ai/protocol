@@ -8,7 +8,7 @@ use shared::models::task::Task;
 use shared::models::task::TaskRequest;
 
 async fn get_current_task(app_state: Data<AppState>) -> HttpResponse {
-    let task_store = app_state.task_store.clone(); // Use TaskStore
+    let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
     match task_store.get_task() {
         Some(task) => HttpResponse::Ok().json(json!({"success": true, "task": task})),
         None => HttpResponse::Ok().json(json!({"success": false, "task": Option::<Task>::None})),
@@ -17,13 +17,13 @@ async fn get_current_task(app_state: Data<AppState>) -> HttpResponse {
 
 async fn update_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
     let task = Task::from(task.into_inner());
-    let task_store = app_state.task_store.clone(); // Use TaskStore
+    let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
     task_store.set_task(task);
     HttpResponse::Ok().json(json!({"success": true, "task": "updated_task"}))
 }
 
 async fn delete_task(app_state: Data<AppState>) -> HttpResponse {
-    let task_store = app_state.task_store.clone(); // Use TaskStore
+    let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
     task_store.delete_task();
     HttpResponse::Ok().json(json!({"success": true, "task": "deleted_task"}))
 }
@@ -81,7 +81,7 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let task_store = app_state.task_store.clone(); // Use TaskStore
+        let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
         let task: Task = task_store.get_task().unwrap();
         assert_eq!(task.image, "test");
     }
@@ -116,7 +116,7 @@ mod tests {
         }
         .into();
 
-        let task_store = app_state.task_store.clone(); // Use TaskStore
+        let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
         task_store.set_task(task);
 
         let app = test::init_service(
@@ -156,7 +156,7 @@ mod tests {
         }
         .into();
 
-        let task_store = app_state.task_store.clone(); // Use TaskStore
+        let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
         task_store.set_task(task);
 
         let req = test::TestRequest::delete().uri("/tasks").to_request();

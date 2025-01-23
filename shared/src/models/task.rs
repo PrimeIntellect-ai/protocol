@@ -14,6 +14,31 @@ pub enum TaskState {
     UNKNOWN,
 }
 
+impl From<&str> for TaskState {
+    fn from(s: &str) -> Self {
+        match s {
+            "PENDING" => TaskState::PENDING,
+            "PULLING" => TaskState::PULLING,
+            "RUNNING" => TaskState::RUNNING,
+            "COMPLETED" => TaskState::COMPLETED,
+            "FAILED" => TaskState::FAILED,
+            "PAUSED" => TaskState::PAUSED,
+            "RESTARTING" => TaskState::RESTARTING,
+            "UNKNOWN" => TaskState::UNKNOWN,
+            _ => TaskState::UNKNOWN, // Default case
+        }
+    }
+}
+
+impl ToString for TaskState {
+    fn to_string(&self) -> String {
+        match self {
+            TaskState::UNKNOWN => "UNKNOWN".to_string(),
+            _ => self.clone().to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskRequest {
     pub image: String,

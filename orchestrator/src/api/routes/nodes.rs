@@ -1,24 +1,12 @@
 use crate::api::server::AppState;
-use crate::types::Node;
-use crate::types::ORCHESTRATOR_BASE_KEY;
 use actix_web::{
     web::{self, get, Data},
     HttpResponse, Scope,
 };
-use redis::Commands;
 use serde_json::json;
 
 async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
-    let mut con = app_state.store.client.get_connection().unwrap();
-    let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).unwrap();
-    let mut nodes: Vec<Node> = Vec::new();
-
-    for node in keys {
-        let node_string: String = con.get(node).unwrap();
-        let node: Node = Node::from_string(&node_string);
-        nodes.push(node);
-    }
-
+    let nodes = app_state.store_context.node_store.get_nodes();
     HttpResponse::Ok().json(json!({"success": true, "nodes": nodes}))
 }
 
@@ -56,9 +44,7 @@ mod tests {
             task_id: None,
             task_state: None,
         };
-
-        let mut con = app_state.store.client.get_connection().unwrap();
-        let _: () = con.set(node.orchestrator_key(), node.to_string()).unwrap();
+        app_state.store_context.node_store.add_node(node.clone());
 
         let req = test::TestRequest::get().uri("/nodes").to_request();
         let resp = test::call_service(&app, req).await;

@@ -124,7 +124,7 @@ impl HeartbeatService {
             HeartbeatRequest {
                 address: address.clone(),
                 task_id: Some(task.id.to_string()),
-                task_state: Some(task.state),
+                task_state: Some(task.state.to_string()),
             }
         } else {
             HeartbeatRequest {

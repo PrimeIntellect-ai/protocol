@@ -1,49 +1,26 @@
 use crate::api::server::AppState;
-use crate::types::Node;
-use crate::types::ORCHESTRATOR_BASE_KEY;
-use crate::types::ORCHESTRATOR_HEARTBEAT_KEY;
 use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,
 };
-use redis::Commands;
+use alloy::primitives::Address;
 use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
+use std::str::FromStr;
 
 async fn heartbeat(
     heartbeat: web::Json<HeartbeatRequest>,
     app_state: Data<AppState>,
 ) -> HttpResponse {
-    println!("Heartbeat incoming for address: {}", heartbeat.address);
-    let mut con = app_state.store.client.get_connection().unwrap();
-    let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, heartbeat.address);
-    println!("state of machine: {:?}", heartbeat.task_state);
+    let node_address = Address::from_str(&heartbeat.address).unwrap();
+    let task_info = heartbeat.clone();
 
-    // TODO: Update node status
-    let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, heartbeat.address);
-    // TODO: Implement node redis
-    let value: Option<String> = con.get(node_key).unwrap();
-    match value {
-        Some(value) => {
-            let mut node = Node::from_string(&value);
-            node.task_state = heartbeat.task_state.clone();
-            node.task_id = heartbeat.task_id.clone();
-            let node_string = node.to_string();
-            let node_key = node.orchestrator_key();
-            let _: () = con.set(&node_key, node_string).unwrap();
-        }
-        None => {
-            println!("Node not found to update heartbeat data");
-        }
-    }
-
-    let current_task = app_state.task_store.get_task();
-    let _: () = con
-        .set_options(
-            &key,
-            "1",
-            redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(60)),
-        )
-        .unwrap();
+    app_state.store_context.node_store.update_node_task(
+        node_address,
+        task_info.task_id,
+        task_info.task_state,
+    );
+    app_state.store_context.heartbeat_store.beat(&node_address);
+    let current_task = app_state.store_context.task_store.get_task();
     let resp: HttpResponse = HeartbeatResponse { current_task }.into();
     resp
 }
@@ -72,9 +49,11 @@ mod tests {
         )
         .await;
 
+        let address = "0x0000000000000000000000000000000000000000".to_string();
+
         let req = test::TestRequest::post()
             .uri("/heartbeat")
-            .set_json(json!({"address": "0x0000000000000000000000000000000000000000"}))
+            .set_json(json!({"address": address}))
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -85,10 +64,12 @@ mod tests {
         assert_eq!(json["success"], serde_json::Value::Bool(true));
         assert_eq!(json["current_task"], serde_json::Value::Null);
 
-        let mut con = app_state.store.client.get_connection().unwrap();
-        let key = "orchestrator:heartbeat:0x0000000000000000000000000000000000000000:heartbeat";
-        let value: Option<String> = con.get(key).unwrap();
-        assert_eq!(value, None);
+        let node_address = Address::from_str(&address).unwrap();
+        let value = app_state
+            .store_context
+            .heartbeat_store
+            .get_heartbeat(&node_address);
+        assert_eq!(value, Some("1".to_string()));
     }
 
     #[actix_web::test]
@@ -101,12 +82,14 @@ mod tests {
         )
         .await;
 
+        let address = "0x0000000000000000000000000000000000000000".to_string();
+
         let task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
             env_vars: None,
         };
-        app_state.task_store.set_task(task.into());
+        app_state.store_context.task_store.set_task(task.into());
 
         let req = test::TestRequest::post()
             .uri("/heartbeat")
@@ -118,11 +101,17 @@ mod tests {
 
         let body = test::read_body(resp).await;
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        println!("json: {:?}", json);
         assert_eq!(json["success"], serde_json::Value::Bool(true));
         assert_eq!(
             json["data"]["current_task"]["image"],
             serde_json::Value::String("test".to_string())
         );
+
+        let node_address = Address::from_str(&address).unwrap();
+        let value = app_state
+            .store_context
+            .heartbeat_store
+            .get_heartbeat(&node_address);
+        assert_eq!(value, Some("1".to_string()));
     }
 }

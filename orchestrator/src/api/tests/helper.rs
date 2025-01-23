@@ -1,9 +1,9 @@
 #[cfg(test)]
 use crate::api::server::AppState;
 #[cfg(test)]
-use crate::store::redis::RedisStore;
+use crate::store::context::StoreContext;
 #[cfg(test)]
-use crate::store::task_store::TaskStore;
+use crate::store::redis::RedisStore;
 #[cfg(test)]
 use actix_web::web::Data;
 #[cfg(test)]
@@ -21,11 +21,8 @@ pub async fn create_test_app_state() -> Data<AppState> {
         .query::<String>(&mut con)
         .expect("Redis should be responsive");
 
-    let store_clone = store.clone();
-    let task_store = TaskStore::new(store_clone);
-
+    let store_context = Arc::new(StoreContext::new(store.clone()));
     Data::new(AppState {
-        store: store.clone(),
-        task_store: Arc::new(task_store),
+        store_context: store_context.clone(),
     })
 }

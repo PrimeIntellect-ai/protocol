@@ -1,10 +1,9 @@
-use crate::store::redis::RedisStore;
+use crate::store::context::StoreContext;
 use crate::types::Node;
 use crate::types::NodeStatus;
 use alloy::primitives::Address;
 use anyhow::Error;
 use anyhow::Result;
-use redis::Commands;
 use serde_json;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
@@ -14,27 +13,27 @@ use std::time::Duration;
 use tokio::time::interval;
 
 pub struct DiscoveryMonitor<'b> {
-    store: Arc<RedisStore>,
     coordinator_wallet: &'b Wallet,
     compute_pool_id: u32,
     interval_s: u64,
     discovery_url: String,
+    store_context: Arc<StoreContext>,
 }
 
 impl<'b> DiscoveryMonitor<'b> {
     pub fn new(
-        store: Arc<RedisStore>,
         coordinator_wallet: &'b Wallet,
         compute_pool_id: u32,
         interval_s: u64,
         discovery_url: String,
+        store_context: Arc<StoreContext>,
     ) -> Self {
         Self {
-            store,
             coordinator_wallet,
             compute_pool_id,
             interval_s,
             discovery_url,
+            store_context,
         }
     }
 
@@ -99,20 +98,17 @@ impl<'b> DiscoveryMonitor<'b> {
                 })
             })
             .collect::<Result<Vec<Node>, anyhow::Error>>()?;
-        println!("Nodes: {:?}", nodes);
         Ok(nodes)
     }
 
     pub async fn get_nodes(&self) -> Result<Vec<Node>, Error> {
-        let mut con = self.store.client.get_connection()?;
         let nodes = self.fetch_nodes_from_discovery().await?;
         for node in &nodes {
-            let exists: Option<String> = con.get(node.orchestrator_key())?;
+            let exists = self.store_context.node_store.get_node(&node.address);
             if exists.is_some() {
                 continue;
             }
-
-            let _: () = con.set(node.orchestrator_key(), node.to_string())?;
+            self.store_context.node_store.add_node(node.clone());
         }
         Ok(nodes)
     }

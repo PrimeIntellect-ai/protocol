@@ -7,8 +7,8 @@ use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
 use crate::node::status_update::NodeStatusUpdater;
+use crate::store::context::StoreContext;
 use crate::store::redis::RedisStore;
-use crate::store::task_store::TaskStore;
 use alloy::primitives::U256;
 use anyhow::Result;
 use clap::Parser;
@@ -17,7 +17,6 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
-
 #[derive(Parser)]
 struct Args {
     /// RPC URL
@@ -90,19 +89,17 @@ async fn main() -> Result<()> {
     println!("Start pool Tx: {:?}", tx);
 
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
-    let task_store = Arc::new(TaskStore::new(store.clone()));
+    let store_context = Arc::new(StoreContext::new(store.clone()));
     let wallet_clone = coordinator_wallet.clone();
-    let discovery_store_clone = store.clone();
-    let inviter_store_clone = store.clone();
-    let status_update_store_clone = store.clone();
 
+    let discovery_store_context = store_context.clone();
     tasks.spawn(async move {
         let monitor = DiscoveryMonitor::new(
-            discovery_store_clone,
             wallet_clone.as_ref(),
             compute_pool_id,
             args.discovery_refresh_interval,
             args.discovery_url,
+            discovery_store_context.clone(),
         );
         monitor.run().await
     });
@@ -110,25 +107,28 @@ async fn main() -> Result<()> {
     let host = args.host.clone();
     let port = args.port;
 
+    let inviter_store_context = store_context.clone();
     tasks.spawn(async move {
         let inviter = NodeInviter::new(
-            inviter_store_clone,
             coordinator_wallet.as_ref(),
             compute_pool_id,
             domain_id,
             &args.host,
             &args.port,
+            inviter_store_context.clone(),
         );
         inviter.run().await
     });
 
+    let status_update_store_context = store_context.clone();
     tasks.spawn(async move {
-        let status_updater = NodeStatusUpdater::new(status_update_store_clone, 15, None);
+        let status_updater = NodeStatusUpdater::new(status_update_store_context.clone(), 15, None);
         status_updater.run().await
     });
 
+    let server_store_context = store_context.clone();
     tokio::select! {
-        res = start_server(&host, port, store.clone(), task_store.clone()) => {
+        res = start_server(&host, port, server_store_context.clone()) => {
             if let Err(e) = res {
                 eprintln!("Server error: {}", e);
             }

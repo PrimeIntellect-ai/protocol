@@ -1,13 +1,11 @@
-use crate::store::redis::RedisStore;
+use crate::store::context::StoreContext;
 use crate::types::Node;
 use crate::types::NodeStatus;
-use crate::types::ORCHESTRATOR_BASE_KEY;
 use alloy::primitives::utils::keccak256 as keccak;
 use alloy::primitives::U256;
 use alloy::signers::Signer;
 use anyhow::Result;
 use hex;
-use redis::Commands;
 use serde_json::json;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
@@ -15,30 +13,30 @@ use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
 pub struct NodeInviter<'a> {
-    store: Arc<RedisStore>,
     wallet: &'a Wallet,
     pool_id: u32,
     domain_id: u32,
     host: &'a str,
     port: &'a u16,
+    store_context: Arc<StoreContext>,
 }
 
 impl<'a> NodeInviter<'a> {
     pub fn new(
-        store: Arc<RedisStore>,
         wallet: &'a Wallet,
         pool_id: u32,
         domain_id: u32,
         host: &'a str,
         port: &'a u16,
+        store_context: Arc<StoreContext>,
     ) -> Self {
         Self {
-            store,
             wallet,
             pool_id,
             domain_id,
             host,
             port,
+            store_context,
         }
     }
 
@@ -72,15 +70,7 @@ impl<'a> NodeInviter<'a> {
     }
 
     async fn process_uninvited_nodes(&self) -> Result<()> {
-        //let nodes = self.store.get_uninvited_nodes().await?;
-        let mut con = self.store.client.get_connection()?;
-        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY))?;
-        let nodes: Vec<Node> = keys
-            .iter()
-            .filter_map(|key| con.get::<_, String>(key).ok())
-            .filter_map(|node_json| serde_json::from_str::<Node>(&node_json).ok())
-            .filter(|node| matches!(node.status, NodeStatus::Discovered))
-            .collect();
+        let nodes = self.store_context.node_store.get_uninvited_nodes();
 
         // TODO: Acquire lock for invite
         for node in nodes {
@@ -128,13 +118,11 @@ impl<'a> NodeInviter<'a> {
             {
                 Ok(response) => {
                     if response.status().is_success() {
-                        let mut updated_node = node_to_update.clone();
-                        updated_node.status = NodeStatus::WaitingForHeartbeat;
-                        let redis_key = updated_node.orchestrator_key();
-                        let node_string = updated_node.to_string();
+                        let node = node_to_update.clone();
                         println!("Updating node status to WaitingForHeartbeat");
-                        let mut con = self.store.client.get_connection()?;
-                        let _: () = con.set(&redis_key, node_string)?;
+                        self.store_context
+                            .node_store
+                            .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat);
                     } else {
                         println!("Received non-success status: {:?}", response.status());
                     }

@@ -1,26 +1,23 @@
+use crate::api::routes::heartbeat::heartbeat_routes;
 use crate::api::routes::nodes::nodes_routes;
 use crate::api::routes::task::tasks_routes;
-use crate::{
-    api::routes::heartbeat::heartbeat_routes, store::redis::RedisStore,
-    store::task_store::TaskStore,
-};
+use crate::store::context::StoreContext;
 use actix_web::{middleware, web::Data, App, HttpServer};
 use anyhow::Error;
 use std::sync::Arc;
+
 pub struct AppState {
-    pub store: Arc<RedisStore>,
-    pub task_store: Arc<TaskStore>,
+    pub store_context: Arc<StoreContext>,
 }
 
 pub async fn start_server(
     host: &str,
     port: u16,
-    store: Arc<RedisStore>,
-    task_store: Arc<TaskStore>,
+    store_context: Arc<StoreContext>,
 ) -> Result<(), Error> {
     println!("Starting server at http://{}:{}", host, port);
 
-    let app_state = Data::new(AppState { store, task_store });
+    let app_state = Data::new(AppState { store_context });
 
     HttpServer::new(move || {
         App::new()

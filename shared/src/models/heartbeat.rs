@@ -1,6 +1,5 @@
 use super::api::ApiResponse;
 use super::task::Task;
-use super::task::TaskState;
 use actix_web::HttpResponse;
 use serde::{Deserialize, Serialize};
 
@@ -25,5 +24,5 @@ impl From<HeartbeatResponse> for HttpResponse {
 pub struct HeartbeatRequest {
     pub address: String,
     pub task_id: Option<String>,
-    pub task_state: Option<TaskState>,
+    pub task_state: Option<String>,
 }
