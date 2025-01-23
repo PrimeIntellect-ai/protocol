@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
     //let pool_info = contracts.compute_pool.get_pool_info(U256::from(0)).await;
     //println!("Pool info: {:?}", pool_info);
 
-    let tx = contracts
+    let _ = contracts
         .compute_pool
         .start_compute_pool(U256::from(0))
         .await;
