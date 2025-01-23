@@ -1,5 +1,4 @@
 name: Check Format & Lint
-
 on:
   pull_request:
     branches: [ main, master, develop ]
@@ -23,12 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.83.0 
           components: rustfmt, clippy
-
       - uses: Swatinem/rust-cache@v2
         with:
           cache-directories: "**/target"
@@ -36,14 +33,11 @@ jobs:
           
       - name: Run format check
         run: cargo fmt -- --check
-
       - name: Run clippy
         if: success() || failure()  # Run even if fmt fails
         run: cargo clippy -- -D warnings
-
-       - name: Install Redis
-         run: sudo apt-get update && sudo apt-get install -y redis-server
-
-       - name: Run tests
-         if: success() || failure()  # Run even if previous steps fail
-         run: cargo test --verbose
+      - name: Install Redis
+        run: sudo apt-get update && sudo apt-get install -y redis-server
+      - name: Run tests
+        if: success() || failure()  # Run even if previous steps fail
+        run: cargo test --verbose
