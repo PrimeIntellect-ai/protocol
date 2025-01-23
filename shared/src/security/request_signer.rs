@@ -15,9 +15,8 @@ pub async fn sign_request(
                 .map(|key| (key.clone(), obj.remove(&key).unwrap()))
                 .collect();
         }
-        let request_data_string = serde_json::to_string(&request_data)?;
-        println!("Request data string: {}", request_data_string);
-        request_data_string
+        
+        serde_json::to_string(&request_data)?
     } else {
         String::new()
     };
@@ -27,7 +26,6 @@ pub async fn sign_request(
     } else {
         format!("{}{}", endpoint, request_data_string)
     };
-    println!("Message: {}", message);
     let signature = wallet
         .signer
         .sign_message(message.as_bytes())

@@ -6,6 +6,7 @@ use redis::Commands;
 use redis::Value;
 use shared::models::task::TaskState;
 use std::sync::Arc;
+use log::info;
 
 const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node:";
 pub struct NodeStore {
@@ -110,7 +111,7 @@ impl NodeStore {
                 let _: () = con.set(&node_key, node_string).unwrap();
             }
             _ => {
-                println!("Node not found");
+                info!("Cannot update node");
             }
         }
     }

@@ -4,7 +4,7 @@ use anyhow::Ok;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
-
+use log::{debug, error};
 pub struct NodeStatusUpdater {
     store_context: Arc<StoreContext>,
     update_interval: u64,
@@ -29,9 +29,9 @@ impl NodeStatusUpdater {
 
         loop {
             interval.tick().await;
-            println!("Running NodeStatusUpdater to process nodes heartbeats");
+            debug!("Running NodeStatusUpdater to process nodes heartbeats");
             if let Err(e) = self.process_nodes().await {
-                eprintln!("Error processing nodes: {}", e);
+                error!("Error processing nodes: {}", e);
             }
         }
     }
@@ -128,7 +128,6 @@ mod tests {
             .node_store
             .get_node(&node.address)
             .unwrap();
-        println!("Node: {:?}", node);
         assert_eq!(node.status, NodeStatus::WaitingForHeartbeat);
 
         tokio::spawn(async move {
@@ -145,7 +144,6 @@ mod tests {
             .node_store
             .get_node(&node.address)
             .unwrap();
-        println!("Node: {:?}", node);
         assert_eq!(node.status, NodeStatus::Healthy);
     }
 
@@ -178,7 +176,6 @@ mod tests {
             .node_store
             .get_node(&node.address)
             .unwrap();
-        println!("Node: {:?}", node);
         assert_eq!(node.status, NodeStatus::Unhealthy);
     }
 
@@ -211,13 +208,11 @@ mod tests {
             .node_store
             .get_node(&node.address)
             .unwrap();
-        println!("Node: {:?}", node);
         assert_eq!(node.status, NodeStatus::Unhealthy);
         let counter = app_state
             .store_context
             .heartbeat_store
             .get_unhealthy_counter(&node.address);
-        println!("Counter: {:?}", counter);
         assert_eq!(counter, 1);
     }
 
@@ -255,7 +250,6 @@ mod tests {
             .node_store
             .get_node(&node.address)
             .unwrap();
-        println!("Node: {:?}", node);
         assert_eq!(node.status, NodeStatus::Dead);
     }
 

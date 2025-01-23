@@ -17,6 +17,9 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
+use log::{error, info};
+use log::LevelFilter;
+
 #[derive(Parser)]
 struct Args {
     /// RPC URL
@@ -58,6 +61,10 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::Builder::new()
+        .filter_level(LevelFilter::Info)
+        .format_timestamp(None)
+        .init();
     let args = Args::parse();
     let compute_pool_id = args.compute_pool_id;
     let domain_id = args.domain_id;
@@ -68,7 +75,7 @@ async fn main() -> Result<()> {
 
     let coordinator_wallet = Arc::new(Wallet::new(&coordinator_key, rpc_url).unwrap_or_else(
         |err| {
-            eprintln!("Error creating wallet: {:?}", err);
+            error!("Error creating wallet: {:?}", err);
             std::process::exit(1);
         },
     ));
@@ -86,7 +93,7 @@ async fn main() -> Result<()> {
         .compute_pool
         .start_compute_pool(U256::from(compute_pool_id))
         .await;
-    println!("Start pool Tx: {:?}", tx);
+    info!("Start pool Tx: {:?}", tx);
 
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
@@ -130,16 +137,16 @@ async fn main() -> Result<()> {
     tokio::select! {
         res = start_server(&host, port, server_store_context.clone()) => {
             if let Err(e) = res {
-                eprintln!("Server error: {}", e);
+                error!("Server error: {}", e);
             }
         }
         Some(res) = tasks.join_next() => {
             if let Err(e) = res? {
-                eprintln!("Task error: {}", e);
+                error!("Task error: {}", e);
             }
         }
         _ = tokio::signal::ctrl_c() => {
-            println!("Shutdown signal received");
+            error!("Shutdown signal received");
         }
     }
     tasks.shutdown().await;

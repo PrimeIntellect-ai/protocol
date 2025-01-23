@@ -175,7 +175,6 @@ impl DockerManager {
             })
             .collect();
 
-        info!("Found {} running containers", container_details.len());
         Ok(container_details)
     }
 

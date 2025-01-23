@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
-
+use log::{debug, error};
 pub struct DiscoveryMonitor<'b> {
     coordinator_wallet: &'b Wallet,
     compute_pool_id: u32,
@@ -42,9 +42,9 @@ impl<'b> DiscoveryMonitor<'b> {
 
         loop {
             interval.tick().await;
-            println!("Running DiscoveryMonitor to get nodes...");
+            debug!("Running DiscoveryMonitor to get nodes...");
             if let Err(e) = self.get_nodes().await {
-                println!("Error getting nodes: {}", e);
+                error!("Error getting nodes from discovery: {}", e);
             }
         }
     }

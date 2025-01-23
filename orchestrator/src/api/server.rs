@@ -5,7 +5,7 @@ use crate::store::core::StoreContext;
 use actix_web::{middleware, web::Data, App, HttpServer};
 use anyhow::Error;
 use std::sync::Arc;
-
+use log::info;
 pub struct AppState {
     pub store_context: Arc<StoreContext>,
 }
@@ -15,7 +15,7 @@ pub async fn start_server(
     port: u16,
     store_context: Arc<StoreContext>,
 ) -> Result<(), Error> {
-    println!("Starting server at http://{}:{}", host, port);
+    info!("Starting server at http://{}:{}", host, port);
 
     let app_state = Data::new(AppState { store_context });
 

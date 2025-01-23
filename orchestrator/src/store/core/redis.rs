@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::thread;
 #[cfg(test)]
 use std::time::Duration;
-
+use log::info;
 #[derive(Clone)]
 pub struct RedisStore {
     pub client: Client,
@@ -20,7 +20,7 @@ impl RedisStore {
     pub fn new(redis_url: &str) -> Self {
         match Client::open(redis_url) {
             Ok(client) => {
-                println!("Successfully connected to Redis at {}", redis_url);
+                info!("Successfully connected to Redis at {}", redis_url);
                 Self {
                     client,
                     #[cfg(test)]
@@ -28,7 +28,6 @@ impl RedisStore {
                 }
             }
             Err(e) => {
-                println!("Failed to connect to Redis at {}: {}", redis_url, e);
                 panic!("Redis connection error: {}", e);
             }
         }
@@ -45,7 +44,7 @@ impl RedisStore {
         };
 
         let redis_url = format!("redis://{}:{}", host, port);
-        println!("Starting test Redis server at {}", redis_url);
+        info!("Starting test Redis server at {}", redis_url);
 
         // Add a small delay to ensure server is ready
         thread::sleep(Duration::from_millis(100));

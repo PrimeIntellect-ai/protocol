@@ -11,6 +11,7 @@ use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
+use log::{debug, error, info, warn};
 
 pub struct NodeInviter<'a> {
     wallet: &'a Wallet,
@@ -45,9 +46,9 @@ impl<'a> NodeInviter<'a> {
 
         loop {
             interval.tick().await;
-            println!("Running NodeInviter to process uninvited nodes...");
+            debug!("Running NodeInviter to process uninvited nodes...");
             if let Err(e) = self.process_uninvited_nodes().await {
-                eprintln!("Error processing uninvited nodes: {}", e);
+                error!("Error processing uninvited nodes: {}", e);
             }
         }
     }
@@ -86,7 +87,7 @@ impl<'a> NodeInviter<'a> {
                 invite: hex::encode(invite_signature),
                 pool_id: self.pool_id,
                 master_ip: self.host.to_string(),
-                master_port: self.port.clone(),
+                master_port: *self.port,
             };
             let payload_json = serde_json::to_value(&payload).unwrap();
 
@@ -107,7 +108,7 @@ impl<'a> NodeInviter<'a> {
             );
             headers.insert("x-signature", message_signature.parse().unwrap());
 
-            println!("Sending invite to node: {:?}", invite_url);
+            info!("Sending invite to node: {:?}", invite_url);
 
             match reqwest::Client::new()
                 .post(invite_url)
@@ -119,16 +120,16 @@ impl<'a> NodeInviter<'a> {
                 Ok(response) => {
                     if response.status().is_success() {
                         let node = node_to_update.clone();
-                        println!("Updating node status to WaitingForHeartbeat");
+                        info!("Successfully invited node");
                         self.store_context
                             .node_store
                             .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat);
                     } else {
-                        println!("Received non-success status: {:?}", response.status());
+                        warn!("Received non-success status: {:?}", response.status());
                     }
                 }
                 Err(e) => {
-                    println!("Error sending invite to node: {:?}", e);
+                    error!("Error sending invite to node: {:?}", e);
                 }
             }
         }
