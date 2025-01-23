@@ -16,14 +16,53 @@ use std::future::{ready, Ready};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::Arc;
+use dashmap::DashSet; 
+
+#[derive(Clone)]
+pub struct ValidatorState {
+    allowed_addresses: Arc<DashSet<Address>>
+}
+
+impl ValidatorState {
+    pub fn new(initial_addresses: Vec<Address>) -> Self {
+        let set = DashSet::new();
+        for address in initial_addresses {
+            set.insert(address);
+        }
+        Self {
+            allowed_addresses: Arc::new(set)
+        }
+    }
+
+    pub fn add_address(&self, address: Address) {
+        self.allowed_addresses.insert(address);
+    }
+
+    pub fn remove_address(&self, address: &Address) {
+        self.allowed_addresses.remove(address);
+    }
+
+    pub fn iter_addresses(&self) -> impl Iterator<Item = Address> + '_ {
+        self.allowed_addresses.iter().map(|addr| *addr)
+    }
+
+    pub fn get_allowed_addresses(&self) -> Vec<Address> {
+        self.iter_addresses().collect()
+    }
+
+    pub fn is_address_allowed(&self, address: &Address) -> bool {
+        self.allowed_addresses.contains(address)
+    }
+}
 
 pub struct ValidateSignature {
-    allowed_addresses: Vec<Address>,
+    allowed_addresses: ValidatorState,
 }
 
 impl ValidateSignature {
-    pub fn new(allowed_addresses: Vec<Address>) -> Self {
-        Self { allowed_addresses }
+    pub fn new(state: ValidatorState) -> Self {
+        Self { allowed_addresses: state }
     }
 }
 
@@ -49,7 +88,7 @@ where
 
 pub struct ValidateSignatureMiddleware<S> {
     service: Rc<S>,
-    allowed_addresses: Vec<Address>,
+    allowed_addresses: ValidatorState,
 }
 
 impl<S, B> Service<ServiceRequest> for ValidateSignatureMiddleware<S>
@@ -137,10 +176,10 @@ where
                     return Err(ErrorBadRequest("Invalid signature"));
                 }
 
-                if !allowed_addresses.contains(&recovered_address) {
+                if !allowed_addresses.is_address_allowed(&recovered_address) {
                     println!(
                         "Request with valid signature but not authorized. Allowed addresses: {:?}",
-                        allowed_addresses
+                        allowed_addresses.get_allowed_addresses()
                     );
                     return Err(ErrorBadRequest("Address not authorized"));
                 }
@@ -171,6 +210,7 @@ mod tests {
     use actix_web::{test, web, App, HttpResponse};
     use std::str::FromStr;
     use url::Url;
+    use std::collections::HashSet;
 
     async fn test_handler() -> HttpResponse {
         HttpResponse::Ok().finish()
@@ -180,7 +220,7 @@ mod tests {
     async fn test_missing_headers() {
         let app = test::init_service(
             App::new()
-                .wrap(ValidateSignature::new(vec![]))
+                .wrap(ValidateSignature::new(ValidatorState::new(vec![])))
                 .route("/test", web::post().to(test_handler)),
         )
         .await;
@@ -205,7 +245,7 @@ mod tests {
     async fn test_invalid_signature() {
         let app = test::init_service(
             App::new()
-                .wrap(ValidateSignature::new(vec![]))
+                .wrap(ValidateSignature::new(ValidatorState::new(vec![])))
                 .route("/test", web::post().to(test_handler)),
         )
         .await;
@@ -243,7 +283,7 @@ mod tests {
             .unwrap();
         let app = test::init_service(
             App::new()
-                .wrap(ValidateSignature::new(vec![address]))
+                .wrap(ValidateSignature::new(ValidatorState::new(vec![address])))
                 .route("/test", web::post().to(test_handler)),
         )
         .await;
@@ -280,7 +320,7 @@ mod tests {
             .unwrap();
         let app = test::init_service(
             App::new()
-                .wrap(ValidateSignature::new(vec![allowed_address]))
+                .wrap(ValidateSignature::new(ValidatorState::new(vec![allowed_address])))
                 .route("/test", web::post().to(test_handler)),
         )
         .await;
@@ -307,4 +347,131 @@ mod tests {
             Ok(_) => panic!("Expected an error"),
         }
     }
+
+    #[actix_web::test]
+    async fn test_multiple_state_clones() {
+        let address = Address::from_str("0xc1621E38E76E7355D1f9915a05d0BC29d2B09814").unwrap();
+        let validator_state = ValidatorState::new(vec![]);
+        
+        // Create multiple clones
+        let clone1 = validator_state.clone();
+        let clone2 = validator_state.clone();
+        let clone3 = clone1.clone();
+        
+        // Modify through one clone
+        clone2.add_address(address);
+        
+        // Verify all clones see the change
+        assert!(validator_state.is_address_allowed(&address));
+        assert!(clone1.is_address_allowed(&address));
+        assert!(clone2.is_address_allowed(&address));
+        assert!(clone3.is_address_allowed(&address));
+        
+        // Remove through another clone
+        clone3.remove_address(&address);
+        
+        // Verify removal is visible to all
+        assert!(!validator_state.is_address_allowed(&address));
+        assert!(!clone1.is_address_allowed(&address));
+        assert!(!clone2.is_address_allowed(&address));
+        assert!(!clone3.is_address_allowed(&address));
+    }
+
+    #[actix_web::test]
+    async fn test_dynamic_allowed_addresses() {
+        let private_key = "0xf72df6ef6f7ff457e693f6acae8dfc289bd54225875e93d013c4aa27a8feec76";
+        let address = Address::from_str("0xc1621E38E76E7355D1f9915a05d0BC29d2B09814").unwrap();
+        let wallet = Wallet::new(
+            private_key,
+            Url::parse("https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161").unwrap(),
+        )
+        .unwrap();
+
+        let validator_state = ValidatorState::new(vec![]);
+
+        let signature = sign_request("/test", &wallet, Some(&serde_json::json!({"test": "data"})))
+            .await
+            .unwrap();
+        let signature_clone = signature.clone();
+        let app = test::init_service(
+            App::new()
+                .wrap(ValidateSignature::new(validator_state.clone()))
+                .route("/test", web::post().to(test_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::post()
+            .uri("/test")
+            .insert_header((
+                "x-address",
+                wallet.wallet.default_signer().address().to_string(),
+            ))
+            .insert_header(("x-signature", signature))
+            .set_json(serde_json::json!({"test": "data"}))
+            .to_request();
+
+        let err = test::try_call_service(&app, req).await;
+        match err {
+            Err(e) => {
+                assert_eq!(e.to_string(), "Address not authorized");
+                let error_response = e.error_response();
+                assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
+            }
+            Ok(_) => panic!("Expected an error"),
+        }
+
+        validator_state.add_address(address);
+        let allowed_addresses = validator_state.get_allowed_addresses();
+        println!("Allowed addresses: {:?}", allowed_addresses);
+
+
+        let req_after_address_add = test::TestRequest::post()
+        .uri("/test")
+        .insert_header((
+            "x-address",
+            wallet.wallet.default_signer().address().to_string(),
+        ))
+        .insert_header(("x-signature", signature_clone))
+        .set_json(serde_json::json!({"test": "data"}))
+        .to_request();
+
+        let res_after_address_add = test::call_service(&app, req_after_address_add).await;
+        assert_eq!(res_after_address_add.status(), StatusCode::OK);
+
+    }
+
+    #[actix_web::test]
+    async fn test_multiple_addresses() {
+        let validator_state = ValidatorState::new(vec![]);
+        
+        // Create multiple addresses
+        let addresses: Vec<Address> = (0..5)
+            .map(|i| {
+                Address::from_str(&format!(
+                    "0x{}000000000000000000000000000000000000000",
+                    i
+                ))
+                .unwrap()
+            })
+            .collect();
+
+        // Add addresses through different clones
+        let clone1 = validator_state.clone();
+        let clone2 = validator_state.clone();
+
+        for (i, addr) in addresses.iter().enumerate() {
+            if i % 2 == 0 {
+                clone1.add_address(*addr);
+            } else {
+                clone2.add_address(*addr);
+            }
+        }
+
+        // Verify all addresses are present
+        let allowed = validator_state.get_allowed_addresses();
+        let allowed_set: HashSet<_> = allowed.into_iter().collect();
+        let expected_set: HashSet<_> = addresses.into_iter().collect();
+        assert_eq!(allowed_set, expected_set);
+    }
 }
+
