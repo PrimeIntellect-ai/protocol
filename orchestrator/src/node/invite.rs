@@ -1,6 +1,6 @@
-use crate::store::context::StoreContext;
-use crate::types::Node;
-use crate::types::NodeStatus;
+use crate::store::core::StoreContext;
+use crate::types::node::Node;
+use crate::types::node::NodeStatus;
 use alloy::primitives::utils::keccak256 as keccak;
 use alloy::primitives::U256;
 use alloy::signers::Signer;

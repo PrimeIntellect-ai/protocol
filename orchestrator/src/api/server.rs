@@ -1,7 +1,7 @@
 use crate::api::routes::heartbeat::heartbeat_routes;
 use crate::api::routes::nodes::nodes_routes;
 use crate::api::routes::task::tasks_routes;
-use crate::store::context::StoreContext;
+use crate::store::core::StoreContext;
 use actix_web::{middleware, web::Data, App, HttpServer};
 use anyhow::Error;
 use std::sync::Arc;

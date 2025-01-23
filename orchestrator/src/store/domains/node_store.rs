@@ -1,6 +1,6 @@
-use super::redis::RedisStore;
-use crate::types::Node;
-use crate::types::NodeStatus;
+use crate::store::core::RedisStore;
+use crate::types::node::Node;
+use crate::types::node::NodeStatus;
 use alloy::primitives::Address;
 use redis::Commands;
 use redis::Value;
@@ -119,8 +119,8 @@ impl NodeStore {
 #[cfg(test)]
 mod tests {
     use crate::api::tests::helper::create_test_app_state;
-    use crate::types::Node;
-    use crate::types::NodeStatus;
+    use crate::types::node::Node;
+    use crate::types::node::NodeStatus;
     use alloy::primitives::Address;
     use std::str::FromStr;
 

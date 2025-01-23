@@ -1,4 +1,4 @@
-use super::redis::RedisStore;
+use crate::store::core::RedisStore;
 use redis::Commands;
 use shared::models::task::Task;
 use std::sync::Arc;

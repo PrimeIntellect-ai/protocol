@@ -1,4 +1,4 @@
-use super::redis::RedisStore;
+use crate::store::core::RedisStore;
 use alloy::primitives::Address;
 use redis::Commands;
 use std::sync::Arc;

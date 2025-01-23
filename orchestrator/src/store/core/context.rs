@@ -1,7 +1,7 @@
-use crate::store::heartbeat_store::HeartbeatStore;
-use crate::store::node_store::NodeStore;
-use crate::store::redis::RedisStore;
-use crate::store::task_store::TaskStore;
+use crate::store::domains::heartbeat_store::HeartbeatStore;
+use crate::store::domains::node_store::NodeStore;
+use crate::store::domains::task_store::TaskStore;
+use crate::store::core::RedisStore;
 use std::sync::Arc;
 
 pub struct StoreContext {
