@@ -119,8 +119,17 @@ impl DockerService {
 
                                 let handle = tokio::spawn(async move {
                                     let payload = task_clone.unwrap();
-                                    let cmd = Some(vec!["sleep".to_string(), "infinity".to_string()]);
-                                    let container_id = manager_clone.start_container(&payload.image, &task_id, payload.env_vars, cmd).await.unwrap();
+                                    let cmd_full = (payload.command, payload.args);
+                                    let cmd = match cmd_full {
+                                        (Some(c), Some(a)) => {
+                                            let mut cmd = vec![c];
+                                            cmd.extend(a);
+                                            cmd
+                                        }
+                                        (Some(c), None) => vec![c],
+                                        _ => vec!["sleep".to_string(), "infinity".to_string()],
+                                    };
+                                    let container_id = manager_clone.start_container(&payload.image, &task_id, payload.env_vars, Some(cmd)).await.unwrap();
 
                                     Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                 });
@@ -168,6 +177,8 @@ mod tests {
             name: "test".to_string(),
             id: Uuid::new_v4(),
             env_vars: None,
+            command: None,
+            args: None,
             state: TaskState::PENDING,
         };
         let task_clone = task.clone();

@@ -72,6 +72,8 @@ mod tests {
         let payload = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
+            command: None,
+            args: None,
             env_vars: None,
         };
         let req = test::TestRequest::post()
@@ -112,6 +114,8 @@ mod tests {
         let task: Task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
+            command: None,
+            args: None,
             env_vars: None,
         }
         .into();
@@ -152,6 +156,8 @@ mod tests {
         let task: Task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
+            command: None,
+            args: None,
             env_vars: None,
         }
         .into();

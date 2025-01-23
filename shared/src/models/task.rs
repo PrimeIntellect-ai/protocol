@@ -51,6 +51,8 @@ pub struct TaskRequest {
     pub image: String,
     pub name: String,
     pub env_vars: Option<std::collections::HashMap<String, String>>,
+    pub command: Option<String>,
+    pub args: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +61,8 @@ pub struct Task {
     pub image: String,
     pub name: String,
     pub env_vars: Option<std::collections::HashMap<String, String>>,
+    pub command: Option<String>,
+    pub args: Option<Vec<String>>,
     pub state: TaskState,
 }
 
@@ -68,6 +72,8 @@ impl From<TaskRequest> for Task {
             id: Uuid::new_v4(),
             image: request.image,
             name: request.name,
+            command: request.command,
+            args: request.args,
             env_vars: request.env_vars,
             state: TaskState::PENDING,
         }
