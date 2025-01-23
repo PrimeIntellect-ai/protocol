@@ -15,7 +15,7 @@ pub async fn sign_request(
                 .map(|key| (key.clone(), obj.remove(&key).unwrap()))
                 .collect();
         }
-        
+
         serde_json::to_string(&request_data)?
     } else {
         String::new()
