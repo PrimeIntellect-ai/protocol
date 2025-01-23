@@ -1,9 +1,9 @@
 #[cfg(test)]
 use crate::api::server::AppState;
 #[cfg(test)]
-use crate::store::core::StoreContext;
-#[cfg(test)]
 use crate::store::core::RedisStore;
+#[cfg(test)]
+use crate::store::core::StoreContext;
 #[cfg(test)]
 use actix_web::web::Data;
 #[cfg(test)]

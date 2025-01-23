@@ -1,2 +1,2 @@
-mod domains;
 pub mod core;
+mod domains;

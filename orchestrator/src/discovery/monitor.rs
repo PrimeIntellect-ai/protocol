@@ -4,6 +4,7 @@ use crate::types::node::NodeStatus;
 use alloy::primitives::Address;
 use anyhow::Error;
 use anyhow::Result;
+use log::{debug, error};
 use serde_json;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
@@ -11,7 +12,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
-use log::{debug, error};
 pub struct DiscoveryMonitor<'b> {
     coordinator_wallet: &'b Wallet,
     compute_pool_id: u32,

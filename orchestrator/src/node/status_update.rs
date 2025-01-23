@@ -1,10 +1,10 @@
 use crate::store::core::StoreContext;
 use crate::types::node::NodeStatus;
 use anyhow::Ok;
+use log::{debug, error};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
-use log::{debug, error};
 pub struct NodeStatusUpdater {
     store_context: Arc<StoreContext>,
     update_interval: u64,

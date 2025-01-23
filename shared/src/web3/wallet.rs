@@ -32,15 +32,10 @@ pub struct Wallet {
 impl Wallet {
     pub fn new(private_key: &str, provider_url: Url) -> Result<Self, Box<dyn std::error::Error>> {
         let signer: PrivateKeySigner = private_key.parse()?;
-        // Find better solution for cling
-        let signer_clone = signer.clone(); // Clone the signer to avoid moving it
-
+        let signer_clone = signer.clone();
         let wallet = EthereumWallet::from(signer);
-        let address = wallet.default_signer().address();
-        println!("Wallet: {:?}", address);
 
-        // TODO: Cleanup
-        let wallet_clone = wallet.clone(); // Clone the wallet to avoid moving it
+        let wallet_clone = wallet.clone(); 
         let provider = ProviderBuilder::new()
             .with_recommended_fillers()
             .wallet(wallet_clone)

@@ -2,11 +2,11 @@ use crate::store::core::RedisStore;
 use crate::types::node::Node;
 use crate::types::node::NodeStatus;
 use alloy::primitives::Address;
+use log::info;
 use redis::Commands;
 use redis::Value;
 use shared::models::task::TaskState;
 use std::sync::Arc;
-use log::info;
 
 const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node:";
 pub struct NodeStore {

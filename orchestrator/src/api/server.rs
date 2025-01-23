@@ -4,8 +4,8 @@ use crate::api::routes::task::tasks_routes;
 use crate::store::core::StoreContext;
 use actix_web::{middleware, web::Data, App, HttpServer};
 use anyhow::Error;
-use std::sync::Arc;
 use log::info;
+use std::sync::Arc;
 pub struct AppState {
     pub store_context: Arc<StoreContext>,
 }

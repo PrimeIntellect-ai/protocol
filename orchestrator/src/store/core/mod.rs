@@ -1,5 +1,5 @@
-pub mod redis;
 pub mod context;
+pub mod redis;
 
-pub use redis::RedisStore;
 pub use context::StoreContext;
+pub use redis::RedisStore;
