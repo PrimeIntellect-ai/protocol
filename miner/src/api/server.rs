@@ -25,7 +25,6 @@ pub async fn start_server(
 ) -> std::io::Result<()> {
     println!("Starting server at http://{}:{}", host, port);
 
-
     let app_state = Data::new(AppState {
         contracts,
         node_wallet,
@@ -34,7 +33,7 @@ pub async fn start_server(
     });
 
     let allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
-    let validator_state = ValidatorState::new(allowed_addresses);
+    let validator_state = Arc::new(ValidatorState::new(allowed_addresses));
 
     HttpServer::new(move || {
         App::new()

@@ -13,6 +13,7 @@ use anyhow::Result;
 use clap::Parser;
 use log::error;
 use log::LevelFilter;
+use shared::security::auth_signature_middleware::ValidatorState;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;

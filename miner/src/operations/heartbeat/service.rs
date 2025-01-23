@@ -4,6 +4,7 @@ use crate::TaskHandles;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
 use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
+use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
@@ -68,8 +69,8 @@ impl HeartbeatService {
         let client = self.client.clone();
         let interval_duration = self.interval;
         let cancellation_token = self.cancellation_token.clone();
-        let node_address = self.node_wallet.clone().address().to_string();
         let docker_service = self.docker_service.clone();
+        let wallet_clone = self.node_wallet.clone();
         let handle = tokio::spawn(async move {
             let mut interval = interval(interval_duration);
             loop {
@@ -78,7 +79,7 @@ impl HeartbeatService {
                         if !state.is_running().await {
                             break;
                         }
-                        match Self::send_heartbeat(&client, state.get_endpoint().await, node_address.clone(), docker_service.clone()).await {
+                        match Self::send_heartbeat(&client, state.get_endpoint().await, wallet_clone.clone(), docker_service.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
                                 log::debug!("Heartbeat sent successfully");
@@ -112,7 +113,7 @@ impl HeartbeatService {
     async fn send_heartbeat(
         client: &Client,
         endpoint: Option<String>,
-        address: String,
+        wallet: Arc<Wallet>,
         docker_service: Arc<DockerService>,
     ) -> Result<HeartbeatResponse, HeartbeatError> {
         if endpoint.is_none() {
@@ -122,21 +123,33 @@ impl HeartbeatService {
         let current_task_state = docker_service.state.get_current_task().await;
         let request = if let Some(task) = current_task_state {
             HeartbeatRequest {
-                address: address.clone(),
+                address: wallet.address().to_string(),
                 task_id: Some(task.id.to_string()),
                 task_state: Some(task.state.to_string()),
             }
         } else {
             HeartbeatRequest {
-                address: address.clone(),
+                address: wallet.address().to_string(),
                 task_id: None,
                 task_state: None,
             }
         };
 
+        let signature = sign_request(
+            "/heartbeat",
+            &wallet,
+            Some(&serde_json::to_value(&request).unwrap()),
+        )
+        .await
+        .unwrap();
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-address", wallet.address().to_string().parse().unwrap());
+        headers.insert("x-signature", signature.parse().unwrap());
+
         let response = client
             .post(endpoint.unwrap())
             .json(&request)
+            .headers(headers)
             .send()
             .await
             .map_err(|e| {
