@@ -1,3 +1,5 @@
+#[cfg(test)]
+use log::debug;
 use log::info;
 use redis::Client;
 #[cfg(test)]
@@ -8,8 +10,6 @@ use std::sync::Arc;
 use std::thread;
 #[cfg(test)]
 use std::time::Duration;
-#[cfg(test)]
-use log::debug;
 #[derive(Clone)]
 pub struct RedisStore {
     pub client: Client,

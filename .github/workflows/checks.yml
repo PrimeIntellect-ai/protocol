@@ -34,10 +34,18 @@ jobs:
       - name: Run format check
         run: cargo fmt -- --check
       - name: Run clippy
-        if: success() || failure()  # Run even if fmt fails
+        if: success() || failure() 
         run: cargo clippy -- -D warnings
-      - name: Install Redis
-        run: sudo apt-get update && sudo apt-get install -y redis-server
+      - name: Install Redis binary
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+          # Ensure redis-server binary is installed but don't start the service
+          sudo systemctl stop redis || true
+          sudo systemctl disable redis || true
+          
       - name: Run tests
-        if: success() || failure()  # Run even if previous steps fail
-        run: cargo test --verbose
+        if: success() || failure()  
+        run: |
+          redis-server --version
+          cargo test --verbose
