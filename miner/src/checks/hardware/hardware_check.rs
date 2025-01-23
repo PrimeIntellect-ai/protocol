@@ -3,7 +3,7 @@ use super::{
     memory::{get_memory_info, print_memory_info},
     storage::get_storage_info,
 };
-use crate::console::Console; // Import Console for logging
+use crate::console::Console;
 use crate::operations::structs::node::{ComputeSpecs, CpuSpecs, GpuSpecs, NodeConfig};
 use sysinfo::{self, System};
 

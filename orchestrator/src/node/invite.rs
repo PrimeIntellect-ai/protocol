@@ -6,7 +6,7 @@ use alloy::primitives::U256;
 use alloy::signers::Signer;
 use anyhow::Result;
 use hex;
-use serde_json::json;
+use shared::models::invite::InviteRequest;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
@@ -82,15 +82,15 @@ impl<'a> NodeInviter<'a> {
 
             let invite_signature = self._generate_invite(node).await?;
 
-            // TODO: Payload to send to node - must clean up with proper node information
-            let payload = json!({
-                "invite": hex::encode(invite_signature),
-                "master_ip": self.host,
-                "master_port": self.port,
-                "pool_id": self.pool_id,
-            });
+            let payload = InviteRequest {
+                invite: hex::encode(invite_signature),
+                pool_id: self.pool_id,
+                master_ip: self.host.to_string(),
+                master_port: self.port.clone(),
+            };
+            let payload_json = serde_json::to_value(&payload).unwrap();
 
-            let message_signature = sign_request(&invite_path, self.wallet, Some(&payload))
+            let message_signature = sign_request(&invite_path, self.wallet, Some(&payload_json))
                 .await
                 .unwrap();
 

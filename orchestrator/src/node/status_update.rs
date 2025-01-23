@@ -48,10 +48,6 @@ impl NodeStatusUpdater {
                 .store_context
                 .heartbeat_store
                 .get_unhealthy_counter(&node.address);
-            println!(
-                "Node {} - current {} - heartbeat {:?}",
-                node.address, unhealthy_counter, heartbeat
-            );
 
             match heartbeat {
                 Some(_) => {

@@ -4,7 +4,7 @@ use shared::web3::contracts::implementations::{
     compute_registry_contract::ComputeRegistryContract,
     prime_network_contract::PrimeNetworkContract,
 };
-use shared::web3::wallet::Wallet; // Import Console for logging
+use shared::web3::wallet::Wallet;
 
 pub struct ComputeNodeOperations<'c> {
     provider_wallet: &'c Wallet,

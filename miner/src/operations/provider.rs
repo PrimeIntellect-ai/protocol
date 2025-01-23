@@ -5,7 +5,7 @@ use shared::web3::contracts::implementations::{
     prime_network_contract::PrimeNetworkContract,
 };
 use shared::web3::wallet::Wallet;
-use std::fmt; // Import Console for logging
+use std::fmt;
 pub struct ProviderOperations<'c> {
     wallet: &'c Wallet,
     compute_registry: &'c ComputeRegistryContract,

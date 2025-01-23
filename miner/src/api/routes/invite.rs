@@ -1,4 +1,3 @@
-use crate::api::models::invite::InviteRequest;
 use crate::api::server::AppState;
 use crate::console::Console;
 use actix_web::{
@@ -9,29 +8,13 @@ use alloy::primitives::FixedBytes;
 use alloy::primitives::U256;
 use hex;
 use serde_json::json;
+use shared::models::invite::InviteRequest;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
-use validator::Validate; // Importing the Console for logging
 
 pub async fn invite_node(
     invite: web::Json<InviteRequest>,
     app_state: Data<AppState>,
 ) -> HttpResponse {
-    // Validate request
-    if let Err(errors) = invite.validate() {
-        return HttpResponse::BadRequest().json(json!({
-            "error": errors.to_string(),
-        }));
-    }
-
-    // Tasks to finish compute onboarding mvp
-    // TODO: Check if we actually want to join the pool - based on the compute pool var that we set on cmd startup
-    // TODO: Start heartbeat sending incl. state store logic
-    // TODO: Check for hardcoded values on orchestrator side
-    // TODO: Fix redis setup on provider side
-
-    // Future Questions:
-    // TODO: What happens when a compute pools switches to be finished?
-
     let invite_bytes = hex::decode(invite.invite.clone()).unwrap();
     let contracts = &app_state.contracts;
     let wallet = &app_state.node_wallet;
@@ -68,7 +51,6 @@ pub async fn invite_node(
         }
     }
 
-    // TODO: Start heartbeat sending
     let endpoint = format!(
         "http://{}:{}/heartbeat",
         invite.master_ip, invite.master_port

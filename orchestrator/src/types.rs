@@ -31,7 +31,12 @@ impl Node {
     }
 
     pub fn from_string(s: &str) -> Self {
-        serde_json::from_str(s).unwrap()
+        let mut node: Self = serde_json::from_str(s).unwrap();
+        if node.status == NodeStatus::Dead {
+            node.task_id = None;
+            node.task_state = None;
+        }
+        node
     }
 }
 

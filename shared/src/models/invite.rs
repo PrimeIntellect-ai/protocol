@@ -1,8 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
-use validator::Validate;
 
-#[derive(Deserialize, Serialize, Validate, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct InviteRequest {
     pub invite: String,
     pub pool_id: u32,
