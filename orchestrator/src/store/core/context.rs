@@ -2,7 +2,6 @@ use crate::store::core::RedisStore;
 use crate::store::domains::heartbeat_store::HeartbeatStore;
 use crate::store::domains::node_store::NodeStore;
 use crate::store::domains::task_store::TaskStore;
-use shared::security::auth_signature_middleware::ValidatorState;
 use std::sync::Arc;
 
 pub struct StoreContext {

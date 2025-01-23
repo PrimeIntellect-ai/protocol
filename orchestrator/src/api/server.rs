@@ -22,9 +22,8 @@ pub async fn start_server(
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
     let validator_state = Arc::new(
-        ValidatorState::new(vec![]).with_validator(move |address| {
-            node_store_clone.get_node(address).is_some()
-        }),
+        ValidatorState::new(vec![])
+            .with_validator(move |address| node_store_clone.get_node(address).is_some()),
     );
 
     HttpServer::new(move || {
