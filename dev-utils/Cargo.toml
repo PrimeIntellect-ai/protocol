@@ -1,0 +1,13 @@
+[package]
+name = "dev-utils"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+shared = { path = "../shared" }  
+tokio = { version = "1", features = ["full"] }
+eyre = "0.6"  
+clap = { version = "4.5.26", features = ["derive"] }
+url = "2.5.4"
+alloy = "0.9.2"
+tokio-util = "0.7.13"

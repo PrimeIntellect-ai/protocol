@@ -3,32 +3,44 @@ use bollard::container::{
 };
 use bollard::errors::Error as DockerError;
 use bollard::image::CreateImageOptions;
+use bollard::models::ContainerStateStatusEnum;
 use bollard::Docker;
 use futures_util::StreamExt;
 use log::{debug, error, info};
 use std::collections::HashMap;
+
 #[derive(Debug, Clone)]
 pub struct ContainerInfo {
     pub id: String,
+    #[allow(unused)]
     pub image: String,
-    pub status: String,
     pub names: Vec<String>,
+    #[allow(unused)]
     pub created: i64,
 }
 
-pub struct DockerHandler {
+#[derive(Debug, Clone)]
+pub struct ContainerDetails {
+    #[allow(unused)]
+    pub id: String,
+    #[allow(unused)]
+    pub image: String,
+    pub status: Option<ContainerStateStatusEnum>,
+    #[allow(unused)]
+    pub names: Vec<String>,
+    #[allow(unused)]
+    pub created: i64,
+}
+
+pub struct DockerManager {
     docker: Docker,
 }
 
-impl DockerHandler {
-    /// Create a new DockerHandler instance
+impl DockerManager {
+    /// Create a new DockerManager instance
     pub fn new() -> Result<Self, DockerError> {
-        debug!("Initializing Docker handler...");
         let docker = match Docker::connect_with_unix_defaults() {
-            Ok(docker) => {
-                info!("Successfully connected to Docker daemon");
-                docker
-            }
+            Ok(docker) => docker,
             Err(e) => {
                 error!("Failed to connect to Docker daemon: {}", e);
                 return Err(e);
@@ -79,16 +91,13 @@ impl DockerHandler {
         image: &str,
         name: &str,
         env_vars: Option<HashMap<String, String>>,
+        command: Option<Vec<String>>,
     ) -> Result<String, DockerError> {
-        debug!("Starting container creation process:");
-        debug!("  Image: {}", image);
-        debug!("  Container name: {}", name);
-
-        // TODO: This is currently blocking the API Request
-        // Should eventually refactor this
+        println!("Starting to pull image: {}", image);
         self.pull_image(image).await?;
 
         let env = env_vars.map(|vars| {
+            println!("Setting environment variables: {:?}", vars);
             debug!("Setting environment variables");
             vars.iter()
                 .map(|(k, v)| format!("{}={}", k, v))
@@ -99,9 +108,13 @@ impl DockerHandler {
         let config = Config {
             image: Some(image),
             env: env.as_ref().map(|e| e.iter().map(String::as_str).collect()),
+            cmd: command
+                .as_ref()
+                .map(|c| c.iter().map(String::as_str).collect()),
             ..Default::default()
         };
 
+        println!("Creating container with name: {}", name);
         // Create and start container
         let container = self
             .docker
@@ -119,12 +132,14 @@ impl DockerHandler {
             })?;
 
         info!("Container created successfully with ID: {}", container.id);
+        println!("Starting container with ID: {}", container.id);
         debug!("Starting container {}", container.id);
 
         self.docker
             .start_container(&container.id, None::<StartContainerOptions<String>>)
             .await?;
         info!("Container {} started successfully", container.id);
+        println!("Container {} started successfully", container.id);
 
         Ok(container.id)
     }
@@ -142,7 +157,6 @@ impl DockerHandler {
         Ok(())
     }
 
-    /// List all running containers with their details
     pub async fn list_running_containers(&self) -> Result<Vec<ContainerInfo>, DockerError> {
         debug!("Listing running containers");
         let options = Some(ListContainersOptions::<String> {
@@ -156,13 +170,11 @@ impl DockerHandler {
             .map(|c| ContainerInfo {
                 id: c.id.clone().unwrap_or_default(),
                 image: c.image.clone().unwrap_or_default(),
-                status: c.status.clone().unwrap_or_default(),
                 names: c.names.clone().unwrap_or_default(),
                 created: c.created.unwrap_or_default(),
             })
             .collect();
 
-        info!("Found {} running containers", container_details.len());
         Ok(container_details)
     }
 
@@ -170,18 +182,13 @@ impl DockerHandler {
     pub async fn get_container_details(
         &self,
         container_id: &str,
-    ) -> Result<ContainerInfo, DockerError> {
+    ) -> Result<ContainerDetails, DockerError> {
         debug!("Getting details for container: {}", container_id);
         let container = self.docker.inspect_container(container_id, None).await?;
-
-        let info = ContainerInfo {
+        let info = ContainerDetails {
             id: container.id.unwrap_or_default(),
             image: container.image.unwrap_or_default(),
-            status: container
-                .state
-                .and_then(|s| s.status)
-                .map(|s| s.to_string())
-                .unwrap_or_default(),
+            status: container.state.and_then(|s| s.status),
             names: vec![container.name.unwrap_or_default()],
             created: container
                 .created

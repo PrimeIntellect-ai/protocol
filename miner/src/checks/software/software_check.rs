@@ -1,6 +1,6 @@
 use super::docker::check_docker_installed;
 use super::types::SoftwareCheckError;
-use colored::*;
+use crate::console::Console;
 use std::error::Error;
 
 impl std::fmt::Display for SoftwareCheckError {
@@ -16,12 +16,12 @@ impl std::fmt::Display for SoftwareCheckError {
 impl Error for SoftwareCheckError {}
 
 pub fn run_software_check() -> Result<(), SoftwareCheckError> {
-    println!("\n{}", "Software Requirements Check:".blue().bold());
+    Console::section("Software Requirements Check");
 
     // Check Docker installation and connectivity
-    println!("\n{}", "Docker:".blue().bold());
+    Console::title("Docker:");
     check_docker_installed()?;
 
-    println!("\n{}", "✓ All software checks passed".green().bold());
+    Console::success("All software checks passed");
     Ok(())
 }

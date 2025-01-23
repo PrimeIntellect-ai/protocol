@@ -1,5 +1,4 @@
 SSH_CONN ?=
-MINER_CMD ?= run --subnet-id 1 --wallet-address 0x --private-key ./keys/eth-private-key.json --port 8089 --external-ip 0.0.0.0
 
 .PHONY: gpu-setup gpu-run gpu-watch run
 
@@ -12,11 +11,11 @@ run-check:
 
 run:
 	@echo "🔨 Building locally..."
-	cargo run -- run --subnet-id 1 --wallet-address 0x --private-key ./keys/eth-private-key.json --port 8089 --external-ip 0.0.0.0
+	cargo run -- run --subnet-id 1 --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$NODE_KEY --port 8090 --external-ip 0.0.0.0 --compute-pool-id 0 
 
 watch:
 	@echo "👀 Watching for changes..."
-	cargo watch -x "run -- run --subnet-id 1 --wallet-address 0x --private-key ./keys/eth-private-key.json --port 8089 --external-ip 0.0.0.0"
+	cargo watch -x "run -- run --subnet-id 1 --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$NODE_KEY --port 8090 --external-ip 0.0.0.0 --compute-pool-id 0"
 
 # Setup GPU server with required dependencies
 gpu-setup:

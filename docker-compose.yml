@@ -1,0 +1,48 @@
+version: "3.8"
+
+networks:
+  prime:
+    driver: bridge
+    attachable: true  
+
+volumes:
+  redis-data:
+
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    platform: linux/amd64
+    entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545"]
+    ports:
+      - "8545:8545"
+    networks:
+      - prime
+    restart: always
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - prime
+
+  discovery:
+    build: 
+      context: ./discovery
+    command: npm run dev
+    volumes:
+      - ./discovery:/app
+      - /app/node_modules
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RPC_URL=http://anvil:8545
+    ports:
+      - "8089:8089"
+    networks:
+      - prime
+    depends_on:
+      - redis
+      - anvil

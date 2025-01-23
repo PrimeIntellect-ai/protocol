@@ -1,33 +1,39 @@
 # Prime Miner / Validator / Master 
 The current setup is aimed to support intellect-2 with a limited number of validators and a central master that coordinates the workload on the miners.
+## Clone the repository with submodules 
+```
+git clone --recurse-submodules https://github.com/prime-ai/prime-miner-validator.git
+```
+- Update submodules:
+```
+git submodule update --init --recursive
+```
+## Setup:
+- Prerequisites:
+    - Foundry: `curl -L https://foundry.paradigm.xyz | bash` - do not forget `foundry up`
+    - Docker 
+    - tmuxinator: Install via `gem install tmuxinator` - do not use brew, apparently their brew build is broken
+    - Rust: Install via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+    - Install cargo watch: `cargo install cargo-watch`
+    - Adjust docker desktop setting: `Allow the default Docker socket to be used (requires password)` must be enabled
+    - .env in base folder and .env in discovery folder (will be replaced shortly)
 
+## Run locally: 
+### On very first run we have to pre-build some components:
+- `docker compose up` - to pull anvil, redis and start discovery service
+- `make whitelist-provider` - to build the whitelist provider function which runs in the background
 
-## Development Milestones 
-### 📅 Milestone 1: Off-chain Miner and Master Node interaction with discovery service 
-> **Status**: In Progress 
-> **Target Release**: January 10th, 2025
-- *See System Architecture Step 3. and 4.*
-- Build a simple ability to control the docker container running on the miners 
-- Basic hardware detection and system check
-- Basic discovery service 
-
-### 📅 Milestone 2: Off-Chain Miner Validation using Master node 
-> **Status**: Planned
-> **Target Release**: January 10th, 2025
-- *See System Architecture Step 2.*
-- Allow validator to validate the miner's registration 
-- Allow validator to send tasks to the miner and collect results 
-
-### 📅 Milestone 3: Full contract integration with on-chain miner integration 
-> **Status**: Planned
-> **Target Release**: January 14th, 2025
-- *See System Architecture Step 1.*
-- Allow miner to register on-chain with end-to-end test cases 
-
-### 📅 Milestone 4: Intellect-2 Training Add-on Support 
-> **Status**: Planned
-> **Target Release**: TBD 
-- Support requested features for intellect-2 including logging and storage capabilities
+Once both commands complete you can terminate and proceed to the official commands:
+### Commands:
+```
+make up
+``` - starts all services but not the miner
+```
+make watch-miner
+``` - starts the miner
+```
+make down
+``` - stops all services
 
 ## System architecture (WIP)
 The following system architecture still misses crucial components (e.g. terminations) and is simplified for the MVP / intellect-2 run.

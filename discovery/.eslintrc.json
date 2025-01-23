@@ -1,0 +1,50 @@
+{
+  "settings": {
+    "import/resolver": {
+      "typescript": {
+        "project": "./tsconfig.json"
+      }
+    }
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:import/errors",
+    "plugin:import/warnings",
+    "plugin:import/typescript",
+    "prettier"
+  ],
+  "plugins": [
+    "@typescript-eslint",
+    "import"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "project": "./tsconfig.json"
+  },
+  "rules": {
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "import/order": ["error", { "groups": ["builtin", "external", "internal", "parent", "sibling", "index"], "newlines-between": "always" }],
+    "import/prefer-default-export": "off",
+    "eqeqeq": ["error", "always"],
+    "curly": "error",
+    "no-console": "warn",
+    "no-debugger": "error",
+    "prefer-const": "error",
+    "consistent-return": "error",
+    "camelcase": ["error", { "properties": "never" }],
+    "no-duplicate-imports": "error",
+    "array-callback-return": "error",
+    "default-case": "error",
+    "no-throw-literal": "error",
+    "prefer-template": "error",
+    "object-shorthand": ["error", "always"],
+    "arrow-body-style": ["error", "as-needed"],
+    "no-implicit-globals": "error",
+    "import/named": "off" // Added rule to suppress named import errors
+  }
+}
