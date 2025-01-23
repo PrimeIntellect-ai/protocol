@@ -24,19 +24,7 @@ jobs:
   build-and-release:
     name: Build and Create Development Release
     needs: cleanup-old-releases
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            suffix: linux-amd64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            suffix: linux-arm64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            suffix: darwin-arm64
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v3
@@ -45,51 +33,24 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}
           override: true
 
-      - name: Install cross-compilation tools
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
       - name: Build all workspace members
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --workspace --target ${{ matrix.target }}
+        run: cargo build --release --workspace
 
       - name: Prepare binaries
         run: |
           mkdir -p release-artifacts
           # Move and rename binaries with platform suffix
-          if [ -f target/${{ matrix.target }}/release/miner ]; then
-            cp target/${{ matrix.target }}/release/miner release-artifacts/miner-${{ matrix.suffix }}
+          if [ -f target/release/miner ]; then
+            cp target/release/miner release-artifacts/miner-linux-x86_64
           fi
-          if [ -f target/${{ matrix.target }}/release/validator ]; then
-            cp target/${{ matrix.target }}/release/validator release-artifacts/validator-${{ matrix.suffix }}
+          if [ -f target/release/validator ]; then
+            cp target/release/validator release-artifacts/validator-linux-x86_64
           fi
-          if [ -f target/${{ matrix.target }}/release/orchestrator ]; then
-            cp target/${{ matrix.target }}/release/orchestrator release-artifacts/orchestrator-${{ matrix.suffix }}
+          if [ -f target/release/orchestrator ]; then
+            cp target/release/orchestrator release-artifacts/orchestrator-linux-x86_64
           fi
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: binaries-${{ matrix.suffix }}
-          path: release-artifacts/*
-          retention-days: 1
-
-  create-release:
-    name: Create Release
-    needs: build-and-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v3
-        with:
-          path: all-artifacts
 
       - name: Generate release tag
         id: tag
@@ -108,10 +69,8 @@ jobs:
             Commit: ${{ github.sha }}
             Build Date: ${{ steps.tag.outputs.tag_name }}
             
-            Builds included:
-            - Linux AMD64 (x86_64)
-            - Linux ARM64 (aarch64)
-            - macOS ARM64 (M1/M2/M3)
+            Platform:
+            - Linux x86_64
             
             Components:
             - Miner
@@ -119,7 +78,7 @@ jobs:
             - Orchestrator
             
             Note: This is an automated development build. For stable releases, please use builds from the master branch.
-          files: all-artifacts/**/*
+          files: release-artifacts/*
           prerelease: true
           generate_release_notes: true
         env:
