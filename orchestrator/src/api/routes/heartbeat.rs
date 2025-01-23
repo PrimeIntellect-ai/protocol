@@ -87,6 +87,8 @@ mod tests {
         let task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
+            command: None,
+            args: None,
             env_vars: None,
         };
         app_state.store_context.task_store.set_task(task.into());
