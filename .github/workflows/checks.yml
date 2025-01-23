@@ -41,6 +41,9 @@ jobs:
         if: success() || failure()  # Run even if fmt fails
         run: cargo clippy -- -D warnings
 
-      # - name: Run tests
-      #   if: success() || failure()  # Run even if previous steps fail
-      #   run: cargo test --verbose
+       - name: Install Redis
+         run: sudo apt-get update && sudo apt-get install -y redis-server
+
+       - name: Run tests
+         if: success() || failure()  # Run even if previous steps fail
+         run: cargo test --verbose
