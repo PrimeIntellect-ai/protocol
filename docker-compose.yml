@@ -33,6 +33,8 @@ services:
     volumes:
       - ./discovery:/app
       - /app/node_modules
+    env_file:
+      - .env
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
