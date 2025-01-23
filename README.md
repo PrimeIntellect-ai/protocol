@@ -9,14 +9,13 @@ git clone --recurse-submodules https://github.com/prime-ai/prime-miner-validator
 git submodule update --init --recursive
 ```
 ## Setup:
-- Prerequisites:
-    - Foundry: `curl -L https://foundry.paradigm.xyz | bash` - do not forget `foundry up`
-    - Docker 
-    - tmuxinator: Install via `gem install tmuxinator` - do not use brew, apparently their brew build is broken
-    - Rust: Install via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-    - Install cargo watch: `cargo install cargo-watch`
-    - Adjust docker desktop setting: `Allow the default Docker socket to be used (requires password)` must be enabled
-    - .env in base folder and .env in discovery folder (will be replaced shortly)
+- Foundry: `curl -L https://foundry.paradigm.xyz | bash` - do not forget `foundry up`
+- Docker 
+- tmuxinator: Install via `gem install tmuxinator` - do not use brew, apparently their brew build is broken
+- Rust: Install via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- Install cargo watch: `cargo install cargo-watch`
+- Adjust docker desktop setting: `Allow the default Docker socket to be used (requires password)` must be enabled
+- .env in base folder and .env in discovery folder (will be replaced shortly)
 
 ## Run locally: 
 ### On very first run we have to pre-build some components:
@@ -26,15 +25,15 @@ git submodule update --init --recursive
 Once both commands complete you can terminate and proceed to the official commands:
 ### Commands:
 ```
+# Start tmux env
 make up
-``` - starts all services but not the miner
-```
-make watch-miner
-``` - starts the miner
-```
-make down
-``` - stops all services
 
+# Start miner in tmux env
+make watch-miner
+
+# Stop tmux env
+make down
+```
 ## System architecture (WIP)
 The following system architecture still misses crucial components (e.g. terminations) and is simplified for the MVP / intellect-2 run.
 
