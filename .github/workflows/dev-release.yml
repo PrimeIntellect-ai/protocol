@@ -7,6 +7,10 @@ on:
     tags-ignore:
       - '*'
 
+permissions:
+  contents: write
+  discussions: write
+
 jobs:
   cleanup-old-releases:
     name: Cleanup Old Development Releases
@@ -24,10 +28,13 @@ jobs:
   build-and-release:
     name: Build and Create Development Release
     needs: cleanup-old-releases
-    runs-on: ubuntu-latest
+    # Using a larger runner with more CPU cores and memory
+    runs-on: ubuntu-latest-16-core
     
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -35,13 +42,15 @@ jobs:
           toolchain: stable
           override: true
 
+      # Use all available cores for the build
       - name: Build all workspace members
-        run: cargo build --release --workspace
+        run: |
+          export CARGO_BUILD_JOBS=$(nproc)
+          cargo build --release --workspace
 
       - name: Prepare binaries
         run: |
           mkdir -p release-artifacts
-          # Move and rename binaries with platform suffix
           if [ -f target/release/miner ]; then
             cp target/release/miner release-artifacts/miner-linux-x86_64
           fi
