@@ -30,12 +30,19 @@ impl From<&str> for TaskState {
     }
 }
 
-impl ToString for TaskState {
-    fn to_string(&self) -> String {
-        match self {
-            TaskState::UNKNOWN => "UNKNOWN".to_string(),
-            _ => self.clone().to_string(),
-        }
+impl std::fmt::Display for TaskState {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let state_str = match self {
+            TaskState::PENDING => "PENDING",
+            TaskState::PULLING => "PULLING",
+            TaskState::RUNNING => "RUNNING",
+            TaskState::COMPLETED => "COMPLETED",
+            TaskState::FAILED => "FAILED",
+            TaskState::PAUSED => "PAUSED",
+            TaskState::RESTARTING => "RESTARTING",
+            TaskState::UNKNOWN => "UNKNOWN",
+        };
+        write!(f, "{}", state_str)
     }
 }
 

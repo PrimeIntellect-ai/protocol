@@ -45,10 +45,7 @@ impl NodeStore {
         let node_string: Option<String> = con
             .get(format!("{}:{}", ORCHESTRATOR_BASE_KEY, address))
             .unwrap();
-        match node_string {
-            Some(node_string) => Some(Node::from_string(&node_string)),
-            None => None,
-        }
+        node_string.map(|node_string| Node::from_string(&node_string))
     }
 
     pub fn get_uninvited_nodes(&self) -> Vec<Node> {
@@ -96,10 +93,7 @@ impl NodeStore {
                         ))
                     })
                     .unwrap();
-                let task_state = match task_state {
-                    Some(state) => Some(TaskState::from(state.as_str())),
-                    None => None,
-                };
+                let task_state = task_state.map(|state| TaskState::from(state.as_str()));
                 let details = (current_task, task_state);
                 match details {
                     (Some(task), Some(task_state)) => {
