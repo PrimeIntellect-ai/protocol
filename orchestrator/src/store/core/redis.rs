@@ -1,3 +1,5 @@
+#[cfg(test)]
+use log::debug;
 use log::info;
 use redis::Client;
 #[cfg(test)]
@@ -44,7 +46,7 @@ impl RedisStore {
         };
 
         let redis_url = format!("redis://{}:{}", host, port);
-        info!("Starting test Redis server at {}", redis_url);
+        debug!("Starting test Redis server at {}", redis_url);
 
         // Add a small delay to ensure server is ready
         thread::sleep(Duration::from_millis(100));
