@@ -7,18 +7,16 @@ use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
 use crate::node::status_update::NodeStatusUpdater;
-use crate::store::core::StoreContext;
 use crate::store::core::RedisStore;
-use alloy::primitives::U256;
+use crate::store::core::StoreContext;
 use anyhow::Result;
 use clap::Parser;
-use shared::web3::contracts::core::builder::ContractBuilder;
+use log::error;
+use log::LevelFilter;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
-use log::{error, info};
-use log::LevelFilter;
 
 #[derive(Parser)]
 struct Args {
@@ -79,21 +77,6 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         },
     ));
-
-    let contracts = ContractBuilder::new(&coordinator_wallet)
-        .with_compute_registry()
-        .with_ai_token()
-        .with_prime_network()
-        .with_compute_pool()
-        .build()?;
-
-    // TODO: validate that pool exists and we are owner
-    // TODO: Move to utils - only here for debug
-    let tx = contracts
-        .compute_pool
-        .start_compute_pool(U256::from(compute_pool_id))
-        .await;
-    info!("Start pool Tx: {:?}", tx);
 
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));

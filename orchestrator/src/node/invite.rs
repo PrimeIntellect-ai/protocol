@@ -137,19 +137,11 @@ impl<'a> NodeInviter<'a> {
 
     async fn process_uninvited_nodes(&self) -> Result<()> {
         let nodes = self.store_context.node_store.get_uninvited_nodes();
-
-        let futures: Vec<_> = nodes
-            .into_iter()
-            .map(|node| self._send_invite(node))
-            .collect();
-
-        let results = futures::future::join_all(futures).await;
-
-        for result in results {
-            if let Err(e) = result {
-                error!("Error sending invite to node: {}", e);
-            }
+        for node in nodes {
+            // TODO: Eventually and carefully move this to tokio
+            self._send_invite(node).await?;
         }
+
         Ok(())
     }
 }

@@ -35,7 +35,7 @@ impl Wallet {
         let signer_clone = signer.clone();
         let wallet = EthereumWallet::from(signer);
 
-        let wallet_clone = wallet.clone(); 
+        let wallet_clone = wallet.clone();
         let provider = ProviderBuilder::new()
             .with_recommended_fillers()
             .wallet(wallet_clone)
