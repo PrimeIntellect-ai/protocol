@@ -13,6 +13,7 @@ use anyhow::Result;
 use clap::Parser;
 use log::error;
 use log::LevelFilter;
+use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -82,6 +83,16 @@ async fn main() -> Result<()> {
     let store_context = Arc::new(StoreContext::new(store.clone()));
     let wallet_clone = coordinator_wallet.clone();
 
+    let contracts = Arc::new(
+        ContractBuilder::new(&coordinator_wallet.clone())
+            .with_compute_registry()
+            .with_ai_token()
+            .with_prime_network()
+            .with_compute_pool()
+            .build()
+            .unwrap(),
+    );
+
     let discovery_store_context = store_context.clone();
     tasks.spawn(async move {
         let monitor = DiscoveryMonitor::new(
@@ -112,7 +123,13 @@ async fn main() -> Result<()> {
 
     let status_update_store_context = store_context.clone();
     tasks.spawn(async move {
-        let status_updater = NodeStatusUpdater::new(status_update_store_context.clone(), 15, None);
+        let status_updater = NodeStatusUpdater::new(
+            status_update_store_context.clone(),
+            15,
+            None,
+            contracts.clone(),
+            compute_pool_id,
+        );
         status_updater.run().await
     });
 

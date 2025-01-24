@@ -35,7 +35,6 @@ mod tests {
                 .route("/nodes", get().to(get_nodes)),
         )
         .await;
-
         let node = Node {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
