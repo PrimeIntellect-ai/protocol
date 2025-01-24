@@ -1,0 +1,96 @@
+- hosts: discovery
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Install system dependencies
+      apt:
+        name:
+          - curl
+          - git
+          - build-essential
+          - tmux
+          - rsync
+          - sudo
+        state: present
+        update_cache: yes
+
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_installed
+      ignore_errors: true
+
+    - name: Install Docker if not installed
+      apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+        update_cache: yes
+      when: docker_installed.rc != 0
+
+    - name: Add Docker's official GPG key
+      shell: |
+        sudo install -m 0755 -d /etc/apt/keyrings
+        sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+        sudo chmod a+r /etc/apt/keyrings/docker.asc
+      args:
+        creates: /etc/apt/keyrings/docker.asc
+      when: docker_installed.rc != 0
+
+    - name: Add the repository to Apt sources
+      shell: |
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+      args:
+        warn: false
+      when: docker_installed.rc != 0
+
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+
+    - name: Install Docker
+      when: docker_installed.rc != 0
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Build Docker image locally
+      become: false
+      docker_image:
+        build:
+          path: ../discovery
+        name: discovery-svc 
+        tag: latest
+        source: build
+      delegate_to: localhost
+
+    - name: Save Docker image
+      become: false
+      docker_image:
+        name: discovery-svc 
+        tag: latest
+        archive_path: /tmp/discovery-svc.tar
+        source: local
+      delegate_to: localhost
+
+    - name: Copy Docker image to remote host
+      copy:
+        src: /tmp/discovery-svc.tar
+        dest: /tmp/discovery-svc.tar
+
+    - name: Load Docker image on remote host
+      docker_image:
+        name: discovery-svc
+        load_path: /tmp/discovery-svc.tar
+        source: load
+
+    - name: Remove temporary tar file
+      file:
+        path: /tmp/discovery-svc.tar
+        state: absent
+      

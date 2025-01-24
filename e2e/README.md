@@ -1,27 +1,12 @@
+# Update inventory
 
-# Build  
-`
-cargo build --release
-`
+# setup chain
+ansible-playbook -i inventory.yml tasks/chain_setup.yml
 
-# Setup chain on machine
-`
-ansible-playbook -i inventory.yaml playbooks/chain_setup.yaml
-`
+# manual soon automated
+adjust .env.remote with rpc url of chain 
+run `ENV_FILE=".env.remote" make setup` 
 
-# Setup discovery service on machine
+# setup discovery 
 
-`
-ansible-playbook -i inventory.yaml playbooks/discovery_setup.yaml
-`
 
-# Setup orchestrator
-`
-ansible-playbook -i inventory.yaml playbooks/orchestrator_setup.yaml
-`
-
-# Boot miners
-
-`
-ansible-playbook -i inventory.yaml playbooks/miner_setup.yaml
-`
