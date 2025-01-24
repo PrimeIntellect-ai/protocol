@@ -52,53 +52,50 @@ impl NodeStatusUpdater {
     pub async fn sync_chain_with_nodes(&self) -> Result<(), anyhow::Error> {
         let nodes = self.store_context.node_store.get_nodes();
         for node in nodes {
-            match node.status {
-                NodeStatus::Dead => {
-                    println!("Node is dead, checking if we need to remove from chain");
-                    let node_in_pool: bool = match self
+            if node.status == NodeStatus::Dead {
+                println!("Node is dead, checking if we need to remove from chain");
+                let node_in_pool: bool = match self
+                    .contracts
+                    .compute_pool
+                    .is_node_in_pool(self.pool_id, node.address)
+                    .await
+                {
+                    Result::Ok(result) => result,
+                    Result::Err(e) => {
+                        println!("Error checking if node is in pool: {}", e);
+                        false
+                    }
+                };
+                if node_in_pool {
+                    let zero_address = address!("0x0000000000000000000000000000000000000000");
+                    let provider_address = match self
                         .contracts
-                        .compute_pool
-                        .is_node_in_pool(self.pool_id, node.address)
+                        .compute_registry
+                        .get_provider(node.address)
                         .await
                     {
-                        Result::Ok(result) => result,
+                        Result::Ok(provider) => provider.provider_address,
                         Result::Err(e) => {
-                            println!("Error checking if node is in pool: {}", e);
-                            false
+                            println!("Error retrieving provider: {}", e);
+                            zero_address
                         }
                     };
-                    if node_in_pool {
-                        let zero_address = address!("0x0000000000000000000000000000000000000000");
-                        let provider_address = match self
+                    if provider_address != zero_address {
+                        let tx = self
                             .contracts
-                            .compute_registry
-                            .get_provider(node.address)
-                            .await
-                        {
-                            Result::Ok(provider) => provider.provider_address,
-                            Result::Err(e) => {
-                                println!("Error retrieving provider: {}", e);
-                                zero_address
+                            .compute_pool
+                            .blacklist_node(self.pool_id, provider_address, node.address)
+                            .await;
+                        match tx {
+                            Result::Ok(_) => {
+                                println!("Blacklisted node: {:?}", node.address);
                             }
-                        };
-                        if provider_address != zero_address {
-                            let tx = self
-                                .contracts
-                                .compute_pool
-                                .blacklist_node(self.pool_id, provider_address, node.address)
-                                .await;
-                            match tx {
-                                Result::Ok(_) => {
-                                    println!("Blacklisted node: {:?}", node.address);
-                                }
-                                Result::Err(e) => {
-                                    println!("Error blacklisting node: {}", e);
-                                }
+                            Result::Err(e) => {
+                                println!("Error blacklisting node: {}", e);
                             }
                         }
                     }
                 }
-                _ => {}
             }
         }
         Ok(())

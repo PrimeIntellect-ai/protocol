@@ -26,6 +26,9 @@ pub async fn create_test_app_state() -> Data<AppState> {
     redis::cmd("PING")
         .query::<String>(&mut con)
         .expect("Redis should be responsive");
+    redis::cmd("FLUSHALL")
+        .query::<String>(&mut con)
+        .expect("Redis should be flushed");
 
     let store_context = Arc::new(StoreContext::new(store.clone()));
     Data::new(AppState {

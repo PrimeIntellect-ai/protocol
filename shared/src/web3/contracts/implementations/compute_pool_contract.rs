@@ -174,10 +174,11 @@ impl ComputePool {
         pool_id: u32,
         node: Address,
     ) -> Result<bool, Box<dyn std::error::Error>> {
+        let arg_pool_id: U256 = U256::from(pool_id);
         let result = self
             .instance
             .instance()
-            .function("isNodeInPool", &[pool_id.into(), node.into()])?
+            .function("isNodeInPool", &[arg_pool_id.into(), node.into()])?
             .call()
             .await?;
         Ok(result.first().unwrap().as_bool().unwrap())

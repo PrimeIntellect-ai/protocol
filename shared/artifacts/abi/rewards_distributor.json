@@ -307,11 +307,6 @@
         "name": "node",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "nodeComputeUnits",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -348,29 +343,29 @@
     "name": "nodeInfo",
     "inputs": [
       {
-        "name": "",
+        "name": "node",
         "type": "address",
         "internalType": "address"
       }
     ],
     "outputs": [
       {
-        "name": "computeUnits",
+        "name": "",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "nodeRewardIndex",
+        "name": "",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "unclaimedRewards",
+        "name": "",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "isActive",
+        "name": "",
         "type": "bool",
         "internalType": "bool"
       }
@@ -480,19 +475,6 @@
         "name": "",
         "type": "bool",
         "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "totalActiveComputeUnits",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
