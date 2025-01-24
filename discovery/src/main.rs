@@ -1,5 +1,4 @@
 mod api;
-mod models;
 mod store;
 use crate::api::server::start_server;
 use crate::store::node_store::NodeStore;
@@ -15,6 +14,11 @@ struct Args {
     rpc_url: String,
 }
 
+// TODO: Align node model 
+// TODO: Get status from chain
+// TODO: Add proper validation
+// TODO: Chain interaction
+// TODO: Align other services reg. api
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();

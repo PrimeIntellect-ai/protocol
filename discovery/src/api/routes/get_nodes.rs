@@ -1,8 +1,9 @@
 use crate::api::server::AppState;
-use crate::models::node::Node;
+use shared::models::node::Node;
 use actix_web::{
     web::Data,
-    web::{self}, HttpResponse,
+    web::{self, get},
+    HttpResponse,
 };
 
 pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {

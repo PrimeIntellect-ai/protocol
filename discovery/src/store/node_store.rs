@@ -1,4 +1,4 @@
-use crate::models::node::Node;
+use shared::models::node::Node;
 use crate::store::redis::RedisStore;
 use redis::Commands;
 
