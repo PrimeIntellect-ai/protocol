@@ -2,7 +2,7 @@ use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRe
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TaskState {
     PENDING,
     PULLING,
