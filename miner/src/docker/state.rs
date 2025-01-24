@@ -1,15 +1,18 @@
+use chrono::{DateTime, Utc};
 use shared::models::task::{Task, TaskState};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 pub struct DockerState {
     current_task: Arc<Mutex<Option<Task>>>,
+    last_started: Arc<Mutex<Option<DateTime<Utc>>>>,
 }
 
 impl DockerState {
     pub fn new() -> Self {
         Self {
             current_task: Arc::new(Mutex::new(None)),
+            last_started: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -31,5 +34,15 @@ impl DockerState {
     pub async fn get_current_task(&self) -> Option<Task> {
         let current_task = self.current_task.lock().await;
         current_task.clone()
+    }
+
+    pub async fn get_last_started(&self) -> Option<DateTime<Utc>> {
+        let last_started = self.last_started.lock().await;
+        last_started.clone()
+    }
+
+    pub async fn set_last_started(&self, last_started: DateTime<Utc>) {
+        let mut last_started_guard = self.last_started.lock().await;
+        *last_started_guard = Some(last_started);
     }
 }

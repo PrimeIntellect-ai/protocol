@@ -157,10 +157,10 @@ impl DockerManager {
         Ok(())
     }
 
-    pub async fn list_running_containers(&self) -> Result<Vec<ContainerInfo>, DockerError> {
+    pub async fn list_containers(&self, list_all: bool) -> Result<Vec<ContainerInfo>, DockerError> {
         debug!("Listing running containers");
         let options = Some(ListContainersOptions::<String> {
-            all: false, // Only running containers
+            all: list_all, // If true, list all containers. If false, only list running containers
             ..Default::default()
         });
 
