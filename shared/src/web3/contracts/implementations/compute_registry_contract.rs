@@ -48,7 +48,7 @@ impl ComputeRegistryContract {
         let node_response = self
             .instance
             .instance()
-            .function("getNode", &[provider_address.into(), node_address.into()])?
+            .function("getNode", &[node_address.into()])?
             .call()
             .await;
 

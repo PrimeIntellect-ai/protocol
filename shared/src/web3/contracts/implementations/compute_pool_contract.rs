@@ -88,28 +88,13 @@ impl ComputePool {
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         println!("Joining compute pool");
 
-        let address = DynSolValue::from(
-            nodes
-                .iter()
-                .map(|addr| DynSolValue::from(*addr))
-                .collect::<Vec<_>>(),
-        );
-        let signatures = DynSolValue::from(
-            signatures
-                .iter()
-                .map(|sig| DynSolValue::Bytes(sig.to_vec()))
-                .collect::<Vec<_>>(),
-        );
-        println!("Address: {:?}", address);
-        println!("Signatures: {:?}", signatures);
+        // TODO: Rewrite this with proper abi parsing
+        let join_args = vec![pool_id.into(), provider_address.into(), nodes[0].into(), signatures[0].to_vec().into()];
 
         let result = self
             .instance
             .instance()
-            .function(
-                "joinComputePool",
-                &[pool_id.into(), provider_address.into(), address, signatures],
-            )?
+            .function("joinComputePool", &join_args)?
             .send()
             .await?
             .watch()
