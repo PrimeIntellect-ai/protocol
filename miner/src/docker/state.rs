@@ -38,7 +38,7 @@ impl DockerState {
 
     pub async fn get_last_started(&self) -> Option<DateTime<Utc>> {
         let last_started = self.last_started.lock().await;
-        last_started.clone()
+        *last_started
     }
 
     pub async fn set_last_started(&self, last_started: DateTime<Utc>) {

@@ -148,7 +148,7 @@ impl DockerService {
                                                 state_clone.update_task_state(payload.id, TaskState::FAILED).await;
                                             }
                                         }
-                                        state_clone.set_last_started(DateTime::<Utc>::from(Utc::now())).await;
+                                        state_clone.set_last_started(Utc::now()).await;
                                     });
                                     starting_container_tasks.lock().await.push(handle);
 
