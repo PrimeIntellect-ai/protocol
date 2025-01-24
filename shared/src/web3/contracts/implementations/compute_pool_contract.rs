@@ -158,10 +158,7 @@ impl ComputePool {
         let result = self
             .instance
             .instance()
-            .function(
-                "blacklistNode",
-                &[arg_pool_id.into(), node.into()],
-            )?
+            .function("blacklistNode", &[arg_pool_id.into(), node.into()])?
             .send()
             .await?
             .watch()
@@ -184,10 +181,7 @@ impl ComputePool {
         let result = self
             .instance
             .instance()
-            .function(
-                "ejectNode",
-                &[arg_pool_id.into(), node.into()],
-            )?
+            .function("ejectNode", &[arg_pool_id.into(), node.into()])?
             .send()
             .await?
             .watch()
