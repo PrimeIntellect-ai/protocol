@@ -1,7 +1,6 @@
 use crate::models::node::Node;
 use crate::store::redis::RedisStore;
 use redis::Commands;
-use serde::{Deserialize, Serialize};
 
 pub struct NodeStore {
     redis_store: RedisStore,

@@ -24,8 +24,7 @@ pub async fn get_nodes_for_pool(data: Data<AppState>, pool_id: web::Path<String>
     let pool_id = pool_id.into_inner().parse::<u32>().unwrap();
     let nodes_for_pool: Vec<Node> = nodes
         .iter()
-        .filter(|node| node.compute_pool_id == pool_id)
-        .map(|node| node.clone())
+        .filter(|node| node.compute_pool_id == pool_id).cloned()
         .collect();
     HttpResponse::Ok().json(nodes_for_pool)
 }

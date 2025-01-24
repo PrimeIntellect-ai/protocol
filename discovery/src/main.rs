@@ -4,14 +4,9 @@ mod store;
 use crate::api::server::start_server;
 use crate::store::node_store::NodeStore;
 use crate::store::redis::RedisStore;
-use actix_web::{App, HttpServer};
 use anyhow::Result;
 use clap::Parser;
-use log::LevelFilter;
-use shared::web3::wallet::Wallet;
 use std::sync::Arc;
-use tokio::task::JoinSet;
-use url::Url;
 
 #[derive(Parser)]
 struct Args {
