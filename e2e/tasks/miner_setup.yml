@@ -1,0 +1,32 @@
+---
+- name: Create miner directory
+  file:
+    path: "/opt/prime/miner"
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Copy miner binary
+  copy:
+    src: "../../target/release/miner"
+    dest: "/opt/prime/miner/miner"
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Create systemd service file
+  template:
+    src: templates/miner.service.j2
+    dest: /etc/systemd/system/prime-miner.service
+    mode: '0644'
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Start and enable miner service
+  systemd:
+    name: prime-miner
+    state: restarted
+    enabled: yes

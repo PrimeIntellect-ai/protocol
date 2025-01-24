@@ -1,0 +1,17 @@
+# e2e/templates/miner.service.j2
+[Unit]
+Description=Prime Network Miner
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=PROVIDER_PRIVATE_KEY={{ provider_key }}
+Environment=NODE_PRIVATE_KEY={{ node_key }}
+WorkingDirectory=/opt/prime/miner
+ExecStart=/opt/prime/miner/miner run --private-key-provider ${PROVIDER_PRIVATE_KEY} --private-key-node ${NODE_PRIVATE_KEY} --port 8091 --external-ip {{ ansible_host }} --compute-pool-id 0 --discovery-url {{ discovery_url }}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
