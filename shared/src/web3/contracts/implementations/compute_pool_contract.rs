@@ -147,19 +147,46 @@ impl ComputePool {
     pub async fn blacklist_node(
         &self,
         pool_id: u32,
-        provider_address: Address,
         node: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         println!("Blacklisting node");
 
         println!("Node: {:?}", node);
 
+        let arg_pool_id: U256 = U256::from(pool_id);
+
         let result = self
             .instance
             .instance()
             .function(
                 "blacklistNode",
-                &[pool_id.into(), provider_address.into(), node.into()],
+                &[arg_pool_id.into(), node.into()],
+            )?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        println!("Result: {:?}", result);
+        Ok(result)
+    }
+
+    pub async fn eject_node(
+        &self,
+        pool_id: u32,
+        node: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        println!("Ejecting node");
+
+        println!("Node: {:?}", node);
+
+        let arg_pool_id: U256 = U256::from(pool_id);
+
+        let result = self
+            .instance
+            .instance()
+            .function(
+                "ejectNode",
+                &[arg_pool_id.into(), node.into()],
             )?
             .send()
             .await?

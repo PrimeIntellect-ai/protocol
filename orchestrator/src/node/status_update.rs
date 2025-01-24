@@ -1,6 +1,5 @@
 use crate::store::core::StoreContext;
 use crate::types::node::NodeStatus;
-use alloy::primitives::address;
 use anyhow::Ok;
 use log::{debug, error};
 use shared::web3::contracts::core::builder::Contracts;
@@ -67,32 +66,17 @@ impl NodeStatusUpdater {
                     }
                 };
                 if node_in_pool {
-                    let zero_address = address!("0x0000000000000000000000000000000000000000");
-                    let provider_address = match self
+                    let tx = self
                         .contracts
-                        .compute_registry
-                        .get_provider(node.address)
-                        .await
-                    {
-                        Result::Ok(provider) => provider.provider_address,
-                        Result::Err(e) => {
-                            println!("Error retrieving provider: {}", e);
-                            zero_address
+                        .compute_pool
+                        .eject_node(self.pool_id, node.address)
+                        .await;
+                    match tx {
+                        Result::Ok(_) => {
+                            println!("Ejected node: {:?}", node.address);
                         }
-                    };
-                    if provider_address != zero_address {
-                        let tx = self
-                            .contracts
-                            .compute_pool
-                            .blacklist_node(self.pool_id, provider_address, node.address)
-                            .await;
-                        match tx {
-                            Result::Ok(_) => {
-                                println!("Blacklisted node: {:?}", node.address);
-                            }
-                            Result::Err(e) => {
-                                println!("Error blacklisting node: {}", e);
-                            }
+                        Result::Err(e) => {
+                            println!("Error ejecting node: {}", e);
                         }
                     }
                 }
