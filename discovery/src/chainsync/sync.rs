@@ -37,9 +37,10 @@ impl ChainSync {
         let node_store_clone = self.node_store.clone();
         let contracts_clone = self.contracts.clone();
         let cancel_token = self.cancel_token.clone();
+        let chain_sync_interval = self.chain_sync_interval;
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(10));
+            let mut interval = tokio::time::interval(chain_sync_interval);
             loop {
                 tokio::select! {
                     _ = interval.tick() => {

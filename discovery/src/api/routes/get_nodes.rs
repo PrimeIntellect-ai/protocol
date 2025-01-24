@@ -1,12 +1,11 @@
 use crate::api::server::AppState;
-use crate::store::node_store::NodeStore;
 use actix_web::{
     web::Data,
     web::{self},
     HttpResponse,
 };
 use shared::models::api::ApiResponse;
-use shared::models::node::{DiscoveryNode, Node};
+use shared::models::node::DiscoveryNode;
 
 pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
     let nodes = data.node_store.get_nodes();
@@ -32,6 +31,8 @@ mod tests {
     use super::*;
     use crate::store::node_store::NodeStore;
     use crate::store::redis::RedisStore;
+    use shared::models::node::DiscoveryNode;
+    use shared::models::node::Node;
     use actix_web::test;
     use actix_web::web::get;
     use actix_web::App;
