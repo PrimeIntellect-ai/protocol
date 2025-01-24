@@ -1,6 +1,6 @@
 use crate::store::core::StoreContext;
-use crate::types::node::Node;
-use crate::types::node::NodeStatus;
+use shared::models::node::Node;
+use shared::models::node::NodeStatus;
 use alloy::primitives::Address;
 use anyhow::Error;
 use anyhow::Result;
@@ -50,7 +50,7 @@ impl<'b> DiscoveryMonitor<'b> {
     }
 
     pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<Node>, Error> {
-        let discovery_route = format!("/api/nodes/pool/{}", self.compute_pool_id);
+        let discovery_route = format!("/api/pool/{}", self.compute_pool_id);
         let address = self.coordinator_wallet.address().to_string();
 
         let signature = sign_request(&discovery_route, self.coordinator_wallet, None)
@@ -67,7 +67,7 @@ impl<'b> DiscoveryMonitor<'b> {
             .send()
             .await?;
 
-        let response_text: String = response.text().await?;
+        /*let response_text: String = response.text().await?;
         let parsed_response: serde_json::Value = serde_json::from_str(&response_text)?;
         let nodes: Vec<Node> = parsed_response["data"]
             .as_array()
@@ -98,6 +98,8 @@ impl<'b> DiscoveryMonitor<'b> {
                 })
             })
             .collect::<Result<Vec<Node>, anyhow::Error>>()?;
+        */
+        let nodes: Vec<Node> = vec![];
         Ok(nodes)
     }
 

@@ -1,6 +1,6 @@
-use shared::models::node::Node;
 use crate::store::redis::RedisStore;
 use redis::Commands;
+use shared::models::node::Node;
 
 pub struct NodeStore {
     redis_store: RedisStore,

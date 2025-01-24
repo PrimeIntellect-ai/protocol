@@ -1,0 +1,65 @@
+use crate::store::node_store::NodeStore;
+use alloy::primitives::Address;
+use anyhow::Result;
+use shared::web3::contracts::core::builder::Contracts;
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
+pub struct ChainSync {
+    pub node_store: Arc<NodeStore>,
+    cancel_token: CancellationToken,
+    chain_sync_interval: Duration,
+    contracts: Arc<Contracts>,
+}
+
+impl ChainSync {
+    pub fn new(
+        node_store: Arc<NodeStore>,
+        cancellation_token: CancellationToken,
+        chain_sync_interval: Duration,
+        contracts: Arc<Contracts>,
+    ) -> Self {
+        Self {
+            node_store,
+            cancel_token: cancellation_token,
+            chain_sync_interval,
+            contracts,
+        }
+    }
+
+    pub async fn run(&self) -> Result<()> {
+        // TODO loop
+        // Check local store
+        // Check store on chain
+        // Update status
+
+        let node_store_clone = self.node_store.clone();
+        let contracts_clone = self.contracts.clone();
+        let cancel_token = self.cancel_token.clone();
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(10));
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        // TODO: Implement chain sync
+                        let nodes = node_store_clone.get_nodes();
+                        for node in nodes {
+                            if let Some(provider_address) = node.provider_address {
+                                let provider_address = Address::from_str(&provider_address).unwrap();
+                                let node_address = Address::from_str(&node.id).unwrap();
+                                let node_info = contracts_clone.compute_registry.get_node(provider_address, node_address).await;
+                                // TODO: This is not properly implemented yet. 
+                            }
+                        }
+                    }
+                    _ = cancel_token.cancelled() => {
+                        break;
+                    }
+                }
+            }
+        });
+        Ok(())
+    }
+}

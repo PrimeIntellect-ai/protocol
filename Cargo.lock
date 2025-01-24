@@ -491,6 +491,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloy-node-bindings"
+version = "0.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4520cd4bc5cec20c32c98e4bc38914c7fb96bf4a712105e44da186a54e65e3ba"
+dependencies = [
+ "alloy-genesis",
+ "alloy-primitives",
+ "k256",
+ "rand",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.11",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "alloy-primitives"
 version = "0.8.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2100,6 +2117,7 @@ name = "dev-utils"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "alloy-node-bindings",
  "clap 4.5.27",
  "eyre",
  "shared",
@@ -2185,6 +2203,7 @@ dependencies = [
  "serde_json",
  "shared",
  "tokio",
+ "tokio-util",
  "url",
 ]
 

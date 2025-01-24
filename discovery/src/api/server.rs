@@ -28,9 +28,9 @@ pub async fn start_server(
             .wrap(middleware::Logger::default())
             .app_data(Data::new(app_state.clone()))
             .service(node_routes())
-            .service(web::scope("/platform").route("", get().to(get_nodes)))
-            .service(web::scope("/validator").route("", get().to(get_nodes)))
-            .service(web::scope("/pool/{pool_id}").route("", get().to(get_nodes_for_pool)))
+            .service(web::scope("/api/platform").route("", get().to(get_nodes)))
+            .service(web::scope("/api/validator").route("", get().to(get_nodes)))
+            .service(web::scope("/api/pool/{pool_id}").route("", get().to(get_nodes_for_pool)))
     })
     .bind((host, port))?
     .run()

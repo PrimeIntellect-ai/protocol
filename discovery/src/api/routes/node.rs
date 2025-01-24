@@ -1,9 +1,9 @@
 use crate::api::server::AppState;
-use shared::models::node::Node;
 use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,
 };
+use shared::models::node::Node;
 
 pub async fn register_node(node: web::Json<Node>, data: Data<AppState>) -> HttpResponse {
     let node_store = data.node_store.clone();
