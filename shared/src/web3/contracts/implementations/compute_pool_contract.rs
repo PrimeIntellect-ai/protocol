@@ -89,7 +89,12 @@ impl ComputePool {
         println!("Joining compute pool");
 
         // TODO: Rewrite this with proper abi parsing
-        let join_args = vec![pool_id.into(), provider_address.into(), nodes[0].into(), signatures[0].to_vec().into()];
+        let join_args = vec![
+            pool_id.into(),
+            provider_address.into(),
+            nodes[0].into(),
+            signatures[0].to_vec().into(),
+        ];
 
         let result = self
             .instance

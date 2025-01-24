@@ -18,8 +18,7 @@ pub async fn start_server(
     host: &str,
     port: u16,
     node_store: Arc<NodeStore>,
-    #[allow(unused)]
-    validator_address: String,
+    #[allow(unused)] validator_address: String,
 ) -> std::io::Result<()> {
     println!("Starting server at http://{}:{}", host, port);
 

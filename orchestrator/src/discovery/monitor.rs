@@ -74,7 +74,7 @@ impl<'b> DiscoveryMonitor<'b> {
 
         let nodes = nodes
             .into_iter()
-            .filter(|node| node.is_validated) 
+            .filter(|node| node.is_validated)
             .map(Node::from)
             .collect::<Vec<Node>>();
         Ok(nodes)

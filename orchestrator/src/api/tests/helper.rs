@@ -41,7 +41,7 @@ pub fn setup_contract() -> Contracts {
     let coordinator_key = "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97";
     let rpc_url: Url = Url::parse("http://localhost:8545").unwrap();
 
-    let coordinator_wallet = Arc::new(Wallet::new(&coordinator_key, rpc_url).unwrap());
+    let coordinator_wallet = Arc::new(Wallet::new(coordinator_key, rpc_url).unwrap());
 
     ContractBuilder::new(&coordinator_wallet.clone())
         .with_compute_registry()
