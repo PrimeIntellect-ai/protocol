@@ -1,7 +1,7 @@
 use crate::api::routes::invite::invite_routes;
 use crate::operations::heartbeat::service::HeartbeatService;
 use actix_web::{middleware, web::Data, App, HttpServer};
-use shared::security::auth_signature_middleware::ValidateSignature;
+use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::structs::compute_pool::PoolInfo;
 use shared::web3::wallet::Wallet;
@@ -25,8 +25,6 @@ pub async fn start_server(
 ) -> std::io::Result<()> {
     println!("Starting server at http://{}:{}", host, port);
 
-    let allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
-
     let app_state = Data::new(AppState {
         contracts,
         node_wallet,
@@ -34,11 +32,14 @@ pub async fn start_server(
         heartbeat_service,
     });
 
+    let allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
+    let validator_state = Arc::new(ValidatorState::new(allowed_addresses));
+
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
-            .wrap(ValidateSignature::new(allowed_addresses.clone()))
+            .wrap(ValidateSignature::new(validator_state.clone()))
             .service(invite_routes())
     })
     .bind((host, port))?
