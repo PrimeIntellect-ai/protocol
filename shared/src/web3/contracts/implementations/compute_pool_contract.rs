@@ -118,6 +118,71 @@ impl ComputePool {
         Ok(result)
     }
 
+    pub async fn leave_compute_pool(
+        &self,
+        pool_id: U256,
+        provider_address: Address,
+        node: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        println!("Leaving compute pool");
+
+        println!("Provider: {:?}", provider_address);
+        println!("Node: {:?}", node);
+
+        let result = self
+            .instance
+            .instance()
+            .function(
+                "leaveComputePool",
+                &[pool_id.into(), provider_address.into(), node.into()],
+            )?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        println!("Result: {:?}", result);
+        Ok(result)
+    }
+
+    pub async fn blacklist_node(
+        &self,
+        pool_id: u32,
+        provider_address: Address,
+        node: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        println!("Blacklisting node");
+
+        println!("Node: {:?}", node);
+
+        let result = self
+            .instance
+            .instance()
+            .function(
+                "blacklistNode",
+                &[pool_id.into(), provider_address.into(), node.into()],
+            )?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        println!("Result: {:?}", result);
+        Ok(result)
+    }
+
+    pub async fn is_node_in_pool(
+        &self,
+        pool_id: u32,
+        node: Address,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let result = self
+            .instance
+            .instance()
+            .function("isNodeInPool", &[pool_id.into(), node.into()])?
+            .call()
+            .await?;
+        Ok(result.first().unwrap().as_bool().unwrap())
+    }
+
     pub async fn create_compute_pool(
         &self,
         domain_id: U256,

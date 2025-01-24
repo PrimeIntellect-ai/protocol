@@ -1,14 +1,20 @@
 use crate::store::core::StoreContext;
 use crate::types::node::NodeStatus;
+use alloy::primitives::address;
 use anyhow::Ok;
 use log::{debug, error};
+use shared::web3::contracts::core::builder::Contracts;
+use std::result::Result;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
+
 pub struct NodeStatusUpdater {
     store_context: Arc<StoreContext>,
     update_interval: u64,
     missing_heartbeat_threshold: u32,
+    contracts: Arc<Contracts>,
+    pool_id: u32,
 }
 
 impl NodeStatusUpdater {
@@ -16,11 +22,15 @@ impl NodeStatusUpdater {
         store_context: Arc<StoreContext>,
         update_interval: u64,
         missing_heartbeat_threshold: Option<u32>,
+        contracts: Arc<Contracts>,
+        pool_id: u32,
     ) -> Self {
         Self {
             store_context,
             update_interval,
             missing_heartbeat_threshold: missing_heartbeat_threshold.unwrap_or(3),
+            contracts,
+            pool_id,
         }
     }
 
@@ -33,7 +43,65 @@ impl NodeStatusUpdater {
             if let Err(e) = self.process_nodes().await {
                 error!("Error processing nodes: {}", e);
             }
+            if let Err(e) = self.sync_chain_with_nodes().await {
+                error!("Error syncing chain with nodes: {}", e);
+            }
         }
+    }
+
+    pub async fn sync_chain_with_nodes(&self) -> Result<(), anyhow::Error> {
+        let nodes = self.store_context.node_store.get_nodes();
+        for node in nodes {
+            match node.status {
+                NodeStatus::Dead => {
+                    println!("Node is dead, checking if we need to remove from chain");
+                    let node_in_pool: bool = match self
+                        .contracts
+                        .compute_pool
+                        .is_node_in_pool(self.pool_id, node.address)
+                        .await
+                    {
+                        Result::Ok(result) => result,
+                        Result::Err(e) => {
+                            println!("Error checking if node is in pool: {}", e);
+                            false
+                        }
+                    };
+                    if node_in_pool {
+                        let zero_address = address!("0x0000000000000000000000000000000000000000");
+                        let provider_address = match self
+                            .contracts
+                            .compute_registry
+                            .get_provider(node.address)
+                            .await
+                        {
+                            Result::Ok(provider) => provider.provider_address,
+                            Result::Err(e) => {
+                                println!("Error retrieving provider: {}", e);
+                                zero_address
+                            }
+                        };
+                        if provider_address != zero_address {
+                            let tx = self
+                                .contracts
+                                .compute_pool
+                                .blacklist_node(self.pool_id, provider_address, node.address)
+                                .await;
+                            match tx {
+                                Result::Ok(_) => {
+                                    println!("Blacklisted node: {:?}", node.address);
+                                }
+                                Result::Err(e) => {
+                                    println!("Error blacklisting node: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     pub async fn process_nodes(&self) -> Result<(), anyhow::Error> {
@@ -80,7 +148,6 @@ impl NodeStatusUpdater {
                         }
                         NodeStatus::Unhealthy => {
                             if unhealthy_counter + 1 >= self.missing_heartbeat_threshold {
-                                // TODO Report death to chain
                                 self.store_context
                                     .node_store
                                     .update_node_status(&node.address, NodeStatus::Dead);
@@ -99,6 +166,7 @@ impl NodeStatusUpdater {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
+    use crate::api::tests::helper::setup_contract;
     use crate::types::node::Node;
     use crate::types::node::NodeStatus;
     use alloy::primitives::Address;
@@ -109,8 +177,15 @@ mod tests {
     #[tokio::test]
     async fn test_node_status_updater_runs() {
         let app_state = create_test_app_state().await;
+        let contracts = setup_contract();
 
-        let updater = NodeStatusUpdater::new(app_state.store_context.clone(), 5, None);
+        let updater = NodeStatusUpdater::new(
+            app_state.store_context.clone(),
+            5,
+            None,
+            Arc::new(contracts),
+            0,
+        );
         let node = Node {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
@@ -150,6 +225,7 @@ mod tests {
     #[tokio::test]
     async fn test_node_status_updater_runs_with_unhealthy_node() {
         let app_state = create_test_app_state().await;
+        let contracts = setup_contract();
 
         let node = Node {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -161,7 +237,13 @@ mod tests {
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
-        let updater = NodeStatusUpdater::new(app_state.store_context.clone(), 5, None);
+        let updater = NodeStatusUpdater::new(
+            app_state.store_context.clone(),
+            5,
+            None,
+            Arc::new(contracts),
+            0,
+        );
         tokio::spawn(async move {
             updater
                 .run()
@@ -182,6 +264,7 @@ mod tests {
     #[tokio::test]
     async fn test_node_status_with_unhealthy_node_but_no_counter() {
         let app_state = create_test_app_state().await;
+        let contracts = setup_contract();
 
         let node = Node {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -193,7 +276,13 @@ mod tests {
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
-        let updater = NodeStatusUpdater::new(app_state.store_context.clone(), 5, None);
+        let updater = NodeStatusUpdater::new(
+            app_state.store_context.clone(),
+            5,
+            None,
+            Arc::new(contracts),
+            0,
+        );
         tokio::spawn(async move {
             updater
                 .run()
@@ -219,6 +308,7 @@ mod tests {
     #[tokio::test]
     async fn test_node_status_updater_runs_with_dead_node() {
         let app_state = create_test_app_state().await;
+        let contracts = setup_contract();
 
         let node = Node {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -235,7 +325,13 @@ mod tests {
             .heartbeat_store
             .set_unhealthy_counter(&node.address, 2);
 
-        let updater = NodeStatusUpdater::new(app_state.store_context.clone(), 5, None);
+        let updater = NodeStatusUpdater::new(
+            app_state.store_context.clone(),
+            5,
+            None,
+            Arc::new(contracts),
+            0,
+        );
         tokio::spawn(async move {
             updater
                 .run()
@@ -256,6 +352,7 @@ mod tests {
     #[tokio::test]
     async fn transition_from_unhealthy_to_healthy() {
         let app_state = create_test_app_state().await;
+        let contracts = setup_contract();
 
         let node = Node {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -272,7 +369,13 @@ mod tests {
         let _: () = app_state.store_context.heartbeat_store.beat(&node.address);
         let _: () = app_state.store_context.node_store.add_node(node.clone());
 
-        let updater = NodeStatusUpdater::new(app_state.store_context.clone(), 5, None);
+        let updater = NodeStatusUpdater::new(
+            app_state.store_context.clone(),
+            5,
+            None,
+            Arc::new(contracts),
+            0,
+        );
         tokio::spawn(async move {
             updater
                 .run()
@@ -299,6 +402,7 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_nodes_with_diff_status() {
         let app_state = create_test_app_state().await;
+        let contracts = setup_contract();
 
         let node1 = Node {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -325,7 +429,13 @@ mod tests {
 
         let _: () = app_state.store_context.node_store.add_node(node2.clone());
 
-        let updater = NodeStatusUpdater::new(app_state.store_context.clone(), 5, None);
+        let updater = NodeStatusUpdater::new(
+            app_state.store_context.clone(),
+            5,
+            None,
+            Arc::new(contracts),
+            0,
+        );
         tokio::spawn(async move {
             updater
                 .run()
