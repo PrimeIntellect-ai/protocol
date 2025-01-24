@@ -1,12 +1,15 @@
+use crate::models::node::Node;
 use crate::store::core::StoreContext;
-use shared::models::node::Node;
-use shared::models::node::NodeStatus;
 use alloy::primitives::Address;
 use anyhow::Error;
 use anyhow::Result;
 use log::{debug, error};
+use reqwest::Response;
 use serde_json;
+use shared::models::api::ApiResponse;
+use shared::models::node::DiscoveryNode;
 use shared::security::request_signer::sign_request;
+use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -61,11 +64,23 @@ impl<'b> DiscoveryMonitor<'b> {
         headers.insert("x-address", address.parse().unwrap());
         headers.insert("x-signature", signature.parse().unwrap());
 
-        let response = reqwest::Client::new()
+        let response: Response = reqwest::Client::new()
             .get(format!("{}{}", self.discovery_url, discovery_route))
             .headers(headers)
             .send()
             .await?;
+
+        let response_text = response.text().await?;
+        let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
+            serde_json::from_str(&response_text)?;
+        let nodes = parsed_response.data;
+
+        let nodes = nodes
+            .into_iter()
+            .filter(|node| node.is_validated) // Check if nodes are validated
+            .map(|node| Node::from(node))
+            .collect::<Vec<Node>>();
+        println!("Nodes: {:?}", nodes);
 
         /*let response_text: String = response.text().await?;
         let parsed_response: serde_json::Value = serde_json::from_str(&response_text)?;
@@ -99,13 +114,13 @@ impl<'b> DiscoveryMonitor<'b> {
             })
             .collect::<Result<Vec<Node>, anyhow::Error>>()?;
         */
-        let nodes: Vec<Node> = vec![];
         Ok(nodes)
     }
 
     pub async fn get_nodes(&self) -> Result<Vec<Node>, Error> {
         let nodes = self.fetch_nodes_from_discovery().await?;
         for node in &nodes {
+            println!("Node: {:?}", node.address);
             let exists = self.store_context.node_store.get_node(&node.address);
             if exists.is_some() {
                 continue;

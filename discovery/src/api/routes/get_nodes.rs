@@ -1,25 +1,30 @@
 use crate::api::server::AppState;
+use crate::store::node_store::NodeStore;
 use actix_web::{
     web::Data,
     web::{self},
     HttpResponse,
 };
-use shared::models::node::Node;
+use shared::models::api::ApiResponse;
+use shared::models::node::{DiscoveryNode, Node};
 
 pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
     let nodes = data.node_store.get_nodes();
-    HttpResponse::Ok().json(nodes)
+    let response = ApiResponse::new(true, nodes);
+    HttpResponse::Ok().json(response)
 }
 
 pub async fn get_nodes_for_pool(data: Data<AppState>, pool_id: web::Path<String>) -> HttpResponse {
     let nodes = data.node_store.get_nodes();
     let pool_id = pool_id.into_inner().parse::<u32>().unwrap();
-    let nodes_for_pool: Vec<Node> = nodes
+    let nodes_for_pool: Vec<DiscoveryNode> = nodes
         .iter()
         .filter(|node| node.compute_pool_id == pool_id)
         .cloned()
         .collect();
-    HttpResponse::Ok().json(nodes_for_pool)
+
+    let response = ApiResponse::new(true, nodes_for_pool);
+    HttpResponse::Ok().json(response)
 }
 
 #[cfg(test)]
@@ -46,11 +51,10 @@ mod tests {
 
         let sample_node = Node {
             id: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
-            provider_address: None,
+            provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             compute_pool_id: 0,
-            last_seen: None,
             compute_specs: None,
         };
         app_state.node_store.register_node(sample_node);
@@ -59,8 +63,9 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
-        let nodes: Vec<Node> = serde_json::from_slice(&body).unwrap();
-        assert_eq!(nodes.len(), 1);
+        let api_response: ApiResponse<Vec<DiscoveryNode>> = serde_json::from_slice(&body).unwrap();
+        assert!(api_response.success);
+        assert_eq!(api_response.data.len(), 1);
     }
 
     #[actix_web::test]
@@ -77,11 +82,10 @@ mod tests {
 
         let sample_node = Node {
             id: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
-            provider_address: None,
+            provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             compute_pool_id: 1,
-            last_seen: None,
             compute_specs: None,
         };
         app_state.node_store.register_node(sample_node);
@@ -90,8 +94,9 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
-        let nodes: Vec<Node> = serde_json::from_slice(&body).unwrap();
-        assert_eq!(nodes.len(), 0);
+        let api_response: ApiResponse<Vec<DiscoveryNode>> = serde_json::from_slice(&body).unwrap();
+        assert!(api_response.success);
+        assert_eq!(api_response.data.len(), 0);
     }
 
     #[actix_web::test]
@@ -108,11 +113,10 @@ mod tests {
 
         let sample_node = Node {
             id: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
-            provider_address: None,
+            provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             compute_pool_id: 0,
-            last_seen: None,
             compute_specs: None,
         };
         app_state.node_store.register_node(sample_node);
@@ -121,7 +125,8 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
-        let nodes: Vec<Node> = serde_json::from_slice(&body).unwrap();
-        assert_eq!(nodes.len(), 1);
+        let api_response: ApiResponse<Vec<DiscoveryNode>> = serde_json::from_slice(&body).unwrap();
+        assert!(api_response.success);
+        assert_eq!(api_response.data.len(), 1);
     }
 }

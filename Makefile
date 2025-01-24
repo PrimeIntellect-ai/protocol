@@ -38,16 +38,18 @@ up:
 down:
 	tmuxinator stop prime-dev
 	docker-compose down
-	pkill -f "target/debug/miner"
-	pkill -f "target/debug/orchestrator"
-	pkill -f "target/debug/validator"
+	pkill -f "target/debug/miner" 2>/dev/null || true
+	pkill -f "target/debug/orchestrator" 2>/dev/null || true
+	pkill -f "target/debug/validator" 2>/dev/null || true
+	pkill -f "target/debug/discovery" 2>/dev/null || true
 
 whitelist-provider:
 	set -a; source .env; set +a; \
 	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
 
 watch-discovery:
-	cargo watch -w discovery/src -x "run --bin discovery"
+	set -a; source .env; set +a; \
+	cargo watch -w discovery/src -x "run --bin discovery -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL}"
 
 watch-miner:
 	set -a; source .env; set +a; \

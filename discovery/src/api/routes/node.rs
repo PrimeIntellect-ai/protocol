@@ -1,19 +1,20 @@
 use crate::api::server::AppState;
 use actix_web::{
-    web::{self, post, Data},
+    web::{self, put, Data},
     HttpResponse, Scope,
 };
+use shared::models::api::ApiResponse;
 use shared::models::node::Node;
 
 pub async fn register_node(node: web::Json<Node>, data: Data<AppState>) -> HttpResponse {
     let node_store = data.node_store.clone();
     node_store.register_node(node.clone());
     println!("Node: {:?}", node);
-    HttpResponse::Ok().json("Node registered successfully")
+    HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully"))
 }
 
 pub fn node_routes() -> Scope {
-    web::scope("/nodes").route("", post().to(register_node))
+    web::scope("/api/nodes").route("", put().to(register_node))
 }
 
 #[cfg(test)]
@@ -30,11 +31,10 @@ mod tests {
     async fn test_register_node() {
         let node = Node {
             id: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
-            provider_address: None,
+            provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
             ip_address: "127.0.0.1".to_string(),
             port: 8089,
             compute_pool_id: 0,
-            last_seen: None,
             compute_specs: None,
         };
 
@@ -45,24 +45,24 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(app_state.clone()))
-                .route("/nodes", post().to(register_node)),
+                .route("/nodes", put().to(register_node)),
         )
         .await;
 
-        let node_clone = node.clone();
-        let json = serde_json::to_value(node).unwrap();
-        let deserialized_node: Node = serde_json::from_value(json.clone()).unwrap();
-        assert_eq!(deserialized_node, node_clone);
-
-        let req = test::TestRequest::post()
+        let json = serde_json::to_value(node.clone()).unwrap();
+        let req = test::TestRequest::put()
             .uri("/nodes")
             .set_json(json)
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
+        let body: ApiResponse<String> = test::read_body_json(resp).await;
+        assert!(body.success);
+        assert_eq!(body.data, "Node registered successfully");
+
         let nodes = app_state.node_store.get_nodes();
         assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0], node_clone);
+        assert_eq!(nodes[0].id, node.id);
     }
 }

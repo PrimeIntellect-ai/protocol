@@ -1,14 +1,13 @@
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Node {
     pub id: String,
-    pub provider_address: Option<String>,
+    pub provider_address: String,
     pub ip_address: String,
     pub port: u16,
     pub compute_pool_id: u32,
-    pub last_seen: Option<u32>,
-    // Specifications for compute resources
     pub compute_specs: Option<ComputeSpecs>,
 }
 
@@ -34,4 +33,31 @@ pub struct GpuSpecs {
 pub struct CpuSpecs {
     pub cores: Option<u32>,
     pub model: Option<String>,
+}
+
+// Discover node contains validation info and is typically returned by the discovery svc
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct DiscoveryNode {
+    #[serde(flatten)]
+    pub node: Node,
+    pub is_validated: bool,
+    pub is_active: bool,
+}
+impl Deref for DiscoveryNode {
+    type Target = Node;
+
+    fn deref(&self) -> &Self::Target {
+        &self.node
+    }
+}
+
+impl From<Node> for DiscoveryNode {
+    fn from(node: Node) -> Self {
+        DiscoveryNode {
+            node,
+            is_validated: false, // Default values for new discovery nodes
+            is_active: false,
+        }
+    }
 }

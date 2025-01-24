@@ -44,7 +44,7 @@ impl ComputeRegistryContract {
         &self,
         provider_address: Address,
         node_address: Address,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(bool, bool), Box<dyn std::error::Error>> {
         let node_response = self
             .instance
             .instance()
@@ -56,12 +56,10 @@ impl ComputeRegistryContract {
         match node_response {
             Ok(response) => {
                 if let Some(_node_data) = response.first() {
-                    // Process node data if it exists
-                    // let node_tuple = node_data.as_tuple().unwrap();
-                    // let is_active: bool = node_tuple.get(5).unwrap().as_bool().unwrap();
-                    // let is_validated: bool = node_tuple.get(6).unwrap().as_bool().unwrap();
-                    // TODO: Actually return a properly parsed node
-                    Ok(()) // Return Ok if the node is registered
+                    let node_tuple = _node_data.as_tuple().unwrap();
+                    let active = node_tuple[5].as_bool().unwrap();
+                    let validated = node_tuple[6].as_bool().unwrap();
+                    Ok((active, validated)) // Return Ok if the node is registered
                 } else {
                     println!("Node is not registered. Proceeding to add the node.");
                     Err("Node is not registered".into())

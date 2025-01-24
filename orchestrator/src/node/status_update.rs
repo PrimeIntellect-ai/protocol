@@ -1,5 +1,5 @@
+use crate::models::node::NodeStatus;
 use crate::store::core::StoreContext;
-use crate::types::node::NodeStatus;
 use anyhow::Ok;
 use log::{debug, error};
 use std::sync::Arc;
@@ -99,8 +99,8 @@ impl NodeStatusUpdater {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
-    use crate::types::node::Node;
-    use crate::types::node::NodeStatus;
+    use crate::models::node::Node;
+    use crate::models::node::NodeStatus;
     use alloy::primitives::Address;
     use std::str::FromStr;
     use std::time::Duration;

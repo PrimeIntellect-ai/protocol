@@ -18,7 +18,7 @@ pub fn nodes_routes() -> Scope {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
-    use crate::types::node::Node;
+    use crate::models::node::Node;
     use crate::types::node::NodeStatus;
     use actix_web::http::StatusCode;
     use actix_web::test;

@@ -1,8 +1,8 @@
 mod api;
 mod discovery;
+mod models;
 mod node;
 mod store;
-mod types;
 use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;

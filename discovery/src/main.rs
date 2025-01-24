@@ -17,6 +17,10 @@ struct Args {
     /// RPC URL
     #[arg(short = 'r', long, default_value = "http://localhost:8545")]
     rpc_url: String,
+
+    /// Validator address
+    #[arg(short = 'v', long)]
+    validator_address: String,
 }
 
 // TODO: Align node model
@@ -25,6 +29,7 @@ struct Args {
 // TODO: Chain interaction
 // TODO: Align other services reg. api
 // TODO: Register miner API call model should be adjusted
+// TODO: Readd last seen?
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,10 +37,10 @@ async fn main() -> Result<()> {
 
     let redis_store = RedisStore::new("redis://localhost:6379");
     let node_store = Arc::new(NodeStore::new(redis_store));
-    // TODO: Find a way to read from chain without address
+    // TODO: Find a way to read from chain without address - hardcoded key here
     let wallet = Arc::new(
         Wallet::new(
-            "0x0000000000000000000000000000000000000000",
+            "0x4d97cf024fd8b486e5c8079cc478cbe24f01f99f75a0a28ae45088658f2bed5b",
             args.rpc_url.parse().unwrap(),
         )
         .unwrap(),
@@ -60,7 +65,7 @@ async fn main() -> Result<()> {
     );
     chain_sync.run().await?;
 
-    if let Err(err) = start_server("0.0.0.0", 8089, node_store).await {
+    if let Err(err) = start_server("0.0.0.0", 8089, node_store, args.validator_address).await {
         println!("❌ Failed to start server: {}", err);
     }
 

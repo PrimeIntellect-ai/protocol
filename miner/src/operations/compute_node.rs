@@ -39,7 +39,7 @@ impl<'c> ComputeNodeOperations<'c> {
             .await;
 
         match compute_node {
-            Ok(()) => {
+            Ok(_) => {
                 Console::info("Compute node status", "Compute node already exists");
                 return Ok(());
             }
