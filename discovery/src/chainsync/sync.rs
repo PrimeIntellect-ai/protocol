@@ -29,11 +29,6 @@ impl ChainSync {
     }
 
     pub async fn run(&self) -> Result<()> {
-        // TODO loop
-        // Check local store
-        // Check store on chain
-        // Update status
-
         let node_store_clone = self.node_store.clone();
         let contracts_clone = self.contracts.clone();
         let cancel_token = self.cancel_token.clone();

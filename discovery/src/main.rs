@@ -23,14 +23,8 @@ struct Args {
     validator_address: String,
 }
 
-// TODO: Align node model
-// TODO: Get status from chain
 // TODO: Add proper validation
-// TODO: Chain interaction
-// TODO: Align other services reg. api
-// TODO: Register miner API call model should be adjusted
 // TODO: Readd last seen?
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
