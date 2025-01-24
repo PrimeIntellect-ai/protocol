@@ -20,10 +20,8 @@ struct Args {
     rpc_url: String,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let args = Args::parse();
-    let wallet = Wallet::new(&args.key, Url::parse(&args.rpc_url)?).unwrap();
+async fn set_min_stake_amount(min_stake_amount: u64, key: String, rpc_url: String) -> Result<()> {
+    let wallet = Wallet::new(&key, Url::parse(&rpc_url)?).unwrap();
 
     // Build all contracts
     let contracts = ContractBuilder::new(&wallet)
@@ -34,14 +32,20 @@ async fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    let min_stake_amount = U256::from(args.min_stake_amount);
+    let min_stake_amount = U256::from(min_stake_amount);
 
     let tx = contracts
         .prime_network
         .set_stake_minimum(min_stake_amount)
         .await;
-    println!("Setting minimum stake amount: {}", args.min_stake_amount);
+    println!("Setting minimum stake amount: {}", min_stake_amount);
     println!("Transaction: {:?}", tx);
 
     Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args = Args::parse();
+    set_min_stake_amount(args.min_stake_amount, args.key, args.rpc_url).await
 }
