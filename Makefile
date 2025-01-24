@@ -47,8 +47,7 @@ whitelist-provider:
 	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
 
 watch-discovery:
-	# TODO - find proper way of passing in the env 
-	docker-compose up --env-file .env discovery
+	cargo watch -w discovery/src -x "run --bin discovery"
 
 watch-miner:
 	set -a; source .env; set +a; \
