@@ -1,14 +1,9 @@
-use crate::api::routes::node::node_routes;
 use crate::api::server::AppState;
 use crate::models::node::Node;
-use crate::store::node_store::NodeStore;
 use actix_web::{
-    middleware,
     web::Data,
-    web::{self, get},
-    App, HttpResponse, HttpServer,
+    web::{self}, HttpResponse,
 };
-use std::sync::Arc;
 
 pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
     let nodes = data.node_store.get_nodes();

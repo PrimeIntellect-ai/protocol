@@ -1,12 +1,11 @@
 use crate::api::routes::get_nodes::{get_nodes, get_nodes_for_pool};
 use crate::api::routes::node::node_routes;
-use crate::models::node::Node;
 use crate::store::node_store::NodeStore;
 use actix_web::{
     middleware,
     web::Data,
     web::{self, get},
-    App, HttpResponse, HttpServer,
+    App, HttpServer,
 };
 use std::sync::Arc;
 
