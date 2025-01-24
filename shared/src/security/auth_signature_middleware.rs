@@ -296,11 +296,8 @@ mod tests {
     async fn test_valid_signature() {
         let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
         let address = Address::from_str("0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf").unwrap();
-        let wallet = Wallet::new(
-            private_key,
-            Url::parse("http://localhost:8080").unwrap(),
-        )
-        .unwrap();
+        let wallet =
+            Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap();
 
         let signature = sign_request("/test", &wallet, Some(&serde_json::json!({"test": "data"})))
             .await
