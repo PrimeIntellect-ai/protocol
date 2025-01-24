@@ -298,7 +298,7 @@ mod tests {
         let address = Address::from_str("0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf").unwrap();
         let wallet = Wallet::new(
             private_key,
-            Url::parse("https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161").unwrap(),
+            Url::parse("http://localhost:8080").unwrap(),
         )
         .unwrap();
 
