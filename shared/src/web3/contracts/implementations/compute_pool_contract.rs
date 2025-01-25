@@ -1,5 +1,6 @@
 use crate::web3::contracts::constants::addresses::COMPUTE_POOL_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
+use crate::web3::contracts::helpers::utils::get_selector;
 use crate::web3::contracts::structs::compute_pool::{PoolInfo, PoolStatus};
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
@@ -103,11 +104,14 @@ impl ComputePool {
         println!("Address: {:?}", address);
         println!("Signatures: {:?}", signatures);
 
+        let join_compute_pool_selector =
+            get_selector("joinComputePool(uint256,address,address[],bytes[])");
+
         let result = self
             .instance
             .instance()
-            .function(
-                "joinComputePool",
+            .function_from_selector(
+                &join_compute_pool_selector,
                 &[pool_id.into(), provider_address.into(), address, signatures],
             )?
             .send()
@@ -129,11 +133,13 @@ impl ComputePool {
         println!("Provider: {:?}", provider_address);
         println!("Node: {:?}", node);
 
+        let leave_compute_pool_selector = get_selector("leaveComputePool(uint256,address,address)");
+
         let result = self
             .instance
             .instance()
-            .function(
-                "leaveComputePool",
+            .function_from_selector(
+                &leave_compute_pool_selector,
                 &[pool_id.into(), provider_address.into(), node.into()],
             )?
             .send()
