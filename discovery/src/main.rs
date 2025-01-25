@@ -14,7 +14,6 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use log::LevelFilter;
 use log::error;
-use log::info;
 #[derive(Parser)]
 struct Args {
     /// RPC URL
