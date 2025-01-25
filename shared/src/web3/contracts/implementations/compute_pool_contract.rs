@@ -1,5 +1,6 @@
 use crate::web3::contracts::constants::addresses::COMPUTE_POOL_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
+use crate::web3::contracts::helpers::utils::get_selector;
 use crate::web3::contracts::structs::compute_pool::{PoolInfo, PoolStatus};
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
@@ -80,18 +81,27 @@ impl ComputePool {
         nodes: Vec<Address>,
         signatures: Vec<FixedBytes<65>>,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        // TODO: Rewrite this with proper abi parsing
-        let join_args = vec![
-            pool_id.into(),
-            provider_address.into(),
-            nodes[0].into(),
-            signatures[0].to_vec().into(),
-        ];
-
+        let join_compute_pool_selector =
+            get_selector("joinComputePool(uint256,address,address[],bytes[])");
+        let address = DynSolValue::from(
+            nodes
+                .iter()
+                .map(|addr| DynSolValue::from(*addr))
+                .collect::<Vec<_>>(),
+        );
+        let signatures = DynSolValue::from(
+            signatures
+                .iter()
+                .map(|sig| DynSolValue::Bytes(sig.to_vec()))
+                .collect::<Vec<_>>(),
+        );
         let result = self
             .instance
             .instance()
-            .function("joinComputePool", &join_args)?
+            .function_from_selector(
+                &join_compute_pool_selector,
+                &[pool_id.into(), provider_address.into(), address, signatures],
+            )?
             .send()
             .await?
             .watch()
@@ -107,11 +117,16 @@ impl ComputePool {
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         println!("Leaving compute pool");
 
+        println!("Provider: {:?}", provider_address);
+        println!("Node: {:?}", node);
+
+        let leave_compute_pool_selector = get_selector("leaveComputePool(uint256,address,address)");
+
         let result = self
             .instance
             .instance()
-            .function(
-                "leaveComputePool",
+            .function_from_selector(
+                &leave_compute_pool_selector,
                 &[pool_id.into(), provider_address.into(), node.into()],
             )?
             .send()

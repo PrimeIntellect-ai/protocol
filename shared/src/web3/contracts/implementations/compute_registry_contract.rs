@@ -2,6 +2,7 @@ use super::{
     super::constants::addresses::COMPUTE_REGISTRY_ADDRESS, super::core::contract::Contract,
     super::structs::compute_provider::ComputeProvider,
 };
+use crate::web3::contracts::helpers::utils::get_selector;
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::Address;
@@ -45,10 +46,15 @@ impl ComputeRegistryContract {
         #[allow(unused_variables)] provider_address: Address,
         node_address: Address,
     ) -> Result<(bool, bool), Box<dyn std::error::Error>> {
+        let get_node_selector = get_selector("getNode(address,address)");
+
         let node_response = self
             .instance
             .instance()
-            .function("getNode", &[node_address.into()])?
+            .function_from_selector(
+                &get_node_selector,
+                &[provider_address.into(), node_address.into()],
+            )?
             .call()
             .await;
 
@@ -59,7 +65,7 @@ impl ComputeRegistryContract {
                     let node_tuple = _node_data.as_tuple().unwrap();
                     let active = node_tuple[5].as_bool().unwrap();
                     let validated = node_tuple[6].as_bool().unwrap();
-                    Ok((active, validated)) // Return Ok if the node is registered
+                    Ok((active, validated))
                 } else {
                     println!("Node is not registered. Proceeding to add the node.");
                     Err("Node is not registered".into())
