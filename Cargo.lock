@@ -491,6 +491,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloy-node-bindings"
+version = "0.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4520cd4bc5cec20c32c98e4bc38914c7fb96bf4a712105e44da186a54e65e3ba"
+dependencies = [
+ "alloy-genesis",
+ "alloy-primitives",
+ "k256",
+ "rand",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.11",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "alloy-primitives"
 version = "0.8.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2100,6 +2117,7 @@ name = "dev-utils"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "alloy-node-bindings",
  "clap 4.5.27",
  "eyre",
  "shared",
@@ -2168,6 +2186,26 @@ dependencies = [
  "libc",
  "redox_users",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "discovery"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "alloy",
+ "anyhow",
+ "clap 4.5.27",
+ "env_logger 0.11.6",
+ "log",
+ "redis",
+ "redis-test",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tokio-util",
+ "url",
 ]
 
 [[package]]
@@ -4864,9 +4902,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.135"
+version = "1.0.137"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b0d7ba2887406110130a978386c4e1befb98c674b4fba677954e4db976630d9"
+checksum = "930cfb6e6abf99298aaad7d29abbef7a9999a9a8806a40088f55f0dcec03146b"
 dependencies = [
  "itoa",
  "memchr",
@@ -5782,6 +5820,8 @@ name = "validator"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "env_logger 0.11.6",
+ "log",
  "reqwest",
  "serde",
  "serde_json",

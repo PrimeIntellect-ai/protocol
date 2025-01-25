@@ -1,20 +1,30 @@
 use alloy::primitives::Address;
 use serde::{Deserialize, Serialize};
+use shared::models::node::DiscoveryNode;
 use shared::models::task::TaskState;
 use std::fmt;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
-    #[serde(rename = "id")]
     pub address: Address,
-    #[serde(rename = "ipAddress")]
     pub ip_address: String,
     pub port: u16,
-    #[serde(rename = "status")]
     pub status: NodeStatus,
 
     pub task_id: Option<String>,
     pub task_state: Option<TaskState>,
+}
+
+impl From<DiscoveryNode> for Node {
+    fn from(discovery_node: DiscoveryNode) -> Self {
+        Self {
+            address: discovery_node.id.parse().unwrap(),
+            ip_address: discovery_node.ip_address.clone(),
+            port: discovery_node.port,
+            status: NodeStatus::Discovered,
+            task_id: None,
+            task_state: None,
+        }
+    }
 }
 
 impl Node {

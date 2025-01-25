@@ -7,11 +7,11 @@ use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderError;
 use crate::operations::provider::ProviderOperations;
-use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
 use crate::TaskHandles;
 use alloy::primitives::U256;
 use clap::{Parser, Subcommand};
+use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
@@ -166,12 +166,21 @@ pub async fn execute_command(
                 return Ok(());
             }
 
-            let node_config = NodeConfig {
+            let node_config = Node {
+                id: node_wallet_instance
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string(),
                 ip_address: external_ip.to_string(),
                 port: *port,
-                provider_address: Some(provider_wallet_instance.wallet.default_signer().address()),
+                provider_address: provider_wallet_instance
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string(),
                 compute_specs: None,
-                compute_pool_id: *compute_pool_id,
+                compute_pool_id: *compute_pool_id as u32,
             };
 
             let hardware_check = HardwareChecker::new();
@@ -250,12 +259,13 @@ pub async fn execute_command(
 
             // Run hardware checks
             let hardware_checker = HardwareChecker::new();
-            let node_config = NodeConfig {
-                ip_address: String::new(), // Placeholder, adjust as necessary
-                port: 0,                   // Placeholder, adjust as necessary
+            let node_config = Node {
+                id: String::new(),
+                ip_address: String::new(),
+                port: 0,
                 compute_specs: None,
-                provider_address: None,
-                compute_pool_id: 0, // Placeholder, adjust as necessary
+                provider_address: String::new(),
+                compute_pool_id: 0,
             };
 
             match hardware_checker.enrich_node_config(node_config) {

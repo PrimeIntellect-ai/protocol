@@ -35,8 +35,6 @@ impl ComputePool {
             return Err("Pool does not exist".into());
         }
 
-        println!("Pool info tuple: {:?}", pool_info_tuple);
-
         let pool_id: U256 = pool_info_tuple[0].as_uint().unwrap().0;
         let domain_id: U256 = pool_info_tuple[1].as_uint().unwrap().0;
         let name: String = pool_info_tuple[2].as_str().unwrap().to_string();
@@ -50,10 +48,7 @@ impl ComputePool {
         let total_compute: U256 = pool_info_tuple[10].as_uint().unwrap().0;
         let compute_limit: U256 = pool_info_tuple[11].as_uint().unwrap().0;
         let status: U256 = pool_info_tuple[12].as_uint().unwrap().0;
-        println!("Raw Status: {:?}", status);
         let status: u8 = status.try_into().expect("Failed to convert status to u8");
-        println!("Parsed Status: {:?}", status);
-        println!("Pool info tuple: {:?}", pool_info_tuple);
         let mapped_status = match status {
             0 => PoolStatus::PENDING,
             1 => PoolStatus::ACTIVE,
@@ -76,7 +71,6 @@ impl ComputePool {
             compute_limit,
             status: mapped_status,
         };
-        println!("Pool info: {:?}", pool_info);
         Ok(pool_info)
     }
 
@@ -87,8 +81,8 @@ impl ComputePool {
         nodes: Vec<Address>,
         signatures: Vec<FixedBytes<65>>,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Joining compute pool");
-
+        let join_compute_pool_selector =
+            get_selector("joinComputePool(uint256,address,address[],bytes[])");
         let address = DynSolValue::from(
             nodes
                 .iter()
@@ -101,12 +95,6 @@ impl ComputePool {
                 .map(|sig| DynSolValue::Bytes(sig.to_vec()))
                 .collect::<Vec<_>>(),
         );
-        println!("Address: {:?}", address);
-        println!("Signatures: {:?}", signatures);
-
-        let join_compute_pool_selector =
-            get_selector("joinComputePool(uint256,address,address[],bytes[])");
-
         let result = self
             .instance
             .instance()
@@ -118,7 +106,6 @@ impl ComputePool {
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
         Ok(result)
     }
 
@@ -157,8 +144,6 @@ impl ComputePool {
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         println!("Blacklisting node");
 
-        println!("Node: {:?}", node);
-
         let arg_pool_id: U256 = U256::from(pool_id);
 
         let result = self
@@ -179,8 +164,6 @@ impl ComputePool {
         node: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         println!("Ejecting node");
-
-        println!("Node: {:?}", node);
 
         let arg_pool_id: U256 = U256::from(pool_id);
 
