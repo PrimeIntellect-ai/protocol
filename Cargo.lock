@@ -5820,6 +5820,7 @@ name = "validator"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "log",
  "reqwest",
  "serde",
  "serde_json",

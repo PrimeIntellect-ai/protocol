@@ -83,7 +83,6 @@ impl<'b> DiscoveryMonitor<'b> {
     pub async fn get_nodes(&self) -> Result<Vec<Node>, Error> {
         let nodes = self.fetch_nodes_from_discovery().await?;
         for node in &nodes {
-            println!("Node: {:?}", node.address);
             let exists = self.store_context.node_store.get_node(&node.address);
             if exists.is_some() {
                 continue;

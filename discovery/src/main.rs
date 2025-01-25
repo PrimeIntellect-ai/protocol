@@ -7,13 +7,13 @@ use crate::store::node_store::NodeStore;
 use crate::store::redis::RedisStore;
 use anyhow::Result;
 use clap::Parser;
+use log::error;
+use log::LevelFilter;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
-use log::LevelFilter;
-use log::error;
 #[derive(Parser)]
 struct Args {
     /// RPC URL
@@ -28,9 +28,9 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::new()
-    .filter_level(LevelFilter::Info)
-    .format_timestamp(None)
-    .init();
+        .filter_level(LevelFilter::Info)
+        .format_timestamp(None)
+        .init();
     let args = Args::parse();
 
     let redis_store = RedisStore::new("redis://localhost:6379");

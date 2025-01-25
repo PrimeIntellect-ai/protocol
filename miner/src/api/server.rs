@@ -1,5 +1,8 @@
 use crate::api::routes::invite::invite_routes;
 use crate::operations::heartbeat::service::HeartbeatService;
+use actix_web::dev::ServiceRequest;
+use actix_web::error::ErrorUnauthorized;
+use actix_web::Error;
 use actix_web::{middleware, web::Data, App, HttpServer};
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::web3::contracts::core::builder::Contracts;

@@ -1,20 +1,32 @@
 use crate::api::routes::get_nodes::{get_nodes, get_nodes_for_pool};
 use crate::api::routes::node::node_routes;
 use crate::store::node_store::NodeStore;
+use actix_web::dev::Service;
+use actix_web::dev::ServiceRequest;
+use actix_web::error::ErrorUnauthorized;
+use actix_web::Error;
 use actix_web::{
     middleware,
     web::Data,
     web::{self, get},
     App, HttpServer,
 };
+use log::info;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::web3::contracts::core::builder::Contracts;
 use std::sync::Arc;
-use log::info;
+
 #[derive(Clone)]
 pub struct AppState {
     pub node_store: Arc<NodeStore>,
     pub contracts: Option<Arc<Contracts>>,
+}
+
+pub fn check_auth(req: &ServiceRequest) -> Result<(), Error> {
+    match req.headers().get("Authorization") {
+        Some(auth) if auth == "Bearer your-secret-token-here" => Ok(()),
+        _ => Err(ErrorUnauthorized("Invalid token")),
+    }
 }
 
 pub async fn start_server(
@@ -39,7 +51,7 @@ pub async fn start_server(
     // All nodes can register as long as they have a valid signature
     let validate_signatures = Arc::new(ValidatorState::new(vec![]).with_validator(move |_| true));
 
-    // TODO: Platform validation
+    // TODO: Platform validation - see issue
     HttpServer::new(move || {
         App::new()
             .wrap(middleware::Logger::default())

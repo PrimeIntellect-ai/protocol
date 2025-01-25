@@ -34,9 +34,7 @@ pub async fn get_nodes_for_pool(
             let owner = pool_info.creator;
             let address_str = match req.headers().get("x-address") {
                 Some(address) => match address.to_str() {
-                    Ok(addr) => {
-                        addr.to_string()
-                    }
+                    Ok(addr) => addr.to_string(),
                     Err(_) => {
                         return HttpResponse::BadRequest()
                             .json(ApiResponse::new(false, "Invalid x-address header"))

@@ -1,5 +1,6 @@
 use alloy::primitives::{hex, Address};
 use alloy::signers::Signer;
+use log::{error, info};
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 use shared::web3::contracts::core::builder::ContractBuilder;
@@ -15,7 +16,7 @@ fn main() {
     let rpc_url = "http://localhost:8545";
     let validator_wallet = Wallet::new(&private_key_validator, Url::parse(rpc_url).unwrap())
         .unwrap_or_else(|err| {
-            eprintln!("Error creating wallet: {:?}", err);
+            error!("Error creating wallet: {:?}", err);
             std::process::exit(1);
         });
 
@@ -57,7 +58,7 @@ fn main() {
                 headers.insert("x-address", address.parse().unwrap());
                 headers.insert("x-signature", signature.parse().unwrap());
 
-                println!("Fetching nodes from: {}{}", discovery_url, discovery_route);
+                info!("Fetching nodes from: {}{}", discovery_url, discovery_route);
                 let response = reqwest::Client::new()
                     .get(format!("{}{}", discovery_url, discovery_route))
                     .headers(headers)
@@ -65,12 +66,11 @@ fn main() {
                     .await?;
 
                 let response_text = response.text().await?;
-                println!("Response received: {}", response_text);
                 let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
                     serde_json::from_str(&response_text)?;
 
                 if !parsed_response.success {
-                    eprintln!("Failed to fetch nodes: {:?}", parsed_response); // Log failure
+                    error!("Failed to fetch nodes: {:?}", parsed_response);
                     return Ok(vec![]);
                 }
 
@@ -84,7 +84,7 @@ fn main() {
             .cloned()
             .collect();
 
-        println!("Non validated nodes: {:?}", non_validated_nodes);
+        info!("Non validated nodes: {:?}", non_validated_nodes);
 
         for node in non_validated_nodes {
             let node_address = node.id.trim_start_matches("0x").parse::<Address>().unwrap();
@@ -100,12 +100,11 @@ fn main() {
                     .prime_network
                     .validate_node(provider_address, node_address),
             ) {
-                eprintln!("Failed to validate node {}: {}", node.id, e);
+                error!("Failed to validate node {}: {}", node.id, e);
             } else {
-                println!("Successfully validated node: {}", node.id);
+                info!("Successfully validated node: {}", node.id);
             }
         }
-        println!("Sleeping for 10 seconds before the next iteration...");
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
 }
