@@ -19,7 +19,7 @@ env:
 jobs:
   check:
     name: Format & Lint
-    runs-on: ubuntu-latest
+    runs-on: xl-runner
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
