@@ -1,10 +1,6 @@
 use crate::api::routes::get_nodes::{get_nodes, get_nodes_for_pool};
 use crate::api::routes::node::node_routes;
 use crate::store::node_store::NodeStore;
-use actix_web::dev::Service;
-use actix_web::dev::ServiceRequest;
-use actix_web::error::ErrorUnauthorized;
-use actix_web::Error;
 use actix_web::{
     middleware,
     web::Data,
@@ -20,13 +16,6 @@ use std::sync::Arc;
 pub struct AppState {
     pub node_store: Arc<NodeStore>,
     pub contracts: Option<Arc<Contracts>>,
-}
-
-pub fn check_auth(req: &ServiceRequest) -> Result<(), Error> {
-    match req.headers().get("Authorization") {
-        Some(auth) if auth == "Bearer your-secret-token-here" => Ok(()),
-        _ => Err(ErrorUnauthorized("Invalid token")),
-    }
 }
 
 pub async fn start_server(
