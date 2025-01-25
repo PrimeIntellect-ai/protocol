@@ -489,7 +489,6 @@ mod tests {
         }
 
         validator_state.add_address(address);
-        let allowed_addresses = validator_state.get_allowed_addresses();
 
         let req_after_address_add = test::TestRequest::post()
             .uri("/test")

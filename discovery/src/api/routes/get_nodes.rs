@@ -1,10 +1,10 @@
 use crate::api::server::AppState;
-use alloy::primitives::U256;
 use actix_web::{
     web::Data,
     web::{self},
     HttpResponse,
 };
+use alloy::primitives::U256;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 
@@ -14,34 +14,48 @@ pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(response)
 }
 
-pub async fn get_nodes_for_pool(data: Data<AppState>, pool_id: web::Path<String>, req: actix_web::HttpRequest) -> HttpResponse {
+pub async fn get_nodes_for_pool(
+    data: Data<AppState>,
+    pool_id: web::Path<String>,
+    req: actix_web::HttpRequest,
+) -> HttpResponse {
     let nodes = data.node_store.get_nodes();
     let id_clone = pool_id.clone();
     let pool_contract_id: U256 = id_clone.parse::<U256>().unwrap();
-    let pool_id : u32= pool_id.parse().unwrap();
+    let pool_id: u32 = pool_id.parse().unwrap();
 
     match data.contracts.clone() {
         Some(contracts) => {
-            let pool_info = contracts.compute_pool.get_pool_info(pool_contract_id).await.unwrap();
+            let pool_info = contracts
+                .compute_pool
+                .get_pool_info(pool_contract_id)
+                .await
+                .unwrap();
             let owner = pool_info.creator;
             let address_str = match req.headers().get("x-address") {
                 Some(address) => match address.to_str() {
                     Ok(addr) => {
-                        println!("Received x-address header: {}", addr);
                         addr.to_string()
                     }
-                    Err(_) => return HttpResponse::BadRequest().json(ApiResponse::new(false, "Invalid x-address header")),
+                    Err(_) => {
+                        return HttpResponse::BadRequest()
+                            .json(ApiResponse::new(false, "Invalid x-address header"))
+                    }
                 },
-                None => return HttpResponse::BadRequest().json(ApiResponse::new(false, "Missing x-address header")),
+                None => {
+                    return HttpResponse::BadRequest()
+                        .json(ApiResponse::new(false, "Missing x-address header"))
+                }
             };
-        
-            println!("Comparing {} with payload id: {}", address_str, owner);
-            if address_str != owner.to_string() {
-                return HttpResponse::BadRequest().json(ApiResponse::new(false, "Invalid x-address header"));
-            } 
 
+            if address_str != owner.to_string() {
+                return HttpResponse::BadRequest()
+                    .json(ApiResponse::new(false, "Invalid x-address header"));
+            }
         }
-        None => return HttpResponse::BadRequest().json(ApiResponse::new(false, "No contracts found")),
+        None => {
+            return HttpResponse::BadRequest().json(ApiResponse::new(false, "No contracts found"))
+        }
     }
 
     let nodes_for_pool: Vec<DiscoveryNode> = nodes

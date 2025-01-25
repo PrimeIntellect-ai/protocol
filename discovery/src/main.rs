@@ -12,6 +12,9 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
+use log::LevelFilter;
+use log::error;
+use log::info;
 #[derive(Parser)]
 struct Args {
     /// RPC URL
@@ -23,10 +26,12 @@ struct Args {
     validator_address: String,
 }
 
-// TODO: Add proper validation
-// TODO: Readd last seen?
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::Builder::new()
+    .filter_level(LevelFilter::Info)
+    .format_timestamp(None)
+    .init();
     let args = Args::parse();
 
     let redis_store = RedisStore::new("redis://localhost:6379");
@@ -60,8 +65,16 @@ async fn main() -> Result<()> {
     );
     chain_sync.run().await?;
 
-    if let Err(err) = start_server("0.0.0.0", 8089, node_store, contracts_clone, args.validator_address).await {
-        println!("❌ Failed to start server: {}", err);
+    if let Err(err) = start_server(
+        "0.0.0.0",
+        8089,
+        node_store,
+        contracts_clone,
+        args.validator_address,
+    )
+    .await
+    {
+        error!("❌ Failed to start server: {}", err);
     }
 
     cancellation_token.cancel();

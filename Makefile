@@ -49,7 +49,7 @@ whitelist-provider:
 
 watch-discovery:
 	set -a; source .env; set +a; \
-	cargo watch -w discovery/src -x "run --bin discovery -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL} --compute-pool-owner-address $${POOL_OWNER_ADDRESS}"
+	cargo watch -w discovery/src -x "run --bin discovery -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL}"
 
 watch-miner:
 	set -a; source .env; set +a; \
