@@ -42,8 +42,7 @@ impl ComputeRegistryContract {
 
     pub async fn get_node(
         &self,
-        #[allow(unused_variables)]
-        provider_address: Address,
+        #[allow(unused_variables)] provider_address: Address,
         node_address: Address,
     ) -> Result<(bool, bool), Box<dyn std::error::Error>> {
         let node_response = self

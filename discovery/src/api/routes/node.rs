@@ -6,8 +6,26 @@ use actix_web::{
 use shared::models::api::ApiResponse;
 use shared::models::node::Node;
 
-pub async fn register_node(node: web::Json<Node>, data: Data<AppState>) -> HttpResponse {
+pub async fn register_node(node: web::Json<Node>, data: Data<AppState>, req: actix_web::HttpRequest) -> HttpResponse {
     let node_store = data.node_store.clone();
+    
+    // Check for the x-address header
+    let address_str = match req.headers().get("x-address") {
+        Some(address) => match address.to_str() {
+            Ok(addr) => {
+                println!("Received x-address header: {}", addr);
+                addr.to_string()
+            }
+            Err(_) => return HttpResponse::BadRequest().json(ApiResponse::new(false, "Invalid x-address header")),
+        },
+        None => return HttpResponse::BadRequest().json(ApiResponse::new(false, "Missing x-address header")),
+    };
+
+    println!("Comparing {} with payload id: {}", address_str, node.id);
+    if address_str != node.id {
+        return HttpResponse::BadRequest().json(ApiResponse::new(false, "Invalid x-address header"));
+    }
+
     node_store.register_node(node.clone());
     println!("Node: {:?}", node);
     HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully"))
@@ -40,6 +58,7 @@ mod tests {
 
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
+            contracts: None,
         };
 
         let app = test::init_service(

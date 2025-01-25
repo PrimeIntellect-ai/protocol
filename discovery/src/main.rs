@@ -51,6 +51,7 @@ async fn main() -> Result<()> {
 
     let cancellation_token = CancellationToken::new();
     let node_store_clone = node_store.clone();
+    let contracts_clone = contracts.clone();
     let chain_sync = ChainSync::new(
         node_store_clone,
         cancellation_token.clone(),
@@ -59,7 +60,7 @@ async fn main() -> Result<()> {
     );
     chain_sync.run().await?;
 
-    if let Err(err) = start_server("0.0.0.0", 8089, node_store, args.validator_address).await {
+    if let Err(err) = start_server("0.0.0.0", 8089, node_store, contracts_clone, args.validator_address).await {
         println!("❌ Failed to start server: {}", err);
     }
 
