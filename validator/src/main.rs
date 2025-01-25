@@ -1,5 +1,6 @@
 use alloy::primitives::{hex, Address};
 use alloy::signers::Signer;
+use log::LevelFilter;
 use log::{error, info};
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
@@ -10,6 +11,10 @@ use url::Url;
 
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
+    env_logger::Builder::new()
+        .filter_level(LevelFilter::Info)
+        .format_timestamp(None)
+        .init();
 
     let private_key_validator =
         env::var("PRIVATE_KEY_VALIDATOR").expect("PRIVATE_KEY_VALIDATOR not set");
