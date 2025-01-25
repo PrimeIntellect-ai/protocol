@@ -68,7 +68,7 @@ mod tests {
             nodes_array.len()
         );
         assert_eq!(
-            nodes_array[0]["id"],
+            nodes_array[0]["address"],
             node.address.to_string(),
             "Expected address to be {} but got {}",
             node.address,
