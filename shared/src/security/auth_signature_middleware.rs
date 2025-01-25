@@ -64,7 +64,6 @@ impl ValidatorState {
     }
 
     pub fn is_address_allowed(&self, address: &Address) -> bool {
-        println!("Checking if address is allowed: {:?}", address);
         if self.allowed_addresses.contains(address) {
             return true;
         }
@@ -154,7 +153,6 @@ where
             let mut payload_string = String::new();
             if req.method() != actix_web::http::Method::GET {
                 // Parse and sort the payload
-                println!("Parsing and sorting payload");
                 let payload_value: serde_json::Value = match serde_json::from_slice(&body) {
                     Ok(val) => val,
                     Err(e) => {
@@ -322,8 +320,6 @@ mod tests {
         )
         .await;
 
-        println!("Address: {}", wallet.wallet.default_signer().address());
-        println!("Signature: {}", signature);
         let req = test::TestRequest::post()
             .uri("/test")
             .insert_header((

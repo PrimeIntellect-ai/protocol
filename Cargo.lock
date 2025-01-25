@@ -2196,6 +2196,7 @@ dependencies = [
  "alloy",
  "anyhow",
  "clap 4.5.27",
+ "env_logger 0.11.6",
  "log",
  "redis",
  "redis-test",
