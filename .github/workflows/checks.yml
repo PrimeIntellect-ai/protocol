@@ -48,4 +48,4 @@ jobs:
         if: success() || failure()  
         run: |
           redis-server --version
-          cargo test --verbose --nocapture
+          cargo test --verbose -- --nocapture
