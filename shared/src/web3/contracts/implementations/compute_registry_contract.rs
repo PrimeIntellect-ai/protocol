@@ -2,11 +2,10 @@ use super::{
     super::constants::addresses::COMPUTE_REGISTRY_ADDRESS, super::core::contract::Contract,
     super::structs::compute_provider::ComputeProvider,
 };
+use crate::web3::contracts::helpers::utils::get_selector;
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::Address;
-use crate::web3::contracts::helpers::utils::get_selector;
-
 
 pub struct ComputeRegistryContract {
     instance: Contract,
@@ -47,13 +46,15 @@ impl ComputeRegistryContract {
         provider_address: Address,
         node_address: Address,
     ) -> Result<(), Box<dyn std::error::Error>> {
-
         let get_node_selector = get_selector("getNode(address,address)");
 
         let node_response = self
             .instance
             .instance()
-            .function_from_selector(&get_node_selector, &[provider_address.into(), node_address.into()])?
+            .function_from_selector(
+                &get_node_selector,
+                &[provider_address.into(), node_address.into()],
+            )?
             .call()
             .await;
 
