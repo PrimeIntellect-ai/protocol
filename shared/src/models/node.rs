@@ -44,6 +44,17 @@ pub struct DiscoveryNode {
     pub is_validated: bool,
     pub is_active: bool,
 }
+
+impl DiscoveryNode {
+    pub fn with_updated_node(&self, new_node: Node) -> Self {
+        DiscoveryNode {
+            node: new_node,
+            is_validated: self.is_validated, 
+            is_active: self.is_active,
+        }
+    }
+}
+
 impl Deref for DiscoveryNode {
     type Target = Node;
 

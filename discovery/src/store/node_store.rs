@@ -15,13 +15,31 @@ impl NodeStore {
         self.redis_store.client.get_connection().unwrap()
     }
 
-    pub fn register_node(&self, node: Node) {
-        let discovery_node = DiscoveryNode::from(node);
-        let mut con = self.get_connection();
-        let address = discovery_node.id.clone();
+    pub fn get_node(&self, address: String) -> Option<DiscoveryNode> {
         let key = format!("node:{}", address);
-        let serialized_node = serde_json::to_string(&discovery_node).unwrap();
-        let _: () = con.set(&key, serialized_node).unwrap();
+        let mut con = self.get_connection();
+        let node: Option<String> = con.get(&key).unwrap();
+        if let Some(node) = node {
+            Some(serde_json::from_str(&node).unwrap())
+        } else {
+            None
+        }
+    }
+
+    pub fn register_node(&self, node: Node) {
+        let address = node.id.clone();
+        let key = format!("node:{}", address);
+
+        let mut con = self.get_connection();
+        if con.exists(&key).unwrap() {
+            let existing_node = self.get_node(address).unwrap();
+            let updated_node = existing_node.with_updated_node(node);
+            self.update_node(updated_node);
+        } else {
+            let discovery_node = DiscoveryNode::from(node);
+            let serialized_node = serde_json::to_string(&discovery_node).unwrap();
+            let _: () = con.set(&key, serialized_node).unwrap();
+        }
     }
 
     pub fn update_node(&self, node: DiscoveryNode) {
