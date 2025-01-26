@@ -154,7 +154,6 @@ pub async fn execute_command(
 
             let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
 
-            println!("Getting pool info");
             let pool_id = U256::from(*compute_pool_id as u32);
             let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
                 Ok(pool) => Arc::new(pool),
@@ -168,7 +167,6 @@ pub async fn execute_command(
                 Console::error("❌ Pool is not active.");
                 return Ok(());
             }
-            println!("Pool info retrieved");
 
             let node_config = Node {
                 id: node_wallet_instance
@@ -186,7 +184,6 @@ pub async fn execute_command(
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
             };
-            println!("Node config created");
             let hardware_check = HardwareChecker::new();
             let node_config = hardware_check.enrich_node_config(node_config).unwrap();
 

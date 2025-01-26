@@ -129,7 +129,7 @@ impl DockerService {
                                     let task_clone = task_clone.clone();
                                     let manager_clone = manager_clone.clone();
                                     let state_clone = state.clone();
-                                    let has_gpu = self.has_gpu.clone();
+                                    let has_gpu = self.has_gpu;
                                     let handle = tokio::spawn(async move {
                                         let payload = task_clone.unwrap();
                                         let cmd_full = (payload.command, payload.args);
