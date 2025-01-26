@@ -180,7 +180,7 @@ impl DockerService {
                                 };
                                 match task_state {
                                     // if task state is failed here, it means the container is also marked as dead, remove it so it can be recreated
-                                    TaskState::FAILED | TaskState::COMPLETED => {
+                                    TaskState::FAILED => {
                                     let terminate_manager_clone = terminate_manager.clone();
                                     let handle = tokio::spawn(async move {
                                         let termination = terminate_manager_clone.remove_container(&container_status.id).await;
