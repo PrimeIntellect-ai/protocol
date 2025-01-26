@@ -1,6 +1,7 @@
 use super::state::HeartbeatState;
 use crate::docker::DockerService;
 use crate::TaskHandles;
+use log;
 use log::info;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
@@ -10,7 +11,6 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
-use log;
 #[derive(Clone)]
 pub struct HeartbeatService {
     state: HeartbeatState,
@@ -180,9 +180,7 @@ impl HeartbeatService {
                 log::info!("Current task is to run image: {:?}", task.image);
                 Some(task)
             }
-            None => {
-                None
-            }
+            None => None,
         };
 
         docker_service.state.set_current_task(task).await;

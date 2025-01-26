@@ -1,11 +1,11 @@
 use bollard::container::{
-    Config, CreateContainerOptions,  ListContainersOptions, StartContainerOptions 
+    Config, CreateContainerOptions, ListContainersOptions, StartContainerOptions,
 };
-use bollard::models::DeviceRequest;
-use bollard::models::HostConfig;
 use bollard::errors::Error as DockerError;
 use bollard::image::CreateImageOptions;
 use bollard::models::ContainerStateStatusEnum;
+use bollard::models::DeviceRequest;
+use bollard::models::HostConfig;
 use bollard::Docker;
 use futures_util::StreamExt;
 use log::{debug, error, info};
@@ -106,8 +106,6 @@ impl DockerManager {
                 .map(|(k, v)| format!("{}={}", k, v))
                 .collect::<Vec<String>>()
         });
-
-       
 
         let host_config = if gpu_enabled {
             Some(HostConfig {

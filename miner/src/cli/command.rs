@@ -170,8 +170,7 @@ pub async fn execute_command(
                     Console::error(&format!("❌ Docker service failed: {}", e));
                 }
             });
-
-            Console::info("═", &"═".repeat(50));
+            println!("Getting pool info");
             let pool_id = U256::from(*compute_pool_id as u32);
             let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
                 Ok(pool) => Arc::new(pool),
@@ -185,6 +184,7 @@ pub async fn execute_command(
                 Console::error("❌ Pool is not active.");
                 return Ok(());
             }
+            println!("Pool info retrieved");
 
             let node_config = Node {
                 id: node_wallet_instance
@@ -202,7 +202,7 @@ pub async fn execute_command(
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
             };
-
+            println!("Node config created");
             let hardware_check = HardwareChecker::new();
             let node_config = hardware_check.enrich_node_config(node_config).unwrap();
 
@@ -263,7 +263,10 @@ pub async fn execute_command(
             Console::success("✅ Discovery info uploaded");
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
-            Console::info("🌐 Starting endpoint service", "");
+            Console::info(
+                "🌐 Starting endpoint service and waiting for sync with orchestrator",
+                "",
+            );
 
             if let Err(err) = {
                 let heartbeat_clone = heartbeat_service.unwrap().clone();
