@@ -93,7 +93,7 @@ pub async fn execute_command(
             disable_state_storing,
             auto_recover,
         } => {
-            let mut recover_last_state = auto_recover.clone();
+            let mut recover_last_state = *auto_recover;
             Console::section("🚀 PRIME MINER INITIALIZATION");
             /*
              Initialize Wallet instances
@@ -151,7 +151,7 @@ pub async fn execute_command(
             let heartbeat_service = HeartbeatService::new(
                 Duration::from_secs(10),
                 state_dir_overwrite.clone(),
-                disable_state_storing.clone(),
+                *disable_state_storing,
                 cancellation_token.clone(),
                 task_handles.clone(),
                 node_wallet_instance.clone(),

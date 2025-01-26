@@ -9,6 +9,7 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
+use log::info;
 
 #[derive(Clone)]
 pub struct HeartbeatService {
@@ -57,10 +58,8 @@ impl HeartbeatService {
     }
 
     pub async fn activate_heartbeat_if_endpoint_exists(&self) {
-        println!("Activating heartbeat if endpoint exists");
-        println!("Endpoint: {:?}", self.state.get_endpoint().await);
         if let Some(endpoint) = self.state.get_endpoint().await {
-            println!("Starting heartbeat with endpoint: {:?}", endpoint);
+            info!("Starting heartbeat from recovered state");
             self.start(endpoint).await.unwrap();
         }
     }

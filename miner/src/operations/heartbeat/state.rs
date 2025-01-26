@@ -46,22 +46,22 @@ impl HeartbeatState {
                     "No state file found at {:?}, will create on first state change",
                     state_file
                 );
-            } else if let Ok(Some(loaded_state)) = HeartbeatState::load_state(&path) {
+            } else if let Ok(Some(loaded_state)) = HeartbeatState::load_state(path) {
                 debug!("Loaded previous state from {:?}", state_file);
                 endpoint = loaded_state.endpoint;
             } else {
                 debug!("Failed to load state from {:?}", state_file);
             }
         }
-        let state = Self {
+        
+
+        Self {
             last_heartbeat: Arc::new(RwLock::new(None)),
             is_running: Arc::new(RwLock::new(false)),
             endpoint: Arc::new(RwLock::new(endpoint)),
             state_dir_overwrite: state_path.clone(),
             disable_state_storing,
-        };
-
-        state
+        }
     }
 
     fn save_state(&self, heartbeat_endpoint: Option<String>) -> Result<()> {
@@ -174,7 +174,7 @@ mod tests {
         fs::write(&state_file, "invalid_toml_content").expect("Failed to write to state file");
 
         let state = HeartbeatState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
-        assert_eq!(state.is_running().await, false);
+        assert!(!(state.is_running().await));
         assert_eq!(state.get_endpoint().await, None);
     }
 
