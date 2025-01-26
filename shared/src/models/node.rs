@@ -49,7 +49,7 @@ impl DiscoveryNode {
     pub fn with_updated_node(&self, new_node: Node) -> Self {
         DiscoveryNode {
             node: new_node,
-            is_validated: self.is_validated, 
+            is_validated: self.is_validated,
             is_active: self.is_active,
         }
     }

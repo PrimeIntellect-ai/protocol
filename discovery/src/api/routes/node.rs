@@ -149,7 +149,7 @@ mod tests {
         assert_eq!(nodes[0].id, node.id);
 
         let validated = DiscoveryNode {
-            node: node,
+            node,
             is_validated: true,
             is_active: true,
         };
@@ -159,8 +159,8 @@ mod tests {
         let nodes = app_state.node_store.get_nodes();
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, node_clone_for_recall.id);
-        assert_eq!(nodes[0].is_validated, true);
-        assert_eq!(nodes[0].is_active, true);
+        assert!(nodes[0].is_validated);
+        assert!(nodes[0].is_active);
 
         let json = serde_json::to_value(node_clone_for_recall.clone()).unwrap();
         let signature = sign_request(
@@ -184,8 +184,8 @@ mod tests {
         let nodes = app_state.node_store.get_nodes();
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, node_clone_for_recall.id);
-        assert_eq!(nodes[0].is_validated, true);
-        assert_eq!(nodes[0].is_active, true);
+        assert!(nodes[0].is_validated);
+        assert!(nodes[0].is_active);
     }
 
     #[actix_web::test]

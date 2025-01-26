@@ -19,11 +19,7 @@ impl NodeStore {
         let key = format!("node:{}", address);
         let mut con = self.get_connection();
         let node: Option<String> = con.get(&key).unwrap();
-        if let Some(node) = node {
-            Some(serde_json::from_str(&node).unwrap())
-        } else {
-            None
-        }
+        node.map(|node| serde_json::from_str(&node).unwrap())
     }
 
     pub fn register_node(&self, node: Node) {
