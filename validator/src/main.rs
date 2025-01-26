@@ -81,10 +81,9 @@ fn main() {
 
                 Ok(parsed_response.data)
             });
-
         let non_validated_nodes: Vec<DiscoveryNode> = nodes
             .iter()
-            .filter_map(|node_vec| node_vec.first())
+            .flat_map(|node_vec| node_vec) 
             .filter(|node| !node.is_validated)
             .cloned()
             .collect();
