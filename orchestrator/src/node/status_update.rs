@@ -99,7 +99,6 @@ impl NodeStatusUpdater {
                 .get_unhealthy_counter(&node.address);
             match heartbeat {
                 Some(_) => {
-                    println!("Node heartbeat is present");
                     // We have a heartbeat
                     if node.status == NodeStatus::Unhealthy
                         || node.status == NodeStatus::WaitingForHeartbeat
