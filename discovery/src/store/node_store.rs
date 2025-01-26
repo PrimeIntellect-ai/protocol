@@ -44,7 +44,7 @@ impl NodeStore {
         nodes_vec
     }
 
-    pub fn get_node(&self, node_id: String) -> Option<DiscoveryNode> {
+    pub fn get_node_by_id(&self, node_id: String) -> Option<DiscoveryNode> {
         let mut con = self.get_connection();
         let key = format!("node:{}", node_id);
 
