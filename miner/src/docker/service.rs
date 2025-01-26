@@ -139,7 +139,7 @@ impl DockerService {
                                             (Some(c), None) => vec![c],
                                             _ => vec!["sleep".to_string(), "infinity".to_string()],
                                         };
-                                        match manager_clone.start_container(&payload.image, &task_id, payload.env_vars, Some(cmd)).await {
+                                        match manager_clone.start_container(&payload.image, &task_id, payload.env_vars, Some(cmd), true).await {
                                             Ok(container_id) => {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },

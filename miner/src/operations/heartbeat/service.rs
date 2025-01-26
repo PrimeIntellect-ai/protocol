@@ -10,7 +10,7 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
-
+use log;
 #[derive(Clone)]
 pub struct HeartbeatService {
     state: HeartbeatState,
@@ -87,7 +87,7 @@ impl HeartbeatService {
                         match Self::send_heartbeat(&client, state.get_endpoint().await, wallet_clone.clone(), docker_service.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
-                                log::debug!("Heartbeat sent successfully");
+                                log::info!("Heartbeat sent successfully");
                             }
                             Err(e) => {
                                 log::error!("Heartbeat failed: {:?}", e);
@@ -174,16 +174,13 @@ impl HeartbeatService {
             })?;
 
         let heartbeat_response = response.data.clone();
-        log::info!("Heartbeat response: {:?}", heartbeat_response);
-        let response_clone = response.clone();
-        println!("Current response: {:?}", response_clone);
+        log::debug!("Heartbeat response: {:?}", heartbeat_response);
         let task = match heartbeat_response.current_task {
             Some(task) => {
-                println!("Current task is to run image: {:?}", task.image);
+                log::info!("Current task is to run image: {:?}", task.image);
                 Some(task)
             }
             None => {
-                log::info!("No current task found in heartbeat response");
                 None
             }
         };

@@ -1,6 +1,8 @@
 use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, StartContainerOptions,
+    Config, CreateContainerOptions,  ListContainersOptions, StartContainerOptions 
 };
+use bollard::models::DeviceRequest;
+use bollard::models::HostConfig;
 use bollard::errors::Error as DockerError;
 use bollard::image::CreateImageOptions;
 use bollard::models::ContainerStateStatusEnum;
@@ -92,6 +94,7 @@ impl DockerManager {
         name: &str,
         env_vars: Option<HashMap<String, String>>,
         command: Option<Vec<String>>,
+        gpu_enabled: bool,
     ) -> Result<String, DockerError> {
         println!("Starting to pull image: {}", image);
         self.pull_image(image).await?;
@@ -104,6 +107,26 @@ impl DockerManager {
                 .collect::<Vec<String>>()
         });
 
+       
+
+        let host_config = if gpu_enabled {
+            Some(HostConfig {
+                extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
+                device_requests: Some(vec![DeviceRequest {
+                    driver: Some("".into()),
+                    count: Some(-1),
+                    device_ids: None,
+                    capabilities: Some(vec![vec!["gpu".into()]]),
+                    options: Some(HashMap::new()),
+                }]),
+                ..Default::default()
+            })
+        } else {
+            Some(HostConfig {
+                extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
+                ..Default::default()
+            })
+        };
         // Create container configuration
         let config = Config {
             image: Some(image),
@@ -111,6 +134,7 @@ impl DockerManager {
             cmd: command
                 .as_ref()
                 .map(|c| c.iter().map(String::as_str).collect()),
+            host_config,
             ..Default::default()
         };
 

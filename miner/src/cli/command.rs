@@ -275,7 +275,7 @@ pub async fn execute_command(
                 }
 
                 start_server(
-                    external_ip,
+                    "0.0.0.0",
                     *port,
                     contracts.clone(),
                     node_wallet_instance.clone(),

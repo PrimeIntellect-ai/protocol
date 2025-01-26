@@ -34,6 +34,14 @@ make watch-miner
 # Stop tmux env
 make down
 ```
+## Run on remote machine:
+Run initial setup once:
+Run miner:
+```
+export EXTERNAL_IP=machine ip
+make remote-miner SSH_CONNECTION="ssh ubuntu@ip -i private_key.pem"
+```
+
 ## System architecture (WIP)
 The following system architecture still misses crucial components (e.g. terminations) and is simplified for the MVP / intellect-2 run.
 
