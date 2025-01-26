@@ -37,14 +37,11 @@ pub async fn register_node(
     HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully"))
 }
 
-pub async fn get_node(
-    node_id: web::Path<String>,
-    data: Data<AppState>,
-) -> HttpResponse {
+pub async fn get_node(node_id: web::Path<String>, data: Data<AppState>) -> HttpResponse {
     let nodes = data.node_store.get_nodes();
-    
+
     let node = nodes.iter().find(|node| node.id == node_id.to_string());
-    
+
     match node {
         Some(node) => HttpResponse::Ok().json(ApiResponse::new(true, node)),
         None => HttpResponse::NotFound().json(ApiResponse::new(false, "Node not found")),
