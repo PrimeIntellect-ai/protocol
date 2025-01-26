@@ -62,7 +62,6 @@ impl NodeStore {
     }
 
     pub fn update_node_status(&self, node_address: &Address, status: NodeStatus) {
-        println!("Updating node status to: {:?}", status);
         let mut con = self.redis.client.get_connection().unwrap();
         let node_key: String = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
         let node_string: String = con.get(&node_key).unwrap();
