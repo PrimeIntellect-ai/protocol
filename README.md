@@ -39,7 +39,8 @@ Run initial setup once:
 Run miner:
 ```
 export EXTERNAL_IP=machine ip
-make remote-miner SSH_CONNECTION="ssh ubuntu@ip -i private_key.pem"
+export SSH_CONNECTION="ssh ubuntu@ip -i private_key.pem"
+make remote-miner
 ```
 
 ## System architecture (WIP)
