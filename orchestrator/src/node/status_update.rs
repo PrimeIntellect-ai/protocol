@@ -109,6 +109,13 @@ impl NodeStatusUpdater {
                             .store_context
                             .node_store
                             .update_node_status(&node.address, NodeStatus::Healthy);
+                    } else if node.status == NodeStatus::Dead {
+                        // Node is dead, we need to update the status to discovered so it gets reinvited
+                        node.status = NodeStatus::Discovered;
+                        let _: () = self
+                            .store_context
+                            .node_store
+                            .update_node_status(&node.address, NodeStatus::Discovered);
                     }
                     let _: () = self
                         .store_context
@@ -449,5 +456,60 @@ mod tests {
             .heartbeat_store
             .get_unhealthy_counter(&node2.address);
         assert_eq!(counter, 1);
+    }
+
+    #[tokio::test]
+    async fn test_node_rediscovery_after_death() {
+        let app_state = create_test_app_state().await;
+        let contracts = setup_contract();
+
+        let node = Node {
+            address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+            ip_address: "127.0.0.1".to_string(),
+            port: 8080,
+            status: NodeStatus::Unhealthy,
+            task_id: None,
+            task_state: None,
+        };
+
+        let _: () = app_state.store_context.node_store.add_node(node.clone());
+        let _: () = app_state
+            .store_context
+            .heartbeat_store
+            .set_unhealthy_counter(&node.address, 2);
+
+        let updater = NodeStatusUpdater::new(
+            app_state.store_context.clone(),
+            5,
+            None,
+            Arc::new(contracts),
+            0,
+        );
+        tokio::spawn(async move {
+            updater
+                .run()
+                .await
+                .expect("Failed to run NodeStatusUpdater");
+        });
+
+        sleep(Duration::from_secs(2)).await;
+
+        let node = app_state
+            .store_context
+            .node_store
+            .get_node(&node.address)
+            .unwrap();
+        assert_eq!(node.status, NodeStatus::Dead);
+
+        let _: () = app_state.store_context.heartbeat_store.beat(&node.address);
+
+        sleep(Duration::from_secs(5)).await;
+
+        let node = app_state
+            .store_context
+            .node_store
+            .get_node(&node.address)
+            .unwrap();
+        assert_eq!(node.status, NodeStatus::Discovered);
     }
 }
