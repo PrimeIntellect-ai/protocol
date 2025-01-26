@@ -66,6 +66,15 @@ pub async fn get_nodes_for_pool(
     HttpResponse::Ok().json(response)
 }
 
+pub async fn get_node_by_id(node_id: web::Path<String>, data: Data<AppState>) -> HttpResponse {
+    let node = data.node_store.get_node(&node_id);
+
+    match node {
+        Some(node) => HttpResponse::Ok().json(ApiResponse::new(true, node)),
+        None => HttpResponse::NotFound().json(ApiResponse::new(false, "Node not found")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

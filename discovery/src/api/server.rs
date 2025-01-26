@@ -1,4 +1,4 @@
-use crate::api::routes::get_nodes::{get_nodes, get_nodes_for_pool};
+use crate::api::routes::get_nodes::{get_nodes, get_nodes_for_pool, get_node_by_id};
 use crate::api::routes::node::node_routes;
 use crate::store::node_store::NodeStore;
 use actix_web::{
@@ -45,6 +45,7 @@ pub async fn start_server(
         App::new()
             .wrap(middleware::Logger::default())
             .app_data(Data::new(app_state.clone()))
+            .service(web::scope("/api/nodes/{node_id}").route("", get().to(get_node_by_id)))
             .service(node_routes().wrap(ValidateSignature::new(validate_signatures.clone())))
             .service(web::scope("/api/platform").route("", get().to(get_nodes)))
             .service(
