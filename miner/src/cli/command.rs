@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use url::Url;
+use log::debug;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -259,7 +260,7 @@ pub async fn execute_command(
 
             if let Err(err) = {
                 let heartbeat_clone = heartbeat_service.unwrap().clone();
-                println!("Recovering from previous state: {}", recover_last_state);
+                debug!("Recovering from previous state: {}", recover_last_state);
                 if recover_last_state {
                     heartbeat_clone
                         .activate_heartbeat_if_endpoint_exists()

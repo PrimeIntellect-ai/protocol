@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use log::debug;
 
 const STATE_FILENAME: &str = "heartbeat_state.toml";
 
@@ -30,27 +31,26 @@ pub struct HeartbeatState {
 impl HeartbeatState {
     pub fn new(state_dir: Option<String>, disable_state_storing: bool) -> Self {
         let default_state_dir = get_default_state_dir();
-        println!("Default state dir: {:?}", default_state_dir);
+        debug!("Default state dir: {:?}", default_state_dir);
         let state_path = state_dir
             .map(PathBuf::from)
             .or_else(|| default_state_dir.map(PathBuf::from));
-        println!("State path: {:?}", state_path);
+        debug!("State path: {:?}", state_path);
         let mut endpoint = None;
 
         // Try to load state, log info if creating new file
         if let Some(path) = &state_path {
             let state_file = path.join(STATE_FILENAME);
             if !state_file.exists() {
-                println!(
+                debug!(
                     "No state file found at {:?}, will create on first state change",
                     state_file
                 );
             } else if let Ok(Some(loaded_state)) = HeartbeatState::load_state(&path) {
-                println!("Loaded previous state from {:?}", state_file);
-                println!("Loaded previous state: {:?}", loaded_state);
+                debug!("Loaded previous state from {:?}", state_file);
                 endpoint = loaded_state.endpoint;
             } else {
-                println!("Failed to load state from {:?}", state_file);
+                debug!("Failed to load state from {:?}", state_file);
             }
         }
         let state = Self {
@@ -76,7 +76,7 @@ impl HeartbeatState {
                 let state_path = state_dir.join(STATE_FILENAME);
                 let toml = toml::to_string_pretty(&state)?;
                 fs::write(&state_path, toml)?;
-                println!("Saved state to {:?}", state_path);
+                debug!("Saved state to {:?}", state_path);
             }
         }
         Ok(())
@@ -132,7 +132,6 @@ impl HeartbeatState {
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::Path;
     use tempfile::TempDir;
 
     fn setup_test_dir() -> TempDir {
