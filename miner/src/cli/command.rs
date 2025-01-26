@@ -153,23 +153,7 @@ pub async fn execute_command(
             );
 
             let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
-            let docker_service = Arc::new(DockerService::new(cancellation_token.clone()));
 
-            let heartbeat_service = HeartbeatService::new(
-                Duration::from_secs(10),
-                state_dir_overwrite.clone(),
-                *disable_state_storing,
-                cancellation_token.clone(),
-                task_handles.clone(),
-                node_wallet_instance.clone(),
-                docker_service.clone(),
-            );
-
-            tokio::spawn(async move {
-                if let Err(e) = docker_service.run().await {
-                    Console::error(&format!("❌ Docker service failed: {}", e));
-                }
-            });
             println!("Getting pool info");
             let pool_id = U256::from(*compute_pool_id as u32);
             let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
@@ -208,6 +192,29 @@ pub async fn execute_command(
 
             // TODO: Move to proper check
             let _ = software_check::run_software_check();
+            let has_gpu = match node_config.compute_specs {
+                Some(ref specs) => specs.gpu.is_some(),
+                None => {
+                    Console::warning("Compute specs are not available, assuming no GPU.");
+                    false
+                }
+            };
+            let docker_service = Arc::new(DockerService::new(cancellation_token.clone(), has_gpu));
+            let heartbeat_service = HeartbeatService::new(
+                Duration::from_secs(10),
+                state_dir_overwrite.clone(),
+                *disable_state_storing,
+                cancellation_token.clone(),
+                task_handles.clone(),
+                node_wallet_instance.clone(),
+                docker_service.clone(),
+            );
+
+            tokio::spawn(async move {
+                if let Err(e) = docker_service.run().await {
+                    Console::error(&format!("❌ Docker service failed: {}", e));
+                }
+            });
 
             let mut attempts = 0;
             let max_attempts = 10;
