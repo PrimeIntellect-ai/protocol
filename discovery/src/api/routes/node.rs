@@ -37,9 +37,26 @@ pub async fn register_node(
     HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully"))
 }
 
-pub fn node_routes() -> Scope {
-    web::scope("/api/nodes").route("", put().to(register_node))
+pub async fn get_node(
+    node_id: web::Path<String>,
+    data: Data<AppState>,
+) -> HttpResponse {
+    let nodes = data.node_store.get_nodes();
+    
+    let node = nodes.iter().find(|node| node.id == node_id.to_string());
+    
+    match node {
+        Some(node) => HttpResponse::Ok().json(ApiResponse::new(true, node)),
+        None => HttpResponse::NotFound().json(ApiResponse::new(false, "Node not found")),
+    }
 }
+
+pub fn node_routes() -> Scope {
+    web::scope("/api/nodes")
+        .route("", put().to(register_node))
+        .route("/{node_id}", web::get().to(get_node))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
