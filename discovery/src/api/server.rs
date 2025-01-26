@@ -1,4 +1,4 @@
-use crate::api::routes::get_nodes::{get_nodes, get_nodes_for_pool, get_node_by_id};
+use crate::api::routes::get_nodes::{get_node_by_id, get_nodes, get_nodes_for_pool};
 use crate::api::routes::node::node_routes;
 use crate::store::node_store::NodeStore;
 use actix_web::{
