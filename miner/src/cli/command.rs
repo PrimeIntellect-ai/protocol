@@ -11,6 +11,7 @@ use crate::services::discovery::DiscoveryService;
 use crate::TaskHandles;
 use alloy::primitives::U256;
 use clap::{Parser, Subcommand};
+use log::debug;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
@@ -19,7 +20,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use url::Url;
-use log::debug;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

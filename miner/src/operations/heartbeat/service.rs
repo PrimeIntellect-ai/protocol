@@ -1,6 +1,7 @@
 use super::state::HeartbeatState;
 use crate::docker::DockerService;
 use crate::TaskHandles;
+use log::info;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
 use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
@@ -9,7 +10,6 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
-use log::info;
 
 #[derive(Clone)]
 pub struct HeartbeatService {

@@ -1,12 +1,12 @@
 use anyhow::Result;
 use directories::ProjectDirs;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::debug;
 
 const STATE_FILENAME: &str = "heartbeat_state.toml";
 
@@ -54,7 +54,6 @@ impl HeartbeatState {
                 debug!("Failed to load state from {:?}", state_file);
             }
         }
-        
 
         Self {
             last_heartbeat: Arc::new(RwLock::new(None)),
