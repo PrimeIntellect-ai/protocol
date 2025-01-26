@@ -44,9 +44,9 @@ impl NodeStore {
         nodes_vec
     }
 
-    pub fn get_node(&self, node_id: &str) -> Option<DiscoveryNode> {
+    pub fn get_node(&self, node_id: impl AsRef<str>) -> Option<DiscoveryNode> {
         let mut con = self.get_connection();
-        let key = format!("node:{}", node_id);
+        let key = format!("node:{}", node_id.as_ref());
 
         let serialized_node: Option<String> = con.get(&key).unwrap();
 
