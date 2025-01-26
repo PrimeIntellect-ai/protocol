@@ -83,7 +83,7 @@ fn main() {
             });
         let non_validated_nodes: Vec<DiscoveryNode> = nodes
             .iter()
-            .flat_map(|node_vec| node_vec) 
+            .flatten() 
             .filter(|node| !node.is_validated)
             .cloned()
             .collect();
