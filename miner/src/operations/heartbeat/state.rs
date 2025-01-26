@@ -3,6 +3,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use log::debug;
@@ -82,7 +83,7 @@ impl HeartbeatState {
         Ok(())
     }
 
-    fn load_state(state_dir: &PathBuf) -> Result<Option<PersistedHeartbeatState>> {
+    fn load_state(state_dir: &Path) -> Result<Option<PersistedHeartbeatState>> {
         let state_path = state_dir.join(STATE_FILENAME);
         if state_path.exists() {
             let contents = fs::read_to_string(state_path)?;
