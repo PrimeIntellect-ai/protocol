@@ -67,7 +67,7 @@ pub async fn get_nodes_for_pool(
 }
 
 pub async fn get_node_by_id(node_id: web::Path<String>, data: Data<AppState>) -> HttpResponse {
-    let node = data.node_store.get_node(node_id.as_str());
+    let node = data.node_store.get_node(node_id.to_string());
 
     match node {
         Some(node) => HttpResponse::Ok().json(ApiResponse::new(true, node)),
