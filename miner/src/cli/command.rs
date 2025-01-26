@@ -93,9 +93,14 @@ pub async fn execute_command(
             disable_state_storing,
             auto_recover,
         } => {
+            if *disable_state_storing && *auto_recover {
+                Console::error("❌ Cannot disable state storing and enable auto recover at the same time.");
+                std::process::exit(1);
+            }
+
             let mut recover_last_state = *auto_recover;
             Console::section("🚀 PRIME MINER INITIALIZATION");
-            /*
+            /* 
              Initialize Wallet instances
             */
             let provider_wallet_instance = Arc::new(
