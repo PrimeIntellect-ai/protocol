@@ -71,9 +71,9 @@ pub enum Commands {
         #[arg(long, default_value = "true")]
         auto_recover: bool,
 
-         /// Discovery service URL
-         #[arg(long)]
-         discovery_url: Option<String>,
+        /// Discovery service URL
+        #[arg(long)]
+        discovery_url: Option<String>,
     },
     /// Run system checks to verify hardware and software compatibility
     Check {},
@@ -157,11 +157,8 @@ pub async fn execute_command(
                 &contracts.prime_network,
             );
 
-            let discovery_service = DiscoveryService::new(
-                &node_wallet_instance,
-                discovery_url.clone(),
-                None
-            );
+            let discovery_service =
+                DiscoveryService::new(&node_wallet_instance, discovery_url.clone(), None);
             let docker_service = Arc::new(DockerService::new(cancellation_token.clone()));
 
             let heartbeat_service = HeartbeatService::new(

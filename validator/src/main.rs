@@ -1,5 +1,6 @@
 use alloy::primitives::{hex, Address};
 use alloy::signers::Signer;
+use clap::Parser;
 use log::LevelFilter;
 use log::{error, info};
 use shared::models::api::ApiResponse;
@@ -7,8 +8,6 @@ use shared::models::node::DiscoveryNode;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use url::Url;
-use clap::Parser;
-
 
 #[derive(Parser)]
 struct Args {
@@ -37,11 +36,10 @@ fn main() {
     let rpc_url: Url = args.rpc_url.parse().unwrap();
     let discovery_url = args.discovery_url;
 
-    let validator_wallet = Wallet::new(&private_key_validator, rpc_url)
-        .unwrap_or_else(|err| {
-            error!("Error creating wallet: {:?}", err);
-            std::process::exit(1);
-        });
+    let validator_wallet = Wallet::new(&private_key_validator, rpc_url).unwrap_or_else(|err| {
+        error!("Error creating wallet: {:?}", err);
+        std::process::exit(1);
+    });
 
     let contracts = ContractBuilder::new(&validator_wallet)
         .with_compute_registry()
