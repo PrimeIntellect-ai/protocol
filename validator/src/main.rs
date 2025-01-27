@@ -7,7 +7,6 @@ use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
-use std::env;
 use url::Url;
 
 #[derive(Parser)]
