@@ -1,0 +1,27 @@
+---
+- name: Install Redis server
+  apt:
+    name: redis-server
+    state: present
+    update_cache: yes
+
+- name: Ensure Redis is running
+  service:
+    name: redis-server
+    state: started
+    enabled: yes
+
+- name: Configure Redis for persistence
+  lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^#? save '
+    line: 'save 900 1'
+    state: present
+
+- name: Restart Redis to apply configuration changes
+  service:
+    name: redis-server
+    state: restarted
+
+
+

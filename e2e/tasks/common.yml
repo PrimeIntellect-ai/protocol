@@ -1,0 +1,12 @@
+---
+- name: Install system dependencies
+  apt:
+    name:
+      - curl
+      - git
+      - build-essential
+      - tmux
+      - rsync
+      - sudo
+    state: present
+    update_cache: yes

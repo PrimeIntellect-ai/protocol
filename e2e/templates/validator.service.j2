@@ -1,0 +1,16 @@
+[Unit]
+Description=Prime Network Validator
+After=network.target
+
+[Service]
+Type=simple
+User={{ ansible_user }}
+Environment=VALIDATOR_ADDRESS={{ validator_address }}
+Environment=RPC_URL={{ rpc_url }}
+WorkingDirectory=/opt/prime/validator
+ExecStart=cargo watch -w validator/src -x "run --bin validator -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL}"
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
