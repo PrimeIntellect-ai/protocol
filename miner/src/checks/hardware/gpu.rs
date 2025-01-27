@@ -1,8 +1,8 @@
 use crate::console::Console;
-use crate::operations::structs::node::GpuSpecs;
 use colored::*;
 use lazy_static::lazy_static;
 use nvml_wrapper::Nvml;
+use shared::models::node::GpuSpecs;
 use std::sync::Mutex;
 
 #[allow(dead_code)]

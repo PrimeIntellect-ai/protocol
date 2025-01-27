@@ -28,7 +28,8 @@ impl<'c> ComputeNodeOperations<'c> {
         }
     }
 
-    pub async fn add_compute_node(&self) -> Result<(), Box<dyn std::error::Error>> {
+    // Returns true if the compute node was added, false if it already exists
+    pub async fn add_compute_node(&self) -> Result<bool, Box<dyn std::error::Error>> {
         Console::section("🔄 Adding compute node");
         let compute_node = self
             .compute_registry
@@ -39,9 +40,9 @@ impl<'c> ComputeNodeOperations<'c> {
             .await;
 
         match compute_node {
-            Ok(()) => {
+            Ok(_) => {
                 Console::info("Compute node status", "Compute node already exists");
-                return Ok(());
+                return Ok(false);
             }
             Err(_) => {
                 Console::info(
@@ -82,6 +83,6 @@ impl<'c> ComputeNodeOperations<'c> {
             .add_compute_node(node_address, compute_units, signature.to_vec())
             .await?;
         Console::success(&format!("Add node tx: {:?}", add_node_tx));
-        Ok(())
+        Ok(true)
     }
 }

@@ -1,6 +1,7 @@
 use super::state::HeartbeatState;
 use crate::docker::DockerService;
 use crate::TaskHandles;
+use log::info;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
 use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
@@ -31,17 +32,14 @@ pub enum HeartbeatError {
 impl HeartbeatService {
     pub fn new(
         interval: Duration,
-        state_dir: Option<String>,
+        state_dir_overwrite: Option<String>,
+        disable_state_storing: bool,
         cancellation_token: CancellationToken,
         task_handles: TaskHandles,
         node_wallet: Arc<Wallet>,
         docker_service: Arc<DockerService>,
     ) -> Result<Arc<Self>, HeartbeatError> {
-        let state: HeartbeatState = if state_dir.is_some() {
-            HeartbeatState::new(state_dir)
-        } else {
-            HeartbeatState::new(None)
-        };
+        let state = HeartbeatState::new(state_dir_overwrite.or(None), disable_state_storing);
 
         let client = Client::builder()
             .timeout(Duration::from_secs(5)) // 5 second timeout
@@ -57,6 +55,13 @@ impl HeartbeatService {
             node_wallet,
             docker_service,
         }))
+    }
+
+    pub async fn activate_heartbeat_if_endpoint_exists(&self) {
+        if let Some(endpoint) = self.state.get_endpoint().await {
+            info!("Starting heartbeat from recovered state");
+            self.start(endpoint).await.unwrap();
+        }
     }
 
     pub async fn start(&self, endpoint: String) -> Result<(), HeartbeatError> {

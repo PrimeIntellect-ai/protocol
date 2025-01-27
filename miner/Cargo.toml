@@ -37,3 +37,9 @@ toml = "0.8.19"
 ctrlc = "3.4.5"
 tokio-util = "0.7.13"
 futures = "0.3.31"
+chrono = "0.4"
+serial_test = "0.5.1"
+directories = "6.0.0"
+
+[dev-dependencies]
+tempfile = "=3.14.0"

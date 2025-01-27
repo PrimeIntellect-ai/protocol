@@ -1,5 +1,6 @@
 use crate::web3::contracts::constants::addresses::COMPUTE_POOL_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
+use crate::web3::contracts::helpers::utils::get_selector;
 use crate::web3::contracts::structs::compute_pool::{PoolInfo, PoolStatus};
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
@@ -34,8 +35,6 @@ impl ComputePool {
             return Err("Pool does not exist".into());
         }
 
-        println!("Pool info tuple: {:?}", pool_info_tuple);
-
         let pool_id: U256 = pool_info_tuple[0].as_uint().unwrap().0;
         let domain_id: U256 = pool_info_tuple[1].as_uint().unwrap().0;
         let name: String = pool_info_tuple[2].as_str().unwrap().to_string();
@@ -49,10 +48,7 @@ impl ComputePool {
         let total_compute: U256 = pool_info_tuple[10].as_uint().unwrap().0;
         let compute_limit: U256 = pool_info_tuple[11].as_uint().unwrap().0;
         let status: U256 = pool_info_tuple[12].as_uint().unwrap().0;
-        println!("Raw Status: {:?}", status);
         let status: u8 = status.try_into().expect("Failed to convert status to u8");
-        println!("Parsed Status: {:?}", status);
-        println!("Pool info tuple: {:?}", pool_info_tuple);
         let mapped_status = match status {
             0 => PoolStatus::PENDING,
             1 => PoolStatus::ACTIVE,
@@ -75,7 +71,6 @@ impl ComputePool {
             compute_limit,
             status: mapped_status,
         };
-        println!("Pool info: {:?}", pool_info);
         Ok(pool_info)
     }
 
@@ -86,8 +81,8 @@ impl ComputePool {
         nodes: Vec<Address>,
         signatures: Vec<FixedBytes<65>>,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Joining compute pool");
-
+        let join_compute_pool_selector =
+            get_selector("joinComputePool(uint256,address,address[],bytes[])");
         let address = DynSolValue::from(
             nodes
                 .iter()
@@ -100,15 +95,39 @@ impl ComputePool {
                 .map(|sig| DynSolValue::Bytes(sig.to_vec()))
                 .collect::<Vec<_>>(),
         );
-        println!("Address: {:?}", address);
-        println!("Signatures: {:?}", signatures);
+        let result = self
+            .instance
+            .instance()
+            .function_from_selector(
+                &join_compute_pool_selector,
+                &[pool_id.into(), provider_address.into(), address, signatures],
+            )?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn leave_compute_pool(
+        &self,
+        pool_id: U256,
+        provider_address: Address,
+        node: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        println!("Leaving compute pool");
+
+        println!("Provider: {:?}", provider_address);
+        println!("Node: {:?}", node);
+
+        let leave_compute_pool_selector = get_selector("leaveComputePool(uint256,address,address)");
 
         let result = self
             .instance
             .instance()
-            .function(
-                "joinComputePool",
-                &[pool_id.into(), provider_address.into(), address, signatures],
+            .function_from_selector(
+                &leave_compute_pool_selector,
+                &[pool_id.into(), provider_address.into(), node.into()],
             )?
             .send()
             .await?
@@ -116,6 +135,63 @@ impl ComputePool {
             .await?;
         println!("Result: {:?}", result);
         Ok(result)
+    }
+
+    pub async fn blacklist_node(
+        &self,
+        pool_id: u32,
+        node: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        println!("Blacklisting node");
+
+        let arg_pool_id: U256 = U256::from(pool_id);
+
+        let result = self
+            .instance
+            .instance()
+            .function("blacklistNode", &[arg_pool_id.into(), node.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        println!("Result: {:?}", result);
+        Ok(result)
+    }
+
+    pub async fn eject_node(
+        &self,
+        pool_id: u32,
+        node: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        println!("Ejecting node");
+
+        let arg_pool_id: U256 = U256::from(pool_id);
+
+        let result = self
+            .instance
+            .instance()
+            .function("ejectNode", &[arg_pool_id.into(), node.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        println!("Result: {:?}", result);
+        Ok(result)
+    }
+
+    pub async fn is_node_in_pool(
+        &self,
+        pool_id: u32,
+        node: Address,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let arg_pool_id: U256 = U256::from(pool_id);
+        let result = self
+            .instance
+            .instance()
+            .function("isNodeInPool", &[arg_pool_id.into(), node.into()])?
+            .call()
+            .await?;
+        Ok(result.first().unwrap().as_bool().unwrap())
     }
 
     pub async fn create_compute_pool(

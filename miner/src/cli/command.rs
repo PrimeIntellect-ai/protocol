@@ -7,11 +7,12 @@ use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderError;
 use crate::operations::provider::ProviderOperations;
-use crate::operations::structs::node::NodeConfig;
 use crate::services::discovery::DiscoveryService;
 use crate::TaskHandles;
 use alloy::primitives::U256;
 use clap::{Parser, Subcommand};
+use log::debug;
+use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
@@ -58,13 +59,21 @@ pub enum Commands {
         #[arg(long, default_value = "false")]
         dry_run: bool,
 
-        ///  Optional state storage directory
+        /// Optional state storage directory overwrite
         #[arg(long)]
-        state_dir: Option<String>,
+        state_dir_overwrite: Option<String>,
 
-        /// Discovery service URL
-        #[arg(long)]
-        discovery_url: Option<String>,
+        /// Disable state storing
+        #[arg(long, default_value = "false")]
+        disable_state_storing: bool,
+
+        /// Auto recover from previous state
+        #[arg(long, default_value = "true")]
+        auto_recover: bool,
+
+         /// Discovery service URL
+         #[arg(long)]
+         discovery_url: Option<String>,
     },
     /// Run system checks to verify hardware and software compatibility
     Check {},
@@ -84,9 +93,19 @@ pub async fn execute_command(
             compute_pool_id,
             dry_run: _,
             rpc_url,
-            state_dir,
             discovery_url,
+            state_dir_overwrite,
+            disable_state_storing,
+            auto_recover,
         } => {
+            if *disable_state_storing && *auto_recover {
+                Console::error(
+                    "❌ Cannot disable state storing and enable auto recover at the same time.",
+                );
+                std::process::exit(1);
+            }
+
+            let mut recover_last_state = *auto_recover;
             Console::section("🚀 PRIME MINER INITIALIZATION");
             /*
              Initialize Wallet instances
@@ -147,7 +166,8 @@ pub async fn execute_command(
 
             let heartbeat_service = HeartbeatService::new(
                 Duration::from_secs(10),
-                state_dir.clone(),
+                state_dir_overwrite.clone(),
+                *disable_state_storing,
                 cancellation_token.clone(),
                 task_handles.clone(),
                 node_wallet_instance.clone(),
@@ -175,12 +195,21 @@ pub async fn execute_command(
                 return Ok(());
             }
 
-            let node_config = NodeConfig {
+            let node_config = Node {
+                id: node_wallet_instance
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string(),
                 ip_address: external_ip.to_string(),
                 port: *port,
-                provider_address: Some(provider_wallet_instance.wallet.default_signer().address()),
+                provider_address: provider_wallet_instance
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string(),
                 compute_specs: None,
-                compute_pool_id: *compute_pool_id,
+                compute_pool_id: *compute_pool_id as u32,
             };
 
             let hardware_check = HardwareChecker::new();
@@ -221,9 +250,18 @@ pub async fn execute_command(
                 std::process::exit(1);
             };
 
-            if let Err(e) = compute_node_ops.add_compute_node().await {
-                Console::error(&format!("❌ Failed to add compute node: {}", e));
-                std::process::exit(1);
+            match compute_node_ops.add_compute_node().await {
+                Ok(added_node) => {
+                    if added_node {
+                        // If we are adding a new compute node we wait for a proper
+                        // invite and do not recover from previous state
+                        recover_last_state = false;
+                    }
+                }
+                Err(e) => {
+                    Console::error(&format!("❌ Failed to add compute node: {}", e));
+                    std::process::exit(1);
+                }
             }
 
             if let Err(e) = discovery_service.upload_discovery_info(&node_config).await {
@@ -238,6 +276,13 @@ pub async fn execute_command(
 
             if let Err(err) = {
                 let heartbeat_clone = heartbeat_service.unwrap().clone();
+                debug!("Recovering from previous state: {}", recover_last_state);
+                if recover_last_state {
+                    heartbeat_clone
+                        .activate_heartbeat_if_endpoint_exists()
+                        .await;
+                }
+
                 start_server(
                     external_ip,
                     *port,
@@ -259,12 +304,13 @@ pub async fn execute_command(
 
             // Run hardware checks
             let hardware_checker = HardwareChecker::new();
-            let node_config = NodeConfig {
-                ip_address: String::new(), // Placeholder, adjust as necessary
-                port: 0,                   // Placeholder, adjust as necessary
+            let node_config = Node {
+                id: String::new(),
+                ip_address: String::new(),
+                port: 0,
                 compute_specs: None,
-                provider_address: None,
-                compute_pool_id: 0, // Placeholder, adjust as necessary
+                provider_address: String::new(),
+                compute_pool_id: 0,
             };
 
             match hardware_checker.enrich_node_config(node_config) {

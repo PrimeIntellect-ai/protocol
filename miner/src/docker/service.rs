@@ -3,6 +3,7 @@ use super::DockerManager;
 use super::DockerState;
 use crate::console::Console;
 use bollard::models::ContainerStateStatusEnum;
+use chrono::{DateTime, Utc};
 use shared::models::task::Task;
 use shared::models::task::TaskState;
 use std::sync::Arc;
@@ -75,9 +76,9 @@ impl DockerService {
                     let task_id = generate_task_id(&current_task);
                     let task_clone = current_task.clone();
 
-                    let running_containers = manager.list_running_containers().await.unwrap();
+                    let all_containers = manager.list_containers(true).await.unwrap();
 
-                    let old_tasks: Vec<ContainerInfo> = running_containers
+                    let old_tasks: Vec<ContainerInfo> = all_containers
                     .iter()
                     .filter(|c| {
                         c.names.iter().any(|name| name.contains(TASK_PREFIX))
@@ -104,7 +105,7 @@ impl DockerService {
 
                     if current_task.is_some() && task_id.is_some() {
                         let task_id = format!("{}-{}", current_task.unwrap().id, TASK_PREFIX);
-                        let container_match = running_containers.iter().find(|c| c.names.contains(&format!("/{}", task_id)));
+                        let container_match = all_containers.iter().find(|c| c.names.contains(&format!("/{}", task_id)));
                         if container_match.is_none() {
                             let running_tasks = starting_container_tasks.lock().await;
                             let has_running_tasks = running_tasks.iter().any(|h| !h.is_finished());
@@ -113,44 +114,85 @@ impl DockerService {
                             if has_running_tasks {
                                 Console::info("DockerService", "Container is still starting ...");
                             } else {
-                                Console::info("DockerService", "Starting new container ...");
-                                let task_clone = task_clone.clone();
-                                let manager_clone = manager_clone.clone();
-
-                                let handle = tokio::spawn(async move {
-                                    let payload = task_clone.unwrap();
-                                    let cmd_full = (payload.command, payload.args);
-                                    let cmd = match cmd_full {
-                                        (Some(c), Some(a)) => {
-                                            let mut cmd = vec![c];
-                                            cmd.extend(a);
-                                            cmd
+                                let last_started_time = match state.get_last_started().await {
+                                    Some(time) => time,
+                                    None => DateTime::from_timestamp(0, 0).unwrap(),
+                                };
+                                let elapsed = Utc::now().signed_duration_since(last_started_time).num_seconds();
+                                // wait 15 seconds before starting a new container
+                                if elapsed < 15 {
+                                    Console::info("DockerService", "Waiting before starting new container ...");
+                                } else {
+                                    Console::info("DockerService", "Starting new container ...");
+                                    let task_clone = task_clone.clone();
+                                    let manager_clone = manager_clone.clone();
+                                    let state_clone = state.clone();
+                                    let handle = tokio::spawn(async move {
+                                        let payload = task_clone.unwrap();
+                                        let cmd_full = (payload.command, payload.args);
+                                        let cmd = match cmd_full {
+                                            (Some(c), Some(a)) => {
+                                                let mut cmd = vec![c];
+                                                cmd.extend(a);
+                                                cmd
+                                            }
+                                            (Some(c), None) => vec![c],
+                                            _ => vec!["sleep".to_string(), "infinity".to_string()],
+                                        };
+                                        match manager_clone.start_container(&payload.image, &task_id, payload.env_vars, Some(cmd)).await {
+                                            Ok(container_id) => {
+                                                Console::info("DockerService", &format!("Container started with id: {}", container_id));
+                                            },
+                                            Err(e) => {
+                                                Console::error(&format!("Error starting container: {}", e));
+                                                state_clone.update_task_state(payload.id, TaskState::FAILED).await;
+                                            }
                                         }
-                                        (Some(c), None) => vec![c],
-                                        _ => vec!["sleep".to_string(), "infinity".to_string()],
-                                    };
-                                    let container_id = manager_clone.start_container(&payload.image, &task_id, payload.env_vars, Some(cmd)).await.unwrap();
+                                        state_clone.set_last_started(Utc::now()).await;
+                                    });
+                                    starting_container_tasks.lock().await.push(handle);
 
-                                    Console::info("DockerService", &format!("Container started with id: {}", container_id));
-                                });
-                                starting_container_tasks.lock().await.push(handle);
+                                }
+
                             }
                         } else {
-                            let container_status = container_match.unwrap();
+                            let container_status = container_match.unwrap().clone();
                             let status = manager.get_container_details(&container_status.id).await.unwrap();
 
-                            let task_state = match status.status {
-                                Some(ContainerStateStatusEnum::RUNNING) => TaskState::RUNNING,
-                                Some(ContainerStateStatusEnum::CREATED) => TaskState::PENDING,
-                                Some(ContainerStateStatusEnum::EXITED) => TaskState::COMPLETED,
-                                Some(ContainerStateStatusEnum::DEAD) => TaskState::FAILED,
-                                Some(ContainerStateStatusEnum::PAUSED) => TaskState::PAUSED,
-                                Some(ContainerStateStatusEnum::RESTARTING) => TaskState::RESTARTING,
-                                Some(ContainerStateStatusEnum::REMOVING) => TaskState::UNKNOWN,
-                                _ => TaskState::UNKNOWN,
-                            };
-                            Console::info("DockerService", &format!("Task state: {:?}", task_state));
-                            state.update_task_state(task_clone.unwrap().id, task_state).await;
+                            let task_state_current = task_clone.clone().unwrap().state;
+
+                            // handle edge case where container instantly dies due to invalid command
+                            if status.status == Some(ContainerStateStatusEnum::CREATED) && task_state_current == TaskState::FAILED {
+                                Console::info("DockerService", "Task failed, waiting for new command from manager ...");
+                            } else {
+                                let task_state = match status.status {
+                                    Some(ContainerStateStatusEnum::RUNNING) => TaskState::RUNNING,
+                                    Some(ContainerStateStatusEnum::CREATED) => TaskState::PENDING,
+                                    Some(ContainerStateStatusEnum::EXITED) => TaskState::COMPLETED,
+                                    Some(ContainerStateStatusEnum::DEAD) => TaskState::FAILED,
+                                    Some(ContainerStateStatusEnum::PAUSED) => TaskState::PAUSED,
+                                    Some(ContainerStateStatusEnum::RESTARTING) => TaskState::RESTARTING,
+                                    Some(ContainerStateStatusEnum::REMOVING) => TaskState::UNKNOWN,
+                                    _ => TaskState::UNKNOWN,
+                                };
+                                match task_state {
+                                    // if task state is failed here, it means the container is also marked as dead, remove it so it can be recreated
+                                    TaskState::FAILED | TaskState::COMPLETED => {
+                                    let terminate_manager_clone = terminate_manager.clone();
+                                    let handle = tokio::spawn(async move {
+                                        let termination = terminate_manager_clone.remove_container(&container_status.id).await;
+                                        match termination {
+                                            Ok(_) => Console::info("DockerService", "Container terminated successfully"),
+                                            Err(e) => Console::error(&format!("Error terminating container: {}", e)),
+                                        }
+                                    });
+                                    terminating_container_tasks.lock().await.push(handle);
+                                    }
+                                    _ => {}
+                                }
+                                Console::info("DockerService", &format!("Task state: {:?}", task_state));
+                                state.update_task_state(task_clone.unwrap().id, task_state).await;
+                            }
                         }
                     }
                 },
@@ -169,6 +211,7 @@ mod tests {
     use uuid::Uuid;
 
     #[tokio::test]
+    #[serial_test::serial]
     async fn test_docker_service() {
         let cancellation_token = CancellationToken::new();
         let docker_service = DockerService::new(cancellation_token.clone());
@@ -177,8 +220,8 @@ mod tests {
             name: "test".to_string(),
             id: Uuid::new_v4(),
             env_vars: None,
-            command: None,
-            args: None,
+            command: Some("sleep".to_string()),
+            args: Some(vec!["100".to_string()]),
             state: TaskState::PENDING,
         };
         let task_clone = task.clone();
@@ -200,6 +243,61 @@ mod tests {
         state_clone.set_current_task(None).await;
         tokio::time::sleep(Duration::from_secs(10)).await;
         Console::info("DockerService", "Cancelling cancellation token");
+        cancellation_token.cancel();
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        Console::info("DockerService", "Cancelling done");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn test_docker_service_idle_on_failure() {
+        let cancellation_token = CancellationToken::new();
+        let docker_service = DockerService::new(cancellation_token.clone());
+        let state = docker_service.state.clone();
+
+        // Create task that will fail
+        let task = Task {
+            image: "ubuntu:latest".to_string(),
+            name: "test-restart".to_string(),
+            id: Uuid::new_v4(),
+            env_vars: None,
+            command: Some("invalid_command".to_string()),
+            args: None,
+            state: TaskState::PENDING,
+        };
+
+        let task_clone = task.clone();
+        let state_clone = docker_service.state.clone();
+        docker_service
+            .state
+            .set_current_task(Some(task_clone))
+            .await;
+        let task_name = task.name.to_string();
+        assert_eq!(
+            docker_service.state.get_current_task().await.unwrap().name,
+            task_name
+        );
+        tokio::spawn(async move {
+            docker_service.run().await.unwrap();
+        });
+
+        // Wait for initial container start
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
+        // Wait for container to fail and timeout period
+        tokio::time::sleep(Duration::from_secs(20)).await;
+
+        // Get current task state
+        let current_task = state.get_current_task().await.unwrap();
+        assert_eq!(current_task.state, TaskState::FAILED);
+
+        // Verify new container was created after timeout
+        let last_started = state.get_last_started().await;
+        assert!(last_started.is_some());
+
+        // Cleanup
+        state_clone.set_current_task(None).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         cancellation_token.cancel();
         tokio::time::sleep(Duration::from_secs(5)).await;
     }

@@ -71,7 +71,7 @@
   },
   {
     "type": "function",
-    "name": "blacklistNode",
+    "name": "blacklistAndPurgeProvider",
     "inputs": [
       {
         "name": "poolId",
@@ -82,11 +82,42 @@
         "name": "provider",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "blacklistNode",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
       },
       {
         "name": "nodekey",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "blacklistNodeList",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "nodekeys",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "outputs": [],
@@ -105,6 +136,24 @@
         "name": "provider",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "blacklistProviderList",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "providers",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "outputs": [],
@@ -202,6 +251,24 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ejectNode",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "nodekey",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -342,36 +409,19 @@
   },
   {
     "type": "function",
-    "name": "getNodeWork",
+    "name": "getComputePoolTotalCompute",
     "inputs": [
       {
         "name": "poolId",
         "type": "uint256",
         "internalType": "uint256"
-      },
-      {
-        "name": "nodekey",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "outputs": [
       {
         "name": "",
-        "type": "tuple[]",
-        "internalType": "struct IComputePool.WorkInterval[]",
-        "components": [
-          {
-            "name": "joinTime",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "leaveTime",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -557,6 +607,130 @@
   },
   {
     "type": "function",
+    "name": "isNodeBlacklistedFromPool",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "nodekey",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isNodeInPool",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "nodekey",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isProviderBlacklistedFromPool",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "provider",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isProviderInPool",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "provider",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "joinComputePool",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "provider",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "nodekey",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "signature",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "joinComputePool",
     "inputs": [
       {
@@ -598,9 +772,9 @@
         "internalType": "address"
       },
       {
-        "name": "nodekey",
-        "type": "address",
-        "internalType": "address"
+        "name": "nodekeys",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "outputs": [],
@@ -608,37 +782,26 @@
   },
   {
     "type": "function",
-    "name": "nodeWork",
+    "name": "leaveComputePool",
     "inputs": [
       {
-        "name": "",
+        "name": "poolId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "",
+        "name": "provider",
         "type": "address",
         "internalType": "address"
       },
       {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "nodekey",
+        "type": "address",
+        "internalType": "address"
       }
     ],
-    "outputs": [
-      {
-        "name": "joinTime",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "leaveTime",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -734,27 +897,21 @@
   },
   {
     "type": "function",
-    "name": "providerActiveNodes",
+    "name": "purgeProvider",
     "inputs": [
       {
-        "name": "",
+        "name": "poolId",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "",
+        "name": "provider",
         "type": "address",
         "internalType": "address"
       }
     ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -801,25 +958,6 @@
         "name": "",
         "type": "address",
         "internalType": "contract RewardsDistributorFactory"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "rewardsDistributorMap",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRewardsDistributor"
       }
     ],
     "stateMutability": "view"
@@ -1026,7 +1164,51 @@
   },
   {
     "type": "event",
+    "name": "ComputePoolNodeEjected",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "provider",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "nodekey",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ComputePoolProviderBlacklisted",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "provider",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ComputePoolPurgedProvider",
     "inputs": [
       {
         "name": "poolId",

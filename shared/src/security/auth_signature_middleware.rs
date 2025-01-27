@@ -149,29 +149,38 @@ where
                 body.extend_from_slice(chunk?.as_ref());
             }
 
-            // Parse and sort the payload
-            let payload_value: serde_json::Value = match serde_json::from_slice(&body) {
-                Ok(val) => val,
-                Err(e) => return Err(ErrorBadRequest(e)),
-            };
-            let mut payload_data = payload_value.clone();
-            if let Some(obj) = payload_data.as_object_mut() {
-                let sorted_keys: Vec<String> = obj.keys().cloned().collect();
-                let sorted_obj: serde_json::Map<String, serde_json::Value> = sorted_keys
-                    .into_iter()
-                    .map(|key| (key.clone(), obj.remove(&key).unwrap()))
-                    .collect();
-                *obj = sorted_obj;
-            }
+            // Handle GET requests which do not have a payload
+            let mut payload_string = String::new();
+            if req.method() != actix_web::http::Method::GET {
+                // Parse and sort the payload
+                let payload_value: serde_json::Value = match serde_json::from_slice(&body) {
+                    Ok(val) => val,
+                    Err(e) => {
+                        println!("Error parsing payload: {:?}", e);
+                        return Err(ErrorBadRequest(e));
+                    }
+                };
+                let mut payload_data = payload_value.clone();
+                if let Some(obj) = payload_data.as_object_mut() {
+                    let sorted_keys: Vec<String> = obj.keys().cloned().collect();
+                    let sorted_obj: serde_json::Map<String, serde_json::Value> = sorted_keys
+                        .into_iter()
+                        .map(|key| (key.clone(), obj.remove(&key).unwrap()))
+                        .collect();
+                    *obj = sorted_obj;
+                }
 
-            let payload_string = match serde_json::to_string(&payload_data) {
-                Ok(s) => s,
-                Err(e) => return Err(ErrorBadRequest(e)),
-            };
+                payload_string = match serde_json::to_string(&payload_data) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        println!("Error serializing payload: {:?}", e);
+                        return Err(ErrorBadRequest(e));
+                    }
+                };
+            }
 
             // Combine path and payload
             let msg = format!("{}{}", path, payload_string);
-
             // Validate signature
             if let (Some(address), Some(signature)) = (x_address, x_signature) {
                 let signature = signature.trim_start_matches("0x");
@@ -296,11 +305,8 @@ mod tests {
     async fn test_valid_signature() {
         let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
         let address = Address::from_str("0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf").unwrap();
-        let wallet = Wallet::new(
-            private_key,
-            Url::parse("https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161").unwrap(),
-        )
-        .unwrap();
+        let wallet =
+            Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap();
 
         let signature = sign_request("/test", &wallet, Some(&serde_json::json!({"test": "data"})))
             .await
@@ -314,8 +320,6 @@ mod tests {
         )
         .await;
 
-        println!("Address: {}", wallet.wallet.default_signer().address());
-        println!("Signature: {}", signature);
         let req = test::TestRequest::post()
             .uri("/test")
             .insert_header((
@@ -324,6 +328,38 @@ mod tests {
             ))
             .insert_header(("x-signature", signature))
             .set_json(serde_json::json!({"test": "data"}))
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[actix_web::test]
+    async fn test_valid_signature_get_request() {
+        let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
+        let address = Address::from_str("0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf").unwrap();
+        let wallet =
+            Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap();
+
+        let signature = sign_request("/test", &wallet, None).await.unwrap();
+        let app = test::init_service(
+            App::new()
+                .wrap(ValidateSignature::new(Arc::new(ValidatorState::new(vec![
+                    address,
+                ]))))
+                .route("/test", web::get().to(test_handler)),
+        )
+        .await;
+
+        println!("Address: {}", wallet.wallet.default_signer().address());
+        println!("Signature: {}", signature);
+        let req = test::TestRequest::get()
+            .uri("/test")
+            .insert_header((
+                "x-address",
+                wallet.wallet.default_signer().address().to_string(),
+            ))
+            .insert_header(("x-signature", signature))
             .to_request();
 
         let res = test::call_service(&app, req).await;
@@ -449,8 +485,6 @@ mod tests {
         }
 
         validator_state.add_address(address);
-        let allowed_addresses = validator_state.get_allowed_addresses();
-        println!("Allowed addresses: {:?}", allowed_addresses);
 
         let req_after_address_add = test::TestRequest::post()
             .uri("/test")

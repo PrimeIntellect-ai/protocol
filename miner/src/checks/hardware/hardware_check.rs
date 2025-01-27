@@ -4,7 +4,7 @@ use super::{
     storage::get_storage_info,
 };
 use crate::console::Console;
-use crate::operations::structs::node::{ComputeSpecs, CpuSpecs, GpuSpecs, NodeConfig};
+use shared::models::node::{ComputeSpecs, CpuSpecs, GpuSpecs, Node};
 use sysinfo::{self, System};
 
 pub struct HardwareChecker {
@@ -20,8 +20,8 @@ impl HardwareChecker {
 
     pub fn enrich_node_config(
         &self,
-        mut node_config: NodeConfig,
-    ) -> Result<NodeConfig, Box<dyn std::error::Error>> {
+        mut node_config: Node,
+    ) -> Result<Node, Box<dyn std::error::Error>> {
         self.collect_system_info(&mut node_config)?;
         self.print_system_info(&node_config);
         Console::success("All hardware checks passed");
@@ -30,7 +30,7 @@ impl HardwareChecker {
 
     fn collect_system_info(
         &self,
-        node_config: &mut NodeConfig,
+        node_config: &mut Node,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if self.sys.cpus().is_empty() {
             return Err(Box::new(std::io::Error::new(
@@ -74,7 +74,7 @@ impl HardwareChecker {
         Ok((total_memory as u32, total_storage as u32))
     }
 
-    fn print_system_info(&self, node_config: &NodeConfig) {
+    fn print_system_info(&self, node_config: &Node) {
         Console::section("Hardware Requirements Check");
 
         // Print CPU Info

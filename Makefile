@@ -37,26 +37,29 @@ up:
 	tmuxinator start prime-dev
 down:
 	docker-compose down
+<<<<<<< HEAD
 	tmuxinator stop prime-dev
 	pkill -f "target/debug/miner"
 	pkill -f "target/debug/orchestrator"
 	pkill -f "target/debug/validator"
+=======
+	pkill -f "target/debug/miner" 2>/dev/null || true
+	pkill -f "target/debug/orchestrator" 2>/dev/null || true
+	pkill -f "target/debug/validator" 2>/dev/null || true
+	pkill -f "target/debug/discovery" 2>/dev/null || true
+>>>>>>> develop
 
 whitelist-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
 
 watch-discovery:
-	# TODO - find proper way of passing in the env 
-	docker-compose up --env-file .env discovery
+	set -a; source .env; set +a; \
+	cargo watch -w discovery/src -x "run --bin discovery -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL}"
 
 watch-miner:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0"
-
-watch-miner-with-state:
-	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --state-dir ."
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -71,5 +74,5 @@ build-miner:
 	cargo build --release --bin miner
 
 run-miner-bin:
-	set -a; source ${ENV_FILE}; set +a; \
-	./target/release/miner run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0	
+	set -a; source .env; set +a; \
+	./target/release/miner run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 

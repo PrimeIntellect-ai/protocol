@@ -60,6 +60,9 @@ jobs:
           if [ -f target/release/orchestrator ]; then
             cp target/release/orchestrator release-artifacts/orchestrator-linux-x86_64
           fi
+          if [ -f target/release/discovery ]; then  # Prepare discovery binary
+            cp target/release/discovery release-artifacts/discovery-linux-x86_64
+          fi
 
       - name: Generate release tag
         id: tag
@@ -85,6 +88,7 @@ jobs:
             - Miner
             - Validator
             - Orchestrator
+            - Discovery svc 
             
             Note: This is an automated development build. For stable releases, please use builds from the master branch.
           files: release-artifacts/*

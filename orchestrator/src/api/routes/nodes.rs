@@ -18,8 +18,8 @@ pub fn nodes_routes() -> Scope {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
-    use crate::types::node::Node;
-    use crate::types::node::NodeStatus;
+    use crate::models::node::Node;
+    use crate::models::node::NodeStatus;
     use actix_web::http::StatusCode;
     use actix_web::test;
     use actix_web::App;
@@ -35,7 +35,6 @@ mod tests {
                 .route("/nodes", get().to(get_nodes)),
         )
         .await;
-
         let node = Node {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
@@ -69,7 +68,7 @@ mod tests {
             nodes_array.len()
         );
         assert_eq!(
-            nodes_array[0]["id"],
+            nodes_array[0]["address"],
             node.address.to_string(),
             "Expected address to be {} but got {}",
             node.address,

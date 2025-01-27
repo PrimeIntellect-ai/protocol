@@ -1,5 +1,5 @@
 use crate::console::Console;
-use crate::operations::structs::node::NodeConfig;
+use shared::models::node::Node;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 
@@ -20,20 +20,17 @@ impl<'b> DiscoveryService<'b> {
 
     pub async fn upload_discovery_info(
         &self,
-        node_config: &NodeConfig,
+        node_config: &Node,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Console::section("📦 Uploading discovery info");
 
         let request_data = serde_json::to_value(node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
-        let url = format!(
-            "{}/{}",
-            self.endpoint,
-            self.wallet.wallet.default_signer().address()
-        );
+        println!("Request data: {:?}", request_data);
 
-        let signature_string = sign_request(&url, self.wallet, Some(&request_data)).await?;
+        let signature_string =
+            sign_request(&self.endpoint, self.wallet, Some(&request_data)).await?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -47,7 +44,8 @@ impl<'b> DiscoveryService<'b> {
                 .unwrap(),
         );
         headers.insert("x-signature", signature_string.parse().unwrap());
-        let request_url = format!("{}{}", self.base_url, &url);
+        let request_url = format!("{}{}", self.base_url, &self.endpoint);
+        println!("Request URL: {:?}", request_url);
 
         let response = reqwest::Client::new()
             .put(&request_url)
