@@ -57,4 +57,13 @@ impl NodeStore {
         }
         nodes_vec
     }
+
+    pub fn get_node_by_id(&self, node_id: String) -> Option<DiscoveryNode> {
+        let mut con = self.get_connection();
+        let key = format!("node:{}", node_id);
+
+        let serialized_node: Option<String> = con.get(&key).unwrap();
+
+        serialized_node.map(|node_str| serde_json::from_str(&node_str).unwrap())
+    }
 }
