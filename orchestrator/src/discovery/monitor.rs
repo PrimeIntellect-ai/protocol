@@ -83,9 +83,11 @@ impl<'b> DiscoveryMonitor<'b> {
     pub async fn get_nodes(&self) -> Result<Vec<Node>, Error> {
         let nodes = self.fetch_nodes_from_discovery().await?;
         for node in &nodes {
-            let exists = self.store_context.node_store.get_node(&node.address);
-            if exists.is_some() {
-                continue;
+            // Safely handle the case where the node may not exist
+            if let Some(existing_node) = self.store_context.node_store.get_node(&node.address) {
+                if existing_node.ip_address == node.ip_address {
+                    continue;
+                }
             }
             info!("Discovered new, validated node: {:?}", node.address);
             self.store_context.node_store.add_node(node.clone());

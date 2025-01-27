@@ -19,7 +19,6 @@ impl DockerState {
     pub async fn set_current_task(&self, task: Option<Task>) {
         let mut current_task = self.current_task.lock().await;
         *current_task = task;
-        println!("Current task set in docker state: {:?}", current_task);
     }
 
     pub async fn update_task_state(&self, task_id: Uuid, state: TaskState) {
