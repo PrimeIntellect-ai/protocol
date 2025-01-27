@@ -56,11 +56,7 @@ watch-miner:
 	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0"
 
 watch-validator:
-<<<<<<< HEAD
 	set -a; source ${ENV_FILE}; set +a; \
-=======
-	set -a; source .env; set +a; \
->>>>>>> develop
 	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}"
 
 watch-orchestrator:
@@ -73,8 +69,6 @@ build-miner:
 run-miner-bin:
 	set -a; source .env; set +a; \
 	./target/release/miner run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 
-<<<<<<< HEAD
-=======
 
 SSH_CONNECTION ?= your-ssh-conn string
 EXTERNAL_IP ?= 0.0.0.0
@@ -138,4 +132,3 @@ kill-tunnel:
 remote-miner:
 	@trap 'make kill-tunnel' EXIT; \
 	make watch-miner-remote
->>>>>>> develop
