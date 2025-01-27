@@ -96,3 +96,17 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      # Setup Google Cloud SDK
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+      
+      # Upload to Google Cloud Storage
+      - name: Upload to GCS
+        run: |
+          gsutil -m cp -r release-artifacts/* gs://prime-miner/${{ steps.tag.outputs.tag_name }}/

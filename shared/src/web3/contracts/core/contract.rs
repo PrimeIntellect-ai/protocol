@@ -6,6 +6,15 @@ use alloy::{
     transports::http::{Client, Http},
 };
 
+use std::include_bytes;
+
+macro_rules! include_abi {
+    ($path:expr) => {{
+        const ABI_BYTES: &[u8] = include_bytes!($path);
+        ABI_BYTES
+    }};
+}
+
 pub struct Contract {
     instance: ContractInstance<Http<Client>, WalletProvider, Ethereum>,
     provider: WalletProvider,
@@ -25,14 +34,17 @@ impl Contract {
         wallet: &Wallet,
         address: Address,
     ) -> ContractInstance<Http<Client>, WalletProvider, Ethereum> {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("artifacts")
-            .join("abi")
-            .join(path);
+        let artifact = match path {
+            "compute_registry.json" => {
+                include_abi!("../../../../artifacts/abi/compute_registry.json")
+            }
+            "ai_token.json" => include_abi!("../../../../artifacts/abi/ai_token.json"),
+            "prime_network.json" => include_abi!("../../../../artifacts/abi/prime_network.json"),
+            "compute_pool.json" => include_abi!("../../../../artifacts/abi/compute_pool.json"),
+            _ => panic!("Unknown ABI file: {}", path),
+        };
 
-        let artifact = std::fs::read(&path)
-            .unwrap_or_else(|_| panic!("Failed to read artifact at: {}", path.display()));
-        let abi_json: serde_json::Value = serde_json::from_slice(&artifact)
+        let abi_json: serde_json::Value = serde_json::from_slice(artifact)
             .map_err(|err| {
                 eprintln!("Failed to parse JSON: {}", err);
                 std::process::exit(1);
