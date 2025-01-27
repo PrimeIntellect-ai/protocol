@@ -70,6 +70,10 @@ pub enum Commands {
         /// Auto recover from previous state
         #[arg(long, default_value = "true")]
         auto_recover: bool,
+
+        /// Discovery service URL
+        #[arg(long)]
+        discovery_url: Option<String>,
     },
     /// Run system checks to verify hardware and software compatibility
     Check {},
@@ -92,6 +96,7 @@ pub async fn execute_command(
             state_dir_overwrite,
             disable_state_storing,
             auto_recover,
+            discovery_url,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -152,8 +157,8 @@ pub async fn execute_command(
                 &contracts.prime_network,
             );
 
-            let discovery_service = DiscoveryService::new(&node_wallet_instance, None, None);
-
+            let discovery_service =
+                DiscoveryService::new(&node_wallet_instance, discovery_url.clone(), None);
             let pool_id = U256::from(*compute_pool_id as u32);
             let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
                 Ok(pool) => Arc::new(pool),

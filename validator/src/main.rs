@@ -1,5 +1,6 @@
 use alloy::primitives::{hex, Address};
 use alloy::signers::Signer;
+use clap::Parser;
 use log::LevelFilter;
 use log::{error, info};
 use shared::models::api::ApiResponse;
@@ -9,6 +10,20 @@ use shared::web3::wallet::Wallet;
 use std::env;
 use url::Url;
 
+#[derive(Parser)]
+struct Args {
+    /// RPC URL
+    #[arg(short = 'r', long, default_value = "http://localhost:8545")]
+    rpc_url: String,
+
+    /// Owner key
+    #[arg(short = 'k', long)]
+    validator_key: String,
+
+    /// Discovery url
+    #[arg(long, default_value = "http://localhost:8089")]
+    discovery_url: String,
+}
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     env_logger::Builder::new()
@@ -16,14 +31,15 @@ fn main() {
         .format_timestamp(None)
         .init();
 
-    let private_key_validator =
-        env::var("PRIVATE_KEY_VALIDATOR").expect("PRIVATE_KEY_VALIDATOR not set");
-    let rpc_url = "http://localhost:8545";
-    let validator_wallet = Wallet::new(&private_key_validator, Url::parse(rpc_url).unwrap())
-        .unwrap_or_else(|err| {
-            error!("Error creating wallet: {:?}", err);
-            std::process::exit(1);
-        });
+    let args = Args::parse();
+    let private_key_validator = args.validator_key;
+    let rpc_url: Url = args.rpc_url.parse().unwrap();
+    let discovery_url = args.discovery_url;
+
+    let validator_wallet = Wallet::new(&private_key_validator, rpc_url).unwrap_or_else(|err| {
+        error!("Error creating wallet: {:?}", err);
+        std::process::exit(1);
+    });
 
     let contracts = ContractBuilder::new(&validator_wallet)
         .with_compute_registry()
@@ -48,7 +64,6 @@ fn main() {
 
         let nodes: Result<Vec<DiscoveryNode>, Box<dyn std::error::Error>> =
             runtime.block_on(async {
-                let discovery_url = "http://localhost:8089";
                 let discovery_route = "/api/validator";
                 let address = validator_wallet
                     .wallet
