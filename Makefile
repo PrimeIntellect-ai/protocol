@@ -37,17 +37,11 @@ up:
 	tmuxinator start prime-dev
 down:
 	docker-compose down
-<<<<<<< HEAD
 	tmuxinator stop prime-dev
-	pkill -f "target/debug/miner"
-	pkill -f "target/debug/orchestrator"
-	pkill -f "target/debug/validator"
-=======
 	pkill -f "target/debug/miner" 2>/dev/null || true
 	pkill -f "target/debug/orchestrator" 2>/dev/null || true
 	pkill -f "target/debug/validator" 2>/dev/null || true
 	pkill -f "target/debug/discovery" 2>/dev/null || true
->>>>>>> develop
 
 whitelist-provider:
 	set -a; source ${ENV_FILE}; set +a; \
