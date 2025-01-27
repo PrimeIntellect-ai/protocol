@@ -6,9 +6,9 @@
     mode: '0755'
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-- name: Copy orchestrator binary
-  copy:
-    src: "../../target/release/orchestrator"
+- name: Download latest orchestrator binary
+  get_url:
+    url: "https://storage.googleapis.com/prime-miner/{{ version }}/orchestrator-linux-x86_64"
     dest: "/opt/prime/orchestrator/orchestrator"
     mode: '0755'
     owner: "{{ ansible_user }}"

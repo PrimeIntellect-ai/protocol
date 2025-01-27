@@ -105,7 +105,6 @@ async fn main() -> Result<()> {
         monitor.run().await
     });
 
-    let host = args.host.clone();
     let port = args.port;
 
     let inviter_store_context = store_context.clone();
@@ -135,7 +134,7 @@ async fn main() -> Result<()> {
 
     let server_store_context = store_context.clone();
     tokio::select! {
-        res = start_server(&host, port, server_store_context.clone()) => {
+        res = start_server("0.0.0.0", port, server_store_context.clone()) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
             }

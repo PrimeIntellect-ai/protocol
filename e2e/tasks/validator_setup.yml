@@ -6,9 +6,9 @@
     mode: '0755'
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-- name: Copy validator binary
-  copy:
-    src: "../../target/release/validator"
+- name: Download latest validator binary
+  get_url:
+    url: "https://storage.googleapis.com/prime-miner/{{ version }}/validator-linux-x86_64"
     dest: "/opt/prime/validator/validator"
     mode: '0755'
     owner: "{{ ansible_user }}"
