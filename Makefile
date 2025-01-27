@@ -57,7 +57,7 @@ watch-miner:
 
 watch-validator:
 	set -a; source .env; set +a; \
-	cargo watch -w validator/src -x "run --bin validator"
+	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}"
 
 watch-orchestrator:
 	set -a; source .env; set +a; \
