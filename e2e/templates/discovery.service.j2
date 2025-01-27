@@ -8,9 +8,7 @@ User={{ ansible_user }}
 Environment=VALIDATOR_ADDRESS={{ validator_address }}
 Environment=RPC_URL={{ rpc_url }}
 WorkingDirectory=/opt/prime/discovery
-ExecStart=cargo watch -w discovery/src -x "run --bin discovery -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL}"
-Restart=always
-RestartSec=3
+ExecStart=/opt/prime/discovery/discovery --validator-address ${VALIDATOR_ADDRESS} --rpc-url ${RPC_URL}
 
 [Install]
 WantedBy=multi-user.target

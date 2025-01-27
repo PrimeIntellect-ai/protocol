@@ -6,9 +6,9 @@
     mode: '0755'
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-- name: Copy discovery binary
-  copy:
-    src: "../../target/release/discovery"
+- name: Download discovery binary
+  get_url:
+    url: "https://storage.googleapis.com/prime-miner/{{ version }}/discovery-linux-x86_64"
     dest: "/opt/prime/discovery/discovery"
     mode: '0755'
     owner: "{{ ansible_user }}"

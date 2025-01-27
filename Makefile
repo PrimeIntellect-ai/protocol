@@ -57,15 +57,11 @@ watch-miner:
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w validator/src -x "run --bin validator -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL}"
+	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0 -e 0.0.0.0 -p 8090 -i 10"
-
-# Release
-release: 
-	cargo build --release 
 
 build-miner:
 	cargo build --release --bin miner

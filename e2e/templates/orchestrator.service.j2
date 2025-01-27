@@ -1,0 +1,18 @@
+[Unit]
+Description=Prime Network Orchestrator
+After=network.target
+
+[Service]
+Type=simple
+User={{ ansible_user }}
+Environment=VALIDATOR_ADDRESS={{ validator_address }}
+Environment=RPC_URL={{ rpc_url }}
+Environment=POOL_OWNER_PRIVATE_KEY={{ pool_owner_private_key }}
+Environment=DISCOVERY_URL={{ discovery_url }}
+WorkingDirectory=/opt/prime/orchestrator
+ExecStart=/opt/prime/orchestrator/orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0 -e 0.0.0.0 -p 8090 -i 10 --compute-pool-id 0 --discovery_url $$DISCOVERY_URL
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

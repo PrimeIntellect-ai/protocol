@@ -5,10 +5,11 @@ After=network.target
 [Service]
 Type=simple
 User={{ ansible_user }}
-Environment=VALIDATOR_ADDRESS={{ validator_address }}
+Environment=VALIDATOR_KEY={{ validator_key }}
 Environment=RPC_URL={{ rpc_url }}
+Environment=DISCOVERY_URL={{ discovery_url }}
 WorkingDirectory=/opt/prime/validator
-ExecStart=cargo watch -w validator/src -x "run --bin validator -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL}"
+ExecStart=/opt/prime/validator/validator --validator-key $${VALIDATOR_KEY} --rpc-url $${RPC_URL} --discovery-url $${DISCOVERY_URL}
 Restart=always
 RestartSec=3
 

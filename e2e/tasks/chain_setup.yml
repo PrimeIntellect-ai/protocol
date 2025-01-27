@@ -1,69 +1,65 @@
-- hosts: chain
-  become: yes
-  tasks:
-    - name: Install system dependencies
-      apt:
-        name:
-          - curl
-          - git
-          - build-essential
-          - tmux
-          - rsync
-          - sudo
-        state: present
-        update_cache: yes
-        
-    - name: Download and install Foundryup
-      shell: |
-        curl -L https://foundry.paradigm.xyz | bash
-      args:
-        creates: /usr/local/bin/foundryup
-        
-    - name: Install Foundry tools
-      shell: |
-        . ~/.bashrc
-        PATH=$PATH:$HOME/.foundry/bin
-        foundryup
-      args:
-        executable: /bin/bash
-        
-    - name: Start Anvil in tmux session
-      shell: |
-        . ~/.bashrc
-        tmux new-session -d -s anvil "PATH=$HOME/.foundry/bin:$PATH anvil --host 0.0.0.0 --port 8545"
-      args:
-        executable: /bin/bash
-        
-    - name: Wait for Anvil to start
-      wait_for:
-        port: 8545
-        timeout: 30
+---
+- name: Ensure tmux is installed
+  apt:
+    name: tmux
+    state: present
+  become: true
 
-    - name: Debug path
-      debug:
-        msg: "Smart contracts path is {{ smart_contracts_dir }}"
+- name: Kill any existing root-owned anvil processes
+  shell: |
+    pkill -f "anvil --host" || true
+  become: true
+  ignore_errors: yes
 
-    - name: Create directory for smart contracts
-      file:
-        path: /opt/smart-contracts
-        state: directory
-        mode: '0755'
+- name: Kill any existing tmux sessions
+  shell: |
+    tmux kill-session -t anvil || true
+  become: true
+  ignore_errors: yes
 
-    - name: Copy smart contracts to remote machine
-      synchronize:
-        src: "{{ smart_contracts_dir }}/"
-        dest: /opt/smart-contracts/
-        rsync_opts:
-          - "--exclude=.git"
-        
-    - name: Make deploy script executable
-      file:
-        path: /opt/smart-contracts/deploy.sh
-        mode: '0755'
+- name: Download and install Foundry tools
+  shell: |
+    curl -L https://foundry.paradigm.xyz | bash && $HOME/.foundry/bin/foundryup
+  become: true
 
-    - name: Run deployment script
-      shell: |
-        cd /opt/smart-contracts
-        PATH=$HOME/.foundry/bin:$PATH ./deploy.sh
-      args:
-        executable: /bin/bash
+- name: Start Anvil in tmux session
+  shell: |
+    source ~/.bashrc
+    tmux new-session -d -s anvil "anvil --host 0.0.0.0 --port 8545"
+  args:
+    executable: /bin/bash
+  become: true
+
+- name: Wait for Anvil to start
+  wait_for:
+    port: 8545
+    timeout: 30
+
+- name: Create directory for smart contracts
+  file:
+    path: /opt/smart-contracts
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Copy smart contracts to remote machine
+  synchronize:
+    src: "{{ smart_contracts_dir }}/"
+    dest: /opt/smart-contracts/
+    rsync_opts:
+      - "--exclude=.git"
+
+- name: Make deploy script executable
+  file:
+    path: /opt/smart-contracts/deploy.sh
+    mode: '0755'
+  become: true
+
+- name: Run deployment script
+  shell: |
+    cd /opt/smart-contracts
+    source ~/.bashrc
+    ./deploy.sh
+  args:
+    executable: /bin/bash
+  become: true
