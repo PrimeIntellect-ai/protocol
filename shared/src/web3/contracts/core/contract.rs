@@ -34,16 +34,17 @@ impl Contract {
         wallet: &Wallet,
         address: Address,
     ) -> ContractInstance<Http<Client>, WalletProvider, Ethereum> {
-
         let artifact = match path {
-            "compute_registry.json" => include_abi!("../../../../artifacts/abi/compute_registry.json"),
+            "compute_registry.json" => {
+                include_abi!("../../../../artifacts/abi/compute_registry.json")
+            }
             "ai_token.json" => include_abi!("../../../../artifacts/abi/ai_token.json"),
             "prime_network.json" => include_abi!("../../../../artifacts/abi/prime_network.json"),
             "compute_pool.json" => include_abi!("../../../../artifacts/abi/compute_pool.json"),
             _ => panic!("Unknown ABI file: {}", path),
         };
-    
-        let abi_json: serde_json::Value = serde_json::from_slice(&artifact)
+
+        let abi_json: serde_json::Value = serde_json::from_slice(artifact)
             .map_err(|err| {
                 eprintln!("Failed to parse JSON: {}", err);
                 std::process::exit(1);
