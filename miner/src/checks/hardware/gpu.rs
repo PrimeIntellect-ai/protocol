@@ -1,5 +1,4 @@
 use crate::console::Console;
-use colored::*;
 use lazy_static::lazy_static;
 use nvml_wrapper::Nvml;
 use shared::models::node::GpuSpecs;
@@ -41,7 +40,7 @@ pub fn detect_gpu() -> Option<GpuSpecs> {
                     .collect::<Vec<&str>>()
                     .join("_"),
             ),
-            memory_mb: Some((memory / 1024) as u32), // Convert bytes to MB
+            memory_mb: Some((memory / 1024 / 1024) as u32), // Convert bytes to MB
         }),
         GpuDevice::NotAvailable(_) => {
             //println!("GPU not available: {}", err);
@@ -98,19 +97,4 @@ fn get_gpu_status() -> GpuDevice {
         }
         Err(e) => GpuDevice::NotAvailable(format!("Failed to get device: {}", e)),
     }
-}
-
-#[allow(dead_code)]
-pub fn print_gpu_info(gpu_info: &GpuSpecs) {
-    // Changed parameter type to GpuSpecs
-    println!("\n{}", "GPU Information:".blue().bold());
-    println!(
-        "  Model: {}",
-        gpu_info.model.as_ref().unwrap_or(&"Unknown".to_string())
-    );
-    println!("  Count: {}", gpu_info.count.unwrap_or(0));
-    println!(
-        "  Memory: {:.1} GB",
-        gpu_info.memory_mb.unwrap_or(0) as f64 / BYTES_TO_GB
-    );
 }

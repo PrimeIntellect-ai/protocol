@@ -1,6 +1,6 @@
 use super::{
     gpu::detect_gpu,
-    memory::{get_memory_info, print_memory_info},
+    memory::{convert_to_mb, get_memory_info, print_memory_info},
     storage::get_storage_info,
 };
 use crate::console::Console;
@@ -71,7 +71,12 @@ impl HardwareChecker {
     fn collect_memory_specs(&self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
         let (total_memory, _) = get_memory_info(&self.sys);
         let (total_storage, _) = get_storage_info()?;
-        Ok((total_memory as u32, total_storage as u32))
+
+        // Convert bytes to MB for RAM and GB for storage
+        let ram_mb = convert_to_mb(total_memory);
+        let storage_gb = total_storage;
+
+        Ok((ram_mb as u32, storage_gb as u32))
     }
 
     fn print_system_info(&self, node_config: &Node) {
@@ -89,28 +94,40 @@ impl HardwareChecker {
             }
         }
 
-        // Print Memory and Storage Info
+        // Print Memory Info
         if let Some(compute_specs) = &node_config.compute_specs {
-            print_memory_info(compute_specs.ram_mb.unwrap_or(0) as u64, 0);
-            // TODO: Print sotrage info
+            let (total_memory, free_memory) = get_memory_info(&self.sys);
+            print_memory_info(total_memory, free_memory);
+
+            // Print Storage Info
+            if let Some(storage_gb) = compute_specs.storage_gb {
+                Console::section("Storage Information:");
+                Console::info("Total Storage", &format!("{} GB", storage_gb));
+            }
         }
 
         // Print GPU Info
-        match &node_config.compute_specs {
-            Some(compute_specs) => {
-                if let Some(gpu) = &compute_specs.gpu {
-                    Console::title("GPU Information:");
-                    Console::info("Count", &gpu.count.unwrap_or(0).to_string());
-                    Console::info(
-                        "Model",
-                        gpu.model.as_ref().unwrap_or(&"Unknown".to_string()),
-                    );
-                    Console::info("Memory", &gpu.memory_mb.unwrap_or(0).to_string());
+        if let Some(compute_specs) = &node_config.compute_specs {
+            if let Some(gpu) = &compute_specs.gpu {
+                Console::title("GPU Information:");
+                Console::info("Count", &gpu.count.unwrap_or(0).to_string());
+                Console::info(
+                    "Model",
+                    gpu.model.as_ref().unwrap_or(&"Unknown".to_string()),
+                );
+                // Convert memory from MB to GB and round
+
+                let memory_gb = if let Some(memory_mb) = gpu.memory_mb {
+                    memory_mb as f64 / 1024.0
                 } else {
-                    Console::warning("No compatible GPU detected");
-                }
+                    0.0
+                };
+                Console::info("Memory", &format!("{:.0} GB", memory_gb));
+            } else {
+                Console::warning("No compatible GPU detected");
             }
-            None => Console::warning("No compute specs available"),
+        } else {
+            Console::warning("No compute specs available");
         }
     }
 }

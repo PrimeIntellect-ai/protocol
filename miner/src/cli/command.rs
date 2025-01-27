@@ -159,25 +159,6 @@ pub async fn execute_command(
 
             let discovery_service =
                 DiscoveryService::new(&node_wallet_instance, discovery_url.clone(), None);
-            let docker_service = Arc::new(DockerService::new(cancellation_token.clone()));
-
-            let heartbeat_service = HeartbeatService::new(
-                Duration::from_secs(10),
-                state_dir_overwrite.clone(),
-                *disable_state_storing,
-                cancellation_token.clone(),
-                task_handles.clone(),
-                node_wallet_instance.clone(),
-                docker_service.clone(),
-            );
-
-            tokio::spawn(async move {
-                if let Err(e) = docker_service.run().await {
-                    Console::error(&format!("❌ Docker service failed: {}", e));
-                }
-            });
-
-            Console::info("═", &"═".repeat(50));
             let pool_id = U256::from(*compute_pool_id as u32);
             let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
                 Ok(pool) => Arc::new(pool),
@@ -208,12 +189,34 @@ pub async fn execute_command(
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
             };
-
             let hardware_check = HardwareChecker::new();
             let node_config = hardware_check.enrich_node_config(node_config).unwrap();
 
             // TODO: Move to proper check
             let _ = software_check::run_software_check();
+            let has_gpu = match node_config.compute_specs {
+                Some(ref specs) => specs.gpu.is_some(),
+                None => {
+                    Console::warning("Compute specs are not available, assuming no GPU.");
+                    false
+                }
+            };
+            let docker_service = Arc::new(DockerService::new(cancellation_token.clone(), has_gpu));
+            let heartbeat_service = HeartbeatService::new(
+                Duration::from_secs(10),
+                state_dir_overwrite.clone(),
+                *disable_state_storing,
+                cancellation_token.clone(),
+                task_handles.clone(),
+                node_wallet_instance.clone(),
+                docker_service.clone(),
+            );
+
+            tokio::spawn(async move {
+                if let Err(e) = docker_service.run().await {
+                    Console::error(&format!("❌ Docker service failed: {}", e));
+                }
+            });
 
             let mut attempts = 0;
             let max_attempts = 10;
@@ -269,7 +272,10 @@ pub async fn execute_command(
             Console::success("✅ Discovery info uploaded");
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
-            Console::info("🌐 Starting endpoint service", "");
+            Console::info(
+                "🌐 Starting endpoint service and waiting for sync with orchestrator",
+                "",
+            );
 
             if let Err(err) = {
                 let heartbeat_clone = heartbeat_service.unwrap().clone();
@@ -281,7 +287,7 @@ pub async fn execute_command(
                 }
 
                 start_server(
-                    external_ip,
+                    "0.0.0.0",
                     *port,
                     contracts.clone(),
                     node_wallet_instance.clone(),

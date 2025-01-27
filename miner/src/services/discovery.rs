@@ -27,8 +27,6 @@ impl<'b> DiscoveryService<'b> {
         let request_data = serde_json::to_value(node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
-        println!("Request data: {:?}", request_data);
-
         let signature_string =
             sign_request(&self.endpoint, self.wallet, Some(&request_data)).await?;
 

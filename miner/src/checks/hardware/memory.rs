@@ -1,7 +1,7 @@
 use crate::console::Console;
 use sysinfo::System;
 
-const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
+const BYTES_TO_GB: u64 = 1024 * 1024 * 1024;
 
 pub fn get_memory_info(sys: &System) -> (u64, u64) {
     let total_memory = sys.total_memory();
@@ -9,16 +9,16 @@ pub fn get_memory_info(sys: &System) -> (u64, u64) {
     (total_memory, free_memory)
 }
 
+pub fn convert_to_mb(memory: u64) -> u64 {
+    memory / (1024 * 1024)
+}
+
 pub fn print_memory_info(total_memory: u64, free_memory: u64) {
+    let total_gb = (total_memory + BYTES_TO_GB / 2) / BYTES_TO_GB;
+    let free_gb = (free_memory + BYTES_TO_GB / 2) / BYTES_TO_GB;
     Console::section("Memory Information:");
-    Console::info(
-        "Total Memory",
-        &format!("{:.1} GB", total_memory as f64 / BYTES_TO_GB),
-    );
-    Console::info(
-        "Free Memory",
-        &format!("{:.1} GB", free_memory as f64 / BYTES_TO_GB),
-    );
+    Console::info("Total Memory", &format!("{:.1} GB", total_gb));
+    Console::info("Free Memory", &format!("{:.1} GB", free_gb));
 }
 
 #[cfg(test)]

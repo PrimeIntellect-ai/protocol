@@ -40,6 +40,7 @@ pub async fn register_node(
 pub fn node_routes() -> Scope {
     web::scope("/api/nodes").route("", put().to(register_node))
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

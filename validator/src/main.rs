@@ -23,15 +23,14 @@ struct Args {
     #[arg(long, default_value = "http://localhost:8089")]
     discovery_url: String,
 }
-
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    let args = Args::parse();
     env_logger::Builder::new()
         .filter_level(LevelFilter::Info)
         .format_timestamp(None)
         .init();
 
+    let args = Args::parse();
     let private_key_validator = args.validator_key;
     let rpc_url: Url = args.rpc_url.parse().unwrap();
     let discovery_url = args.discovery_url;
@@ -96,10 +95,9 @@ fn main() {
 
                 Ok(parsed_response.data)
             });
-
         let non_validated_nodes: Vec<DiscoveryNode> = nodes
             .iter()
-            .filter_map(|node_vec| node_vec.first())
+            .flatten()
             .filter(|node| !node.is_validated)
             .cloned()
             .collect();
