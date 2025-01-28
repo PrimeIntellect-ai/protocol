@@ -1,0 +1,65 @@
+---
+- name: Ensure tmux is installed
+  apt:
+    name: tmux
+    state: present
+  become: true
+
+- name: Kill any existing root-owned anvil processes
+  shell: |
+    pkill -f "anvil --host" || true
+  become: true
+  ignore_errors: yes
+
+- name: Kill any existing tmux sessions
+  shell: |
+    tmux kill-session -t anvil || true
+  become: true
+  ignore_errors: yes
+
+- name: Download and install Foundry tools
+  shell: |
+    curl -L https://foundry.paradigm.xyz | bash && $HOME/.foundry/bin/foundryup
+  become: true
+
+- name: Start Anvil in tmux session
+  shell: |
+    source ~/.bashrc
+    tmux new-session -d -s anvil "anvil --host 0.0.0.0 --port 8545"
+  args:
+    executable: /bin/bash
+  become: true
+
+- name: Wait for Anvil to start
+  wait_for:
+    port: 8545
+    timeout: 30
+
+- name: Create directory for smart contracts
+  file:
+    path: /opt/smart-contracts
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Copy smart contracts to remote machine
+  synchronize:
+    src: "{{ smart_contracts_dir }}/"
+    dest: /opt/smart-contracts/
+    rsync_opts:
+      - "--exclude=.git"
+
+- name: Make deploy script executable
+  file:
+    path: /opt/smart-contracts/deploy.sh
+    mode: '0755'
+  become: true
+
+- name: Run deployment script
+  shell: |
+    cd /opt/smart-contracts
+    source ~/.bashrc
+    ./deploy.sh
+  args:
+    executable: /bin/bash
+  become: true

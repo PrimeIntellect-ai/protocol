@@ -93,10 +93,10 @@ pub async fn execute_command(
             compute_pool_id,
             dry_run: _,
             rpc_url,
+            discovery_url,
             state_dir_overwrite,
             disable_state_storing,
             auto_recover,
-            discovery_url,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(

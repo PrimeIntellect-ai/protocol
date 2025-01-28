@@ -24,3 +24,4 @@ Thumbs.db
 /private/
 
 .env
+.env.remote

@@ -1,0 +1,28 @@
+---
+- name: Create validator directory
+  file:
+    path: "/opt/prime/validator"
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+- name: Download latest validator binary
+  get_url:
+    url: "https://storage.googleapis.com/prime-miner/{{ version }}/validator-linux-x86_64"
+    dest: "/opt/prime/validator/validator"
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+- name: Create systemd service file for validator
+  template:
+    src: ../templates/validator.service.j2
+    dest: /etc/systemd/system/prime-validator.service
+    mode: '0644'
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+- name: Start and enable validator service
+  systemd:
+    name: prime-validator
+    state: started
+    enabled: yes
