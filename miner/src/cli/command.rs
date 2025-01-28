@@ -10,10 +10,12 @@ use crate::operations::provider::ProviderOperations;
 use crate::services::discovery::DiscoveryService;
 use crate::TaskHandles;
 use alloy::primitives::U256;
+use anyhow::Error;
 use clap::{Parser, Subcommand};
 use log::debug;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
+use shared::web3::contracts::structs::compute_pool::PoolInfo;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
@@ -76,7 +78,7 @@ pub enum Commands {
         discovery_url: Option<String>,
 
         // Amount of stake to use when provider is newly registered
-        #[arg(long)]
+        #[arg(long, default_value = "10")]
         provider_stake: i32,
     },
     /// Run system checks to verify hardware and software compatibility
@@ -165,18 +167,32 @@ pub async fn execute_command(
             let discovery_service =
                 DiscoveryService::new(&node_wallet_instance, discovery_url.clone(), None);
             let pool_id = U256::from(*compute_pool_id as u32);
-            let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
-                Ok(pool) => Arc::new(pool),
-                Err(e) => {
-                    Console::error(&format!("❌ Failed to get pool info. {}", e));
-                    // TODO: Use proper error
-                    return Ok(());
+
+            let pool_info: Result<Arc<PoolInfo>, Error> = {
+                loop {
+                    let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
+                        Ok(pool) => Arc::new(pool),
+                        Err(e) => {
+                            Console::error(&format!("❌ Failed to get pool info. {}", e));
+                            // TODO: Use proper error
+                            return Ok(())
+                        }
+                    };
+                    if pool_info.status != PoolStatus::ACTIVE {
+                        Console::error("❌ Pool is not active yet. Checking again in 15 seconds.");
+                        tokio::select! {
+                            _ = tokio::time::sleep(tokio::time::Duration::from_secs(15)) => {}
+                            _ = cancellation_token.cancelled() => {
+                                return Ok(());
+                            }
+                        }
+                    } else {
+                        break Ok(pool_info);
+                    }
                 }
             };
-            if pool_info.status != PoolStatus::ACTIVE {
-                Console::error("❌ Pool is not active.");
-                return Ok(());
-            }
+
+            let pool_info = pool_info.unwrap();
 
             let node_config = Node {
                 id: node_wallet_instance
@@ -224,7 +240,7 @@ pub async fn execute_command(
             });
 
             let mut attempts = 0;
-            let max_attempts = 10;
+            let max_attempts = 100;
             let stake = U256::from(*provider_stake);
             while attempts < max_attempts {
                 let spinner = Console::spinner("Registering provider...");

@@ -15,6 +15,7 @@ impl ComputePool {
         let instance = Contract::new(COMPUTE_POOL_ADDRESS, wallet, abi_file_path);
         Self { instance }
     }
+
     pub async fn get_pool_info(
         &self,
         pool_id: U256,

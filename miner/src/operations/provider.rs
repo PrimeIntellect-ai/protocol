@@ -48,12 +48,8 @@ impl<'c> ProviderOperations<'c> {
         let provider_exists = provider.provider_address != Address::default();
         Console::info("AI Token Balance", &format!("{} tokens", balance));
         // Console::info("Is whitelisted", &format!("{:?}", provider.is_whitelisted));
-
+        Console::info("Provider registered:", &format!("{}", provider_exists));
         if !provider_exists {
-            Console::info(
-                "Provider is not registered yet.",
-                &format!("{}", provider_exists),
-            );
             // TODO: Remove hardcoded stake
             let spinner = Console::spinner("Approving AI Token for Stake transaction");
             let approve_tx = self
