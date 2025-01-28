@@ -28,7 +28,7 @@ impl<'c> ProviderOperations<'c> {
         }
     }
 
-    pub async fn register_provider(&self) -> Result<(), ProviderError> {
+    pub async fn register_provider(&self, stake: U256) -> Result<(), ProviderError> {
         Console::section("🏗️ Registering Provider");
 
         let address = self.wallet.wallet.default_signer().address();
@@ -46,19 +46,16 @@ impl<'c> ProviderOperations<'c> {
             .map_err(|_| ProviderError::Other)?;
 
         let provider_exists = provider.provider_address != Address::default();
-
-        Console::info(
-            "Provider address",
-            &format!("{:?}", provider.provider_address),
-        );
         Console::info("AI Token Balance", &format!("{} tokens", balance));
-        Console::info("Is whitelisted", &format!("{:?}", provider.is_whitelisted));
-        Console::info("Provider registered", &format!("{}", provider_exists));
+        // Console::info("Is whitelisted", &format!("{:?}", provider.is_whitelisted));
 
         if !provider_exists {
+            Console::info(
+                "Provider is not registered yet.",
+                &format!("{}", provider_exists),
+            );
             // TODO: Remove hardcoded stake
-            let stake: U256 = U256::from(10);
-            let spinner = Console::spinner("Approving AI Token");
+            let spinner = Console::spinner("Approving AI Token for Stake transaction");
             let approve_tx = self
                 .ai_token
                 .approve(stake)
@@ -73,8 +70,11 @@ impl<'c> ProviderOperations<'c> {
                 .register_provider(stake)
                 .await
                 .map_err(|_| ProviderError::Other)?;
+            Console::info(
+                "Registration transaction completed: ",
+                &format!("{:?}", register_tx),
+            );
             spinner.finish_and_clear();
-            Console::success(format!("Provider registered: {:?}", register_tx).as_str());
         }
 
         // Get provider details again  - cleanup later
@@ -90,10 +90,11 @@ impl<'c> ProviderOperations<'c> {
 
         let provider_exists = provider.provider_address != Address::default();
         if !provider_exists {
-            Console::error("Provider could not be registered.");
+            Console::error("Provider could not be registered. Please ensure your token balance is high enough.");
             return Err(ProviderError::Other);
         }
 
+        Console::success("Provider registered");
         if !provider.is_whitelisted {
             return Err(ProviderError::NotWhitelisted);
         }

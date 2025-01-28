@@ -74,6 +74,10 @@ pub enum Commands {
         /// Discovery service URL
         #[arg(long)]
         discovery_url: Option<String>,
+
+        // Amount of stake to use when provider is newly registered
+        #[arg(long)]
+        provider_stake: i32,
     },
     /// Run system checks to verify hardware and software compatibility
     Check {},
@@ -93,6 +97,7 @@ pub async fn execute_command(
             compute_pool_id,
             dry_run: _,
             rpc_url,
+            provider_stake,
             discovery_url,
             state_dir_overwrite,
             disable_state_storing,
@@ -220,9 +225,10 @@ pub async fn execute_command(
 
             let mut attempts = 0;
             let max_attempts = 10;
+            let stake = U256::from(*provider_stake);
             while attempts < max_attempts {
                 let spinner = Console::spinner("Registering provider...");
-                if let Err(e) = provider_ops.register_provider().await {
+                if let Err(e) = provider_ops.register_provider(stake).await {
                     spinner.finish_and_clear(); // Finish spinner before logging error
                     if let ProviderError::NotWhitelisted = e {
                         Console::error("❌ Provider not whitelisted, retrying in 15 seconds...");
