@@ -36,6 +36,7 @@ setup:
 	make transfer-eth-to-pool-owner
 	make create-domain
 	make create-compute-pool
+	make start-compute-pool
 
 up:
 	tmuxinator start prime-dev

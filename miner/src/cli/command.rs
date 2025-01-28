@@ -175,7 +175,7 @@ pub async fn execute_command(
                         Err(e) => {
                             Console::error(&format!("❌ Failed to get pool info. {}", e));
                             // TODO: Use proper error
-                            return Ok(())
+                            return Ok(());
                         }
                     };
                     if pool_info.status != PoolStatus::ACTIVE {
