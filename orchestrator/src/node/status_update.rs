@@ -154,8 +154,8 @@ mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
     use crate::api::tests::helper::setup_contract;
-    use crate::models::node::Node;
     use crate::models::node::NodeStatus;
+    use crate::models::node::OrchestratorNode;
     use alloy::primitives::Address;
     use std::str::FromStr;
     use std::time::Duration;
@@ -173,7 +173,7 @@ mod tests {
             Arc::new(contracts),
             0,
         );
-        let node = Node {
+        let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
@@ -214,7 +214,7 @@ mod tests {
         let app_state = create_test_app_state().await;
         let contracts = setup_contract();
 
-        let node = Node {
+        let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
@@ -253,7 +253,7 @@ mod tests {
         let app_state = create_test_app_state().await;
         let contracts = setup_contract();
 
-        let node = Node {
+        let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
@@ -297,7 +297,7 @@ mod tests {
         let app_state = create_test_app_state().await;
         let contracts = setup_contract();
 
-        let node = Node {
+        let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
@@ -341,7 +341,7 @@ mod tests {
         let app_state = create_test_app_state().await;
         let contracts = setup_contract();
 
-        let node = Node {
+        let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
@@ -391,7 +391,7 @@ mod tests {
         let app_state = create_test_app_state().await;
         let contracts = setup_contract();
 
-        let node1 = Node {
+        let node1 = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
@@ -405,7 +405,7 @@ mod tests {
             .set_unhealthy_counter(&node1.address, 1);
         let _: () = app_state.store_context.node_store.add_node(node1.clone());
 
-        let node2 = Node {
+        let node2 = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
@@ -462,7 +462,7 @@ mod tests {
         let app_state = create_test_app_state().await;
         let contracts = setup_contract();
 
-        let node = Node {
+        let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,

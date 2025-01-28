@@ -1,4 +1,4 @@
-use crate::models::node::Node;
+use crate::models::node::OrchestratorNode;
 use crate::store::core::StoreContext;
 use anyhow::Error;
 use anyhow::Result;
@@ -49,7 +49,7 @@ impl<'b> DiscoveryMonitor<'b> {
         }
     }
 
-    pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<Node>, Error> {
+    pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<OrchestratorNode>, Error> {
         let discovery_route = format!("/api/pool/{}", self.compute_pool_id);
         let address = self.coordinator_wallet.address().to_string();
 
@@ -75,12 +75,12 @@ impl<'b> DiscoveryMonitor<'b> {
         let nodes = nodes
             .into_iter()
             .filter(|node| node.is_validated)
-            .map(Node::from)
-            .collect::<Vec<Node>>();
+            .map(OrchestratorNode::from)
+            .collect::<Vec<OrchestratorNode>>();
         Ok(nodes)
     }
 
-    pub async fn get_nodes(&self) -> Result<Vec<Node>, Error> {
+    pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
         let nodes = self.fetch_nodes_from_discovery().await?;
         for node in &nodes {
             // Safely handle the case where the node may not exist

@@ -25,6 +25,10 @@ create-compute-pool:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example compute_pool -- --domain-id "$${DOMAIN_ID:-0}" --compute-manager-key "$${POOL_OWNER_ADDRESS}" --pool-name "$${POOL_NAME:-default_pool}" --pool-data-uri "$${POOL_DATA_URI:-http://default.pool.data}" --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL}
 
+start-compute-pool:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example start_compute_pool -- --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL} --pool-id="$${POOL_ID:-0}"0
+
 setup: 
 	make set-min-stake-amount
 	make mint-ai-tokens-to-provider
@@ -32,6 +36,7 @@ setup:
 	make transfer-eth-to-pool-owner
 	make create-domain
 	make create-compute-pool
+	make start-compute-pool
 
 up:
 	tmuxinator start prime-dev

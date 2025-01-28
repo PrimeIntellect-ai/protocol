@@ -74,6 +74,10 @@ pub enum Commands {
         /// Discovery service URL
         #[arg(long)]
         discovery_url: Option<String>,
+
+        // Amount of stake to use when provider is newly registered
+        #[arg(long, default_value = "10")]
+        provider_stake: i32,
     },
     /// Run system checks to verify hardware and software compatibility
     Check {},
@@ -93,6 +97,7 @@ pub async fn execute_command(
             compute_pool_id,
             dry_run: _,
             rpc_url,
+            provider_stake,
             discovery_url,
             state_dir_overwrite,
             disable_state_storing,
@@ -160,18 +165,23 @@ pub async fn execute_command(
             let discovery_service =
                 DiscoveryService::new(&node_wallet_instance, discovery_url.clone(), None);
             let pool_id = U256::from(*compute_pool_id as u32);
-            let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
-                Ok(pool) => Arc::new(pool),
-                Err(e) => {
-                    Console::error(&format!("❌ Failed to get pool info. {}", e));
-                    // TODO: Use proper error
-                    return Ok(());
+
+            let pool_info = loop {
+                match contracts.compute_pool.get_pool_info(pool_id).await {
+                    Ok(pool) if pool.status == PoolStatus::ACTIVE => break Arc::new(pool),
+                    Ok(_) => {
+                        Console::error("❌ Pool is not active yet. Checking again in 15 seconds.");
+                        tokio::select! {
+                            _ = tokio::time::sleep(tokio::time::Duration::from_secs(15)) => {},
+                            _ = cancellation_token.cancelled() => return Ok(()),
+                        }
+                    }
+                    Err(e) => {
+                        Console::error(&format!("❌ Failed to get pool info. {}", e));
+                        return Ok(());
+                    }
                 }
             };
-            if pool_info.status != PoolStatus::ACTIVE {
-                Console::error("❌ Pool is not active.");
-                return Ok(());
-            }
 
             let node_config = Node {
                 id: node_wallet_instance
@@ -219,10 +229,11 @@ pub async fn execute_command(
             });
 
             let mut attempts = 0;
-            let max_attempts = 10;
+            let max_attempts = 100;
+            let stake = U256::from(*provider_stake);
             while attempts < max_attempts {
                 let spinner = Console::spinner("Registering provider...");
-                if let Err(e) = provider_ops.register_provider().await {
+                if let Err(e) = provider_ops.register_provider(stake).await {
                     spinner.finish_and_clear(); // Finish spinner before logging error
                     if let ProviderError::NotWhitelisted = e {
                         Console::error("❌ Provider not whitelisted, retrying in 15 seconds...");

@@ -18,8 +18,8 @@ pub fn nodes_routes() -> Scope {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
-    use crate::models::node::Node;
     use crate::models::node::NodeStatus;
+    use crate::models::node::OrchestratorNode;
     use actix_web::http::StatusCode;
     use actix_web::test;
     use actix_web::App;
@@ -35,7 +35,7 @@ mod tests {
                 .route("/nodes", get().to(get_nodes)),
         )
         .await;
-        let node = Node {
+        let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
             ip_address: "127.0.0.1".to_string(),
             port: 8080,

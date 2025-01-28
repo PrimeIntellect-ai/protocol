@@ -1,5 +1,5 @@
-use crate::models::node::Node;
 use crate::models::node::NodeStatus;
+use crate::models::node::OrchestratorNode;
 use crate::store::core::RedisStore;
 use alloy::primitives::Address;
 use log::info;
@@ -18,20 +18,20 @@ impl NodeStore {
         Self { redis }
     }
 
-    pub fn get_nodes(&self) -> Vec<Node> {
+    pub fn get_nodes(&self) -> Vec<OrchestratorNode> {
         let mut con = self.redis.client.get_connection().unwrap();
         let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).unwrap();
-        let mut nodes: Vec<Node> = Vec::new();
+        let mut nodes: Vec<OrchestratorNode> = Vec::new();
 
         for node in keys {
             let node_string: String = con.get(node).unwrap();
-            let node: Node = Node::from_string(&node_string);
+            let node: OrchestratorNode = OrchestratorNode::from_string(&node_string);
             nodes.push(node);
         }
         nodes
     }
 
-    pub fn add_node(&self, node: Node) {
+    pub fn add_node(&self, node: OrchestratorNode) {
         let mut con = self.redis.client.get_connection().unwrap();
         let _: () = con
             .set(
@@ -41,21 +41,21 @@ impl NodeStore {
             .unwrap();
     }
 
-    pub fn get_node(&self, address: &Address) -> Option<Node> {
+    pub fn get_node(&self, address: &Address) -> Option<OrchestratorNode> {
         let mut con = self.redis.client.get_connection().unwrap();
         let node_string: Option<String> = con
             .get(format!("{}:{}", ORCHESTRATOR_BASE_KEY, address))
             .unwrap();
-        node_string.map(|node_string| Node::from_string(&node_string))
+        node_string.map(|node_string| OrchestratorNode::from_string(&node_string))
     }
 
-    pub fn get_uninvited_nodes(&self) -> Vec<Node> {
+    pub fn get_uninvited_nodes(&self) -> Vec<OrchestratorNode> {
         let mut con = self.redis.client.get_connection().unwrap();
         let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).unwrap();
-        let nodes: Vec<Node> = keys
+        let nodes: Vec<OrchestratorNode> = keys
             .iter()
             .filter_map(|key| con.get::<_, String>(key).ok())
-            .filter_map(|node_json| serde_json::from_str::<Node>(&node_json).ok())
+            .filter_map(|node_json| serde_json::from_str::<OrchestratorNode>(&node_json).ok())
             .filter(|node| matches!(node.status, NodeStatus::Discovered))
             .collect();
         nodes
@@ -65,7 +65,7 @@ impl NodeStore {
         let mut con = self.redis.client.get_connection().unwrap();
         let node_key: String = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
         let node_string: String = con.get(&node_key).unwrap();
-        let mut node: Node = serde_json::from_str(&node_string).unwrap();
+        let mut node: OrchestratorNode = serde_json::from_str(&node_string).unwrap();
         node.status = status;
         let node_string = node.to_string();
         let _: () = con.set(&node_key, node_string).unwrap();
@@ -85,7 +85,7 @@ impl NodeStore {
         match node_value {
             Value::BulkString(node_string) => {
                 // TODO: Use from redis value
-                let mut node: Node = serde_json::from_slice(&node_string)
+                let mut node: OrchestratorNode = serde_json::from_slice(&node_string)
                     .map_err(|_| {
                         redis::RedisError::from((
                             redis::ErrorKind::TypeError,
@@ -120,8 +120,8 @@ impl NodeStore {
 #[cfg(test)]
 mod tests {
     use crate::api::tests::helper::create_test_app_state;
-    use crate::models::node::Node;
     use crate::models::node::NodeStatus;
+    use crate::models::node::OrchestratorNode;
     use alloy::primitives::Address;
     use std::str::FromStr;
 
@@ -130,7 +130,7 @@ mod tests {
         let app_state = create_test_app_state().await;
         let node_store = &app_state.store_context.node_store;
 
-        let uninvited_node = Node {
+        let uninvited_node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
             ip_address: "192.168.1.1".to_string(),
             port: 8080,
@@ -139,7 +139,7 @@ mod tests {
             task_state: None,
         };
 
-        let healthy_node = Node {
+        let healthy_node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000002").unwrap(),
             ip_address: "192.168.1.2".to_string(),
             port: 8081,
