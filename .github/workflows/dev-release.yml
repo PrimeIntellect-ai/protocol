@@ -14,7 +14,7 @@ permissions:
 jobs:
   cleanup-old-releases:
     name: Cleanup Old Development Releases
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Delete old development releases
         uses: dev-drprasad/delete-older-releases@v0.3.2
@@ -29,7 +29,7 @@ jobs:
     name: Build and Create Development Release
     needs: cleanup-old-releases
     # Using a larger runner with more CPU cores and memory
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
       - uses: actions/checkout@v3
