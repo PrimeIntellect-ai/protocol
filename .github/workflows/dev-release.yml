@@ -110,3 +110,5 @@ jobs:
       - name: Upload to GCS
         run: |
           gsutil -m cp -r release-artifacts/* gs://prime-miner/${{ steps.tag.outputs.tag_name }}/
+          gsutil -m cp -r gs://prime-miner/${{ steps.tag.outputs.tag_name }}/* gs://prime-miner/latest/
+          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-miner/latest/**/*
