@@ -56,7 +56,8 @@ impl<'c> ProviderOperations<'c> {
         Console::info("Provider registered", &format!("{}", provider_exists));
 
         if !provider_exists {
-            let stake: U256 = U256::from(100);
+            // TODO: Remove hardcoded stake
+            let stake: U256 = U256::from(10);
             let spinner = Console::spinner("Approving AI Token");
             let approve_tx = self
                 .ai_token
