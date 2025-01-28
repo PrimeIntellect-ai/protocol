@@ -39,7 +39,6 @@ impl ChainSync {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        // TODO: Implement chain sync
                         let nodes = node_store_clone.get_nodes();
                         for node in nodes {
                             let mut n = node.clone();

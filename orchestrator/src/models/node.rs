@@ -4,7 +4,7 @@ use shared::models::node::DiscoveryNode;
 use shared::models::task::TaskState;
 use std::fmt;
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Node {
+pub struct OrchestratorNode {
     pub address: Address,
     pub ip_address: String,
     pub port: u16,
@@ -14,7 +14,7 @@ pub struct Node {
     pub task_state: Option<TaskState>,
 }
 
-impl From<DiscoveryNode> for Node {
+impl From<DiscoveryNode> for OrchestratorNode {
     fn from(discovery_node: DiscoveryNode) -> Self {
         Self {
             address: discovery_node.id.parse().unwrap(),
@@ -27,19 +27,7 @@ impl From<DiscoveryNode> for Node {
     }
 }
 
-impl Node {
-    #[allow(dead_code)]
-    pub fn new(address: Address, ip_address: String, port: u16) -> Self {
-        Self {
-            address,
-            ip_address,
-            port,
-            status: NodeStatus::Discovered,
-            task_id: None,
-            task_state: None,
-        }
-    }
-
+impl OrchestratorNode {
     pub fn from_string(s: &str) -> Self {
         let mut node: Self = serde_json::from_str(s).unwrap();
         if node.status == NodeStatus::Dead {
@@ -50,7 +38,7 @@ impl Node {
     }
 }
 
-impl fmt::Display for Node {
+impl fmt::Display for OrchestratorNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }

@@ -1,5 +1,5 @@
-use crate::models::node::Node;
 use crate::models::node::NodeStatus;
+use crate::models::node::OrchestratorNode;
 use crate::store::core::StoreContext;
 use alloy::primitives::utils::keccak256 as keccak;
 use alloy::primitives::U256;
@@ -53,7 +53,7 @@ impl<'a> NodeInviter<'a> {
         }
     }
 
-    async fn _generate_invite(&self, node: Node) -> Result<[u8; 65]> {
+    async fn _generate_invite(&self, node: OrchestratorNode) -> Result<[u8; 65]> {
         let domain_id: [u8; 32] = U256::from(self.domain_id).to_be_bytes();
         let pool_id: [u8; 32] = U256::from(self.pool_id).to_be_bytes();
 
@@ -70,7 +70,7 @@ impl<'a> NodeInviter<'a> {
         Ok(signature)
     }
 
-    async fn _send_invite(&self, node: Node) -> Result<(), anyhow::Error> {
+    async fn _send_invite(&self, node: OrchestratorNode) -> Result<(), anyhow::Error> {
         let node_to_update = node.clone();
         let node_url = format!("http://{}:{}", node.ip_address, node.port);
         let invite_path = "/invite".to_string();
