@@ -1,3 +1,4 @@
+use super::types::Metric;
 use anyhow::Result;
 use log::error;
 use log::info;
@@ -8,21 +9,36 @@ use tokio::{
     io::{AsyncBufReadExt, BufReader},
     net::UnixListener,
 };
-use super::types::Metric;
+
+const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.miner/metrics.sock";
+const DEFAULT_LINUX_SOCKET: &str = "/var/run/com.prime.miner/metrics.sock";
 
 pub struct TaskBridge {
-    socket_path: String,
+    pub socket_path: String,
 }
 
 impl TaskBridge {
-    pub fn new(socket_path: &str) -> Self {
-        Self {
-            socket_path: socket_path.to_string(),
-        }
+    pub fn new(socket_path: Option<&str>) -> Self {
+        let path = match socket_path {
+            Some(path) => path.to_string(),
+            None => {
+                if cfg!(target_os = "macos") {
+                    DEFAULT_MACOS_SOCKET.to_string()
+                } else {
+                    DEFAULT_LINUX_SOCKET.to_string()
+                }
+            }
+        };
+
+        Self { socket_path: path }
     }
 
     pub async fn run(&self) -> Result<()> {
         let socket_path = Path::new(&self.socket_path);
+
+        if let Some(parent) = socket_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
 
         // Cleanup existing socket if present
         if socket_path.exists() {
@@ -49,14 +65,19 @@ impl TaskBridge {
                             }
                             println!("msg {}", line);
                             match serde_json::from_str::<Metric>(&line) {
+                                
                                 Ok(metric) => {
+                                    if let Err(e) = metric.validate() {
+                                        println!("Invalid metric: {}", e);
+                                        return;
+                                    }
                                     println!("Received metric {} = {}", metric.label, metric.value);
                                 }
                                 Err(e) => {
                                     println!("Failed to parse metric: {}", e);
                                 }
                             }
-                            
+
                             line.clear();
                         }
                     });
@@ -79,7 +100,7 @@ mod tests {
     async fn test_socket_creation() -> Result<()> {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
-        let bridge = TaskBridge::new(socket_path.to_str().unwrap());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()));
 
         // Run the bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -100,7 +121,7 @@ mod tests {
     async fn test_client_connection() -> Result<()> {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
-        let bridge = TaskBridge::new(socket_path.to_str().unwrap());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()));
 
         // Run bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -123,14 +144,16 @@ mod tests {
     async fn test_message_sending() -> Result<()> {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
-        let bridge = TaskBridge::new(socket_path.to_str().unwrap());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()));
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let mut stream = UnixStream::connect(&socket_path).await?;
-        stream.write_all(b"{\"label\":\"tasks_processed\", \"value\":10,\"taskid\":\"task123\", }\n").await?;
+        stream
+            .write_all(b"{\"label\":\"tasks_processed\", \"value\":10,\"taskid\":\"task123\", }\n")
+            .await?;
         stream.flush().await?;
 
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -143,7 +166,7 @@ mod tests {
     async fn test_multiple_clients() -> Result<()> {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
-        let bridge = TaskBridge::new(socket_path.to_str().unwrap());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()));
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 

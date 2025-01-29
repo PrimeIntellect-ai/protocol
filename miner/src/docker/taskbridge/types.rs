@@ -1,17 +1,21 @@
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
-use anyhow::{Result, bail};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Metric {
     pub label: String,
     pub value: f64,
-    pub taskid: String, 
+    pub taskid: String,
 }
 
 impl Metric {
-
+    #[cfg(test)]
     pub fn new(label: String, value: f64, taskid: String) -> Result<Self> {
-        let metric = Self { label, value, taskid }; 
+        let metric = Self {
+            label,
+            value,
+            taskid,
+        };
         metric.validate()?;
         Ok(metric)
     }
@@ -37,9 +41,7 @@ impl Metric {
 
         Ok(())
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -55,7 +57,7 @@ mod tests {
         ];
 
         for (label, value, taskid) in valid_cases {
-            let metric = Metric::new(label.to_string(), value, taskid.to_string())?; 
+            let metric = Metric::new(label.to_string(), value, taskid.to_string())?;
             assert!(metric.validate().is_ok());
         }
         Ok(())
@@ -67,7 +69,7 @@ mod tests {
             ("", 1.0, "", "empty label"),
             ("valid_name", f64::INFINITY, "task_5", "infinite value"),
             ("valid_name", f64::NAN, "task_6", "NaN value"),
-            ("valid_name", 1.0, "", "empty taskid"), 
+            ("valid_name", 1.0, "", "empty taskid"),
         ];
 
         for (label, value, taskid, case) in invalid_cases {
@@ -79,12 +81,12 @@ mod tests {
 
     #[test]
     fn test_json_serialization() -> Result<()> {
-        let metric = Metric::new("test_metric".to_string(), 42.0, "task_7".to_string())?; 
+        let metric = Metric::new("test_metric".to_string(), 42.0, "task_7".to_string())?;
         let json = serde_json::to_string(&metric)?;
         let deserialized: Metric = serde_json::from_str(&json)?;
         assert_eq!(metric.label, deserialized.label);
         assert_eq!(metric.value, deserialized.value);
-        assert_eq!(metric.taskid, deserialized.taskid); 
+        assert_eq!(metric.taskid, deserialized.taskid);
         Ok(())
     }
 }

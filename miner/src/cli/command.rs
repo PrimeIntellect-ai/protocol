@@ -2,6 +2,7 @@ use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::software::software_check;
 use crate::console::Console;
+use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
@@ -212,6 +213,17 @@ pub async fn execute_command(
                 }
             };
             let docker_service = Arc::new(DockerService::new(cancellation_token.clone(), has_gpu));
+            let task_bridge = Arc::new(TaskBridge::new(None));
+
+            let bridge_cancellation_token = cancellation_token.clone();
+            tokio::spawn(async move {
+                tokio::select! {
+                    _ = bridge_cancellation_token.cancelled() => {
+                    }
+                    _ = task_bridge.run() => {
+                    }
+                }
+            });
             let heartbeat_service = HeartbeatService::new(
                 Duration::from_secs(10),
                 state_dir_overwrite.clone(),
