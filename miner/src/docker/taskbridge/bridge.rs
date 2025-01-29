@@ -1,9 +1,10 @@
-use super::types::Metric;
+use crate::metrics::store::MetricsStore;
 use anyhow::Result;
 use log::error;
-use log::info;
+use shared::models::metric::Metric;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Arc;
 use std::{fs, path::Path};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -15,10 +16,11 @@ const DEFAULT_LINUX_SOCKET: &str = "/var/run/com.prime.miner/metrics.sock";
 
 pub struct TaskBridge {
     pub socket_path: String,
+    pub metrics_store: Arc<MetricsStore>,
 }
 
 impl TaskBridge {
-    pub fn new(socket_path: Option<&str>) -> Self {
+    pub fn new(socket_path: Option<&str>, metrics_store: Arc<MetricsStore>) -> Self {
         let path = match socket_path {
             Some(path) => path.to_string(),
             None => {
@@ -30,7 +32,10 @@ impl TaskBridge {
             }
         };
 
-        Self { socket_path: path }
+        Self {
+            socket_path: path,
+            metrics_store,
+        }
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -50,28 +55,25 @@ impl TaskBridge {
         // allow both owner and group to read/write
         fs::set_permissions(socket_path, fs::Permissions::from_mode(0o660))?;
 
-        info!("TaskBridge listening on {}", socket_path.display());
-
         loop {
+            let store = self.metrics_store.clone();
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     tokio::spawn(async move {
                         let mut reader = BufReader::new(stream);
                         let mut line = String::new();
-
                         while let Ok(n) = reader.read_line(&mut line).await {
                             if n == 0 {
                                 break; // Connection closed
                             }
-                            println!("msg {}", line);
-                            match serde_json::from_str::<Metric>(&line) {
-                                
+                            match serde_json::from_str::<Metric>(&line.trim()) {
+                                // Trim the line before parsing
                                 Ok(metric) => {
                                     if let Err(e) = metric.validate() {
                                         println!("Invalid metric: {}", e);
                                         return;
                                     }
-                                    println!("Received metric {} = {}", metric.label, metric.value);
+                                    store.update_metric(metric).await;
                                 }
                                 Err(e) => {
                                     println!("Failed to parse metric: {}", e);
@@ -91,6 +93,8 @@ impl TaskBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::metrics::store::MetricsStore;
+    use std::sync::Arc;
     use std::time::Duration;
     use tempfile::tempdir;
     use tokio::io::AsyncWriteExt;
@@ -100,7 +104,8 @@ mod tests {
     async fn test_socket_creation() -> Result<()> {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()));
+        let metrics_store = Arc::new(MetricsStore::new());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
 
         // Run the bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -121,7 +126,8 @@ mod tests {
     async fn test_client_connection() -> Result<()> {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()));
+        let metrics_store = Arc::new(MetricsStore::new());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
 
         // Run bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -144,19 +150,32 @@ mod tests {
     async fn test_message_sending() -> Result<()> {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()));
+        let metrics_store = Arc::new(MetricsStore::new());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let mut stream = UnixStream::connect(&socket_path).await?;
-        stream
-            .write_all(b"{\"label\":\"tasks_processed\", \"value\":10,\"taskid\":\"task123\", }\n")
-            .await?;
+        let sample_metric =
+            Metric::new("test_label".to_string(), 10.0, "1234".to_string()).unwrap();
+        let sample_metric = serde_json::to_string(&sample_metric)?;
+        println!("Sending {:?}", sample_metric);
+        let msg = format!("{}{}", sample_metric, "\n");
+        stream.write_all(msg.as_bytes()).await?;
         stream.flush().await?;
 
         tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let all_metrics = metrics_store.get_all_metrics().await;
+        let expected_metric = Metric {
+            label: "test_label".to_string(),
+            value: 10.0,
+            taskid: "1234".to_string(),
+        };
+        let task_metrics = all_metrics.get("1234").unwrap();
+        assert_eq!(task_metrics.get("test_label"), Some(&expected_metric));
 
         bridge_handle.abort();
         Ok(())
@@ -166,7 +185,8 @@ mod tests {
     async fn test_multiple_clients() -> Result<()> {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()));
+        let metrics_store = Arc::new(MetricsStore::new());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 

@@ -1,11 +1,13 @@
 use super::state::HeartbeatState;
 use crate::docker::DockerService;
+use crate::metrics::store::MetricsStore;
 use crate::TaskHandles;
 use log;
 use log::info;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
 use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
+use shared::models::metric::Metric;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
@@ -20,6 +22,7 @@ pub struct HeartbeatService {
     task_handles: TaskHandles,
     node_wallet: Arc<Wallet>,
     docker_service: Arc<DockerService>,
+    metrics_store: Arc<MetricsStore>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -38,6 +41,7 @@ impl HeartbeatService {
         task_handles: TaskHandles,
         node_wallet: Arc<Wallet>,
         docker_service: Arc<DockerService>,
+        metrics_store: Arc<MetricsStore>,
     ) -> Result<Arc<Self>, HeartbeatError> {
         let state = HeartbeatState::new(state_dir_overwrite.or(None), disable_state_storing);
 
@@ -54,6 +58,7 @@ impl HeartbeatService {
             task_handles,
             node_wallet,
             docker_service,
+            metrics_store,
         }))
     }
 
@@ -76,6 +81,7 @@ impl HeartbeatService {
         let cancellation_token = self.cancellation_token.clone();
         let docker_service = self.docker_service.clone();
         let wallet_clone = self.node_wallet.clone();
+        let metrics_store = self.metrics_store.clone();
         let handle = tokio::spawn(async move {
             let mut interval = interval(interval_duration);
             loop {
@@ -84,7 +90,7 @@ impl HeartbeatService {
                         if !state.is_running().await {
                             break;
                         }
-                        match Self::send_heartbeat(&client, state.get_endpoint().await, wallet_clone.clone(), docker_service.clone()).await {
+                        match Self::send_heartbeat(&client, state.get_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
                                 log::info!("Heartbeat sent successfully");
@@ -120,23 +126,28 @@ impl HeartbeatService {
         endpoint: Option<String>,
         wallet: Arc<Wallet>,
         docker_service: Arc<DockerService>,
+        metrics_store: Arc<MetricsStore>,
     ) -> Result<HeartbeatResponse, HeartbeatError> {
         if endpoint.is_none() {
             return Err(HeartbeatError::RequestFailed);
         }
 
+        // TODO: Only get metrics for current tasks?
+        let current_metrics = metrics_store.get_all_metrics().await;
         let current_task_state = docker_service.state.get_current_task().await;
         let request = if let Some(task) = current_task_state {
             HeartbeatRequest {
                 address: wallet.address().to_string(),
                 task_id: Some(task.id.to_string()),
                 task_state: Some(task.state.to_string()),
+                metrics: Some(current_metrics),
             }
         } else {
             HeartbeatRequest {
                 address: wallet.address().to_string(),
                 task_id: None,
                 task_state: None,
+                metrics: Some(current_metrics),
             }
         };
 

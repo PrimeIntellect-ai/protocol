@@ -1,8 +1,9 @@
 use super::api::ApiResponse;
+use super::metric::Metric;
 use super::task::Task;
 use actix_web::HttpResponse;
 use serde::{Deserialize, Serialize};
-
+use super::metric::MetricsMap;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HeartbeatResponse {
     pub current_task: Option<Task>,
@@ -25,4 +26,5 @@ pub struct HeartbeatRequest {
     pub address: String,
     pub task_id: Option<String>,
     pub task_state: Option<String>,
+    pub metrics: Option<MetricsMap>,
 }

@@ -4,6 +4,7 @@ use crate::checks::software::software_check;
 use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
+use crate::metrics::store::MetricsStore;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderError;
@@ -212,8 +213,11 @@ pub async fn execute_command(
                     false
                 }
             };
+
+            let metrics_store = Arc::new(MetricsStore::new());
+            let heartbeat_metrics_clone = metrics_store.clone();
+            let task_bridge = Arc::new(TaskBridge::new(None, metrics_store));
             let docker_service = Arc::new(DockerService::new(cancellation_token.clone(), has_gpu));
-            let task_bridge = Arc::new(TaskBridge::new(None));
 
             let bridge_cancellation_token = cancellation_token.clone();
             tokio::spawn(async move {
@@ -232,6 +236,7 @@ pub async fn execute_command(
                 task_handles.clone(),
                 node_wallet_instance.clone(),
                 docker_service.clone(),
+                heartbeat_metrics_clone.clone(),
             );
 
             tokio::spawn(async move {

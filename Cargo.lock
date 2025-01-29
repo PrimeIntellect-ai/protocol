@@ -5077,6 +5077,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "alloy",
+ "anyhow",
  "dashmap",
  "futures-util",
  "hex",
