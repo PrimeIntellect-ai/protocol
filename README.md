@@ -9,7 +9,7 @@ git clone --recurse-submodules https://github.com/prime-ai/prime-miner-validator
 git submodule update --init --recursive
 ```
 ## Setup:
-- Foundry: `curl -L https://foundry.paradigm.xyz | bash` - do not forget `foundry up`
+- Foundry: `curl -L https://foundry.paradigm.xyz | bash` - do not forget `foundryup`
 - Docker 
 - tmuxinator: Install via `gem install tmuxinator` - do not use brew, apparently their brew build is broken
 - Rust: Install via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
