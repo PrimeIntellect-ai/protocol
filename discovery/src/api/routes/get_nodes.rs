@@ -23,7 +23,6 @@ pub async fn get_nodes_for_pool(
     let id_clone = pool_id.clone();
     let pool_contract_id: U256 = id_clone.parse::<U256>().unwrap();
     let pool_id: u32 = pool_id.parse().unwrap();
-
     println!("Pool id: {:?}", pool_id);
     println!("Pool contract id: {:?}", pool_contract_id);
     let debug_address = req.headers().get("x-address");
@@ -56,7 +55,12 @@ pub async fn get_nodes_for_pool(
                 }
             };
 
-            if address_str != owner.to_string() {
+            // Normalize the address strings for comparison
+            let owner_str = owner.to_string().to_lowercase();
+            let manager_str = manager.to_string().to_lowercase();
+            let address_str_normalized = address_str.to_lowercase();
+
+            if address_str_normalized != owner_str && address_str_normalized != manager_str {
                 return HttpResponse::BadRequest().json(ApiResponse::new(
                     false,
                     "Invalid x-address header - not owner or manager",
