@@ -24,6 +24,11 @@ pub async fn get_nodes_for_pool(
     let pool_contract_id: U256 = id_clone.parse::<U256>().unwrap();
     let pool_id: u32 = pool_id.parse().unwrap();
 
+    println!("Pool id: {:?}", pool_id);
+    println!("Pool contract id: {:?}", pool_contract_id);
+    let debug_address = req.headers().get("x-address");
+    println!("Address: {:?}", debug_address);
+
     match data.contracts.clone() {
         Some(contracts) => {
             let pool_info = contracts
@@ -32,12 +37,17 @@ pub async fn get_nodes_for_pool(
                 .await
                 .unwrap();
             let owner = pool_info.creator;
+            let manager = pool_info.compute_manager_key;
+            println!("Owner: {:?}", owner);
+            println!("Manager: {:?}", manager);
             let address_str = match req.headers().get("x-address") {
                 Some(address) => match address.to_str() {
                     Ok(addr) => addr.to_string(),
                     Err(_) => {
-                        return HttpResponse::BadRequest()
-                            .json(ApiResponse::new(false, "Invalid x-address header"))
+                        return HttpResponse::BadRequest().json(ApiResponse::new(
+                            false,
+                            "Invalid x-address header - parsing issue",
+                        ))
                     }
                 },
                 None => {
@@ -47,8 +57,10 @@ pub async fn get_nodes_for_pool(
             };
 
             if address_str != owner.to_string() {
-                return HttpResponse::BadRequest()
-                    .json(ApiResponse::new(false, "Invalid x-address header"));
+                return HttpResponse::BadRequest().json(ApiResponse::new(
+                    false,
+                    "Invalid x-address header - not owner or manager",
+                ));
             }
         }
         None => {

@@ -36,11 +36,20 @@ async fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    let tx = contracts
+    let pool_info = contracts
         .compute_pool
-        .start_compute_pool(U256::from(args.pool_id))
-        .await;
-    println!("Started compute pool with id: {}", args.pool_id);
-    println!("Transaction: {:?}", tx);
+        .get_pool_info(U256::from(args.pool_id))
+        .await
+        .unwrap();
+
+    println!("Pool info: {:?}", pool_info);
+
+    // let manager = pool_info.compute_manager_key;
+    // let tx = contracts
+    //     .compute_pool
+    //     .start_compute_pool(U256::from(args.pool_id))
+    //     .await;
+    // println!("Started compute pool with id: {}", args.pool_id);
+    //println!("Transaction: {:?}", tx);
     Ok(())
 }
