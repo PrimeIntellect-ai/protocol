@@ -32,6 +32,7 @@ pub async fn get_nodes_for_pool(
                 .await
                 .unwrap();
             let owner = pool_info.creator;
+            let manager = pool_info.compute_manager_key;
             let address_str = match req.headers().get("x-address") {
                 Some(address) => match address.to_str() {
                     Ok(addr) => addr.to_string(),
@@ -46,7 +47,7 @@ pub async fn get_nodes_for_pool(
                 }
             };
 
-            if address_str != owner.to_string() {
+            if address_str != owner.to_string() && address_str != manager.to_string() {
                 return HttpResponse::BadRequest()
                     .json(ApiResponse::new(false, "Invalid x-address header"));
             }
