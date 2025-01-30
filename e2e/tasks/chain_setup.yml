@@ -19,13 +19,20 @@
 
 - name: Download and install Foundry tools
   shell: |
-    curl -L https://foundry.paradigm.xyz | bash && $HOME/.foundry/bin/foundryup
+    curl -L https://foundry.paradigm.xyz | bash 
+    /root/.foundry/bin/foundryup
+  become: true
+
+- name: Create directory for chain state
+  file:
+    path: /root/chain-state-dir
+    state: directory
+    mode: '0755'
   become: true
 
 - name: Start Anvil in tmux session
   shell: |
-    source ~/.bashrc
-    tmux new-session -d -s anvil "anvil --host 0.0.0.0 --port 8545"
+    tmux new-session -d -s anvil "/root/.foundry/bin/anvil --host 0.0.0.0 --port 8545 --state /root/chain-state-dir/chain-state.json --state-interval 30 --block-time 2"
   args:
     executable: /bin/bash
   become: true
@@ -42,24 +49,31 @@
     mode: '0755'
   become: true
 
+- name: Check if smart contract deployment is enabled
+  set_fact:
+    deploy_smart_contracts: "{{ deploy_smart_contracts | default(false) }}"
+
 - name: Copy smart contracts to remote machine
   synchronize:
     src: "{{ smart_contracts_dir }}/"
     dest: /opt/smart-contracts/
     rsync_opts:
       - "--exclude=.git"
+  when: deploy_smart_contracts
 
 - name: Make deploy script executable
   file:
     path: /opt/smart-contracts/deploy.sh
     mode: '0755'
   become: true
+  when: deploy_smart_contracts
 
 - name: Run deployment script
   shell: |
     cd /opt/smart-contracts
-    source ~/.bashrc
+    export PATH="/root/.foundry/bin:$PATH"
     ./deploy.sh
   args:
     executable: /bin/bash
   become: true
+  when: deploy_smart_contracts
