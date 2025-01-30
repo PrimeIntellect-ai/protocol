@@ -32,6 +32,7 @@ pub enum HeartbeatError {
     InitFailed,
 }
 impl HeartbeatService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         interval: Duration,
         state_dir_overwrite: Option<String>,

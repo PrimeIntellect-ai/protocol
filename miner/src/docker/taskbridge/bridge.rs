@@ -67,7 +67,7 @@ impl TaskBridge {
                             if n == 0 {
                                 break; // Connection closed
                             }
-                            match serde_json::from_str::<Metric>(&line.trim()) {
+                            match serde_json::from_str::<Metric>(line.trim()) {
                                 // Trim the line before parsing
                                 Ok(metric) => {
                                     if let Err(e) = metric.validate() {
