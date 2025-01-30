@@ -1,11 +1,11 @@
-use shared::models::metric::Metric;
+use shared::models::metric::{Metric, MetricsMap};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
 #[derive(Debug)]
 pub struct MetricsStore {
     // taskid -> (label -> metric)
-    metrics: RwLock<HashMap<String, HashMap<String, Metric>>>,
+    metrics: RwLock<MetricsMap>,
 }
 
 impl MetricsStore {
@@ -23,12 +23,7 @@ impl MetricsStore {
             .insert(metric.label.clone(), metric);
     }
 
-    pub async fn get_task_metrics(&self, taskid: &str) -> Option<HashMap<String, Metric>> {
-        let metrics = self.metrics.read().await;
-        metrics.get(taskid).cloned()
-    }
-
-    pub async fn get_all_metrics(&self) -> HashMap<String, HashMap<String, Metric>> {
+    pub async fn get_all_metrics(&self) -> MetricsMap {
         let metrics = self.metrics.read().await;
         metrics.clone()
     }

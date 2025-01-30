@@ -1,6 +1,6 @@
-use crate::api::routes::heartbeat::heartbeat_routes;
 use crate::api::routes::nodes::nodes_routes;
 use crate::api::routes::task::tasks_routes;
+use crate::api::routes::{heartbeat::heartbeat_routes, metrics::metrics_routes};
 use crate::store::core::StoreContext;
 use actix_web::{middleware, web::Data, App, HttpServer};
 use anyhow::Error;
@@ -33,6 +33,7 @@ pub async fn start_server(
             .service(heartbeat_routes().wrap(ValidateSignature::new(validator_state.clone())))
             .service(nodes_routes())
             .service(tasks_routes())
+            .service(metrics_routes())
     })
     .bind((host, port))?
     .run()

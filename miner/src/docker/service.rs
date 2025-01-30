@@ -6,28 +6,36 @@ use bollard::models::ContainerStateStatusEnum;
 use chrono::{DateTime, Utc};
 use shared::models::task::Task;
 use shared::models::task::TaskState;
+use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
-use tokio_util::sync::CancellationToken; // Importing the Console for logging
+use tokio_util::sync::CancellationToken;
 
 pub struct DockerService {
     docker_manager: Arc<DockerManager>,
     cancellation_token: CancellationToken,
     pub state: Arc<DockerState>,
     has_gpu: bool,
+    task_bridge_socket_path: String,
 }
 
 const TASK_PREFIX: &str = "prime-task-";
 
 impl DockerService {
-    pub fn new(cancellation_token: CancellationToken, has_gpu: bool) -> Self {
+    pub fn new(
+        cancellation_token: CancellationToken,
+        has_gpu: bool,
+        task_bridge_socket_path: String,
+    ) -> Self {
         let docker_manager = Arc::new(DockerManager::new().unwrap());
         Self {
             docker_manager,
             cancellation_token,
             state: Arc::new(DockerState::new()),
             has_gpu,
+            task_bridge_socket_path,
         }
     }
 
@@ -130,6 +138,7 @@ impl DockerService {
                                     let manager_clone = manager_clone.clone();
                                     let state_clone = state.clone();
                                     let has_gpu = self.has_gpu;
+                                    let task_bridge_socket_path = self.task_bridge_socket_path.clone();
                                     let handle = tokio::spawn(async move {
                                         let payload = task_clone.unwrap();
                                         let cmd_full = (payload.command, payload.args);
@@ -142,7 +151,23 @@ impl DockerService {
                                             (Some(c), None) => vec![c],
                                             _ => vec!["sleep".to_string(), "infinity".to_string()],
                                         };
-                                        match manager_clone.start_container(&payload.image, &task_id, payload.env_vars, Some(cmd), has_gpu).await {
+
+                                        let mut env_vars: HashMap<String, String> = HashMap::new();
+                                        if let Some(env) = &payload.env_vars {
+                                            env_vars.extend(env.clone());
+                                        }
+
+                                        env_vars.insert("PRIME_TASK_BRIDGE_SOCKET".to_string(), task_bridge_socket_path.to_string());
+                                        let volumes = vec![
+                                            (
+                                                Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
+                                                Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
+                                                false,
+                                            )
+                                        ];
+                                        println!("Volumes: {:?}", volumes);
+
+                                        match manager_clone.start_container(&payload.image, &task_id, Some(env_vars), Some(cmd), has_gpu, Some(volumes)).await {
                                             Ok(container_id) => {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
@@ -213,7 +238,11 @@ mod tests {
     #[serial_test::serial]
     async fn test_docker_service() {
         let cancellation_token = CancellationToken::new();
-        let docker_service = DockerService::new(cancellation_token.clone(), false);
+        let docker_service = DockerService::new(
+            cancellation_token.clone(),
+            false,
+            "/tmp/com.prime.miner/metrics.sock".to_string(),
+        );
         let task = Task {
             image: "ubuntu:latest".to_string(),
             name: "test".to_string(),
@@ -251,7 +280,11 @@ mod tests {
     #[serial_test::serial]
     async fn test_docker_service_idle_on_failure() {
         let cancellation_token = CancellationToken::new();
-        let docker_service = DockerService::new(cancellation_token.clone(), false);
+        let docker_service = DockerService::new(
+            cancellation_token.clone(),
+            false,
+            "/tmp/com.prime.miner/metrics.sock".to_string(),
+        );
         let state = docker_service.state.clone();
 
         // Create task that will fail

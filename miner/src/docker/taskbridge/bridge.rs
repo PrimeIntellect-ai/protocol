@@ -11,8 +11,9 @@ use tokio::{
     net::UnixListener,
 };
 
-const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.miner/metrics.sock";
-const DEFAULT_LINUX_SOCKET: &str = "/var/run/com.prime.miner/metrics.sock";
+pub const SOCKET_NAME: &str = "metrics.sock";
+const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.miner/";
+const DEFAULT_LINUX_SOCKET: &str = "/var/run/com.prime.miner/";
 
 pub struct TaskBridge {
     pub socket_path: String,
@@ -25,9 +26,9 @@ impl TaskBridge {
             Some(path) => path.to_string(),
             None => {
                 if cfg!(target_os = "macos") {
-                    DEFAULT_MACOS_SOCKET.to_string()
+                    format!("{}{}", DEFAULT_MACOS_SOCKET, SOCKET_NAME)
                 } else {
-                    DEFAULT_LINUX_SOCKET.to_string()
+                    format!("{}{}", DEFAULT_LINUX_SOCKET, SOCKET_NAME)
                 }
             }
         };
@@ -73,6 +74,7 @@ impl TaskBridge {
                                         println!("Invalid metric: {}", e);
                                         return;
                                     }
+                                    println!("Received metric: {:?}", metric);
                                     store.update_metric(metric).await;
                                 }
                                 Err(e) => {

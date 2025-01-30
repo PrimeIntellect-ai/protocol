@@ -5,11 +5,14 @@ use actix_web::{
 };
 use serde_json::json;
 
-async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
-    let nodes = app_state.store_context.node_store.get_nodes();
-    HttpResponse::Ok().json(json!({"success": true}))
+async fn get_metrics(app_state: Data<AppState>) -> HttpResponse {
+    let metrics = app_state
+        .store_context
+        .metrics_store
+        .get_aggregate_metrics_for_all_tasks();
+    HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
 
-pub fn nodes_routes() -> Scope {
-    web::scope("/").route("", get().to(get_nodes))
+pub fn metrics_routes() -> Scope {
+    web::scope("/metrics").route("", get().to(get_metrics))
 }

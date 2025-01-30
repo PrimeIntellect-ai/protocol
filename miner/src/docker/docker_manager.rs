@@ -95,15 +95,28 @@ impl DockerManager {
         env_vars: Option<HashMap<String, String>>,
         command: Option<Vec<String>>,
         gpu_enabled: bool,
+        // Simple Vec of (host_path, container_path, read_only)
+        volumes: Option<Vec<(String, String, bool)>>,
     ) -> Result<String, DockerError> {
         println!("Starting to pull image: {}", image);
         self.pull_image(image).await?;
 
         let env = env_vars.map(|vars| {
             println!("Setting environment variables: {:?}", vars);
-            debug!("Setting environment variables");
             vars.iter()
                 .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<String>>()
+        });
+
+        let volume_binds = volumes.map(|vols| {
+            vols.into_iter()
+                .map(|(host, container, read_only)| {
+                    if read_only {
+                        format!("{}:{}:ro", host, container)
+                    } else {
+                        format!("{}:{}", host, container)
+                    }
+                })
                 .collect::<Vec<String>>()
         });
 
@@ -117,11 +130,13 @@ impl DockerManager {
                     capabilities: Some(vec![vec!["gpu".into()]]),
                     options: Some(HashMap::new()),
                 }]),
+                binds: volume_binds,
                 ..Default::default()
             })
         } else {
             Some(HostConfig {
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
+                binds: volume_binds,
                 ..Default::default()
             })
         };

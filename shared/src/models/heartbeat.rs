@@ -1,5 +1,4 @@
 use super::api::ApiResponse;
-use super::metric::Metric;
 use super::metric::MetricsMap;
 use super::task::Task;
 use actix_web::HttpResponse;

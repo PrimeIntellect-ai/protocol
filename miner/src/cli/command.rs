@@ -217,7 +217,11 @@ pub async fn execute_command(
             let metrics_store = Arc::new(MetricsStore::new());
             let heartbeat_metrics_clone = metrics_store.clone();
             let task_bridge = Arc::new(TaskBridge::new(None, metrics_store));
-            let docker_service = Arc::new(DockerService::new(cancellation_token.clone(), has_gpu));
+            let docker_service = Arc::new(DockerService::new(
+                cancellation_token.clone(),
+                has_gpu,
+                task_bridge.socket_path.clone(),
+            ));
 
             let bridge_cancellation_token = cancellation_token.clone();
             tokio::spawn(async move {

@@ -19,6 +19,10 @@ impl MetricsStore {
         Self { redis }
     }
 
+    fn clean_label(&self, label: &str) -> String {
+        label.replace(":", "")
+    }
+
     pub fn store_metrics(&self, metric: Option<MetricsMap>, sender_address: Address) {
         if metric.is_none() {
             return;
@@ -27,7 +31,11 @@ impl MetricsStore {
 
         for (task_id, metrics) in metrics {
             for (label, metric) in metrics {
-                let key = format!("{}:{}:{}", ORCHESTRATOR_METRICS_STORE, task_id, label);
+                let cleaned_label = self.clean_label(&label);
+                let key = format!(
+                    "{}:{}:{}",
+                    ORCHESTRATOR_METRICS_STORE, task_id, cleaned_label
+                );
                 let mut con = self.redis.client.get_connection().unwrap();
                 if let Err(err) =
                     con.hset(key, sender_address.to_string(), metric.value.to_string())
