@@ -1,9 +1,9 @@
 use super::api::ApiResponse;
 use super::metric::Metric;
+use super::metric::MetricsMap;
 use super::task::Task;
 use actix_web::HttpResponse;
 use serde::{Deserialize, Serialize};
-use super::metric::MetricsMap;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HeartbeatResponse {
     pub current_task: Option<Task>,

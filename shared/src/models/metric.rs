@@ -46,7 +46,7 @@ impl Metric {
 /// A nested HashMap structure for storing metrics organized by task and label.
 /// - Outer HashMap: task ID as the key
 /// - Inner HashMap: metric label as the key, Metric struct as the value
-/// 
+///
 /// Example structure:
 /// {
 ///     "task_123": {

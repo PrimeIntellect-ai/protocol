@@ -7,7 +7,6 @@ use serde_json::json;
 
 async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
     let nodes = app_state.store_context.node_store.get_nodes();
-    let metrics = app_state.store_context.heartbeat_store.get_all_metrics();
     HttpResponse::Ok().json(json!({"success": true}))
 }
 

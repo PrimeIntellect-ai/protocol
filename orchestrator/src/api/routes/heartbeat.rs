@@ -21,6 +21,10 @@ async fn heartbeat(
         task_info.task_state,
     );
     app_state.store_context.heartbeat_store.beat(&heartbeat);
+    app_state
+        .store_context
+        .metrics_store
+        .store_metrics(heartbeat.metrics.clone(), node_address);
     let current_task = app_state.store_context.task_store.get_task();
     let resp: HttpResponse = HeartbeatResponse { current_task }.into();
     resp
