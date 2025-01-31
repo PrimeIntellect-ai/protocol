@@ -20,6 +20,7 @@ pub struct ComputeSpecs {
     // Memory and storage specifications
     pub ram_mb: Option<u32>,
     pub storage_gb: Option<u32>,
+    pub storage_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
