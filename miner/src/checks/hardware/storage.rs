@@ -1,5 +1,11 @@
 use crate::console::Console;
+#[cfg(target_os = "linux")]
+use libc::{statvfs, statvfs as statvfs_t};
 use std::env;
+#[cfg(target_os = "linux")]
+use std::ffi::CString;
+#[cfg(target_os = "linux")]
+use std::fs;
 pub const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 #[derive(Clone)]
