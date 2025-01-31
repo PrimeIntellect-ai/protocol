@@ -28,8 +28,9 @@ impl DockerService {
         cancellation_token: CancellationToken,
         has_gpu: bool,
         task_bridge_socket_path: String,
+        storage_path: Option<String>,
     ) -> Self {
-        let docker_manager = Arc::new(DockerManager::new().unwrap());
+        let docker_manager = Arc::new(DockerManager::new(storage_path).unwrap());
         Self {
             docker_manager,
             cancellation_token,
@@ -242,6 +243,7 @@ mod tests {
             cancellation_token.clone(),
             false,
             "/tmp/com.prime.miner/metrics.sock".to_string(),
+            None,
         );
         let task = Task {
             image: "ubuntu:latest".to_string(),
@@ -284,6 +286,7 @@ mod tests {
             cancellation_token.clone(),
             false,
             "/tmp/com.prime.miner/metrics.sock".to_string(),
+            None,
         );
         let state = docker_service.state.clone();
 

@@ -42,11 +42,11 @@ impl HardwareChecker {
         let cpu_specs = self.collect_cpu_specs()?;
         let gpu_specs = self.collect_gpu_specs()?;
         let (ram_mb, storage_gb) = self.collect_memory_specs()?;
-        
+
         let (storage_path, available_space) = if cfg!(target_os = "linux") {
             match super::storage::find_largest_storage() {
                 Ok(mount_point) => (Some(mount_point.path), Some(mount_point.available_space)),
-                Err(_) => (None, None)
+                Err(_) => (None, None),
             }
         } else {
             (None, None)
@@ -54,7 +54,7 @@ impl HardwareChecker {
 
         let storage_gb_value = match available_space {
             Some(space) => (space as f64 / BYTES_TO_GB) as u32,
-            None => storage_gb
+            None => storage_gb,
         };
 
         node_config.compute_specs = Some(ComputeSpecs {
@@ -115,9 +115,12 @@ impl HardwareChecker {
             print_memory_info(total_memory, free_memory);
 
             // Print Storage Info
-            if let Some(storage_gb) = compute_specs.storage_gb {
+            if let Some(storage_gb) = &compute_specs.storage_gb {
                 Console::section("Storage Information:");
                 Console::info("Total Storage", &format!("{} GB", storage_gb));
+            }
+            if let Some(storage_path) = &compute_specs.storage_path {
+                Console::info("Storage Path for docker mounts:", &storage_path);
             }
         }
 

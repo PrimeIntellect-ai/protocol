@@ -1,6 +1,8 @@
 use crate::console::Console;
+use libc::{statvfs, statvfs as statvfs_t};
 use std::env;
-
+use std::ffi::CString;
+use std::fs;
 pub const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 #[derive(Clone)]
@@ -64,24 +66,30 @@ pub fn get_storage_info() -> Result<(f64, f64), std::io::Error> {
 #[cfg(target_os = "linux")]
 pub fn find_largest_storage() -> std::io::Result<MountPoint> {
     let mut mount_points = Vec::new();
-    
-    // Read /proc/mounts to get all mount points
     let mounts = fs::read_to_string("/proc/mounts")?;
-    
+
     for line in mounts.lines() {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 {
-            let path = parts[1];
-            
-            // Skip special filesystems
-            if path.starts_with("/dev") || path.starts_with("/sys") || 
-               path.starts_with("/proc") || path.starts_with("/run") {
-                continue;
-            }
-            
-            if let Ok(metadata) = fs::metadata(path) {
-                if let Ok(stats) = fs::statvfs(Path::new(path)) {
-                    let available = stats.blocks_available() * stats.block_size();
+        if parts.len() < 2 {
+            continue;
+        }
+
+        let path = parts[1];
+        let fstype = parts[2];
+
+        // Only consider real filesystems, skip tmpfs, devfs, etc
+        if !["ext4", "xfs", "btrfs", "zfs"].contains(&fstype) {
+            continue;
+        }
+
+        unsafe {
+            let mut stats: statvfs_t = std::mem::zeroed();
+            let path_c = CString::new(path).unwrap();
+            if statvfs(path_c.as_ptr(), &mut stats) == 0 {
+                let available = stats.f_bsize as u64 * stats.f_bavail as u64;
+
+                // Only consider mount points with significant space (e.g., > 1GB)
+                if available > 1_000_000_000 {
                     mount_points.push(MountPoint {
                         path: path.to_string(),
                         available_space: available,
@@ -90,26 +98,25 @@ pub fn find_largest_storage() -> std::io::Result<MountPoint> {
             }
         }
     }
-    
-    // Find mount point with maximum available space
+
     mount_points.sort_by_key(|m| std::cmp::Reverse(m.available_space));
-    
-    mount_points.first()
+
+    mount_points
+        .first()
         .map(|m| MountPoint {
             path: m.path.clone(),
             available_space: m.available_space,
         })
-        .ok_or_else(|| std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "No valid mount points found"
-        ))
+        .ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "No valid mount points found")
+        })
 }
 
 #[cfg(not(target_os = "linux"))]
 pub fn find_largest_storage() -> std::io::Result<MountPoint> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
-        "Finding largest storage is only supported on Linux"
+        "Finding largest storage is only supported on Linux",
     ))
 }
 

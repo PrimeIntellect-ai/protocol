@@ -6,6 +6,7 @@ use bollard::image::CreateImageOptions;
 use bollard::models::ContainerStateStatusEnum;
 use bollard::models::DeviceRequest;
 use bollard::models::HostConfig;
+use bollard::volume::CreateVolumeOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
 use log::{debug, error, info};
@@ -36,11 +37,12 @@ pub struct ContainerDetails {
 
 pub struct DockerManager {
     docker: Docker,
+    storage_path: Option<String>,
 }
 
 impl DockerManager {
     /// Create a new DockerManager instance
-    pub fn new() -> Result<Self, DockerError> {
+    pub fn new(storage_path: Option<String>) -> Result<Self, DockerError> {
         let docker = match Docker::connect_with_unix_defaults() {
             Ok(docker) => docker,
             Err(e) => {
@@ -48,7 +50,10 @@ impl DockerManager {
                 return Err(e);
             }
         };
-        Ok(Self { docker })
+        Ok(Self {
+            docker,
+            storage_path,
+        })
     }
 
     /// Pull a Docker image if it doesn't exist locally
@@ -99,6 +104,33 @@ impl DockerManager {
         volumes: Option<Vec<(String, String, bool)>>,
     ) -> Result<String, DockerError> {
         println!("Starting to pull image: {}", image);
+
+        let mut final_volumes = Vec::new();
+        if self.storage_path.is_some() {
+            let volume_name = format!("{}_data", name);
+            let path = format!(
+                "{}/{}",
+                self.storage_path.clone().unwrap(),
+                name.trim_start_matches('/')
+            );
+            std::fs::create_dir_all(&path)?;
+
+            self.docker
+                .create_volume(CreateVolumeOptions {
+                    name: volume_name.clone(),
+                    driver: "local".to_string(),
+                    driver_opts: HashMap::from([
+                        ("type".to_string(), "none".to_string()),
+                        ("o".to_string(), "bind".to_string()),
+                        ("device".to_string(), path),
+                    ]),
+                    labels: HashMap::new(),
+                })
+                .await?;
+
+            final_volumes.push((volume_name, "/data".to_string(), false));
+        }
+
         self.pull_image(image).await?;
 
         let env = env_vars.map(|vars| {
@@ -107,18 +139,30 @@ impl DockerManager {
                 .map(|(k, v)| format!("{}={}", k, v))
                 .collect::<Vec<String>>()
         });
+        let volume_binds = {
+            let mut binds = final_volumes
+                .iter()
+                .map(|(vol, container, read_only)| {
+                    if *read_only {
+                        format!("{}:{}:ro", vol, container)
+                    } else {
+                        format!("{}:{}", vol, container)
+                    }
+                })
+                .collect::<Vec<String>>();
 
-        let volume_binds = volumes.map(|vols| {
-            vols.into_iter()
-                .map(|(host, container, read_only)| {
+            if let Some(vols) = volumes {
+                binds.extend(vols.into_iter().map(|(host, container, read_only)| {
                     if read_only {
                         format!("{}:{}:ro", host, container)
                     } else {
                         format!("{}:{}", host, container)
                     }
-                })
-                .collect::<Vec<String>>()
-        });
+                }));
+            }
+
+            Some(binds)
+        };
 
         let host_config = if gpu_enabled {
             Some(HostConfig {
@@ -183,13 +227,45 @@ impl DockerManager {
 
     /// Stop and remove a container
     pub async fn remove_container(&self, container_id: &str) -> Result<(), DockerError> {
-        debug!("Stopping container: {}", container_id);
-        self.docker.stop_container(container_id, None).await?;
-        info!("Container {} stopped successfully", container_id);
+        let container = match self.get_container_details(container_id).await {
+            Ok(c) => c,
+            Err(e) => return Err(e),
+        };
 
-        debug!("Removing container: {}", container_id);
-        self.docker.remove_container(container_id, None).await?;
-        info!("Container {} removed successfully", container_id);
+        // 1. Stop container first
+        if let Err(e) = self.docker.stop_container(container_id, None).await {
+            error!("Failed to stop container: {}", e);
+        }
+
+        // 2. Remove container
+        if let Err(e) = self.docker.remove_container(container_id, None).await {
+            error!("Failed to remove container: {}", e);
+        }
+
+        // 3. Remove volume if it exists
+        if let Some(name) = container.names.first() {
+            let volume_name = format!("{}_data", name.trim_start_matches('/'));
+            match self.docker.remove_volume(&volume_name, None).await {
+                Ok(_) => info!("Volume {} removed successfully", volume_name),
+                Err(e) => match e {
+                    DockerError::DockerResponseServerError { status_code, .. }
+                        if status_code == 404 =>
+                    {
+                        debug!("Volume {} already removed", volume_name)
+                    }
+                    _ => error!("Failed to remove volume {}: {}", volume_name, e),
+                },
+            }
+
+            // 4. Clean up the directory
+            if let Some(path) = &self.storage_path {
+                let dir_path = format!("{}/{}", path, name.trim_start_matches('/'));
+                match std::fs::remove_dir_all(&dir_path) {
+                    Ok(_) => info!("Directory {} removed successfully", dir_path),
+                    Err(e) => error!("Failed to remove directory {}: {}", dir_path, e),
+                }
+            }
+        }
 
         Ok(())
     }
