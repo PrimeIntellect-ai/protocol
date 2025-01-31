@@ -21,7 +21,7 @@ pub struct DockerService {
     task_bridge_socket_path: String,
 }
 
-const TASK_PREFIX: &str = "prime-task-";
+const TASK_PREFIX: &str = "prime-task";
 
 impl DockerService {
     pub fn new(
@@ -53,7 +53,7 @@ impl DockerService {
 
         pub fn generate_task_id(task: &Option<Task>) -> Option<String> {
             task.as_ref()
-                .map(|task| format!("{}-{}", task.id, TASK_PREFIX))
+                .map(|task| format!("{}-{}", TASK_PREFIX, task.id))
         }
 
         async fn cleanup_tasks(tasks: &Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>) {
