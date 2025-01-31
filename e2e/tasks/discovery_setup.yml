@@ -36,8 +36,13 @@
 - name: Reload systemd
   systemd:
     daemon_reload: yes
+- name: Stop discovery service if running
+  systemd:
+    name: prime-discovery
+    state: stopped
+  ignore_errors: yes
 - name: Start and enable discovery service
   systemd:
     name: prime-discovery
-    state: started
+    state: restarted
     enabled: yes

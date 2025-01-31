@@ -21,8 +21,13 @@
 - name: Reload systemd
   systemd:
     daemon_reload: yes
+- name: Stop orchestrator service if running
+  systemd:
+    name: prime-orchestrator
+    state: stopped
+  ignore_errors: yes
 - name: Start and enable orchestrator service
   systemd:
     name: prime-orchestrator
-    state: started
+    state: restarted
     enabled: yes
