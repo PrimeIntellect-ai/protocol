@@ -75,7 +75,6 @@ mod tests {
             .store_context
             .heartbeat_store
             .get_heartbeat(&node_address);
-        println!("value {:?}", value);
     }
 
     #[actix_web::test]
@@ -120,6 +119,5 @@ mod tests {
             .store_context
             .heartbeat_store
             .get_heartbeat(&node_address);
-        println!("value {:?}", value);
     }
 }

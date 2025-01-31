@@ -166,7 +166,6 @@ impl DockerService {
                                                 false,
                                             )
                                         ];
-                                        println!("Volumes: {:?}", volumes);
 
                                         match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), has_gpu, Some(volumes)).await {
                                             Ok(container_id) => {

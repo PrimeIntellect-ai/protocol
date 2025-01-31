@@ -151,7 +151,6 @@ impl HeartbeatService {
                 metrics: None,
             }
         };
-        println!("Request: {:?}", request);
 
         let signature = sign_request(
             "/heartbeat",
