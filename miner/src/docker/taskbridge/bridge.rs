@@ -54,7 +54,11 @@ impl TaskBridge {
             match fs::create_dir_all(parent) {
                 Ok(_) => log::debug!("Created parent directory: {}", parent.display()),
                 Err(e) => {
-                    log::error!("Failed to create parent directory {}: {}", parent.display(), e);
+                    log::error!(
+                        "Failed to create parent directory {}: {}",
+                        parent.display(),
+                        e
+                    );
                     return Err(e.into());
                 }
             }
@@ -75,7 +79,7 @@ impl TaskBridge {
             Ok(l) => {
                 log::info!("Successfully bound to Unix socket");
                 l
-            },
+            }
             Err(e) => {
                 log::error!("Failed to bind Unix socket: {}", e);
                 return Err(e.into());
