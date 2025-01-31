@@ -157,6 +157,7 @@ mod tests {
     use crate::models::node::NodeStatus;
     use crate::models::node::OrchestratorNode;
     use alloy::primitives::Address;
+    use shared::models::heartbeat::HeartbeatRequest;
     use std::str::FromStr;
     use std::time::Duration;
     use tokio::time::sleep;
@@ -183,7 +184,13 @@ mod tests {
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
-        let _: () = app_state.store_context.heartbeat_store.beat(&node.address);
+        let heartbeat = HeartbeatRequest {
+            address: node.address.to_string(),
+            task_id: None,
+            task_state: None,
+            metrics: None,
+        };
+        let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
 
         let node = app_state
             .store_context
@@ -353,7 +360,14 @@ mod tests {
             .store_context
             .heartbeat_store
             .set_unhealthy_counter(&node.address, 2);
-        let _: () = app_state.store_context.heartbeat_store.beat(&node.address);
+
+        let heartbeat = HeartbeatRequest {
+            address: node.address.to_string(),
+            task_id: None,
+            task_state: None,
+            metrics: None,
+        };
+        let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
         let _: () = app_state.store_context.node_store.add_node(node.clone());
 
         let updater = NodeStatusUpdater::new(
@@ -500,7 +514,13 @@ mod tests {
             .unwrap();
         assert_eq!(node.status, NodeStatus::Dead);
 
-        let _: () = app_state.store_context.heartbeat_store.beat(&node.address);
+        let heartbeat = HeartbeatRequest {
+            address: node.address.to_string(),
+            task_id: None,
+            task_state: None,
+            metrics: None,
+        };
+        let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
 
         sleep(Duration::from_secs(5)).await;
 

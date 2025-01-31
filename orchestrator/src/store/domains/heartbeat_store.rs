@@ -1,6 +1,8 @@
 use crate::store::core::RedisStore;
 use alloy::primitives::Address;
 use redis::Commands;
+use shared::models::heartbeat::HeartbeatRequest;
+use std::str::FromStr;
 use std::sync::Arc;
 
 const ORCHESTRATOR_UNHEALTHY_COUNTER_KEY: &str = "orchestrator:unhealthy_counter";
@@ -15,13 +17,16 @@ impl HeartbeatStore {
         Self { redis }
     }
 
-    pub fn beat(&self, address: &Address) {
+    pub fn beat(&self, payload: &HeartbeatRequest) {
         let mut con = self.redis.client.get_connection().unwrap();
+        let address = Address::from_str(&payload.address).unwrap();
         let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, address);
+
+        let payload_string = serde_json::to_string(payload).unwrap();
         let _: () = con
             .set_options(
                 &key,
-                "1",
+                payload_string,
                 redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(60)),
             )
             .unwrap();

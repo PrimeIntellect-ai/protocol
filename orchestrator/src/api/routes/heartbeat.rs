@@ -11,15 +11,19 @@ async fn heartbeat(
     heartbeat: web::Json<HeartbeatRequest>,
     app_state: Data<AppState>,
 ) -> HttpResponse {
-    let node_address = Address::from_str(&heartbeat.address).unwrap();
     let task_info = heartbeat.clone();
+    let node_address = Address::from_str(&heartbeat.address).unwrap();
 
     app_state.store_context.node_store.update_node_task(
         node_address,
         task_info.task_id,
         task_info.task_state,
     );
-    app_state.store_context.heartbeat_store.beat(&node_address);
+    app_state.store_context.heartbeat_store.beat(&heartbeat);
+    app_state
+        .store_context
+        .metrics_store
+        .store_metrics(heartbeat.metrics.clone(), node_address);
     let current_task = app_state.store_context.task_store.get_task();
     let resp: HttpResponse = HeartbeatResponse { current_task }.into();
     resp
@@ -50,10 +54,11 @@ mod tests {
         .await;
 
         let address = "0x0000000000000000000000000000000000000000".to_string();
+        let req_payload = json!({"address": address});
 
         let req = test::TestRequest::post()
             .uri("/heartbeat")
-            .set_json(json!({"address": address}))
+            .set_json(&req_payload)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -69,7 +74,7 @@ mod tests {
             .store_context
             .heartbeat_store
             .get_heartbeat(&node_address);
-        assert_eq!(value, Some("1".to_string()));
+        assert_eq!(value, Some("{\"address\":\"0x0000000000000000000000000000000000000000\",\"task_id\":null,\"task_state\":null,\"metrics\":null}".to_string()));
     }
 
     #[actix_web::test]
@@ -114,6 +119,7 @@ mod tests {
             .store_context
             .heartbeat_store
             .get_heartbeat(&node_address);
-        assert_eq!(value, Some("1".to_string()));
+        // Task has not started yet
+        assert_eq!(value, Some("{\"address\":\"0x0000000000000000000000000000000000000000\",\"task_id\":null,\"task_state\":null,\"metrics\":null}".to_string()));
     }
 }

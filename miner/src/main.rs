@@ -3,6 +3,7 @@ mod checks;
 mod cli;
 mod console;
 mod docker;
+mod metrics;
 mod operations;
 mod services;
 use clap::Parser;
