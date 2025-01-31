@@ -11,7 +11,6 @@ async fn heartbeat(
     heartbeat: web::Json<HeartbeatRequest>,
     app_state: Data<AppState>,
 ) -> HttpResponse {
-    println!("heartbeat {:?}", heartbeat);
     let task_info = heartbeat.clone();
     let node_address = Address::from_str(&heartbeat.address).unwrap();
 
