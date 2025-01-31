@@ -29,20 +29,20 @@ impl MetricsStore {
         }
         let metrics = metric.unwrap();
 
-        for (task_id, metrics) in metrics {
-            for (label, metric) in metrics {
-                let cleaned_label = self.clean_label(&label);
-                let key = format!(
-                    "{}:{}:{}",
-                    ORCHESTRATOR_METRICS_STORE, task_id, cleaned_label
-                );
-                let mut con = self.redis.client.get_connection().unwrap();
-                if let Err(err) =
-                    con.hset(key, sender_address.to_string(), metric.value.to_string())
-                        as RedisResult<()>
-                {
-                    error!("Could not update metric value in redis: {}", err);
-                }
+        for (key, metric) in metrics {
+            let cleaned_label = self.clean_label(&key.label);
+            let redis_key = format!(
+                "{}:{}:{}",
+                ORCHESTRATOR_METRICS_STORE, key.task_id, cleaned_label
+            );
+            let mut con = self.redis.client.get_connection().unwrap();
+            if let Err(err) = con.hset(
+                redis_key,
+                sender_address.to_string(),
+                metric.value.to_string(),
+            ) as RedisResult<()>
+            {
+                error!("Could not update metric value in redis: {}", err);
             }
         }
     }
@@ -100,9 +100,7 @@ impl MetricsStore {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
-    use shared::models::metric::Metric;
-    use std::collections::HashMap;
-
+    use shared::models::metric::{Metric, MetricKey};
     #[tokio::test]
     async fn test_store_metrics() {
         let app_state = create_test_app_state().await;
@@ -110,23 +108,26 @@ mod tests {
 
         let mut taskid_metrics_store = MetricsMap::new();
         let task_id = "task_1";
-        let metric_key = "cpu_usage".to_string();
-        let metric = Metric::new(metric_key.clone(), 1.0, task_id.to_string()).unwrap();
-        let mut metrics_map: HashMap<String, Metric> = HashMap::new();
-        metrics_map.insert(metric_key.clone(), metric);
-        taskid_metrics_store.insert(task_id.to_string(), metrics_map);
+        let metric_key = MetricKey {
+            task_id: task_id.to_string(),
+            label: "cpu_usage".to_string(),
+        };
+        let metric = Metric { value: 1.0 };
+        taskid_metrics_store.insert(metric_key, metric);
         metrics_store.store_metrics(Some(taskid_metrics_store), Address::ZERO);
 
         let mut taskid_metrics_store = MetricsMap::new();
         let task_id = "task_0";
-        let metric_key = "cpu_usage".to_string();
-        let metric = Metric::new(metric_key.clone(), 2.0, task_id.to_string()).unwrap();
-        let mut metrics_map_0: HashMap<String, Metric> = HashMap::new();
-        metrics_map_0.insert(metric_key.clone(), metric);
-        taskid_metrics_store.insert(task_id.to_string(), metrics_map_0);
+        let metric_key = MetricKey {
+            task_id: task_id.to_string(),
+            label: "cpu_usage".to_string(),
+        };
+        let metric = Metric { value: 2.0 };
+        taskid_metrics_store.insert(metric_key, metric);
         metrics_store.store_metrics(Some(taskid_metrics_store), Address::ZERO);
 
         let metrics: HashMap<String, f64> = metrics_store.get_aggregate_metrics_for_task("task_1");
+        println!("metrics {:?}", metrics);
         assert_eq!(metrics.get("cpu_usage"), Some(&1.0));
         let metrics: HashMap<String, f64> = metrics_store.get_aggregate_metrics_for_all_tasks();
         assert_eq!(metrics.get("cpu_usage"), Some(&3.0));

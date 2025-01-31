@@ -132,22 +132,22 @@ impl HeartbeatService {
             return Err(HeartbeatError::RequestFailed);
         }
 
-        // TODO: Only get metrics for current tasks?
-        let current_metrics = metrics_store.get_all_metrics().await;
         let current_task_state = docker_service.state.get_current_task().await;
         let request = if let Some(task) = current_task_state {
+
+            let metrics_for_task = metrics_store.get_metrics_for_task(task.id.to_string()).await;
             HeartbeatRequest {
                 address: wallet.address().to_string(),
                 task_id: Some(task.id.to_string()),
                 task_state: Some(task.state.to_string()),
-                metrics: Some(current_metrics),
+                metrics: Some(metrics_for_task),
             }
         } else {
             HeartbeatRequest {
                 address: wallet.address().to_string(),
                 task_id: None,
                 task_state: None,
-                metrics: Some(current_metrics),
+                metrics: None,
             }
         };
 

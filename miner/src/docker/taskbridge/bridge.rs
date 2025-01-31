@@ -1,7 +1,7 @@
 use crate::metrics::store::MetricsStore;
 use anyhow::Result;
 use log::error;
-use shared::models::metric::Metric;
+use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
@@ -18,6 +18,13 @@ const DEFAULT_LINUX_SOCKET: &str = "/var/run/com.prime.miner/";
 pub struct TaskBridge {
     pub socket_path: String,
     pub metrics_store: Arc<MetricsStore>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+struct MetricInput {
+    task_id: String,
+    label: String,
+    value: f64,
 }
 
 impl TaskBridge {
@@ -67,18 +74,16 @@ impl TaskBridge {
                             if n == 0 {
                                 break; // Connection closed
                             }
-                            match serde_json::from_str::<Metric>(line.trim()) {
-                                // Trim the line before parsing
-                                Ok(metric) => {
-                                    if let Err(e) = metric.validate() {
-                                        println!("Invalid metric: {}", e);
-                                        return;
-                                    }
-                                    println!("Received metric: {:?}", metric);
-                                    store.update_metric(metric).await;
+
+                            match serde_json::from_str::<MetricInput>(&line.trim()) {
+                                Ok(input) => {
+                                    println!("Received metric: {:?}", input);
+                                    store
+                                        .update_metric(input.task_id, input.label, input.value)
+                                        .await;
                                 }
                                 Err(e) => {
-                                    println!("Failed to parse metric: {}", e);
+                                    log::error!("Failed to parse metric input: {}", e);
                                 }
                             }
 
@@ -96,6 +101,7 @@ impl TaskBridge {
 mod tests {
     use super::*;
     use crate::metrics::store::MetricsStore;
+    use shared::models::metric::MetricKey;
     use std::sync::Arc;
     use std::time::Duration;
     use tempfile::tempdir;
@@ -160,8 +166,11 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let mut stream = UnixStream::connect(&socket_path).await?;
-        let sample_metric =
-            Metric::new("test_label".to_string(), 10.0, "1234".to_string()).unwrap();
+        let sample_metric = MetricInput {
+            task_id: "1234".to_string(),
+            label: "test_label".to_string(),
+            value: 10.0,
+        };
         let sample_metric = serde_json::to_string(&sample_metric)?;
         println!("Sending {:?}", sample_metric);
         let msg = format!("{}{}", sample_metric, "\n");
@@ -171,13 +180,13 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let all_metrics = metrics_store.get_all_metrics().await;
-        let expected_metric = Metric {
+
+        let key = MetricKey {
+            task_id: "1234".to_string(),
             label: "test_label".to_string(),
-            value: 10.0,
-            taskid: "1234".to_string(),
         };
-        let task_metrics = all_metrics.get("1234").unwrap();
-        assert_eq!(task_metrics.get("test_label"), Some(&expected_metric));
+        let value = 10.0;
+        let metric = all_metrics.get(&key).unwrap();
 
         bridge_handle.abort();
         Ok(())

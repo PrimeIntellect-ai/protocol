@@ -2,62 +2,33 @@ use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct Metric {
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub struct MetricKey {
+    pub task_id: String,
     pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Metric {
     pub value: f64,
-    pub taskid: String,
 }
 
 impl Metric {
-    pub fn new(label: String, value: f64, taskid: String) -> Result<Self> {
-        let metric = Self {
-            label,
-            value,
-            taskid,
-        };
+    pub fn new(value: f64) -> Result<Self> {
+        let metric = Self { value };
         metric.validate()?;
         Ok(metric)
     }
 
     pub fn validate(&self) -> Result<()> {
-        // Validate label
-        if self.label.is_empty() {
-            bail!("Label cannot be empty");
-        }
-        if self.label.len() > 64 {
-            bail!("Label cannot be longer than 64 characters");
-        }
-
-        // Validate value
         if !self.value.is_finite() {
             bail!("Value must be a finite number");
         }
-
-        // Validate taskid
-        if self.taskid.is_empty() {
-            bail!("Task ID cannot be empty");
-        }
-
         Ok(())
     }
 }
 
-/// A nested HashMap structure for storing metrics organized by task and label.
-/// - Outer HashMap: task ID as the key
-/// - Inner HashMap: metric label as the key, Metric struct as the value
-///
-/// Example structure:
-/// {
-///     "task_123": {
-///         "cpu_usage": Metric { label: "cpu_usage", value: 75.5, taskid: "task_123" },
-///         "memory_usage": Metric { label: "memory_usage", value: 1024.0, taskid: "task_123" }
-///     },
-///     "task_456": {
-///         "network_in": Metric { label: "network_in", value: 500.0, taskid: "task_456" }
-///     }
-/// }
-pub type MetricsMap = HashMap<String, HashMap<String, Metric>>;
+pub type MetricsMap = HashMap<MetricKey, Metric>;
 
 #[cfg(test)]
 mod tests {
@@ -65,15 +36,10 @@ mod tests {
 
     #[test]
     fn test_valid_metric() -> Result<()> {
-        let valid_cases = vec![
-            ("simple", 1.0, "task_1"),
-            ("data_processed", 100.0, "task_2"),
-            ("my-metric-123", -5.0, "task_3"),
-            ("aVeryLongButStillValidMetricName", 0.0, "task_4"),
-        ];
+        let valid_values = vec![1.0, 100.0, -5.0, 0.0];
 
-        for (label, value, taskid) in valid_cases {
-            let metric = Metric::new(label.to_string(), value, taskid.to_string())?;
+        for value in valid_values {
+            let metric = Metric::new(value)?;
             assert!(metric.validate().is_ok());
         }
         Ok(())
@@ -81,28 +47,30 @@ mod tests {
 
     #[test]
     fn test_invalid_metrics() {
-        let invalid_cases = vec![
-            ("", 1.0, "", "empty label"),
-            ("valid_name", f64::INFINITY, "task_5", "infinite value"),
-            ("valid_name", f64::NAN, "task_6", "NaN value"),
-            ("valid_name", 1.0, "", "empty taskid"),
-        ];
+        let invalid_values = vec![(f64::INFINITY, "infinite value"), (f64::NAN, "NaN value")];
 
-        for (label, value, taskid, case) in invalid_cases {
-            let metric = Metric::new(label.to_string(), value, taskid.to_string());
-            println!("metric {}", metric.is_ok());
+        for (value, case) in invalid_values {
+            let metric = Metric::new(value);
             assert!(metric.is_err(), "Should fail for {}", case);
         }
     }
 
     #[test]
-    fn test_json_serialization() -> Result<()> {
-        let metric = Metric::new("test_metric".to_string(), 42.0, "task_7".to_string())?;
-        let json = serde_json::to_string(&metric)?;
-        let deserialized: Metric = serde_json::from_str(&json)?;
-        assert_eq!(metric.label, deserialized.label);
-        assert_eq!(metric.value, deserialized.value);
-        assert_eq!(metric.taskid, deserialized.taskid);
-        Ok(())
+    fn test_metric_key() {
+        let key1 = MetricKey {
+            task_id: "task1".to_string(),
+            label: "cpu".to_string(),
+        };
+        let key2 = MetricKey {
+            task_id: "task1".to_string(),
+            label: "cpu".to_string(),
+        };
+        let key3 = MetricKey {
+            task_id: "task2".to_string(),
+            label: "cpu".to_string(),
+        };
+
+        assert_eq!(key1, key2);
+        assert_ne!(key1, key3);
     }
 }
