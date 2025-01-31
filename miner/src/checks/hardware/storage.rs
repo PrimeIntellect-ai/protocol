@@ -89,7 +89,7 @@ pub fn find_largest_storage() -> std::io::Result<MountPoint> {
             let mut stats: statvfs_t = std::mem::zeroed();
             let path_c = CString::new(path).unwrap();
             if statvfs(path_c.as_ptr(), &mut stats) == 0 {
-                let available = stats.f_bsize as u64 * stats.f_bavail as u64;
+                let available = stats.f_bsize * stats.f_bavail;
 
                 // Only consider mount points with significant space (e.g., > 1GB)
                 if available > 1_000_000_000 {
