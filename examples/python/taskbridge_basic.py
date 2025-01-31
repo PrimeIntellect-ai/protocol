@@ -25,7 +25,7 @@ def send_message(metric: dict, socket_path: str = None) -> bool:
 
 if __name__ == "__main__":
     for i in range(3):
-        metric = {"label": "progress", "value": i * 100, "taskid": "task_id"}
+        metric = {"label": "progress", "value": i * 100, "task_id": "df64d2ea-1ec4-4cbb-9342-40e39c2ac89b"}
 
         if send_message(metric):
             print(f"Sent: {metric}")

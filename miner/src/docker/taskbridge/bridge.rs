@@ -75,10 +75,10 @@ impl TaskBridge {
                                 break; // Connection closed
                             }
 
-                            match serde_json::from_str::<MetricInput>(&line.trim()) {
+                            match serde_json::from_str::<MetricInput>(line.trim()) {
                                 Ok(input) => {
                                     println!("Received metric: {:?}", input);
-                                    store
+                                    let _ = store
                                         .update_metric(input.task_id, input.label, input.value)
                                         .await;
                                 }
@@ -185,8 +185,8 @@ mod tests {
             task_id: "1234".to_string(),
             label: "test_label".to_string(),
         };
-        let value = 10.0;
-        let metric = all_metrics.get(&key).unwrap();
+        assert!(all_metrics.contains_key(&key));
+        assert_eq!(all_metrics.get(&key).unwrap(), &10.0);
 
         bridge_handle.abort();
         Ok(())

@@ -3,7 +3,7 @@ use alloy::primitives::Address;
 use log::error;
 use redis::Commands;
 use redis::RedisResult;
-use shared::models::metric::MetricsMap;
+use shared::models::metric::MetricEntry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,24 +22,26 @@ impl MetricsStore {
     fn clean_label(&self, label: &str) -> String {
         label.replace(":", "")
     }
+    pub fn store_metrics(&self, metrics: Option<Vec<MetricEntry>>, sender_address: Address) {
+        let Some(metrics) = metrics else {
+            return;
+        };
 
-    pub fn store_metrics(&self, metric: Option<MetricsMap>, sender_address: Address) {
-        if metric.is_none() {
+        if metrics.is_empty() {
             return;
         }
-        let metrics = metric.unwrap();
 
-        for (key, metric) in metrics {
-            let cleaned_label = self.clean_label(&key.label);
+        for entry in metrics {
+            let cleaned_label = self.clean_label(&entry.key.label);
             let redis_key = format!(
                 "{}:{}:{}",
-                ORCHESTRATOR_METRICS_STORE, key.task_id, cleaned_label
+                ORCHESTRATOR_METRICS_STORE, entry.key.task_id, cleaned_label
             );
             let mut con = self.redis.client.get_connection().unwrap();
             if let Err(err) = con.hset(
                 redis_key,
                 sender_address.to_string(),
-                metric.value.to_string(),
+                entry.value.to_string(),
             ) as RedisResult<()>
             {
                 error!("Could not update metric value in redis: {}", err);
@@ -100,31 +102,38 @@ impl MetricsStore {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
-    use shared::models::metric::{Metric, MetricKey};
+    use shared::models::metric::MetricKey;
+
     #[tokio::test]
     async fn test_store_metrics() {
         let app_state = create_test_app_state().await;
         let metrics_store = app_state.store_context.metrics_store.clone();
 
-        let mut taskid_metrics_store = MetricsMap::new();
+        let mut metrics = Vec::new();
         let task_id = "task_1";
         let metric_key = MetricKey {
             task_id: task_id.to_string(),
             label: "cpu_usage".to_string(),
         };
-        let metric = Metric { value: 1.0 };
-        taskid_metrics_store.insert(metric_key, metric);
-        metrics_store.store_metrics(Some(taskid_metrics_store), Address::ZERO);
+        let metric = MetricEntry {
+            key: metric_key,
+            value: 1.0,
+        };
+        metrics.push(metric);
+        metrics_store.store_metrics(Some(metrics), Address::ZERO);
 
-        let mut taskid_metrics_store = MetricsMap::new();
+        let mut metrics = Vec::new();
         let task_id = "task_0";
         let metric_key = MetricKey {
             task_id: task_id.to_string(),
             label: "cpu_usage".to_string(),
         };
-        let metric = Metric { value: 2.0 };
-        taskid_metrics_store.insert(metric_key, metric);
-        metrics_store.store_metrics(Some(taskid_metrics_store), Address::ZERO);
+        let metric = MetricEntry {
+            key: metric_key,
+            value: 2.0,
+        };
+        metrics.push(metric);
+        metrics_store.store_metrics(Some(metrics), Address::ZERO);
 
         let metrics: HashMap<String, f64> = metrics_store.get_aggregate_metrics_for_task("task_1");
         println!("metrics {:?}", metrics);

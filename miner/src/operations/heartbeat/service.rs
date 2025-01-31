@@ -134,8 +134,9 @@ impl HeartbeatService {
 
         let current_task_state = docker_service.state.get_current_task().await;
         let request = if let Some(task) = current_task_state {
-
-            let metrics_for_task = metrics_store.get_metrics_for_task(task.id.to_string()).await;
+            let metrics_for_task = metrics_store
+                .get_metrics_for_task(task.id.to_string())
+                .await;
             HeartbeatRequest {
                 address: wallet.address().to_string(),
                 task_id: Some(task.id.to_string()),
@@ -150,6 +151,7 @@ impl HeartbeatService {
                 metrics: None,
             }
         };
+        println!("Request: {:?}", request);
 
         let signature = sign_request(
             "/heartbeat",
