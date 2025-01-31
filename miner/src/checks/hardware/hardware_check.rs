@@ -45,8 +45,8 @@ impl HardwareChecker {
 
         let (storage_path, available_space) = if cfg!(target_os = "linux") {
             match super::storage::find_largest_storage() {
-                Ok(mount_point) => (Some(mount_point.path), Some(mount_point.available_space)),
-                Err(_) => (None, None),
+                Some(mount_point) => (Some(mount_point.path), Some(mount_point.available_space)),
+                None => (None, None),
             }
         } else {
             (None, None)
