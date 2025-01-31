@@ -99,8 +99,6 @@ impl DockerService {
                     })
                     .cloned()
                     .collect();
-                    println!("Old tasks: {:?}", old_tasks);
-                    println!("Task id: {:?}", task_id);
                     Console::info("DockerService", &format!("Old tasks: {:?}", old_tasks));
 
                     if !old_tasks.is_empty() {
