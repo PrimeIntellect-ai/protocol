@@ -67,60 +67,64 @@ pub fn get_storage_info() -> Result<(f64, f64), std::io::Error> {
     ))
 }
 #[cfg(target_os = "linux")]
-pub fn find_largest_storage() -> std::io::Result<MountPoint> {
+pub fn find_largest_storage() -> Option<MountPoint> {
+    const VALID_FS: [&str; 4] = ["ext4", "xfs", "btrfs", "zfs"];
+    const MIN_SPACE: u64 = 1_000_000_000;
+
     let mut mount_points = Vec::new();
-    let mounts = fs::read_to_string("/proc/mounts")?;
+    let username = std::env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
 
-    for line in mounts.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 2 {
-            continue;
-        }
+    if let Ok(mounts) = fs::read_to_string("/proc/mounts") {
+        for line in mounts.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 2 {
+                continue;
+            }
 
-        let path = parts[1];
-        let fstype = parts[2];
+            let path = parts[1];
+            let fstype = parts[2];
 
-        // Only consider real filesystems, skip tmpfs, devfs, etc
-        if !["ext4", "xfs", "btrfs", "zfs"].contains(&fstype) {
-            continue;
-        }
+            if !VALID_FS.contains(&fstype) {
+                continue;
+            }
 
-        unsafe {
-            let mut stats: statvfs_t = std::mem::zeroed();
+            // Check available space
+            let mut stats: statvfs_t = unsafe { std::mem::zeroed() };
             let path_c = CString::new(path).unwrap();
-            if statvfs(path_c.as_ptr(), &mut stats) == 0 {
+            if unsafe { statvfs(path_c.as_ptr(), &mut stats) } == 0 {
                 let available = stats.f_bsize * stats.f_bavail;
-
-                // Only consider mount points with significant space (e.g., > 1GB)
-                if available > 1_000_000_000 {
-                    mount_points.push(MountPoint {
-                        path: path.to_string(),
-                        available_space: available,
-                    });
+                if available <= MIN_SPACE {
+                    continue;
+                }
+                // Check common writable locations
+                let base_path = path.trim_end_matches('/');
+                let paths_to_check = vec![
+                    base_path.to_string(),
+                    format!("{}/home/{}", base_path, username),
+                    format!("{}/var/lib", base_path),
+                    format!("{}/workspace", base_path),
+                    format!("{}/ephemeral", base_path),
+                ];
+                for check_path in paths_to_check {
+                    if let Ok(check_path_c) = CString::new(check_path.clone()) {
+                        if unsafe { libc::access(check_path_c.as_ptr(), libc::W_OK) } == 0 {
+                            mount_points.push(MountPoint {
+                                path: check_path,
+                                available_space: available,
+                            });
+                        }
+                    }
                 }
             }
         }
     }
 
-    mount_points.sort_by_key(|m| std::cmp::Reverse(m.available_space));
-
-    mount_points
-        .first()
-        .map(|m| MountPoint {
-            path: m.path.clone(),
-            available_space: m.available_space,
-        })
-        .ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::NotFound, "No valid mount points found")
-        })
+    mount_points.into_iter().max_by_key(|m| m.available_space)
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn find_largest_storage() -> std::io::Result<MountPoint> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "Finding largest storage is only supported on Linux",
-    ))
+pub fn find_largest_storage() -> Option<MountPoint> {
+    None
 }
 
 #[allow(dead_code)]
