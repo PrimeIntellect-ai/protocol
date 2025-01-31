@@ -75,6 +75,7 @@ mod tests {
             .store_context
             .heartbeat_store
             .get_heartbeat(&node_address);
+        assert_eq!(value, Some("{\"address\":\"0x0000000000000000000000000000000000000000\",\"task_id\":null,\"task_state\":null,\"metrics\":null}".to_string()));
     }
 
     #[actix_web::test]
@@ -119,5 +120,7 @@ mod tests {
             .store_context
             .heartbeat_store
             .get_heartbeat(&node_address);
+        // Task has not started yet
+        assert_eq!(value, Some("{\"address\":\"0x0000000000000000000000000000000000000000\",\"task_id\":null,\"task_state\":null,\"metrics\":null}".to_string()));
     }
 }
