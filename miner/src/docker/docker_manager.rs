@@ -248,9 +248,9 @@ impl DockerManager {
             match self.docker.remove_volume(&volume_name, None).await {
                 Ok(_) => info!("Volume {} removed successfully", volume_name),
                 Err(e) => match e {
-                    DockerError::DockerResponseServerError { status_code, .. }
-                        if status_code == 404 =>
-                    {
+                    DockerError::DockerResponseServerError {
+                        status_code: 404, ..
+                    } => {
                         debug!("Volume {} already removed", volume_name)
                     }
                     _ => error!("Failed to remove volume {}: {}", volume_name, e),

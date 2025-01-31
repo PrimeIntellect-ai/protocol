@@ -1,8 +1,5 @@
 use crate::console::Console;
-use libc::{statvfs, statvfs as statvfs_t};
 use std::env;
-use std::ffi::CString;
-use std::fs;
 pub const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 #[derive(Clone)]
