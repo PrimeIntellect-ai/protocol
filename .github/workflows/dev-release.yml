@@ -64,6 +64,16 @@ jobs:
             cp target/release/discovery release-artifacts/discovery-linux-x86_64
           fi
 
+      - name: Generate checksums
+        run: |
+          cd release-artifacts
+          for file in *-linux-x86_64; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" | cut -d ' ' -f 1 > "${file}.checksum"
+            fi
+          done
+          cd .. 
+
       - name: Generate release tag
         id: tag
         run: |
