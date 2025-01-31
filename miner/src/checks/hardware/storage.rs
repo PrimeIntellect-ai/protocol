@@ -6,8 +6,6 @@ use std::env;
 use std::ffi::CString;
 #[cfg(target_os = "linux")]
 use std::fs;
-#[cfg(target_os = "linux")]
-use std::os::unix::fs::PermissionsExt;
 pub const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 #[derive(Clone)]
@@ -77,7 +75,7 @@ pub fn find_largest_storage() -> Option<MountPoint> {
     let username = std::env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
 
     if let Ok(mounts) = fs::read_to_string("/proc/mounts") {
-        'mount_loop: for line in mounts.lines() {
+        for line in mounts.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() < 2 {
                 continue;
@@ -91,34 +89,29 @@ pub fn find_largest_storage() -> Option<MountPoint> {
             }
 
             // Check available space
-            unsafe {
-                let mut stats: statvfs_t = std::mem::zeroed();
-                let path_c = CString::new(path).unwrap();
-                if statvfs(path_c.as_ptr(), &mut stats) == 0 {
-                    let available = stats.f_bsize * stats.f_bavail;
-                    if available <= MIN_SPACE {
-                        continue;
-                    }
-
-                    // Check common writable locations
-                    let base_path = path.trim_end_matches('/');
-                    let paths_to_check = vec![
-                        base_path.to_string(),
-                        format!("{}/home/{}", base_path, username),
-                        format!("{}/var/lib", base_path),
-                    ];
-
-                    println!("Paths to check: {:?}", paths_to_check);
-                    for check_path in paths_to_check {
-                        if let Ok(check_path_c) = CString::new(check_path.clone()) {
-                            if unsafe { libc::access(check_path_c.as_ptr(), libc::W_OK) } == 0 {
-                                println!("Path is writable: {}", check_path);
-                                mount_points.push(MountPoint {
-                                    path: check_path,
-                                    available_space: available,
-                                });
-                                break 'mount_loop;
-                            }
+            let mut stats: statvfs_t = unsafe { std::mem::zeroed() };
+            let path_c = CString::new(path).unwrap();
+            if unsafe { statvfs(path_c.as_ptr(), &mut stats) } == 0 {
+                let available = stats.f_bsize * stats.f_bavail;
+                if available <= MIN_SPACE {
+                    continue;
+                }
+                // Check common writable locations
+                let base_path = path.trim_end_matches('/');
+                let paths_to_check = vec![
+                    base_path.to_string(),
+                    format!("{}/home/{}", base_path, username),
+                    format!("{}/var/lib", base_path),
+                    format!("{}/workspace", base_path),
+                    format!("{}/ephemeral", base_path),
+                ];
+                for check_path in paths_to_check {
+                    if let Ok(check_path_c) = CString::new(check_path.clone()) {
+                        if unsafe { libc::access(check_path_c.as_ptr(), libc::W_OK) } == 0 {
+                            mount_points.push(MountPoint {
+                                path: check_path,
+                                available_space: available,
+                            });
                         }
                     }
                 }
