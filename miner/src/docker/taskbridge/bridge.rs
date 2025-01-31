@@ -13,7 +13,7 @@ use tokio::{
 
 pub const SOCKET_NAME: &str = "metrics.sock";
 const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.miner/";
-const DEFAULT_LINUX_SOCKET: &str = "/var/run/com.prime.miner/";
+const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.miner/";
 
 pub struct TaskBridge {
     pub socket_path: String,
@@ -48,20 +48,52 @@ impl TaskBridge {
 
     pub async fn run(&self) -> Result<()> {
         let socket_path = Path::new(&self.socket_path);
+        log::info!("Setting up TaskBridge socket at: {}", socket_path.display());
 
         if let Some(parent) = socket_path.parent() {
-            fs::create_dir_all(parent)?;
+            match fs::create_dir_all(parent) {
+                Ok(_) => log::debug!("Created parent directory: {}", parent.display()),
+                Err(e) => {
+                    log::error!(
+                        "Failed to create parent directory {}: {}",
+                        parent.display(),
+                        e
+                    );
+                    return Err(e.into());
+                }
+            }
         }
 
         // Cleanup existing socket if present
         if socket_path.exists() {
-            fs::remove_file(socket_path)?;
+            match fs::remove_file(socket_path) {
+                Ok(_) => log::debug!("Removed existing socket file"),
+                Err(e) => {
+                    log::error!("Failed to remove existing socket file: {}", e);
+                    return Err(e.into());
+                }
+            }
         }
 
-        let listener = UnixListener::bind(socket_path)?;
+        let listener = match UnixListener::bind(socket_path) {
+            Ok(l) => {
+                log::info!("Successfully bound to Unix socket");
+                l
+            }
+            Err(e) => {
+                log::error!("Failed to bind Unix socket: {}", e);
+                return Err(e.into());
+            }
+        };
 
         // allow both owner and group to read/write
-        fs::set_permissions(socket_path, fs::Permissions::from_mode(0o660))?;
+        match fs::set_permissions(socket_path, fs::Permissions::from_mode(0o660)) {
+            Ok(_) => log::debug!("Set socket permissions to 0o660"),
+            Err(e) => {
+                log::error!("Failed to set socket permissions: {}", e);
+                return Err(e.into());
+            }
+        }
 
         loop {
             let store = self.metrics_store.clone();

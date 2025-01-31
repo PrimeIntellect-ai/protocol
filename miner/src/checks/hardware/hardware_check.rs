@@ -1,7 +1,7 @@
 use super::{
     gpu::detect_gpu,
     memory::{convert_to_mb, get_memory_info, print_memory_info},
-    storage::get_storage_info,
+    storage::{get_storage_info, BYTES_TO_GB},
 };
 use crate::console::Console;
 use shared::models::node::{ComputeSpecs, CpuSpecs, GpuSpecs, Node};
@@ -43,10 +43,25 @@ impl HardwareChecker {
         let gpu_specs = self.collect_gpu_specs()?;
         let (ram_mb, storage_gb) = self.collect_memory_specs()?;
 
+        let (storage_path, available_space) = if cfg!(target_os = "linux") {
+            match super::storage::find_largest_storage() {
+                Ok(mount_point) => (Some(mount_point.path), Some(mount_point.available_space)),
+                Err(_) => (None, None),
+            }
+        } else {
+            (None, None)
+        };
+
+        let storage_gb_value = match available_space {
+            Some(space) => (space as f64 / BYTES_TO_GB) as u32,
+            None => storage_gb,
+        };
+
         node_config.compute_specs = Some(ComputeSpecs {
             cpu: Some(cpu_specs),
             ram_mb: Some(ram_mb),
-            storage_gb: Some(storage_gb),
+            storage_gb: Some(storage_gb_value),
+            storage_path,
             gpu: gpu_specs,
         });
 
@@ -100,9 +115,12 @@ impl HardwareChecker {
             print_memory_info(total_memory, free_memory);
 
             // Print Storage Info
-            if let Some(storage_gb) = compute_specs.storage_gb {
+            if let Some(storage_gb) = &compute_specs.storage_gb {
                 Console::section("Storage Information:");
                 Console::info("Total Storage", &format!("{} GB", storage_gb));
+            }
+            if let Some(storage_path) = &compute_specs.storage_path {
+                Console::info("Storage Path for docker mounts:", storage_path);
             }
         }
 
