@@ -43,6 +43,47 @@ export SSH_CONNECTION="ssh ubuntu@ip -i private_key.pem"
 make remote-miner
 ```
 
+## Start a runner for dev
+
+First, you need to create a local miner
+
+```bash
+make watch-miner
+```
+
+check that the miner as been registered
+
+```bash
+curl -X GET http://localhost:8090/nodes
+>>> {"nodes":[{"address":"0x66295e2b4a78d1cb57db16ac0260024900a5ba9b","ip_address":"0.0.0.0","port":8091,"status":"Healthy","task_id":null,"task_state":null}],"success":true}
+```
+
+
+then lets create a task
+
+```bash
+curl -X POST http://localhost:8090/tasks -H "Content-Type: application/json" -d '{"name":"sample","image":"ubuntu:latest"}'
+>>> {"success":true,"task":"updated_task"}% 
+```
+
+and check that the task is created
+
+```bash
+curl -X GET http://localhost:8090/nodes
+>>> {"nodes":[{"address":"0x66295e2b4a78d1cb57db16ac0260024900a5ba9b","ip_address":"0.0.0.0","port":8091,"status":"Healthy","task_id":"29edd356-5c48-4ba6-ab96-73d002daddff","task_state":"RUNNING"}],"success":true}%     
+```
+
+you can also check docker ps to see that the docker is running locally
+
+```bash
+docker ps
+CONTAINER ID   IMAGE                               COMMAND                  CREATED          STATUS          PORTS                                         NAMES
+e860c44a9989   ubuntu:latest                       "sleep infinity"         3 minutes ago    Up 3 minutes                                                  prime-task-29edd356-5c48-4ba6-ab96-73d002daddff
+ef02d23b5c74   redis:alpine                        "docker-entrypoint.s…"   27 minutes ago   Up 27 minutes   0.0.0.0:6380->6379/tcp, [::]:6380->6379/tcp   prime-miner-validator-redis-1
+7761ee7b6dcf   ghcr.io/foundry-rs/foundry:latest   "anvil --host 0.0.0.…"   27 minutes ago   Up 27 minutes   0.0.0.0:8545->8545/tcp, :::8545->8545/tcp     prime-miner-validator-anvil-1
+```
+
+
 ## System architecture (WIP)
 The following system architecture still misses crucial components (e.g. terminations) and is simplified for the MVP / intellect-2 run.
 
