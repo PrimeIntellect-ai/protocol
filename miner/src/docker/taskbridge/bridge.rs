@@ -107,19 +107,66 @@ impl TaskBridge {
                                 break; // Connection closed
                             }
 
-                            match serde_json::from_str::<MetricInput>(line.trim()) {
-                                Ok(input) => {
-                                    println!("Received metric: {:?}", input);
-                                    let _ = store
-                                        .update_metric(input.task_id, input.label, input.value)
-                                        .await;
-                                }
-                                Err(e) => {
-                                    log::error!("Failed to parse metric input: {}", e);
+                            let trimmed = line.trim();
+                            let mut current_pos = 0;
+
+                            // Keep processing JSON objects until we reach the end of the line
+                            while current_pos < trimmed.len() {
+                                // Try to find a complete JSON object
+                                if let Some(json_str) = extract_next_json(&trimmed[current_pos..]) {
+                                    match serde_json::from_str::<MetricInput>(json_str) {
+                                        Ok(input) => {
+                                            println!("Received metric: {:?}", input);
+                                            let _ = store
+                                                .update_metric(
+                                                    input.task_id,
+                                                    input.label,
+                                                    input.value,
+                                                )
+                                                .await;
+                                        }
+                                        Err(e) => {
+                                            log::error!(
+                                                "Failed to parse metric input: {} {}",
+                                                json_str,
+                                                e
+                                            );
+                                        }
+                                    }
+                                    current_pos += json_str.len();
+                                } else {
+                                    break;
                                 }
                             }
 
                             line.clear();
+                        }
+
+                        // Helper function to extract the next complete JSON object from a string
+                        fn extract_next_json(input: &str) -> Option<&str> {
+                            let mut brace_count = 0;
+                            let mut start_found = false;
+                            let mut start_idx = 0;
+
+                            for (i, c) in input.chars().enumerate() {
+                                match c {
+                                    '{' => {
+                                        if !start_found {
+                                            start_found = true;
+                                            start_idx = i;
+                                        }
+                                        brace_count += 1;
+                                    }
+                                    '}' => {
+                                        brace_count -= 1;
+                                        if brace_count == 0 && start_found {
+                                            return Some(&input[start_idx..=i]);
+                                        }
+                                    }
+                                    _ => continue,
+                                }
+                            }
+                            None
                         }
                     });
                 }
