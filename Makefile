@@ -1,3 +1,4 @@
+SHELL := /bin/bash
 ENV_FILE ?= .env
 .PHONY: setup pool domain fund
 
