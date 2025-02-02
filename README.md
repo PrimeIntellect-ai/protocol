@@ -45,7 +45,7 @@ make remote-miner
 
 ## Start a runner for dev
 
-First, you need to create a local miner
+First, you need to create a local miner (after you have all other services running using e.g. `make up`) 
 
 ```bash
 make watch-miner
