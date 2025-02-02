@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
         .init();
     let args = Args::parse();
 
-    let redis_store = RedisStore::new("redis://localhost:6379");
+    let redis_store = RedisStore::new("redis://localhost:6380");
     let node_store = Arc::new(NodeStore::new(redis_store));
     // TODO: Find a way to read from chain without address - hardcoded key here
     let wallet = Arc::new(

@@ -50,7 +50,7 @@ struct Args {
     discovery_refresh_interval: u64,
 
     /// Redis store url
-    #[arg(short = 's', long, default_value = "redis://localhost:6379")]
+    #[arg(short = 's', long, default_value = "redis://localhost:6380")]
     redis_store_url: String,
 
     /// Discovery url
