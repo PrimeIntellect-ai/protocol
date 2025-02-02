@@ -118,11 +118,19 @@ impl TaskBridge {
                                         Ok(input) => {
                                             println!("Received metric: {:?}", input);
                                             let _ = store
-                                                .update_metric(input.task_id, input.label, input.value)
+                                                .update_metric(
+                                                    input.task_id,
+                                                    input.label,
+                                                    input.value,
+                                                )
                                                 .await;
                                         }
                                         Err(e) => {
-                                            log::error!("Failed to parse metric input: {} {}", json_str, e);
+                                            log::error!(
+                                                "Failed to parse metric input: {} {}",
+                                                json_str,
+                                                e
+                                            );
                                         }
                                     }
                                     current_pos += json_str.len();
@@ -139,7 +147,7 @@ impl TaskBridge {
                             let mut brace_count = 0;
                             let mut start_found = false;
                             let mut start_idx = 0;
-                            
+
                             for (i, c) in input.chars().enumerate() {
                                 match c {
                                     '{' => {
@@ -155,7 +163,7 @@ impl TaskBridge {
                                             return Some(&input[start_idx..=i]);
                                         }
                                     }
-                                    _ => continue
+                                    _ => continue,
                                 }
                             }
                             None

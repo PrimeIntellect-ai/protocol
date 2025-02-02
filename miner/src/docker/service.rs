@@ -190,7 +190,6 @@ impl DockerService {
                             let status = manager.get_container_details(&container_status.id).await.unwrap();
 
                             let task_state_current = task_clone.clone().unwrap().state;
-                            Console::info("DockerService", &format!("Task state: {:?}", task_state_current));
                             // handle edge case where container instantly dies due to invalid command
                             if status.status == Some(ContainerStateStatusEnum::CREATED) && task_state_current == TaskState::FAILED {
                                 Console::info("DockerService", "Task failed, waiting for new command from manager ...");
@@ -217,7 +216,7 @@ impl DockerService {
                                         });
                                         terminating_container_tasks.lock().await.push(handle);
                                 }
-                                Console::info("DockerService", &format!("Task state: {:?}", task_state));
+                                Console::info("DockerService", &format!("Task state of task {}: {:?}", &task_id.unwrap(), task_state));
                                 state.update_task_state(task_clone.unwrap().id, task_state).await;
                             }
                         }
