@@ -25,14 +25,14 @@
 
 - name: Create directory for chain state
   file:
-    path: /root/chain-state-dir
+    path: /root/anvil-chain-state
     state: directory
     mode: '0755'
   become: true
 
 - name: Start Anvil in tmux session
   shell: |
-    tmux new-session -d -s anvil "/root/.foundry/bin/anvil --host 0.0.0.0 --port 8545 --state /root/chain-state-dir/chain-state.json --state-interval 30 --block-time 2"
+    tmux new-session -d -s anvil "/root/.foundry/bin/anvil --host 0.0.0.0 --port 8545 --state /root/anvil-chain-state/chain-state.json --state-interval 30 --block-time 2"
   args:
     executable: /bin/bash
   become: true
@@ -71,8 +71,6 @@
 - name: Run deployment script
   shell: |
     cd /opt/smart-contracts
-    export PATH="/root/.foundry/bin:$PATH"
-    ./deploy.sh
   args:
     executable: /bin/bash
   become: true
