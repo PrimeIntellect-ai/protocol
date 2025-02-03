@@ -46,6 +46,8 @@ impl DockerService {
         let cancellation_token = self.cancellation_token.clone();
         let state = self.state.clone();
 
+        state.set_is_running(true).await;
+
         let starting_container_tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> =
             Arc::new(Mutex::new(Vec::new()));
         let terminating_container_tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> =

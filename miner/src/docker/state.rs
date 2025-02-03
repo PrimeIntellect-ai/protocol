@@ -6,6 +6,7 @@ use uuid::Uuid;
 pub struct DockerState {
     current_task: Arc<Mutex<Option<Task>>>,
     last_started: Arc<Mutex<Option<DateTime<Utc>>>>,
+    is_running: Arc<Mutex<bool>>,
 }
 
 impl DockerState {
@@ -13,6 +14,7 @@ impl DockerState {
         Self {
             current_task: Arc::new(Mutex::new(None)),
             last_started: Arc::new(Mutex::new(None)),
+            is_running: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -43,5 +45,15 @@ impl DockerState {
     pub async fn set_last_started(&self, last_started: DateTime<Utc>) {
         let mut last_started_guard = self.last_started.lock().await;
         *last_started_guard = Some(last_started);
+    }
+
+    pub async fn get_is_running(&self) -> bool {
+        let is_running = self.is_running.lock().await;
+        *is_running
+    }
+
+    pub async fn set_is_running(&self, is_running: bool) {
+        let mut is_running_guard = self.is_running.lock().await;
+        *is_running_guard = is_running;
     }
 }
