@@ -14,7 +14,7 @@ use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 
 pub struct DockerService {
-    docker_manager: Arc<DockerManager>,
+    pub docker_manager: Arc<DockerManager>,
     cancellation_token: CancellationToken,
     pub state: Arc<DockerState>,
     has_gpu: bool,

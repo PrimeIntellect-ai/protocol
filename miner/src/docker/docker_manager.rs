@@ -312,4 +312,5 @@ impl DockerManager {
         info!("Retrieved details for container {}", container_id);
         Ok(info)
     }
+
 }
