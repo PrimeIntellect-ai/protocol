@@ -27,6 +27,14 @@ struct Args {
     /// Platform API key
     #[arg(short = 'p', long, default_value = "prime")]
     platform_api_key: String,
+
+    /// Redis URL
+    #[arg(long, default_value = "redis://localhost:6380")]
+    redis_url: String,
+
+    /// Port
+    #[arg(short = 'P', long, default_value = "8089")]
+    port: u16,
 }
 
 #[tokio::main]
@@ -38,7 +46,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let redis_store = RedisStore::new("redis://localhost:6380");
+    let redis_store = RedisStore::new(&args.redis_url);
     let node_store = Arc::new(NodeStore::new(redis_store));
     // TODO: Find a way to read from chain without address - hardcoded key here
     let wallet = Arc::new(
@@ -71,7 +79,7 @@ async fn main() -> Result<()> {
 
     if let Err(err) = start_server(
         "0.0.0.0",
-        8089,
+        args.port,
         node_store,
         contracts_clone,
         args.validator_address,
