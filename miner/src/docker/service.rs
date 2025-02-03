@@ -229,6 +229,37 @@ impl DockerService {
 
         Ok(())
     }
+
+    pub async fn get_logs(&self) -> Result<String, Box<dyn std::error::Error>> {
+        let current_task = self.state.get_current_task().await;
+        match current_task {
+            Some(task) => {
+                let container_id = format!("{}-{}", TASK_PREFIX, task.id);
+                let logs = self
+                    .docker_manager
+                    .get_container_logs(&container_id, None)
+                    .await?;
+                if logs.is_empty() {
+                    Ok("No logs found in docker container".to_string())
+                } else {
+                    Ok(logs)
+                }
+            }
+            None => Ok("No task running".to_string()),
+        }
+    }
+
+    pub async fn restart_task(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let current_task = self.state.get_current_task().await;
+        match current_task {
+            Some(task) => {
+                let container_id = format!("{}-{}", TASK_PREFIX, task.id);
+                self.docker_manager.restart_container(&container_id).await?;
+                Ok(())
+            }
+            None => Ok(()),
+        }
+    }
 }
 
 #[cfg(test)]

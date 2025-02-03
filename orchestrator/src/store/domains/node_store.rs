@@ -43,9 +43,13 @@ impl NodeStore {
 
     pub fn get_node(&self, address: &Address) -> Option<OrchestratorNode> {
         let mut con = self.redis.client.get_connection().unwrap();
-        let node_string: Option<String> = con
-            .get(format!("{}:{}", ORCHESTRATOR_BASE_KEY, address))
-            .unwrap();
+
+        let node_string: Option<String> =
+            match con.get(format!("{}:{}", ORCHESTRATOR_BASE_KEY, address)) {
+                Ok(value) => value,
+                Err(_) => return None,
+            };
+
         node_string.map(|node_string| OrchestratorNode::from_string(&node_string))
     }
 

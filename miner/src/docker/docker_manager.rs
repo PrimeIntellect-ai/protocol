@@ -1,5 +1,6 @@
+use bollard::container::LogOutput;
 use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, StartContainerOptions,
+    Config, CreateContainerOptions, ListContainersOptions, LogsOptions, StartContainerOptions,
 };
 use bollard::errors::Error as DockerError;
 use bollard::image::CreateImageOptions;
@@ -11,6 +12,7 @@ use bollard::Docker;
 use futures_util::StreamExt;
 use log::{debug, error, info};
 use std::collections::HashMap;
+use strip_ansi_escapes::strip;
 
 #[derive(Debug, Clone)]
 pub struct ContainerInfo {
@@ -41,6 +43,7 @@ pub struct DockerManager {
 }
 
 impl DockerManager {
+    const DEFAULT_LOG_TAIL: i64 = 300;
     /// Create a new DockerManager instance
     pub fn new(storage_path: Option<String>) -> Result<Self, DockerError> {
         let docker = match Docker::connect_with_unix_defaults() {
@@ -311,5 +314,85 @@ impl DockerManager {
 
         info!("Retrieved details for container {}", container_id);
         Ok(info)
+    }
+
+    pub async fn restart_container(&self, container_id: &str) -> Result<(), DockerError> {
+        debug!("Restarting container: {}", container_id);
+        self.docker.restart_container(container_id, None).await?;
+        debug!("Container {} restarted successfully", container_id);
+        Ok(())
+    }
+
+    pub async fn get_container_logs(
+        &self,
+        container_id: &str,
+        tail: Option<i64>,
+    ) -> Result<String, DockerError> {
+        debug!("Fetching logs for container: {}", container_id);
+        let tail_value = tail.unwrap_or(Self::DEFAULT_LOG_TAIL).to_string();
+        let options = LogsOptions::<String> {
+            stdout: true,
+            stderr: true,
+            tail: tail_value,
+            timestamps: false,
+            follow: false,
+            ..Default::default()
+        };
+
+        let mut logs_stream = self.docker.logs(container_id, Some(options));
+        let mut all_logs = Vec::new();
+        // Buffer to accumulate a line that might be updated via carriage returns
+        let mut current_line = String::new();
+
+        while let Some(log_result) = logs_stream.next().await {
+            match log_result {
+                Ok(log_output) => {
+                    let message_bytes = match log_output {
+                        LogOutput::StdOut { message } | LogOutput::StdErr { message } => message,
+                        LogOutput::Console { message } => message,
+                        LogOutput::StdIn { message } => message,
+                    };
+
+                    // Strip ANSI escape sequences, skipping on error.
+                    let cleaned: Vec<u8> = strip(&message_bytes);
+
+                    // Convert to string without immediately replacing '\r'
+                    let cleaned_str = String::from_utf8_lossy(&cleaned);
+
+                    if cleaned_str.contains('\r') {
+                        // For messages with carriage returns, treat it as an update to the current line.
+                        let parts: Vec<&str> = cleaned_str.split('\r').collect();
+                        if let Some(last_segment) = parts.last() {
+                            // Update our current line buffer with the latest segment.
+                            current_line = last_segment.to_string();
+                        }
+                    } else {
+                        // Flush any buffered progress update if present.
+                        if !current_line.is_empty() {
+                            all_logs.push(current_line.clone());
+                            current_line.clear();
+                        }
+                        // Process the message normally.
+                        for line in cleaned_str.lines() {
+                            let trimmed = line.trim();
+                            if !trimmed.is_empty() {
+                                all_logs.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Error getting logs: {}", e);
+                    return Err(e);
+                }
+            }
+        }
+        // Push any leftover buffered line.
+        if !current_line.is_empty() {
+            all_logs.push(current_line);
+        }
+        let logs = all_logs.join("\n");
+        debug!("Successfully retrieved logs for container {}", container_id);
+        Ok(logs)
     }
 }

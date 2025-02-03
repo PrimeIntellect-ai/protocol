@@ -326,6 +326,7 @@ pub async fn execute_command(
                     node_wallet_instance.clone(),
                     provider_wallet_instance.clone(),
                     heartbeat_clone.clone(),
+                    docker_service.clone(),
                     pool_info,
                 )
                 .await

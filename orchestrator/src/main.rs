@@ -86,6 +86,7 @@ async fn main() -> Result<()> {
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
     let wallet_clone = coordinator_wallet.clone();
+    let server_wallet = coordinator_wallet.clone();
 
     let contracts = Arc::new(
         ContractBuilder::new(&coordinator_wallet.clone())
@@ -138,7 +139,7 @@ async fn main() -> Result<()> {
 
     let server_store_context = store_context.clone();
     tokio::select! {
-        res = start_server("0.0.0.0", port, server_store_context.clone(), args.admin_api_key) => {
+        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
             }
