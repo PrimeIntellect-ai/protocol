@@ -1,7 +1,6 @@
-FROM ubuntu:22.04-slim
+FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-
 COPY release-artifacts/discovery-linux-x86_64 /usr/local/bin/discovery
 RUN chmod +x /usr/local/bin/discovery
 
@@ -22,5 +21,4 @@ exec /usr/local/bin/discovery \
 chmod +x /entrypoint.sh
 
 EXPOSE 8089
-
 ENTRYPOINT ["/entrypoint.sh"]
