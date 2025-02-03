@@ -62,12 +62,10 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
                         }))
                     }
                 }
-                Err(e) => {
-                    HttpResponse::InternalServerError().json(json!({
-                        "success": false,
-                        "error": format!("Failed to restart task: {}", e)
-                    }))
-                }
+                Err(e) => HttpResponse::InternalServerError().json(json!({
+                    "success": false,
+                    "error": format!("Failed to restart task: {}", e)
+                })),
             }
         }
         None => HttpResponse::NotFound().json(json!({
@@ -125,12 +123,10 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
                         }))
                     }
                 }
-                Err(e) => {
-                    HttpResponse::InternalServerError().json(json!({
-                        "success": false,
-                        "error": format!("Failed to get logs: {}", e)
-                    }))
-                }
+                Err(e) => HttpResponse::InternalServerError().json(json!({
+                    "success": false,
+                    "error": format!("Failed to get logs: {}", e)
+                })),
             }
         }
         None => HttpResponse::Ok().json(json!({"success": false, "logs": "Node not found"})),
