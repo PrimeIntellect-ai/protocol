@@ -124,6 +124,12 @@ jobs:
           gsutil -m cp -r gs://prime-miner/${{ steps.tag.outputs.tag_name }}/* gs://prime-miner/latest/
           gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-miner/latest/**/*
 
+      - name: Generate Docker metadata
+        id: meta
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "repo_lower=${REPO_LOWER}" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
@@ -141,5 +147,5 @@ jobs:
           file: ./discovery/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/discovery:dev
-            ghcr.io/${{ github.repository }}/discovery:${{ steps.tag.outputs.tag_name }}
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:dev
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.tag.outputs.tag_name }}
