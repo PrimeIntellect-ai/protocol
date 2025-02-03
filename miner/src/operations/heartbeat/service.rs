@@ -1,4 +1,5 @@
 use super::state::HeartbeatState;
+use crate::console::Console;
 use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
 use crate::TaskHandles;
@@ -196,6 +197,14 @@ impl HeartbeatService {
         };
 
         docker_service.state.set_current_task(task).await;
+        let is_running = docker_service.state.get_is_running().await;
+        if !is_running {
+            tokio::spawn(async move {
+                if let Err(e) = docker_service.run().await {
+                    Console::error(&format!("❌ Docker service failed: {}", e));
+                }
+            });
+        }
 
         Ok(response.data)
     }

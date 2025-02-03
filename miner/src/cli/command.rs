@@ -250,12 +250,6 @@ pub async fn execute_command(
                 heartbeat_metrics_clone.clone(),
             );
 
-            tokio::spawn(async move {
-                if let Err(e) = docker_service.run().await {
-                    Console::error(&format!("❌ Docker service failed: {}", e));
-                }
-            });
-
             let mut attempts = 0;
             let max_attempts = 100;
             let stake = U256::from(*provider_stake);
