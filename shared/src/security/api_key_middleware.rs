@@ -1,4 +1,3 @@
-// src/auth.rs
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     error::ErrorUnauthorized,
