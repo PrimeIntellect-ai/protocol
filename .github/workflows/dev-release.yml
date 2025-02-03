@@ -149,3 +149,23 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:dev
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.tag.outputs.tag_name }}
+
+      - name: Build and push Validator image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./validator/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:dev
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:${{ steps.tag.outputs.tag_name }}
+
+      - name: Build and push Orchestrator image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./orchestrator/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:dev
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:${{ steps.tag.outputs.tag_name }}
