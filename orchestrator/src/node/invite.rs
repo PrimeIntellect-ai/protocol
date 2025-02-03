@@ -157,7 +157,7 @@ impl<'a> NodeInviter<'a> {
                 failed_nodes.len(),
                 failed_nodes
                     .iter()
-                    .map(|(node, _)| node.address.clone())
+                    .map(|(node, _)| node.address)
                     .collect::<Vec<_>>()
             );
         }
