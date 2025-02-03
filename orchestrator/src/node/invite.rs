@@ -137,9 +137,29 @@ impl<'a> NodeInviter<'a> {
 
     async fn process_uninvited_nodes(&self) -> Result<()> {
         let nodes = self.store_context.node_store.get_uninvited_nodes();
+        let mut failed_nodes = Vec::new();
         for node in nodes {
             // TODO: Eventually and carefully move this to tokio
-            self._send_invite(node).await?;
+            match self._send_invite(node.clone()).await {
+                Ok(_) => {
+                    info!("Successfully processed node {:?}", node.address);
+                }
+                Err(e) => {
+                    error!("Failed to process node {:?}: {}", node.address, e);
+                    failed_nodes.push((node, e));
+                }
+            }
+        }
+
+        if !failed_nodes.is_empty() {
+            warn!(
+                "Failed to process {} nodes: {:?}",
+                failed_nodes.len(),
+                failed_nodes
+                    .iter()
+                    .map(|(node, _)| node.address)
+                    .collect::<Vec<_>>()
+            );
         }
 
         Ok(())
