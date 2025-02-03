@@ -6,16 +6,31 @@ use actix_web::{
 use serde_json::json;
 
 async fn get_logs(app_state: Data<AppState>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({
-        "logs": "Not implemented yet"
-    }))
+    let logs = app_state.docker_service.get_logs().await;
+    match logs {
+        Ok(logs) => HttpResponse::Ok().json(json!({
+            "success": true,
+            "logs": logs
+        })),
+        Err(e) => HttpResponse::InternalServerError().json(json!({
+            "success": false,
+            "error": e.to_string()
+        })),
+    }
 }
 
 async fn restart_task(app_state: Data<AppState>) -> HttpResponse {
-    // TODO: Implement actual node restart
-    HttpResponse::Ok().json(json!({
-        "status": "restart initiated"
-    }))
+    let result = app_state.docker_service.restart_task().await;
+    match result {
+        Ok(_) => HttpResponse::Ok().json(json!({
+            "success": true,
+            "message": "Task restarted successfully"
+        })),
+        Err(e) => HttpResponse::InternalServerError().json(json!({
+            "success": false,
+            "error": e.to_string()
+        })),
+    }
 }
 
 pub fn task_routes() -> Scope {

@@ -6,19 +6,25 @@ use actix_web::{middleware, web::Data, App, HttpServer};
 use anyhow::Error;
 use log::info;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
+use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 
 pub struct AppState {
     pub store_context: Arc<StoreContext>,
+    pub wallet: Arc<Wallet>,
 }
 
 pub async fn start_server(
     host: &str,
     port: u16,
     store_context: Arc<StoreContext>,
+    wallet: Arc<Wallet>,
 ) -> Result<(), Error> {
     info!("Starting server at http://{}:{}", host, port);
-    let app_state = Data::new(AppState { store_context });
+    let app_state = Data::new(AppState {
+        store_context,
+        wallet,
+    });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
     let validator_state = Arc::new(

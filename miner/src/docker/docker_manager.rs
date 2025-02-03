@@ -1,5 +1,5 @@
 use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, StartContainerOptions,
+    Config, CreateContainerOptions, ListContainersOptions, LogsOptions, StartContainerOptions,
 };
 use bollard::errors::Error as DockerError;
 use bollard::image::CreateImageOptions;
@@ -41,6 +41,7 @@ pub struct DockerManager {
 }
 
 impl DockerManager {
+    const DEFAULT_LOG_TAIL: i64 = 300;
     /// Create a new DockerManager instance
     pub fn new(storage_path: Option<String>) -> Result<Self, DockerError> {
         let docker = match Docker::connect_with_unix_defaults() {
@@ -311,5 +312,48 @@ impl DockerManager {
 
         info!("Retrieved details for container {}", container_id);
         Ok(info)
+    }
+
+    pub async fn restart_container(&self, container_id: &str) -> Result<(), DockerError> {
+        debug!("Restarting container: {}", container_id);
+        self.docker.restart_container(container_id, None).await?;
+        debug!("Container {} restarted successfully", container_id);
+        Ok(())
+    }
+
+    pub async fn get_container_logs(
+        &self,
+        container_id: &str,
+        tail: Option<i64>,
+    ) -> Result<String, DockerError> {
+        debug!("Fetching logs for container: {}", container_id);
+
+        let tail_value = tail.unwrap_or(Self::DEFAULT_LOG_TAIL).to_string();
+
+        let mut options = LogsOptions::<String>::default();
+        options.stdout = true;
+        options.stderr = true;
+        options.tail = tail_value;
+        options.timestamps = true;
+
+        let mut logs_stream = self.docker.logs(container_id, Some(options));
+        let mut all_logs = Vec::new();
+
+        while let Some(log_result) = logs_stream.next().await {
+            match log_result {
+                Ok(log_output) => {
+                    all_logs.push(log_output.to_string());
+                }
+                Err(e) => {
+                    error!("Error getting logs: {}", e);
+                    return Err(e);
+                }
+            }
+        }
+
+        let logs = all_logs.join("\n");
+        debug!("Successfully retrieved logs for container {}", container_id);
+
+        Ok(logs)
     }
 }

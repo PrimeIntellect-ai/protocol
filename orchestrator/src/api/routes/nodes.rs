@@ -1,17 +1,147 @@
 use crate::api::server::AppState;
 use actix_web::{
-    web::{self, get, Data},
+    web::{self, get, post, Data},
     HttpResponse, Scope,
 };
+use alloy::primitives::Address;
 use serde_json::json;
+use shared::security::request_signer::sign_request;
+use std::str::FromStr;
 
 async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
     let nodes = app_state.store_context.node_store.get_nodes();
     HttpResponse::Ok().json(json!({"success": true, "nodes": nodes}))
 }
+async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
+    println!("restart_node_task: {}", node_id);
+    let node_address = Address::from_str(&node_id).unwrap();
+    let node = app_state.store_context.node_store.get_node(&node_address);
+    match node {
+        Some(node) => {
+            let node_ip = node.ip_address;
+            let node_port = node.port;
+
+            let node_url = format!("http://{}:{}", node_ip, node_port);
+            let restart_path = "/task/restart".to_string();
+            let restart_url = format!("{}{}", node_url, restart_path);
+            let payload = json!({});
+
+            let message_signature = sign_request(&restart_path, &app_state.wallet, Some(&payload))
+                .await
+                .unwrap();
+
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(
+                "x-address",
+                app_state
+                    .wallet
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string()
+                    .parse()
+                    .unwrap(),
+            );
+            headers.insert("x-signature", message_signature.parse().unwrap());
+
+            match reqwest::Client::new()
+                .post(restart_url)
+                .headers(headers)
+                .body(payload.to_string())
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        let result = response.json::<serde_json::Value>().await.unwrap();
+                        return HttpResponse::Ok().json(result);
+                    } else {
+                        return HttpResponse::InternalServerError().json(json!({
+                            "success": false,
+                            "error": format!("Failed to restart task: {}", response.status())
+                        }));
+                    }
+                }
+                Err(e) => {
+                    return HttpResponse::InternalServerError().json(json!({
+                        "success": false,
+                        "error": format!("Failed to restart task: {}", e)
+                    }));
+                }
+            }
+        }
+        None => HttpResponse::NotFound().json(json!({
+            "success": false,
+            "error": format!("Node not found: {}", node_id)
+        })),
+    }
+}
+
+async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
+    println!("get_node_logs: {}", node_id);
+    let node_address = Address::from_str(&node_id).unwrap();
+    let node = app_state.store_context.node_store.get_node(&node_address);
+    match node {
+        Some(node) => {
+            let node_ip = node.ip_address;
+            let node_port = node.port;
+
+            let node_url = format!("http://{}:{}", node_ip, node_port);
+            let logs_path = "/task/logs".to_string();
+            let logs_url = format!("{}{}", node_url, logs_path);
+
+            let message_signature = sign_request(&logs_path, &app_state.wallet, None)
+                .await
+                .unwrap();
+
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(
+                "x-address",
+                app_state
+                    .wallet
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string()
+                    .parse()
+                    .unwrap(),
+            );
+            headers.insert("x-signature", message_signature.parse().unwrap());
+
+            match reqwest::Client::new()
+                .get(logs_url)
+                .headers(headers)
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        let logs = response.json::<serde_json::Value>().await.unwrap();
+                        return HttpResponse::Ok().json(logs);
+                    } else {
+                        return HttpResponse::InternalServerError().json(json!({
+                            "success": false,
+                            "error": format!("Failed to get logs: {}", response.status())
+                        }));
+                    }
+                }
+                Err(e) => {
+                    return HttpResponse::InternalServerError().json(json!({
+                        "success": false,
+                        "error": format!("Failed to get logs: {}", e)
+                    }));
+                }
+            }
+        }
+        None => HttpResponse::Ok().json(json!({"success": false, "logs": "Node not found"})),
+    }
+}
 
 pub fn nodes_routes() -> Scope {
-    web::scope("/nodes").route("", get().to(get_nodes))
+    web::scope("/nodes")
+        .route("", get().to(get_nodes))
+        .route("/{node_id}/restart", post().to(restart_node_task))
+        .route("/{node_id}/logs", get().to(get_node_logs))
 }
 
 #[cfg(test)]
