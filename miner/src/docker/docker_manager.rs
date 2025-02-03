@@ -330,12 +330,14 @@ impl DockerManager {
     ) -> Result<String, DockerError> {
         debug!("Fetching logs for container: {}", container_id);
         let tail_value = tail.unwrap_or(Self::DEFAULT_LOG_TAIL).to_string();
-        let mut options = LogsOptions::<String>::default();
-        options.stdout = true;
-        options.stderr = true;
-        options.tail = tail_value;
-        options.timestamps = false;
-        options.follow = false;
+        let options = LogsOptions::<String> {
+            stdout: true,
+            stderr: true,
+            tail: tail_value,
+            timestamps: false,
+            follow: false,
+            ..Default::default()
+        };
 
         let mut logs_stream = self.docker.logs(container_id, Some(options));
         let mut all_logs = Vec::new();

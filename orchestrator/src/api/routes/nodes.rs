@@ -54,19 +54,19 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
                 Ok(response) => {
                     if response.status().is_success() {
                         let result = response.json::<serde_json::Value>().await.unwrap();
-                        return HttpResponse::Ok().json(result);
+                        HttpResponse::Ok().json(result)
                     } else {
-                        return HttpResponse::InternalServerError().json(json!({
+                        HttpResponse::InternalServerError().json(json!({
                             "success": false,
                             "error": format!("Failed to restart task: {}", response.status())
-                        }));
+                        }))
                     }
                 }
                 Err(e) => {
-                    return HttpResponse::InternalServerError().json(json!({
+                    HttpResponse::InternalServerError().json(json!({
                         "success": false,
                         "error": format!("Failed to restart task: {}", e)
-                    }));
+                    }))
                 }
             }
         }
@@ -117,19 +117,19 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
                 Ok(response) => {
                     if response.status().is_success() {
                         let logs = response.json::<serde_json::Value>().await.unwrap();
-                        return HttpResponse::Ok().json(logs);
+                        HttpResponse::Ok().json(logs)
                     } else {
-                        return HttpResponse::InternalServerError().json(json!({
+                        HttpResponse::InternalServerError().json(json!({
                             "success": false,
                             "error": format!("Failed to get logs: {}", response.status())
-                        }));
+                        }))
                     }
                 }
                 Err(e) => {
-                    return HttpResponse::InternalServerError().json(json!({
+                    HttpResponse::InternalServerError().json(json!({
                         "success": false,
                         "error": format!("Failed to get logs: {}", e)
-                    }));
+                    }))
                 }
             }
         }

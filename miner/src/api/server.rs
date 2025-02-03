@@ -18,6 +18,7 @@ pub struct AppState {
     pub docker_service: Arc<DockerService>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_server(
     host: &str,
     port: u16,
