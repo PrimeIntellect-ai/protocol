@@ -52,6 +52,7 @@ pub async fn start_server(
             .wrap(Compress::default())
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(Data::new(app_state.clone()))
+            .app_data(web::PayloadConfig::default().limit(2_097_152))
             .service(node_routes().wrap(ValidateSignature::new(validate_signatures.clone())))
             .service(
                 web::scope("/api/platform")

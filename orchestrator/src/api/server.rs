@@ -39,6 +39,7 @@ pub async fn start_server(
             .wrap(middleware::Logger::default())
             .wrap(Compress::default())
             .wrap(NormalizePath::new(TrailingSlash::Trim))
+            .app_data(web::PayloadConfig::default().limit(2_097_152))
             .service(heartbeat_routes().wrap(ValidateSignature::new(validator_state.clone())))
             .service(nodes_routes().wrap(api_key_middleware.clone()))
             .service(tasks_routes().wrap(api_key_middleware.clone()))
