@@ -56,6 +56,10 @@ struct Args {
     /// Discovery url
     #[arg(long, default_value = "http://localhost:8089")]
     discovery_url: String,
+
+    /// Admin api key
+    #[arg(short = 'a', long, default_value = "admin")]
+    admin_api_key: String,
 }
 
 #[tokio::main]
@@ -135,7 +139,7 @@ async fn main() -> Result<()> {
 
     let server_store_context = store_context.clone();
     tokio::select! {
-        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet) => {
+        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
             }

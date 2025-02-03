@@ -1,6 +1,8 @@
 use crate::api::routes::get_nodes::{get_node_by_subkey, get_nodes, get_nodes_for_pool};
 use crate::api::routes::node::node_routes;
 use crate::store::node_store::NodeStore;
+use actix_web::middleware::{Compress, NormalizePath, TrailingSlash};
+use actix_web::HttpResponse;
 use actix_web::{
     middleware,
     web::Data,
@@ -8,6 +10,8 @@ use actix_web::{
     App, HttpServer,
 };
 use log::info;
+use serde_json::json;
+use shared::security::api_key_middleware::ApiKeyMiddleware;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::web3::contracts::core::builder::Contracts;
 use std::sync::Arc;
@@ -24,6 +28,7 @@ pub async fn start_server(
     node_store: Arc<NodeStore>,
     contracts: Arc<Contracts>,
     validator_address: String,
+    platform_api_key: String,
 ) -> std::io::Result<()> {
     info!("Starting server at http://{}:{}", host, port);
 
@@ -39,15 +44,26 @@ pub async fn start_server(
 
     // All nodes can register as long as they have a valid signature
     let validate_signatures = Arc::new(ValidatorState::new(vec![]).with_validator(move |_| true));
+    let api_key_middleware = Arc::new(ApiKeyMiddleware::new(platform_api_key));
 
-    // TODO: Platform validation - see issue
     HttpServer::new(move || {
         App::new()
             .wrap(middleware::Logger::default())
+            .wrap(Compress::default())
+            .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(Data::new(app_state.clone()))
-            .service(web::scope("/api/nodes/{node_id}").route("", get().to(get_node_by_subkey)))
+            .app_data(web::PayloadConfig::default().limit(2_097_152))
             .service(node_routes().wrap(ValidateSignature::new(validate_signatures.clone())))
-            .service(web::scope("/api/platform").route("", get().to(get_nodes)))
+            .service(
+                web::scope("/api/platform")
+                    .wrap(api_key_middleware.clone())
+                    .route("", get().to(get_nodes)),
+            )
+            .service(
+                web::scope("/api/nodes/{node_id}")
+                    .wrap(api_key_middleware.clone())
+                    .route("", get().to(get_node_by_subkey)),
+            )
             .service(
                 web::scope("/api/validator")
                     .wrap(ValidateSignature::new(validator_validator.clone()))
@@ -58,6 +74,12 @@ pub async fn start_server(
                     .wrap(ValidateSignature::new(validate_signatures.clone()))
                     .route("", get().to(get_nodes_for_pool)),
             )
+            .default_service(web::route().to(|| async {
+                HttpResponse::NotFound().json(json!({
+                    "success": false,
+                    "error": "Resource not found"
+                }))
+            }))
     })
     .bind((host, port))?
     .run()
