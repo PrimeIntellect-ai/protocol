@@ -23,6 +23,10 @@ struct Args {
     /// Validator address
     #[arg(short = 'v', long)]
     validator_address: String,
+
+    /// Platform API key
+    #[arg(short = 'p', long, default_value = "prime")]
+    platform_api_key: String,
 }
 
 #[tokio::main]
@@ -31,6 +35,7 @@ async fn main() -> Result<()> {
         .filter_level(LevelFilter::Info)
         .format_timestamp(None)
         .init();
+
     let args = Args::parse();
 
     let redis_store = RedisStore::new("redis://localhost:6380");
@@ -70,6 +75,7 @@ async fn main() -> Result<()> {
         node_store,
         contracts_clone,
         args.validator_address,
+        args.platform_api_key,
     )
     .await
     {
