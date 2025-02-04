@@ -5,6 +5,10 @@
       - "Validator Address: {{ validator_address }}"
       - "RPC URL: {{ rpc_url }}"
       - "Ansible User: {{ ansible_user }}"
+- name: Remove old discovery binary if exists
+  file:
+    path: "/opt/prime/discovery/discovery"
+    state: absent
 - name: Create discovery directory
   file:
     path: "/opt/prime/discovery"

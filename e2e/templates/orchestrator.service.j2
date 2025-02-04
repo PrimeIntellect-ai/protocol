@@ -10,8 +10,10 @@ Environment=RPC_URL={{ rpc_url }}
 Environment=POOL_OWNER_PRIVATE_KEY={{ pool_owner_private_key }}
 Environment=DISCOVERY_URL={{ discovery_url }}
 Environment=POOL_ID={{ orchestrator_pool_id }}
+Environment=REDIS_STORE_URL=redis://localhost:6379
+Environment=DOMAIN_ID={{ domain_id }}
 WorkingDirectory=/opt/prime/orchestrator
-ExecStart=/opt/prime/orchestrator/orchestrator -r ${RPC_URL} -k ${POOL_OWNER_PRIVATE_KEY} -d 0 -e {{ ansible_host }} -p 8090 -i 10 --compute-pool-id ${POOL_ID} --discovery-url ${DISCOVERY_URL}
+ExecStart=/opt/prime/orchestrator/orchestrator -r ${RPC_URL} -k ${POOL_OWNER_PRIVATE_KEY} -d ${DOMAIN_ID} -e {{ ansible_host }} -p 8090 -i 10 --compute-pool-id ${POOL_ID} --discovery-url ${DISCOVERY_URL} --redis-store-url ${REDIS_STORE_URL}
 Restart=always
 RestartSec=3
 

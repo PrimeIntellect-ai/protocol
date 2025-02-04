@@ -7,8 +7,9 @@ Type=simple
 User={{ ansible_user }}
 Environment=VALIDATOR_ADDRESS={{ validator_address }}
 Environment=RPC_URL={{ rpc_url }}
+Environment=REDIS_URL=redis://localhost:6379
 WorkingDirectory=/opt/prime/discovery
-ExecStart=/opt/prime/discovery/discovery --validator-address ${VALIDATOR_ADDRESS} --rpc-url ${RPC_URL}
+ExecStart=/opt/prime/discovery/discovery --validator-address ${VALIDATOR_ADDRESS} --rpc-url ${RPC_URL} --redis-url ${REDIS_URL}
 
 [Install]
 WantedBy=multi-user.target
