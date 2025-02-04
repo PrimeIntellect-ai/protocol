@@ -130,6 +130,10 @@ jobs:
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "repo_lower=${REPO_LOWER}" >> $GITHUB_OUTPUT
 
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker us-east1-docker.pkg.dev
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
@@ -149,6 +153,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:dev
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:${{ steps.tag.outputs.tag_name }}
 
       - name: Build and push Validator image
         uses: docker/build-push-action@v4
@@ -159,6 +165,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:dev
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:${{ steps.tag.outputs.tag_name }}
 
       - name: Build and push Orchestrator image
         uses: docker/build-push-action@v4
@@ -169,3 +177,5 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:dev
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:${{ steps.tag.outputs.tag_name }}
