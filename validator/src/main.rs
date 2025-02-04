@@ -8,6 +8,13 @@ use shared::models::node::DiscoveryNode;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use url::Url;
+use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use serde_json::json;
+
+
+async fn health_check() -> impl Responder {
+    HttpResponse::Ok().json(json!({ "status": "ok" }))
+}
 
 #[derive(Parser)]
 struct Args {
@@ -39,6 +46,20 @@ fn main() {
         error!("Error creating wallet: {:?}", err);
         std::process::exit(1);
     });
+
+    runtime.spawn(async {
+        if let Err(e) = HttpServer::new(|| {
+            App::new().route("/health", web::get().to(health_check))
+        })
+        .bind("0.0.0.0:8080")
+        .expect("Failed to bind health check server")
+        .run()
+        .await
+        {
+            error!("Actix server error: {:?}", e);
+        }
+    });
+
 
     let contracts = ContractBuilder::new(&validator_wallet)
         .with_compute_registry()
