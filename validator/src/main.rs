@@ -170,7 +170,17 @@ fn main() {
                 }
             };
 
-            let challenge_result = runtime.block_on(challenge_node(&node));
+            let challenge_route = "/challenge/submit";
+            let address = validator_wallet
+                .wallet
+                .default_signer()
+                .address()
+                .to_string();
+            let signature = runtime
+                .block_on(_generate_signature(&validator_wallet, challenge_route))
+                .unwrap();
+
+            let challenge_result = runtime.block_on(challenge_node(&node, address, signature));
             if challenge_result.is_err() {
                 error!(
                     "Failed to challenge node {}: {:?}",
@@ -219,14 +229,18 @@ fn random_challenge(
     }
 }
 
-pub async fn challenge_node(node: &DiscoveryNode) -> Result<i32, Box<dyn std::error::Error>> {
+pub async fn challenge_node(
+    node: &DiscoveryNode,
+    address: String,
+    signature: String,
+) -> Result<i32, Box<dyn std::error::Error>> {
     let node_url = format!("http://{}:{}", node.node.ip_address, node.node.port);
-    let challenge_route = "/challenge";
+    let challenge_route = "/challenge/submit";
 
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-compute", "pytorch".parse().unwrap());
-    //headers.insert("x-address", address.parse().unwrap());
-    //headers.insert("x-signature", signature.parse().unwrap());
+    headers.insert("x-address", address.parse().unwrap());
+    headers.insert("x-signature", signature.parse().unwrap());
 
     // create random challenge matrix
     let challenge_matrix = random_challenge(3, 3, 3, 3);
@@ -243,16 +257,25 @@ pub async fn challenge_node(node: &DiscoveryNode) -> Result<i32, Box<dyn std::er
     );
     let c = a * b;
 
+    println!("Challenge request: {:?}", challenge_matrix);
+
+    let post_url = format!("{}{}", node_url, challenge_route);
+    println!("Challenge post url: {}", post_url);
+
     let response = reqwest::Client::new()
-        .post(format!("{}{}", node_url, challenge_route))
+        .post(post_url)
         .json(&challenge_matrix)
         .headers(headers)
         .send()
         .await?;
 
+    println!("Challenge response: {:?}", response);
+
     let response_text = response.text().await?;
     let parsed_response: ApiResponse<Vec<ChallengeResponse>> =
         serde_json::from_str(&response_text)?;
+
+    println!("Challenge response: {:?}", parsed_response);
 
     if !parsed_response.success {
         Err("Error fetching challenge from node".into())
