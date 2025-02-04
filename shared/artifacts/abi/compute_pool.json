@@ -20,7 +20,7 @@
       {
         "name": "_rewardsDistributorFactory",
         "type": "address",
-        "internalType": "contract RewardsDistributorFactory"
+        "internalType": "contract IRewardsDistributorFactory"
       },
       {
         "name": "_AIToken",
@@ -46,6 +46,19 @@
   {
     "type": "function",
     "name": "DEFAULT_ADMIN_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "FEDERATOR_ROLE",
     "inputs": [],
     "outputs": [
       {
@@ -957,7 +970,7 @@
       {
         "name": "",
         "type": "address",
-        "internalType": "contract RewardsDistributorFactory"
+        "internalType": "contract IRewardsDistributorFactory"
       }
     ],
     "stateMutability": "view"
