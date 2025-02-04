@@ -90,7 +90,7 @@ impl<'a> NodeInviter<'a> {
                 None
             },
             master_port: if self.url.is_none() {
-                self.port.map(|p| *p)
+                self.port.copied()
             } else {
                 None
             },
