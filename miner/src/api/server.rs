@@ -1,7 +1,7 @@
+use crate::api::routes::challenge::challenge_routes;
 use crate::api::routes::invite::invite_routes;
 use crate::api::routes::task::task_routes;
 use crate::docker::DockerService;
-use crate::api::routes::challenge::challenge_routes;
 use crate::operations::heartbeat::service::HeartbeatService;
 use actix_web::{middleware, web::Data, App, HttpServer};
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};

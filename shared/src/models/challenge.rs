@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use nalgebra::DMatrix;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChallengeRequest {
@@ -17,7 +17,6 @@ pub struct ChallengeResponse {
     pub rows: usize,
     pub cols: usize,
 }
-
 
 pub fn calc_matrix(req: &ChallengeRequest) -> ChallengeResponse {
     let a = DMatrix::from_vec(req.rows_a, req.cols_a, req.data_a.clone());
