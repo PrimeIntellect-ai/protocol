@@ -19,10 +19,13 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use url::Url;
 
+<<<<<<< HEAD
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(json!({ "status": "ok" }))
 }
 
+=======
+>>>>>>> 21b6ce5 (fmt)
 #[derive(Parser)]
 struct Args {
     /// RPC URL
@@ -172,7 +175,10 @@ fn main() {
 
             let challenge_result = runtime.block_on(challenge_node(&node));
             if challenge_result.is_err() {
-                error!("Failed to challenge node {}: {:?}", node.id, challenge_result);
+                error!(
+                    "Failed to challenge node {}: {:?}",
+                    node.id, challenge_result
+                );
                 continue;
             }
 
@@ -262,7 +268,6 @@ pub async fn challenge_node(node: &DiscoveryNode) -> Result<i32, Box<dyn std::er
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,18 +294,15 @@ mod tests {
 
     #[actix_web::test]
     async fn test_challenge_route() {
-
-        let app = test::init_service(
-            App::new().service(challenge_routes())
-        ).await;
+        let app = test::init_service(App::new().service(challenge_routes())).await;
 
         let challenge_request = ChallengeRequest {
             rows_a: 3,
             cols_a: 3,
-            data_a: vec![1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0],
+            data_a: vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
             rows_b: 3,
             cols_b: 3,
-            data_b: vec![9.0,8.0,7.0,6.0,5.0,4.0,3.0,2.0,1.0],
+            data_b: vec![9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
         };
 
         let req = test::TestRequest::post()
@@ -314,4 +316,3 @@ mod tests {
         assert_eq!(resp, expected_response);
     }
 }
-

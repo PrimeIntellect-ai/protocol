@@ -1,8 +1,8 @@
-use shared::models::challenge::calc_matrix;
 use actix_web::{
     web::{self, post},
     HttpResponse, Scope,
 };
+use shared::models::challenge::calc_matrix;
 use shared::models::challenge::ChallengeRequest;
 
 pub async fn handle_challenge(
