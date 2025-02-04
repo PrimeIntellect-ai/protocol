@@ -1,16 +1,15 @@
+use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use alloy::primitives::{hex, Address};
 use alloy::signers::Signer;
 use clap::Parser;
 use log::LevelFilter;
 use log::{error, info};
+use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use url::Url;
-use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use serde_json::json;
-
 
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(json!({ "status": "ok" }))
@@ -48,18 +47,15 @@ fn main() {
     });
 
     runtime.spawn(async {
-        if let Err(e) = HttpServer::new(|| {
-            App::new().route("/health", web::get().to(health_check))
-        })
-        .bind("0.0.0.0:8080")
-        .expect("Failed to bind health check server")
-        .run()
-        .await
+        if let Err(e) = HttpServer::new(|| App::new().route("/health", web::get().to(health_check)))
+            .bind("0.0.0.0:8080")
+            .expect("Failed to bind health check server")
+            .run()
+            .await
         {
             error!("Actix server error: {:?}", e);
         }
     });
-
 
     let contracts = ContractBuilder::new(&validator_wallet)
         .with_compute_registry()
