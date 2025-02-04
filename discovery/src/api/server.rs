@@ -53,7 +53,6 @@ pub async fn start_server(
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(Data::new(app_state.clone()))
             .app_data(web::PayloadConfig::default().limit(2_097_152))
-            .service(node_routes().wrap(ValidateSignature::new(validate_signatures.clone())))
             .service(
                 web::scope("/api/platform")
                     .wrap(api_key_middleware.clone())
@@ -74,6 +73,7 @@ pub async fn start_server(
                     .wrap(ValidateSignature::new(validate_signatures.clone()))
                     .route("", get().to(get_nodes_for_pool)),
             )
+            .service(node_routes().wrap(ValidateSignature::new(validate_signatures.clone())))
             .default_service(web::route().to(|| async {
                 HttpResponse::NotFound().json(json!({
                     "success": false,
