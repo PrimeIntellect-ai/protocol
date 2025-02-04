@@ -6,7 +6,11 @@ use clap::Parser;
 use log::LevelFilter;
 use log::{error, info};
 use serde_json::json;
+use nalgebra::DMatrix;
+use rand::rng;
+use rand::Rng;
 use shared::models::api::ApiResponse;
+use shared::models::challenge::{ChallengeRequest, ChallengeResponse};
 use shared::models::node::DiscoveryNode;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
@@ -163,6 +167,12 @@ fn main() {
                 }
             };
 
+            let challenge_result = runtime.block_on(challenge_node(&node));
+            if challenge_result.is_err() {
+                error!("Failed to challenge node {}: {:?}", node.id, challenge_result);
+                continue;
+            }
+
             if let Err(e) = runtime.block_on(
                 contracts
                     .prime_network
@@ -176,3 +186,129 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
 }
+
+fn random_challenge(
+    rows_a: usize,
+    cols_a: usize,
+    rows_b: usize,
+    cols_b: usize,
+) -> ChallengeRequest {
+    let mut rng = rng();
+
+    let data_a: Vec<f64> = (0..(rows_a * cols_a))
+        .map(|_| rng.random_range(0.0..1.0))
+        .collect();
+
+    let data_b: Vec<f64> = (0..(rows_b * cols_b))
+        .map(|_| rng.random_range(0.0..1.0))
+        .collect();
+
+    ChallengeRequest {
+        rows_a,
+        cols_a,
+        data_a,
+        rows_b,
+        cols_b,
+        data_b,
+    }
+}
+
+pub async fn challenge_node(node: &DiscoveryNode) -> Result<i32, Box<dyn std::error::Error>> {
+    let node_url = format!("http://{}:{}", node.node.ip_address, node.node.port);
+    let challenge_route = "/challenge";
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("x-compute", "pytorch".parse().unwrap());
+    //headers.insert("x-address", address.parse().unwrap());
+    //headers.insert("x-signature", signature.parse().unwrap());
+
+    // create random challenge matrix
+    let challenge_matrix = random_challenge(3, 3, 3, 3);
+
+    let a = DMatrix::from_vec(
+        challenge_matrix.rows_a,
+        challenge_matrix.cols_a,
+        challenge_matrix.data_a.clone(),
+    );
+    let b = DMatrix::from_vec(
+        challenge_matrix.rows_b,
+        challenge_matrix.cols_b,
+        challenge_matrix.data_b.clone(),
+    );
+    let c = a * b;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}{}", node_url, challenge_route))
+        .json(&challenge_matrix)
+        .headers(headers)
+        .send()
+        .await?;
+
+    let response_text = response.text().await?;
+    let parsed_response: ApiResponse<Vec<ChallengeResponse>> =
+        serde_json::from_str(&response_text)?;
+
+    if !parsed_response.success {
+        Err("Error fetching challenge from node".into())
+    } else if c.data.as_vec().clone() == parsed_response.data[0].result {
+        info!("Challenge successful");
+        Ok(0)
+    } else {
+        error!("Challenge failed");
+        Err("Node failed challenge".into())
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{test, App};
+    use actix_web::{
+        web::{self, post},
+        HttpResponse, Scope,
+    };
+    use shared::models::challenge::calc_matrix;
+
+    pub async fn handle_challenge(
+        challenge: web::Json<ChallengeRequest>,
+        //app_state: Data<AppState>,
+    ) -> HttpResponse {
+        let result = calc_matrix(&challenge);
+        HttpResponse::Ok().json(result)
+    }
+
+    pub fn challenge_routes() -> Scope {
+        web::scope("/challenge")
+            .route("", post().to(handle_challenge))
+            .route("/", post().to(handle_challenge))
+    }
+
+    #[actix_web::test]
+    async fn test_challenge_route() {
+
+        let app = test::init_service(
+            App::new().service(challenge_routes())
+        ).await;
+
+        let challenge_request = ChallengeRequest {
+            rows_a: 3,
+            cols_a: 3,
+            data_a: vec![1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0],
+            rows_b: 3,
+            cols_b: 3,
+            data_b: vec![9.0,8.0,7.0,6.0,5.0,4.0,3.0,2.0,1.0],
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/challenge")
+            .set_json(&challenge_request)
+            .to_request();
+
+        let resp: ChallengeResponse = test::call_and_read_body_json(&app, req).await;
+        let expected_response = calc_matrix(&challenge_request);
+
+        assert_eq!(resp, expected_response);
+    }
+}
+
