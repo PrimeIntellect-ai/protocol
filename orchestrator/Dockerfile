@@ -9,8 +9,9 @@ ENV RPC_URL="http://localhost:8545"
 ENV COORDINATOR_KEY=""
 ENV COMPUTE_POOL_ID="0"
 ENV DOMAIN_ID="0"
-ENV HOST="0.0.0.0"
 ENV PORT="8090"
+ENV URL=""
+ENV HOST=""
 ENV DISCOVERY_REFRESH_INTERVAL="10"
 ENV REDIS_STORE_URL="redis://localhost:6380"
 ENV DISCOVERY_URL="http://localhost:8089"
@@ -22,8 +23,9 @@ exec /usr/local/bin/orchestrator \
 --coordinator-key "$COORDINATOR_KEY" \
 --compute-pool-id "$COMPUTE_POOL_ID" \
 --domain-id "$DOMAIN_ID" \
---host "$HOST" \
 --port "$PORT" \
+$([ ! -z "$URL" ] && echo "--url $URL") \
+$([ ! -z "$HOST" ] && echo "--host $HOST") \
 --discovery-refresh-interval "$DISCOVERY_REFRESH_INTERVAL" \
 --redis-store-url "$REDIS_STORE_URL" \
 --discovery-url "$DISCOVERY_URL" \
