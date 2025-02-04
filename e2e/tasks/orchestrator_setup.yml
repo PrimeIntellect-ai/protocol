@@ -1,0 +1,33 @@
+---
+- name: Create orchestrator directory
+  file:
+    path: "/opt/prime/orchestrator"
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+- name: Download latest orchestrator binary
+  get_url:
+    url: "https://storage.googleapis.com/prime-miner/{{ version }}/orchestrator-linux-x86_64"
+    dest: "/opt/prime/orchestrator/orchestrator"
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+- name: Create systemd service file for orchestrator
+  template:
+    src: ../templates/orchestrator.service.j2
+    dest: /etc/systemd/system/prime-orchestrator.service
+    mode: '0644'
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+- name: Stop orchestrator service if running
+  systemd:
+    name: prime-orchestrator
+    state: stopped
+  ignore_errors: yes
+- name: Start and enable orchestrator service
+  systemd:
+    name: prime-orchestrator
+    state: restarted
+    enabled: yes

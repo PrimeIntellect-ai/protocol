@@ -1,0 +1,51 @@
+name: Check Format & Lint
+on:
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.*'
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.*'
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: "-C debuginfo=0"
+
+jobs:
+  check:
+    name: Format & Lint
+    runs-on: xl-runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.83.0 
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: "**/target"
+          cache-on-failure: true
+          
+      - name: Run format check
+        run: cargo fmt -- --check
+      - name: Run clippy
+        if: success() || failure() 
+        run: cargo clippy -- -D warnings
+      #- name: Install Redis binary
+        #run: |
+          #sudo apt-get update
+          #sudo apt-get install -y redis-server
+          ## Ensure redis-server binary is installed but don't start the service
+          #sudo systemctl stop redis || true
+          #sudo systemctl disable redis || true
+          
+      #- name: Run tests
+        #if: success() || failure()  
+        #run: |
+          #redis-server --version
+          #cargo test -- --nocapture

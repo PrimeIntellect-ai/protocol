@@ -1,0 +1,26 @@
+version: "3.8"
+
+networks:
+  prime:
+    driver: bridge
+    attachable: true  
+
+volumes:
+  redis-data:
+
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    platform: linux/amd64
+    entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545"]
+    ports:
+      - "8545:8545"
+    networks:
+      - prime
+    restart: always
+  redis:
+    image: redis:alpine
+    ports:
+      - "6380:6379"
+    networks:
+      - prime

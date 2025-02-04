@@ -1,0 +1,13 @@
+- hosts: discovery
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Include common tasks
+      include_tasks: ../tasks/common/common.yml
+
+    - name: Include Redis setup tasks
+      include_tasks: ../tasks/common/redis.yml
+
+    - name: Include discovery setup tasks
+      include_tasks: ../tasks/discovery_setup.yml
+

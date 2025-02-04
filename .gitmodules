@@ -1,0 +1,3 @@
+[submodule "smart-contracts"]
+	path = smart-contracts
+	url = git@github.com:PrimeIntellect-ai/smart-contracts.git

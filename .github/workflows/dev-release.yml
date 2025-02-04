@@ -1,0 +1,181 @@
+name: Development Release
+
+on:
+  push:
+    branches:
+      - develop
+    tags-ignore:
+      - '*'
+
+permissions:
+  contents: write
+  discussions: write
+  packages: write
+
+jobs:
+  cleanup-old-releases:
+    name: Cleanup Old Development Releases
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Delete old development releases
+        uses: dev-drprasad/delete-older-releases@v0.3.2
+        with:
+          keep_latest: 5
+          delete_tags: true
+          delete_tag_pattern: ^dev-
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-release:
+    name: Build and Create Development Release
+    needs: cleanup-old-releases
+    # Using a larger runner with more CPU cores and memory
+    runs-on: xl-runner 
+    
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      # Use all available cores for the build
+      - name: Build all workspace members
+        run: |
+          export CARGO_BUILD_JOBS=$(nproc)
+          cargo build --release --workspace
+
+      - name: Prepare binaries
+        run: |
+          mkdir -p release-artifacts
+          if [ -f target/release/miner ]; then
+            cp target/release/miner release-artifacts/miner-linux-x86_64
+          fi
+          if [ -f target/release/validator ]; then
+            cp target/release/validator release-artifacts/validator-linux-x86_64
+          fi
+          if [ -f target/release/orchestrator ]; then
+            cp target/release/orchestrator release-artifacts/orchestrator-linux-x86_64
+          fi
+          if [ -f target/release/discovery ]; then  # Prepare discovery binary
+            cp target/release/discovery release-artifacts/discovery-linux-x86_64
+          fi
+
+      - name: Generate checksums
+        run: |
+          cd release-artifacts
+          for file in *-linux-x86_64; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" | cut -d ' ' -f 1 > "${file}.checksum"
+            fi
+          done
+          cd .. 
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          echo "tag_name=dev-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: Development Build ${{ steps.tag.outputs.tag_name }}
+          body: |
+            ⚠️ Development Build (Not for Production Use)
+            
+            Branch: develop
+            Commit: ${{ github.sha }}
+            Build Date: ${{ steps.tag.outputs.tag_name }}
+            
+            Platform:
+            - Linux x86_64
+            
+            Components:
+            - Miner
+            - Validator
+            - Orchestrator
+            - Discovery svc 
+            
+            Note: This is an automated development build. For stable releases, please use builds from the master branch.
+          files: release-artifacts/*
+          prerelease: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      # Setup Google Cloud SDK
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+      
+      # Upload to Google Cloud Storage
+      - name: Upload to GCS
+        run: |
+          gsutil -m cp -r release-artifacts/* gs://prime-miner/${{ steps.tag.outputs.tag_name }}/
+          gsutil -m cp -r gs://prime-miner/${{ steps.tag.outputs.tag_name }}/* gs://prime-miner/latest/
+          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-miner/latest/**/*
+
+      - name: Generate Docker metadata
+        id: meta
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "repo_lower=${REPO_LOWER}" >> $GITHUB_OUTPUT
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker us-east1-docker.pkg.dev
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Discovery image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./discovery/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:dev
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:${{ steps.tag.outputs.tag_name }}
+
+      - name: Build and push Validator image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./validator/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:dev
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:${{ steps.tag.outputs.tag_name }}
+
+      - name: Build and push Orchestrator image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./orchestrator/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:dev
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:${{ steps.tag.outputs.tag_name }}

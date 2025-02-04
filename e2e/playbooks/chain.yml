@@ -1,0 +1,10 @@
+- hosts: chain 
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Include common tasks
+      include_tasks: ../tasks/common/common.yml
+
+    - name: Include chain setup tasks
+      include_tasks: ../tasks/chain_setup.yml
+

@@ -1,0 +1,199 @@
+name: Production Release
+
+on:
+  push:
+    branches:
+      - main
+    tags-ignore:
+      - '*'
+
+permissions:
+  contents: write
+  discussions: write
+  packages: write
+
+jobs:
+  build-and-release:
+    name: Build and Create Production Release
+    runs-on: xl-runner 
+    
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2)
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag_name=v${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create and push tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git tag -a "v${{ steps.get_version.outputs.version }}" -m "Release v${{ steps.get_version.outputs.version }}"
+          git push origin "v${{ steps.get_version.outputs.version }}"
+
+      - name: Install Rust toolchain
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build all workspace members
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          export CARGO_BUILD_JOBS=$(nproc)
+          cargo build --release --workspace --features testnet
+
+      - name: Prepare binaries
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          mkdir -p release-artifacts
+          for binary in miner validator orchestrator discovery; do
+            if [ -f "target/release/$binary" ]; then
+              cp "target/release/$binary" "release-artifacts/$binary-linux-x86_64"
+            fi
+          done
+
+      - name: Generate checksums
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          cd release-artifacts
+          for file in *-linux-x86_64; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" | cut -d ' ' -f 1 > "${file}.checksum"
+            fi
+          done
+          cd ..
+
+      - name: Create Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: Release v${{ steps.get_version.outputs.version }}
+          body: |
+            🚀 Production Release v${{ steps.get_version.outputs.version }}
+            
+            ⚠️ Currently using testnet configuration
+            
+            Platform:
+            - Linux x86_64
+            
+            Components:
+            - Miner
+            - Validator
+            - Orchestrator
+            - Discovery service
+            
+            SHA256 checksums are provided for each binary.
+            
+            ## Installation
+            Download the appropriate binary for your system and verify the checksum.
+            
+            ```bash
+            # Verify checksum (example for miner)
+            sha256sum -c miner-linux-x86_64.checksum
+            ```
+            
+            ## Changes
+            See CHANGELOG.md for detailed changes in this release.
+          files: release-artifacts/*
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate to Google Cloud
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: Set up Google Cloud SDK
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: google-github-actions/setup-gcloud@v1
+      
+      - name: Upload to GCS
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          gsutil -m cp -r release-artifacts/* gs://prime-miner/v${{ steps.get_version.outputs.version }}/
+          gsutil -m cp -r release-artifacts/* gs://prime-miner/latest/
+          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-miner/latest/**/*
+
+      - name: Configure Docker for Artifact Registry
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          gcloud auth configure-docker us-east1-docker.pkg.dev
+
+      - name: Set up Docker Buildx
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Docker metadata
+        if: steps.check_tag.outputs.exists == 'false'
+        id: meta
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "repo_lower=${REPO_LOWER}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Discovery image
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./discovery/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:latest
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:v${{ steps.get_version.outputs.version }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:latest
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:v${{ steps.get_version.outputs.version }}
+
+      - name: Build and push Validator image
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./validator/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:latest
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:v${{ steps.get_version.outputs.version }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:latest
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:v${{ steps.get_version.outputs.version }}
+
+      - name: Build and push Orchestrator image
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./orchestrator/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:latest
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:v${{ steps.get_version.outputs.version }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:latest
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:v${{ steps.get_version.outputs.version }}

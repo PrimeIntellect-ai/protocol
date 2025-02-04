@@ -1,0 +1,10 @@
+- hosts: validator
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Include common tasks
+      include_tasks: ../tasks/common/common.yml
+
+    - name: Include validatory setup tasks
+      include_tasks: ../tasks/validator_setup.yml
+
