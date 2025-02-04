@@ -174,16 +174,8 @@ fn main() {
             };
 
             let challenge_route = "/challenge/submit";
-            let address = validator_wallet
-                .wallet
-                .default_signer()
-                .address()
-                .to_string();
-            let signature = runtime
-                .block_on(_generate_signature(&validator_wallet, challenge_route))
-                .unwrap();
-
-            let challenge_result = runtime.block_on(challenge_node(&node, address, signature));
+            let challenge_result =
+                runtime.block_on(challenge_node(&node, &validator_wallet, &challenge_route));
             if challenge_result.is_err() {
                 error!(
                     "Failed to challenge node {}: {:?}",
@@ -234,16 +226,13 @@ fn random_challenge(
 
 pub async fn challenge_node(
     node: &DiscoveryNode,
-    address: String,
-    signature: String,
+    wallet: &Wallet,
+    challenge_route: &str,
 ) -> Result<i32, Box<dyn std::error::Error>> {
     let node_url = format!("http://{}:{}", node.node.ip_address, node.node.port);
-    let challenge_route = "/challenge/submit";
 
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-compute", "pytorch".parse().unwrap());
-    headers.insert("x-address", address.parse().unwrap());
-    headers.insert("x-signature", signature.parse().unwrap());
 
     // create random challenge matrix
     let challenge_matrix = random_challenge(3, 3, 3, 3);
@@ -264,6 +253,13 @@ pub async fn challenge_node(
 
     let post_url = format!("{}{}", node_url, challenge_route);
     println!("Challenge post url: {}", post_url);
+
+    let address = wallet.wallet.default_signer().address().to_string();
+    let challenge_matrix_value = serde_json::to_value(&challenge_matrix)?;
+    let signature = sign_request(challenge_route, &wallet, Some(&challenge_matrix_value)).await?;
+
+    headers.insert("x-address", address.parse().unwrap());
+    headers.insert("x-signature", signature.parse().unwrap());
 
     let response = reqwest::Client::new()
         .post(post_url)
