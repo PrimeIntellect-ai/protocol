@@ -51,10 +51,16 @@ pub async fn invite_node(
         }
     }
 
-    let endpoint = format!(
-        "http://{}:{}/heartbeat",
-        invite.master_ip, invite.master_port
-    );
+    let endpoint = if let Some(url) = &invite.master_url {
+        format!("{}/heartbeat", url)
+    } else {
+        format!(
+            "http://{}:{}/heartbeat",
+            &invite.master_ip.as_ref().unwrap(),
+            &invite.master_port.as_ref().unwrap()
+        )
+    };
+
     println!("Starting heartbeat service with endpoint: {}", endpoint);
     let _ = app_state.heartbeat_service.start(endpoint).await;
 
