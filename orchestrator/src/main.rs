@@ -37,13 +37,17 @@ struct Args {
     #[arg(short = 'd', long, default_value = "0")]
     domain_id: u32,
 
-    /// External ip
-    #[arg(short = 'e', long, default_value = "0.0.0.0")]
-    host: String,
+    /// External ip - advertised to miners
+    #[arg(short = 'e', long)]
+    host: Option<String>,
 
     /// Port
     #[arg(short = 'p', long, default_value = "8090")]
     port: u16,
+
+    /// External url - advertised to miners
+    #[arg(short = 'u', long)]
+    url: Option<String>,
 
     /// Discovery refresh interval
     #[arg(short = 'i', long, default_value = "10")]
@@ -118,8 +122,9 @@ async fn main() -> Result<()> {
             coordinator_wallet.as_ref(),
             compute_pool_id,
             domain_id,
-            &args.host,
-            &args.port,
+            args.host.as_deref(),
+            Some(&args.port),
+            args.url.as_deref(),
             inviter_store_context.clone(),
         );
         inviter.run().await

@@ -17,8 +17,9 @@ pub struct NodeInviter<'a> {
     wallet: &'a Wallet,
     pool_id: u32,
     domain_id: u32,
-    host: &'a str,
-    port: &'a u16,
+    host: Option<&'a str>,
+    port: Option<&'a u16>,
+    url: Option<&'a str>,
     store_context: Arc<StoreContext>,
 }
 
@@ -27,8 +28,9 @@ impl<'a> NodeInviter<'a> {
         wallet: &'a Wallet,
         pool_id: u32,
         domain_id: u32,
-        host: &'a str,
-        port: &'a u16,
+        host: Option<&'a str>,
+        port: Option<&'a u16>,
+        url: Option<&'a str>,
         store_context: Arc<StoreContext>,
     ) -> Self {
         Self {
@@ -37,6 +39,7 @@ impl<'a> NodeInviter<'a> {
             domain_id,
             host,
             port,
+            url,
             store_context,
         }
     }
@@ -77,12 +80,20 @@ impl<'a> NodeInviter<'a> {
         let invite_url = format!("{}{}", node_url, invite_path);
 
         let invite_signature = self._generate_invite(node).await?;
-
         let payload = InviteRequest {
             invite: hex::encode(invite_signature),
             pool_id: self.pool_id,
-            master_ip: self.host.to_string(),
-            master_port: *self.port,
+            master_url: self.url.map(|u| u.to_string()),
+            master_ip: if self.url.is_none() {
+                self.host.map(|h| h.to_string())
+            } else {
+                None
+            },
+            master_port: if self.url.is_none() {
+                self.port.copied()
+            } else {
+                None
+            },
         };
         let payload_json = serde_json::to_value(&payload).unwrap();
 

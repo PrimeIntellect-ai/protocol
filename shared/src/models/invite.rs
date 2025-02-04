@@ -5,8 +5,10 @@ use serde::Serialize;
 pub struct InviteRequest {
     pub invite: String,
     pub pool_id: u32,
-    pub master_ip: String,
-    pub master_port: u16,
+    // Either master url or ip and port
+    pub master_url: Option<String>,
+    pub master_ip: Option<String>,
+    pub master_port: Option<u16>,
 }
 
 #[derive(Deserialize, Serialize)]
