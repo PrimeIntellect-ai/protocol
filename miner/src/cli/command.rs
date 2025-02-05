@@ -113,7 +113,9 @@ pub async fn execute_command(
             }
 
             let mut recover_last_state = *auto_recover;
+            let version = env!("CARGO_PKG_VERSION");
             Console::section("🚀 PRIME MINER INITIALIZATION");
+            Console::info("Version:", version);
             /*
              Initialize Wallet instances
             */

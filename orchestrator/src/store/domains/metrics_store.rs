@@ -95,9 +95,12 @@ impl MetricsStore {
 
         println!("result {:?}", result);
         result
-    } 
+    }
 
-    pub fn get_metrics_for_node(&self, node_address: Address) -> HashMap<String, HashMap<String, f64>> {
+    pub fn get_metrics_for_node(
+        &self,
+        node_address: Address,
+    ) -> HashMap<String, HashMap<String, f64>> {
         let mut con = self.redis.client.get_connection().unwrap();
         let all_keys: Vec<String> = con
             .keys(format!("{}:*:*", ORCHESTRATOR_METRICS_STORE))
@@ -106,7 +109,7 @@ impl MetricsStore {
 
         for key in all_keys {
             let values: HashMap<String, String> = con.hgetall(&key).unwrap();
-            
+
             // Get the metric value for this specific node address
             if let Some(value) = values.get(&node_address.to_string()) {
                 if let Ok(val) = value.parse::<f64>() {
@@ -115,10 +118,7 @@ impl MetricsStore {
                     let task_id = parts[2].to_string();
                     let metric_name = parts[3].to_string();
 
-                    result
-                        .entry(task_id)
-                        .or_insert_with(HashMap::new)
-                        .insert(metric_name, val);
+                    result.entry(task_id).or_default().insert(metric_name, val);
                 }
             }
         }
@@ -131,9 +131,9 @@ impl MetricsStore {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
-    use shared::models::metric::MetricKey;
     use shared::models::metric::MetricEntry;
-    use std::str::FromStr; 
+    use shared::models::metric::MetricKey;
+    use std::str::FromStr;
 
     #[tokio::test]
     async fn test_store_metrics() {
@@ -213,7 +213,13 @@ mod tests {
         assert_eq!(metrics.get("task_2"), None);
 
         let metrics_1 = metrics_store.get_metrics_for_node(node_addr_1);
-        assert_eq!(metrics_1.get("task_1").unwrap().get("cpu_usage"), Some(&1.0));
-        assert_eq!(metrics_1.get("task_2").unwrap().get("cpu_usage"), Some(&1.0));
+        assert_eq!(
+            metrics_1.get("task_1").unwrap().get("cpu_usage"),
+            Some(&1.0)
+        );
+        assert_eq!(
+            metrics_1.get("task_2").unwrap().get("cpu_usage"),
+            Some(&1.0)
+        );
     }
 }

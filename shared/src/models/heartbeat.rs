@@ -20,10 +20,12 @@ impl From<HeartbeatResponse> for HttpResponse {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct HeartbeatRequest {
     pub address: String,
     pub task_id: Option<String>,
     pub task_state: Option<String>,
     pub metrics: Option<Vec<MetricEntry>>,
+    #[serde(default)]
+    pub version: Option<String>,
 }

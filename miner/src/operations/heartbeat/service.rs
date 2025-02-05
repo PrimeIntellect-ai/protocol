@@ -143,6 +143,7 @@ impl HeartbeatService {
                 task_id: Some(task.id.to_string()),
                 task_state: Some(task.state.to_string()),
                 metrics: Some(metrics_for_task),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
             }
         } else {
             HeartbeatRequest {
@@ -150,6 +151,7 @@ impl HeartbeatService {
                 task_id: None,
                 task_state: None,
                 metrics: None,
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
             }
         };
 

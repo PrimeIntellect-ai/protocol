@@ -136,10 +136,12 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
 async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     println!("get_node_metrics: {}", node_id);
     let node_address = Address::from_str(&node_id).unwrap();
-    let metrics = app_state.store_context.metrics_store.get_metrics_for_node(node_address);
+    let metrics = app_state
+        .store_context
+        .metrics_store
+        .get_metrics_for_node(node_address);
     HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
- 
 
 pub fn nodes_routes() -> Scope {
     web::scope("/nodes")
@@ -177,6 +179,7 @@ mod tests {
             status: NodeStatus::Discovered,
             task_id: None,
             task_state: None,
+            version: None,
         };
         app_state.store_context.node_store.add_node(node.clone());
 
@@ -226,7 +229,6 @@ mod tests {
             .uri(&format!("/nodes/{}/metrics", node_id))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        
 
         let body = test::read_body(resp).await;
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
@@ -237,7 +239,8 @@ mod tests {
             json["success"]
         );
         assert_eq!(
-            json["metrics"], json!({}),
+            json["metrics"],
+            json!({}),
             "Expected empty metrics object but got {:?}",
             json["metrics"]
         );

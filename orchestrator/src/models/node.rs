@@ -12,6 +12,7 @@ pub struct OrchestratorNode {
 
     pub task_id: Option<String>,
     pub task_state: Option<TaskState>,
+    pub version: Option<String>,
 }
 
 impl From<DiscoveryNode> for OrchestratorNode {
@@ -23,6 +24,7 @@ impl From<DiscoveryNode> for OrchestratorNode {
             status: NodeStatus::Discovered,
             task_id: None,
             task_state: None,
+            version: None,
         }
     }
 }
