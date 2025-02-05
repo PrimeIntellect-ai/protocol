@@ -1,4 +1,4 @@
-use log::{debug, error, info, warn};
+use log::info;
 use crate::api::server::AppState;
 use actix_web::{
     web::{self, post, Data},
@@ -6,6 +6,7 @@ use actix_web::{
 };
 use shared::models::challenge::calc_matrix;
 use shared::models::challenge::ChallengeRequest;
+use shared::models::api::ApiResponse;
 
 pub async fn handle_challenge(
     challenge: web::Json<ChallengeRequest>,
@@ -16,7 +17,10 @@ pub async fn handle_challenge(
         app_state.node_wallet.wallet.default_signer().address()
     );
     let result = calc_matrix(&challenge);
-    HttpResponse::Ok().json(result)
+
+    let response = ApiResponse::new(true, result);
+
+    HttpResponse::Ok().json(response)
 }
 
 pub fn challenge_routes() -> Scope {

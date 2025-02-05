@@ -19,14 +19,12 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use url::Url;
 use shared::models::challenge::FixedF64;
+use shared::models::challenge::calc_matrix;
 
-<<<<<<< HEAD
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(json!({ "status": "ok" }))
 }
 
-=======
->>>>>>> 21b6ce5 (fmt)
 #[derive(Parser)]
 struct Args {
     /// RPC URL
@@ -240,31 +238,12 @@ pub async fn challenge_node(
 
     // create random challenge matrix
     let challenge_matrix = random_challenge(3, 3, 3, 3);
-
-    // convert to f64
-    let data_a: Vec<f64> = challenge_matrix.data_a.iter().map(|x| x.0).collect();
-    let data_b: Vec<f64> = challenge_matrix.data_b.iter().map(|x| x.0).collect();
-
-    let a = DMatrix::from_vec(
-        challenge_matrix.rows_a,
-        challenge_matrix.cols_a,
-        data_a,
-    );
-    let b = DMatrix::from_vec(
-        challenge_matrix.rows_b,
-        challenge_matrix.cols_b,
-        data_b,
-    );
-    let c = a * b;
-
-    println!("Challenge request: {:?}", challenge_matrix);
+    let challenge_expected = calc_matrix(&challenge_matrix);
 
     let post_url = format!("{}{}", node_url, challenge_route);
-    println!("Challenge post url: {}", post_url);
 
     let address = wallet.wallet.default_signer().address().to_string();
     let challenge_matrix_value = serde_json::to_value(&challenge_matrix)?;
-    println!("Challenge matrix value: {:?}", challenge_matrix_value);
     let signature = sign_request(challenge_route, &wallet, Some(&challenge_matrix_value)).await?;
 
     headers.insert("x-address", address.parse().unwrap());
@@ -277,17 +256,13 @@ pub async fn challenge_node(
         .send()
         .await?;
 
-    println!("Challenge response: {:?}", response);
-
     let response_text = response.text().await?;
-    let parsed_response: ApiResponse<Vec<ChallengeResponse>> =
+    let parsed_response: ApiResponse<ChallengeResponse> =
         serde_json::from_str(&response_text)?;
-
-    println!("Challenge response: {:?}", parsed_response);
 
     if !parsed_response.success {
         Err("Error fetching challenge from node".into())
-    } else if c.data.as_vec().clone() == parsed_response.data[0].result {
+    } else if challenge_expected.result == parsed_response.data.result {
         info!("Challenge successful");
         Ok(0)
     } else {
@@ -304,7 +279,6 @@ mod tests {
         web::{self, post},
         HttpResponse, Scope,
     };
-    use shared::models::challenge::calc_matrix;
 
     pub async fn handle_challenge(
         challenge: web::Json<ChallengeRequest>,
@@ -348,6 +322,6 @@ mod tests {
         let resp: ChallengeResponse = test::call_and_read_body_json(&app, req).await;
         let expected_response = calc_matrix(&challenge_request);
 
-        assert_eq!(resp, expected_response);
+        assert_eq!(resp.result, expected_response.result);
     }
 }

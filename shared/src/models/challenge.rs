@@ -18,7 +18,6 @@ impl Serialize for FixedF64 {
     }
 }
 
-
 impl<'de> Deserialize<'de> for FixedF64 {
     fn deserialize<D>(deserializer: D) -> Result<FixedF64, D::Error>
     where
@@ -48,6 +47,13 @@ impl<'de> Deserialize<'de> for FixedF64 {
     }
 }
 
+
+impl PartialEq for FixedF64 {
+    fn eq(&self, other: &Self) -> bool {
+        format!("{:.10}", self.0) == format!("{:.10}", other.0)
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChallengeRequest {
     pub rows_a: usize,
@@ -58,9 +64,9 @@ pub struct ChallengeRequest {
     pub data_b: Vec<FixedF64>,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct ChallengeResponse {
-    pub result: Vec<f64>,
+    pub result: Vec<FixedF64>,
     pub rows: usize,
     pub cols: usize,
 }
@@ -73,9 +79,11 @@ pub fn calc_matrix(req: &ChallengeRequest) -> ChallengeResponse {
     let b = DMatrix::from_vec(req.rows_b, req.cols_b, data_b);
     let c = a * b;
 
+    let data_c: Vec<FixedF64> = c.iter().map(|x| FixedF64(*x)).collect();
+
     ChallengeResponse {
         rows: c.nrows(),
         cols: c.ncols(),
-        result: c.data.as_vec().clone(),
+        result: data_c,
     }
 }
