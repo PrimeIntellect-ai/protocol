@@ -52,7 +52,6 @@ impl NodeStatusUpdater {
         let nodes = self.store_context.node_store.get_nodes();
         for node in nodes {
             if node.status == NodeStatus::Dead {
-                println!("Node is dead, checking if we need to remove from chain");
                 let node_in_pool: bool = match self
                     .contracts
                     .compute_pool
@@ -98,8 +97,17 @@ impl NodeStatusUpdater {
                 .heartbeat_store
                 .get_unhealthy_counter(&node.address);
             match heartbeat {
-                Some(_) => {
+                Some(beat) => {
                     // We have a heartbeat
+                    if let Some(version) = &beat.version {
+                        if node.version.as_ref() != Some(version) {
+                            let _: () = self
+                                .store_context
+                                .node_store
+                                .update_node_version(&node.address, version);
+                        }
+                    }
+
                     if node.status == NodeStatus::Unhealthy
                         || node.status == NodeStatus::WaitingForHeartbeat
                     {
@@ -181,6 +189,7 @@ mod tests {
             status: NodeStatus::WaitingForHeartbeat,
             task_id: None,
             task_state: None,
+            version: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -189,6 +198,7 @@ mod tests {
             task_id: None,
             task_state: None,
             metrics: None,
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
         };
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
 
@@ -228,6 +238,7 @@ mod tests {
             status: NodeStatus::Healthy,
             task_id: None,
             task_state: None,
+            version: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -267,6 +278,7 @@ mod tests {
             status: NodeStatus::Unhealthy,
             task_id: None,
             task_state: None,
+            version: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -311,6 +323,7 @@ mod tests {
             status: NodeStatus::Unhealthy,
             task_id: None,
             task_state: None,
+            version: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -355,6 +368,7 @@ mod tests {
             status: NodeStatus::Unhealthy,
             task_id: None,
             task_state: None,
+            version: None,
         };
         let _: () = app_state
             .store_context
@@ -366,6 +380,7 @@ mod tests {
             task_id: None,
             task_state: None,
             metrics: None,
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
         };
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -412,6 +427,7 @@ mod tests {
             status: NodeStatus::Unhealthy,
             task_id: None,
             task_state: None,
+            version: None,
         };
         let _: () = app_state
             .store_context
@@ -426,6 +442,7 @@ mod tests {
             status: NodeStatus::Healthy,
             task_id: None,
             task_state: None,
+            version: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node2.clone());
@@ -483,6 +500,7 @@ mod tests {
             status: NodeStatus::Unhealthy,
             task_id: None,
             task_state: None,
+            version: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -519,6 +537,7 @@ mod tests {
             task_id: None,
             task_state: None,
             metrics: None,
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
         };
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
 

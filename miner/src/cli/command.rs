@@ -113,7 +113,9 @@ pub async fn execute_command(
             }
 
             let mut recover_last_state = *auto_recover;
+            let version = env!("CARGO_PKG_VERSION");
             Console::section("🚀 PRIME MINER INITIALIZATION");
+            Console::info("Version:", version);
             /*
              Initialize Wallet instances
             */
@@ -283,7 +285,16 @@ pub async fn execute_command(
                 std::process::exit(1);
             };
 
-            match compute_node_ops.add_compute_node().await {
+            let gpu_count: u32 = match &node_config.compute_specs {
+                Some(specs) => specs
+                    .gpu
+                    .as_ref()
+                    .map(|gpu| gpu.count.unwrap_or(0))
+                    .unwrap_or(0),
+                None => 0,
+            };
+
+            match compute_node_ops.add_compute_node(gpu_count).await {
                 Ok(added_node) => {
                     if added_node {
                         // If we are adding a new compute node we wait for a proper

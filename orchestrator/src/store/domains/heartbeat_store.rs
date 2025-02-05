@@ -32,11 +32,11 @@ impl HeartbeatStore {
             .unwrap();
     }
 
-    pub fn get_heartbeat(&self, address: &Address) -> Option<String> {
+    pub fn get_heartbeat(&self, address: &Address) -> Option<HeartbeatRequest> {
         let mut con = self.redis.client.get_connection().unwrap();
         let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, address);
         let value: Option<String> = con.get(key).unwrap();
-        value
+        value.and_then(|v| serde_json::from_str(&v).ok())
     }
 
     pub fn get_unhealthy_counter(&self, address: &Address) -> u32 {
