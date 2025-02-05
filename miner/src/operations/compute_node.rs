@@ -77,7 +77,7 @@ impl<'c> ComputeNodeOperations<'c> {
             .as_bytes();
 
         // Create the signature bytes
-        let compute_units: U256 = U256::from(10);
+        let compute_units: U256 = U256::from(1000);
         let add_node_tx = self
             .prime_network
             .add_compute_node(node_address, compute_units, signature.to_vec())

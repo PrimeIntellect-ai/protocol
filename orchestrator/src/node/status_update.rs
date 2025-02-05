@@ -52,7 +52,6 @@ impl NodeStatusUpdater {
         let nodes = self.store_context.node_store.get_nodes();
         for node in nodes {
             if node.status == NodeStatus::Dead {
-                println!("Node is dead, checking if we need to remove from chain");
                 let node_in_pool: bool = match self
                     .contracts
                     .compute_pool
