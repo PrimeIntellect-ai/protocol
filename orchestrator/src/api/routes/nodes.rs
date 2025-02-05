@@ -133,11 +133,20 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
     }
 }
 
+async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
+    println!("get_node_metrics: {}", node_id);
+    let node_address = Address::from_str(&node_id).unwrap();
+    let metrics = app_state.store_context.metrics_store.get_metrics_for_node(node_address);
+    HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
+}
+ 
+
 pub fn nodes_routes() -> Scope {
     web::scope("/nodes")
         .route("", get().to(get_nodes))
         .route("/{node_id}/restart", post().to(restart_node_task))
         .route("/{node_id}/logs", get().to(get_node_logs))
+        .route("/{node_id}/metrics", get().to(get_node_metrics))
 }
 
 #[cfg(test)]
@@ -199,6 +208,38 @@ mod tests {
             "Expected address to be {} but got {}",
             node.address,
             nodes_array[0]["address"]
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_get_metrics_for_node_not_exist() {
+        let app_state = create_test_app_state().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .route("/nodes/{node_id}/metrics", get().to(get_node_metrics)),
+        )
+        .await;
+
+        let node_id = "0x0000000000000000000000000000000000000000";
+        let req = test::TestRequest::get()
+            .uri(&format!("/nodes/{}/metrics", node_id))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        
+
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        println!("json {:?}", json);
+        assert_eq!(
+            json["success"], true,
+            "Expected success to be true but got {:?}",
+            json["success"]
+        );
+        assert_eq!(
+            json["metrics"], json!({}),
+            "Expected empty metrics object but got {:?}",
+            json["metrics"]
         );
     }
 }
