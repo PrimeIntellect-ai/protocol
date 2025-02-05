@@ -30,7 +30,7 @@ jobs:
     name: Build and Create Development Release
     needs: cleanup-old-releases
     # Using a larger runner with more CPU cores and memory
-    runs-on: xl-runner 
+    runs-on: ubuntu-22.04
     
     steps:
       - uses: actions/checkout@v3
