@@ -16,6 +16,7 @@ use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use url::Url;
+use shared::models::challenge::FixedF64;
 
 <<<<<<< HEAD
 async fn health_check() -> impl Responder {
@@ -204,13 +205,17 @@ fn random_challenge(
 ) -> ChallengeRequest {
     let mut rng = rng();
 
-    let data_a: Vec<f64> = (0..(rows_a * cols_a))
+    let data_a_vec: Vec<f64> = (0..(rows_a * cols_a))
         .map(|_| rng.random_range(0.0..1.0))
         .collect();
 
-    let data_b: Vec<f64> = (0..(rows_b * cols_b))
+    let data_b_vec: Vec<f64> = (0..(rows_b * cols_b))
         .map(|_| rng.random_range(0.0..1.0))
         .collect();
+
+    // convert to FixedF64
+    let data_a: Vec<FixedF64> = data_a_vec.iter().map(|x| FixedF64(*x)).collect();
+    let data_b: Vec<FixedF64> = data_b_vec.iter().map(|x| FixedF64(*x)).collect();
 
     ChallengeRequest {
         rows_a,
@@ -230,20 +235,23 @@ pub async fn challenge_node(
     let node_url = format!("http://{}:{}", node.node.ip_address, node.node.port);
 
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("x-compute", "pytorch".parse().unwrap());
 
     // create random challenge matrix
     let challenge_matrix = random_challenge(3, 3, 3, 3);
 
+    // convert to f64
+    let data_a: Vec<f64> = challenge_matrix.data_a.iter().map(|x| x.0).collect();
+    let data_b: Vec<f64> = challenge_matrix.data_b.iter().map(|x| x.0).collect();
+
     let a = DMatrix::from_vec(
         challenge_matrix.rows_a,
         challenge_matrix.cols_a,
-        challenge_matrix.data_a.clone(),
+        data_a,
     );
     let b = DMatrix::from_vec(
         challenge_matrix.rows_b,
         challenge_matrix.cols_b,
-        challenge_matrix.data_b.clone(),
+        data_b,
     );
     let c = a * b;
 
@@ -254,6 +262,7 @@ pub async fn challenge_node(
 
     let address = wallet.wallet.default_signer().address().to_string();
     let challenge_matrix_value = serde_json::to_value(&challenge_matrix)?;
+    println!("Challenge matrix value: {:?}", challenge_matrix_value);
     let signature = sign_request(challenge_route, &wallet, Some(&challenge_matrix_value)).await?;
 
     headers.insert("x-address", address.parse().unwrap());
@@ -261,8 +270,8 @@ pub async fn challenge_node(
 
     let response = reqwest::Client::new()
         .post(post_url)
-        .json(&challenge_matrix)
         .headers(headers)
+        .json(&challenge_matrix_value)
         .send()
         .await?;
 
@@ -313,13 +322,20 @@ mod tests {
     async fn test_challenge_route() {
         let app = test::init_service(App::new().service(challenge_routes())).await;
 
+        let vec_a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        let vec_b = vec![9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+
+        // convert vectors to FixedF64
+        let data_a: Vec<FixedF64> = vec_a.iter().map(|x| FixedF64(*x)).collect();
+        let data_b: Vec<FixedF64> = vec_b.iter().map(|x| FixedF64(*x)).collect();
+
         let challenge_request = ChallengeRequest {
             rows_a: 3,
             cols_a: 3,
-            data_a: vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
+            data_a: data_a,
             rows_b: 3,
             cols_b: 3,
-            data_b: vec![9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+            data_b: data_b,
         };
 
         let req = test::TestRequest::post()
