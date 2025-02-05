@@ -1,3 +1,4 @@
+use log::{debug, error, info, warn};
 use crate::api::server::AppState;
 use actix_web::{
     web::{self, post, Data},
@@ -10,8 +11,7 @@ pub async fn handle_challenge(
     challenge: web::Json<ChallengeRequest>,
     app_state: Data<AppState>,
 ) -> HttpResponse {
-    println!("Challenge request: {:?}", challenge);
-    println!(
+    info!(
         "Wallet: {:?}",
         app_state.node_wallet.wallet.default_signer().address()
     );
