@@ -9,6 +9,9 @@ use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::structs::compute_pool::PoolInfo;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
+use alloy::primitives::Address;
+use std::str::FromStr;
+
 
 #[derive(Clone)]
 pub struct AppState {
@@ -29,6 +32,7 @@ pub async fn start_server(
     heartbeat_service: Arc<HeartbeatService>,
     docker_service: Arc<DockerService>,
     pool_info: Arc<PoolInfo>,
+    validator_address: String,
 ) -> std::io::Result<()> {
     println!("Starting server at http://{}:{}", host, port);
 
@@ -40,7 +44,9 @@ pub async fn start_server(
         docker_service,
     });
 
-    let allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
+    let validator = Address::from_str(&validator_address.as_str()).unwrap();
+
+    let allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key, validator];
     let validator_state = Arc::new(ValidatorState::new(allowed_addresses));
 
     HttpServer::new(move || {

@@ -80,6 +80,9 @@ pub enum Commands {
         // Amount of stake to use when provider is newly registered
         #[arg(long, default_value = "10")]
         provider_stake: i32,
+
+        #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
+        validator_address: Option<String>,
     },
     /// Run system checks to verify hardware and software compatibility
     Check {},
@@ -104,6 +107,7 @@ pub async fn execute_command(
             state_dir_overwrite,
             disable_state_storing,
             auto_recover,
+            validator_address,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -345,6 +349,7 @@ pub async fn execute_command(
                     heartbeat_clone.clone(),
                     docker_service.clone(),
                     pool_info,
+                    validator_address.clone().unwrap_or_default(),
                 )
                 .await
             } {
