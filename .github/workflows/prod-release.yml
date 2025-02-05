@@ -15,7 +15,7 @@ permissions:
 jobs:
   build-and-release:
     name: Build and Create Production Release
-    runs-on: xl-runner 
+    runs-on: ubuntu-22.04
     
     steps:
       - uses: actions/checkout@v3
@@ -132,8 +132,8 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         run: |
           gsutil -m cp -r release-artifacts/* gs://prime-miner/v${{ steps.get_version.outputs.version }}/
-          gsutil -m cp -r release-artifacts/* gs://prime-miner/latest/
-          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-miner/latest/**/*
+          gsutil -m cp -r release-artifacts/* gs://prime-miner/stable/
+          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-miner/stable/**/*
 
       - name: Configure Docker for Artifact Registry
         if: steps.check_tag.outputs.exists == 'false'
