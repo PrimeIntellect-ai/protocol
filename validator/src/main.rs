@@ -12,14 +12,14 @@ use nalgebra::DMatrix;
 use rand::rng;
 use rand::Rng;
 use shared::models::api::ApiResponse;
+use shared::models::challenge::calc_matrix;
+use shared::models::challenge::FixedF64;
 use shared::models::challenge::{ChallengeRequest, ChallengeResponse};
 use shared::models::node::DiscoveryNode;
 use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use url::Url;
-use shared::models::challenge::FixedF64;
-use shared::models::challenge::calc_matrix;
 
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(json!({ "status": "ok" }))
@@ -174,7 +174,7 @@ fn main() {
 
             let challenge_route = "/challenge/submit";
             let challenge_result =
-                runtime.block_on(challenge_node(&node, &validator_wallet, &challenge_route));
+                runtime.block_on(challenge_node(&node, &validator_wallet, challenge_route));
             if challenge_result.is_err() {
                 error!(
                     "Failed to challenge node {}: {:?}",
@@ -244,7 +244,7 @@ pub async fn challenge_node(
 
     let address = wallet.wallet.default_signer().address().to_string();
     let challenge_matrix_value = serde_json::to_value(&challenge_matrix)?;
-    let signature = sign_request(challenge_route, &wallet, Some(&challenge_matrix_value)).await?;
+    let signature = sign_request(challenge_route, wallet, Some(&challenge_matrix_value)).await?;
 
     headers.insert("x-address", address.parse().unwrap());
     headers.insert("x-signature", signature.parse().unwrap());
@@ -257,8 +257,7 @@ pub async fn challenge_node(
         .await?;
 
     let response_text = response.text().await?;
-    let parsed_response: ApiResponse<ChallengeResponse> =
-        serde_json::from_str(&response_text)?;
+    let parsed_response: ApiResponse<ChallengeResponse> = serde_json::from_str(&response_text)?;
 
     if !parsed_response.success {
         Err("Error fetching challenge from node".into())
@@ -298,8 +297,8 @@ mod tests {
     async fn test_challenge_route() {
         let app = test::init_service(App::new().service(challenge_routes())).await;
 
-        let vec_a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
-        let vec_b = vec![9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+        let vec_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        let vec_b = [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
 
         // convert vectors to FixedF64
         let data_a: Vec<FixedF64> = vec_a.iter().map(|x| FixedF64(*x)).collect();
@@ -308,10 +307,10 @@ mod tests {
         let challenge_request = ChallengeRequest {
             rows_a: 3,
             cols_a: 3,
-            data_a: data_a,
+            data_a,
             rows_b: 3,
             cols_b: 3,
-            data_b: data_b,
+            data_b,
         };
 
         let req = test::TestRequest::post()

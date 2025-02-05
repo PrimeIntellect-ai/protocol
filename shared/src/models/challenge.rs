@@ -25,7 +25,7 @@ impl<'de> Deserialize<'de> for FixedF64 {
     {
         struct FixedF64Visitor;
 
-        impl<'de> Visitor<'de> for FixedF64Visitor {
+        impl Visitor<'_> for FixedF64Visitor {
             type Value = FixedF64;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -46,7 +46,6 @@ impl<'de> Deserialize<'de> for FixedF64 {
         deserializer.deserialize_str(FixedF64Visitor)
     }
 }
-
 
 impl PartialEq for FixedF64 {
     fn eq(&self, other: &Self) -> bool {

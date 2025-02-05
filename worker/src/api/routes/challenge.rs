@@ -1,12 +1,12 @@
-use log::info;
 use crate::api::server::AppState;
 use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,
 };
+use log::info;
+use shared::models::api::ApiResponse;
 use shared::models::challenge::calc_matrix;
 use shared::models::challenge::ChallengeRequest;
-use shared::models::api::ApiResponse;
 
 pub async fn handle_challenge(
     challenge: web::Json<ChallengeRequest>,
