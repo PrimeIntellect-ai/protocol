@@ -140,8 +140,8 @@ watch-miner-remote: setup-remote setup-tunnel sync-remote
 			--private-key-node \$$NODE_PRIVATE_KEY \
 			--port $(PORT) \
 			--external-ip \$$EXTERNAL_IP \
-			--compute-pool-id 0 2>&1 \
-			--validator-address \$$VALIDATOR_ADDRESS | tee miner.log\""
+			--compute-pool-id 0 \
+			--validator-address \$$VALIDATOR_ADDRESS  2>&1 | tee miner.log\""
 # Kill SSH tunnel
 .PHONY: kill-tunnel
 kill-tunnel:
