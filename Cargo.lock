@@ -2226,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "discovery"
-version = "0.1.7"
+version = "0.1.3"
 dependencies = [
  "actix-web",
  "alloy",
@@ -3632,6 +3632,50 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
+name = "miner"
+version = "0.1.3"
+dependencies = [
+ "actix-web",
+ "alloy",
+ "anyhow",
+ "bollard",
+ "bytes",
+ "cargo-watch",
+ "chrono",
+ "clap 4.5.27",
+ "colored",
+ "console",
+ "ctrlc",
+ "directories",
+ "env_logger 0.10.2",
+ "futures",
+ "futures-core",
+ "futures-util",
+ "hex",
+ "indicatif",
+ "lazy_static",
+ "libc",
+ "log",
+ "nvml-wrapper",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "shared",
+ "strip-ansi-escapes",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.11",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "url",
+ "uuid",
+ "validator 0.16.1",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4060,7 +4104,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orchestrator"
-version = "0.1.7"
+version = "0.1.3"
 dependencies = [
  "actix-web",
  "alloy",
@@ -5968,7 +6012,7 @@ dependencies = [
 
 [[package]]
 name = "validator"
-version = "0.1.7"
+version = "0.1.3"
 dependencies = [
  "actix-web",
  "alloy",

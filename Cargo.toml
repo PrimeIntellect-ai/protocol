@@ -3,7 +3,7 @@ members = ["discovery", "worker", "validator", "shared", "orchestrator", "dev-ut
 resolver = "2"
 
 [workspace.package]
-version = "0.1.7"
+version = "0.1.3"
 edition = "2021"
 
 [workspace.features]
