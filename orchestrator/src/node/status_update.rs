@@ -14,6 +14,7 @@ pub struct NodeStatusUpdater {
     missing_heartbeat_threshold: u32,
     contracts: Arc<Contracts>,
     pool_id: u32,
+    disable_ejection: bool,
 }
 
 impl NodeStatusUpdater {
@@ -23,6 +24,7 @@ impl NodeStatusUpdater {
         missing_heartbeat_threshold: Option<u32>,
         contracts: Arc<Contracts>,
         pool_id: u32,
+        disable_ejection: bool,
     ) -> Self {
         Self {
             store_context,
@@ -30,6 +32,7 @@ impl NodeStatusUpdater {
             missing_heartbeat_threshold: missing_heartbeat_threshold.unwrap_or(3),
             contracts,
             pool_id,
+            disable_ejection,
         }
     }
 
@@ -65,18 +68,25 @@ impl NodeStatusUpdater {
                     }
                 };
                 if node_in_pool {
-                    let tx = self
-                        .contracts
-                        .compute_pool
-                        .eject_node(self.pool_id, node.address)
-                        .await;
-                    match tx {
-                        Result::Ok(_) => {
-                            println!("Ejected node: {:?}", node.address);
+                    if !self.disable_ejection {
+                        let tx = self
+                            .contracts
+                            .compute_pool
+                            .eject_node(self.pool_id, node.address)
+                            .await;
+                        match tx {
+                            Result::Ok(_) => {
+                                println!("Ejected node: {:?}", node.address);
+                            }
+                            Result::Err(e) => {
+                                println!("Error ejecting node: {}", e);
+                            }
                         }
-                        Result::Err(e) => {
-                            println!("Error ejecting node: {}", e);
-                        }
+                    } else {
+                        println!(
+                            "Ejection is disabled, skipping ejection of node: {:?}",
+                            node.address
+                        );
                     }
                 }
             }
@@ -181,6 +191,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
+            false,
         );
         let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -248,6 +259,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -288,6 +300,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -338,6 +351,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -391,6 +405,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -453,6 +468,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -515,6 +531,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
+            false,
         );
         tokio::spawn(async move {
             updater

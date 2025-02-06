@@ -64,6 +64,10 @@ struct Args {
     /// Admin api key
     #[arg(short = 'a', long, default_value = "admin")]
     admin_api_key: String,
+
+    /// Disable instance ejection from chain
+    #[arg(long)]
+    disable_ejection: bool,
 }
 
 #[tokio::main]
@@ -138,6 +142,7 @@ async fn main() -> Result<()> {
             None,
             contracts.clone(),
             compute_pool_id,
+            args.disable_ejection,
         );
         status_updater.run().await
     });
