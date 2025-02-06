@@ -145,7 +145,7 @@ impl DockerService {
                                     let manager_clone = manager_clone.clone();
                                     let state_clone = state.clone();
                                     let has_gpu = self.has_gpu;
-                                    let system_memory_mb = self.system_memory_mb;
+                                    let system_memory_mb = self.system_memory_mb.clone();
                                     let task_bridge_socket_path = self.task_bridge_socket_path.clone();
                                     let handle = tokio::spawn(async move {
                                         let payload = task_clone.unwrap();
@@ -287,7 +287,7 @@ mod tests {
             cancellation_token.clone(),
             false,
             Some(1024),
-            "/tmp/com.prime.worker/metrics.sock".to_string(),
+            "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
         );
         let task = Task {
@@ -331,7 +331,7 @@ mod tests {
             cancellation_token.clone(),
             false,
             Some(1024),
-            "/tmp/com.prime.worker/metrics.sock".to_string(),
+            "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
         );
         let state = docker_service.state.clone();
