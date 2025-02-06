@@ -225,9 +225,15 @@ pub async fn execute_command(
                 None => None,
             };
 
+            let system_memory = node_config
+                .compute_specs
+                .as_ref()
+                .map(|specs| specs.ram_mb.unwrap_or(0));
+
             let docker_service = Arc::new(DockerService::new(
                 cancellation_token.clone(),
                 has_gpu,
+                system_memory,
                 task_bridge.socket_path.clone(),
                 docker_storage_path,
             ));
