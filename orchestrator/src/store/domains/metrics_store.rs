@@ -32,19 +32,59 @@ impl MetricsStore {
         }
 
         for entry in metrics {
+            let task_id = if entry.key.task_id.is_empty() {
+                "manual".to_string()
+            } else {
+                entry.key.task_id
+            };
+
             let cleaned_label = self.clean_label(&entry.key.label);
             let redis_key = format!(
                 "{}:{}:{}",
-                ORCHESTRATOR_METRICS_STORE, entry.key.task_id, cleaned_label
+                ORCHESTRATOR_METRICS_STORE, task_id, cleaned_label
             );
             let mut con = self.redis.client.get_connection().unwrap();
-            if let Err(err) = con.hset(
-                redis_key,
-                sender_address.to_string(),
-                entry.value.to_string(),
-            ) as RedisResult<()>
+
+            let address = if task_id == "manual" {
+                Address::ZERO.to_string()
+            } else {
+                sender_address.to_string()
+            };
+
+            if let Err(err) =
+                con.hset(redis_key, address, entry.value.to_string()) as RedisResult<()>
             {
                 error!("Could not update metric value in redis: {}", err);
+            }
+        }
+    }
+
+    pub fn store_manual_metrics(&self, label: String, value: f64) {
+        self.store_metrics(
+            Some(vec![MetricEntry {
+                key: shared::models::metric::MetricKey {
+                    task_id: "".to_string(),
+                    label,
+                },
+                value,
+            }]),
+            Address::ZERO,
+        );
+    }
+
+    pub fn delete_metric(&self, task_id: &str, label: &str, address: &str) -> bool {
+        let mut con = self.redis.client.get_connection().unwrap();
+        let cleaned_label = self.clean_label(label);
+        let redis_key = format!(
+            "{}:{}:{}",
+            ORCHESTRATOR_METRICS_STORE, task_id, cleaned_label
+        );
+
+        match con.hdel::<_, _, i64>(redis_key, address.to_string()) {
+            Ok(deleted) => deleted == 1,
+            Err(err) => {
+                error!("Could not delete metric from redis: {}", err);
+                false
             }
         }
     }
@@ -119,6 +159,33 @@ impl MetricsStore {
                     let metric_name = parts[3].to_string();
 
                     result.entry(task_id).or_default().insert(metric_name, val);
+                }
+            }
+        }
+
+        result
+    }
+
+    pub fn get_all_metrics(&self) -> HashMap<String, HashMap<String, HashMap<String, f64>>> {
+        let mut con = self.redis.client.get_connection().unwrap();
+        let all_keys: Vec<String> = con
+            .keys(format!("{}:*:*", ORCHESTRATOR_METRICS_STORE))
+            .unwrap();
+        let mut result: HashMap<String, HashMap<String, HashMap<String, f64>>> = HashMap::new();
+
+        for key in all_keys {
+            if let [_, _, task_id, metric_name] = key.split(":").collect::<Vec<&str>>()[..] {
+                let values: HashMap<String, String> = con.hgetall(&key).unwrap();
+
+                for (node_addr, value) in values {
+                    if let Ok(val) = value.parse::<f64>() {
+                        result
+                            .entry(task_id.to_string())
+                            .or_default()
+                            .entry(metric_name.to_string())
+                            .or_default()
+                            .insert(node_addr, val);
+                    }
                 }
             }
         }
