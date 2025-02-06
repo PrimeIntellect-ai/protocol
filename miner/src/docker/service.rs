@@ -18,6 +18,7 @@ pub struct DockerService {
     cancellation_token: CancellationToken,
     pub state: Arc<DockerState>,
     has_gpu: bool,
+    system_memory_mb: Option<u32>,
     task_bridge_socket_path: String,
 }
 
@@ -27,6 +28,7 @@ impl DockerService {
     pub fn new(
         cancellation_token: CancellationToken,
         has_gpu: bool,
+        system_memory_mb: Option<u32>,
         task_bridge_socket_path: String,
         storage_path: Option<String>,
     ) -> Self {
@@ -36,6 +38,7 @@ impl DockerService {
             cancellation_token,
             state: Arc::new(DockerState::new()),
             has_gpu,
+            system_memory_mb,
             task_bridge_socket_path,
         }
     }
@@ -142,6 +145,7 @@ impl DockerService {
                                     let manager_clone = manager_clone.clone();
                                     let state_clone = state.clone();
                                     let has_gpu = self.has_gpu;
+                                    let system_memory_mb = self.system_memory_mb.clone();
                                     let task_bridge_socket_path = self.task_bridge_socket_path.clone();
                                     let handle = tokio::spawn(async move {
                                         let payload = task_clone.unwrap();
@@ -170,8 +174,14 @@ impl DockerService {
                                                 false,
                                             )
                                         ];
-
-                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), has_gpu, Some(volumes)).await {
+                                        let shm_size = match system_memory_mb {
+                                            Some(mem_mb) => (mem_mb as u64) * 1024 * 1024 / 2, // Convert MB to bytes and divide by 2
+                                            None => {
+                                                Console::warning("System memory not available, using default shm size");
+                                                67108864 // Default to 64MB in bytes
+                                            }
+                                        };
+                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), has_gpu, Some(volumes), Some(shm_size)).await {
                                             Ok(container_id) => {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
@@ -276,6 +286,7 @@ mod tests {
         let docker_service = DockerService::new(
             cancellation_token.clone(),
             false,
+            Some(1024),
             "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
         );
@@ -319,6 +330,7 @@ mod tests {
         let docker_service = DockerService::new(
             cancellation_token.clone(),
             false,
+            Some(1024),
             "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
         );

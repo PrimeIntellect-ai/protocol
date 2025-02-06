@@ -105,6 +105,7 @@ impl DockerManager {
         gpu_enabled: bool,
         // Simple Vec of (host_path, container_path, read_only)
         volumes: Option<Vec<(String, String, bool)>>,
+        shm_size: Option<u64>,
     ) -> Result<String, DockerError> {
         println!("Starting to pull image: {}", image);
 
@@ -178,6 +179,7 @@ impl DockerManager {
                     options: Some(HashMap::new()),
                 }]),
                 binds: volume_binds,
+                shm_size: shm_size.map(|s| s as i64),
                 ..Default::default()
             })
         } else {
