@@ -67,7 +67,7 @@ struct Args {
 
     /// Disable instance ejection from chain
     #[arg(long)]
-    disable_ejection: bool
+    disable_ejection: bool,
 }
 
 #[tokio::main]

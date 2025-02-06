@@ -32,7 +32,7 @@ impl NodeStatusUpdater {
             missing_heartbeat_threshold: missing_heartbeat_threshold.unwrap_or(3),
             contracts,
             pool_id,
-            disable_ejection
+            disable_ejection,
         }
     }
 
@@ -69,21 +69,24 @@ impl NodeStatusUpdater {
                 };
                 if node_in_pool {
                     if !self.disable_ejection {
-                    let tx = self
-                        .contracts
-                        .compute_pool
-                        .eject_node(self.pool_id, node.address)
-                        .await;
-                    match tx {
-                        Result::Ok(_) => {
-                            println!("Ejected node: {:?}", node.address);
+                        let tx = self
+                            .contracts
+                            .compute_pool
+                            .eject_node(self.pool_id, node.address)
+                            .await;
+                        match tx {
+                            Result::Ok(_) => {
+                                println!("Ejected node: {:?}", node.address);
                             }
                             Result::Err(e) => {
                                 println!("Error ejecting node: {}", e);
                             }
                         }
                     } else {
-                        println!("Ejection is disabled, skipping ejection of node: {:?}", node.address);
+                        println!(
+                            "Ejection is disabled, skipping ejection of node: {:?}",
+                            node.address
+                        );
                     }
                 }
             }
@@ -256,7 +259,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
-            false
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -297,7 +300,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
-            false
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -348,7 +351,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
-            false
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -402,7 +405,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
-            false
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -465,7 +468,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
-            false
+            false,
         );
         tokio::spawn(async move {
             updater
@@ -528,7 +531,7 @@ mod tests {
             None,
             Arc::new(contracts),
             0,
-            false
+            false,
         );
         tokio::spawn(async move {
             updater
