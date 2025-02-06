@@ -169,17 +169,6 @@ fn main() {
                 }
             };
 
-            let challenge_route = "/challenge/submit";
-            let challenge_result =
-                runtime.block_on(challenge_node(&node, &validator_wallet, challenge_route));
-            if challenge_result.is_err() {
-                error!(
-                    "Failed to challenge node {}: {:?}",
-                    node.id, challenge_result
-                );
-                continue;
-            }
-
             if let Err(e) = runtime.block_on(
                 contracts
                     .prime_network
