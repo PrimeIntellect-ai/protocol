@@ -16,6 +16,7 @@ ENV DISCOVERY_REFRESH_INTERVAL="10"
 ENV REDIS_STORE_URL="redis://localhost:6380"
 ENV DISCOVERY_URL="http://localhost:8089"
 ENV ADMIN_API_KEY="admin"
+ENV DISABLE_EJECTION="false"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/orchestrator \
@@ -30,6 +31,7 @@ $([ ! -z "$HOST" ] && echo "--host $HOST") \
 --redis-store-url "$REDIS_STORE_URL" \
 --discovery-url "$DISCOVERY_URL" \
 --admin-api-key "$ADMIN_API_KEY" \
+$([ "$DISABLE_EJECTION" = "true" ] && echo "--disable-ejection") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 
