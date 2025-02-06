@@ -95,6 +95,7 @@ impl DockerManager {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     /// Start a new container with the given image and configuration
     pub async fn start_container(
         &self,
