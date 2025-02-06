@@ -1,6 +1,7 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use alloy::primitives::{hex, Address};
 use alloy::signers::Signer;
+use anyhow::{Context, Result};
 use clap::Parser;
 use log::LevelFilter;
 use log::{error, info};
@@ -64,57 +65,74 @@ fn main() {
         .with_compute_pool()
         .build()
         .unwrap();
-
     loop {
-        async fn _generate_signature(
-            wallet: &Wallet,
-            message: &str,
-        ) -> Result<String, Box<dyn std::error::Error>> {
+        async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
             let signature = wallet
                 .signer
                 .sign_message(message.as_bytes())
-                .await?
+                .await
+                .context("Failed to sign message")?
                 .as_bytes();
             Ok(format!("0x{}", hex::encode(signature)))
         }
 
-        let nodes: Result<Vec<DiscoveryNode>, Box<dyn std::error::Error>> =
-            runtime.block_on(async {
-                let discovery_route = "/api/validator";
-                let address = validator_wallet
-                    .wallet
-                    .default_signer()
-                    .address()
-                    .to_string();
-                let signature = _generate_signature(&validator_wallet, discovery_route)
-                    .await
-                    .unwrap();
+        let nodes = match runtime.block_on(async {
+            let discovery_route = "/api/validator";
+            let address = validator_wallet
+                .wallet
+                .default_signer()
+                .address()
+                .to_string();
 
-                let mut headers = reqwest::header::HeaderMap::new();
-                headers.insert("x-address", address.parse().unwrap());
-                headers.insert("x-signature", signature.parse().unwrap());
+            let signature = _generate_signature(&validator_wallet, discovery_route)
+                .await
+                .context("Failed to generate signature")?;
 
-                info!("Fetching nodes from: {}{}", discovery_url, discovery_route);
-                let response = reqwest::Client::new()
-                    .get(format!("{}{}", discovery_url, discovery_route))
-                    .headers(headers)
-                    .send()
-                    .await?;
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(
+                "x-address",
+                reqwest::header::HeaderValue::from_str(&address)
+                    .context("Failed to create address header")?,
+            );
+            headers.insert(
+                "x-signature",
+                reqwest::header::HeaderValue::from_str(&signature)
+                    .context("Failed to create signature header")?,
+            );
 
-                let response_text = response.text().await?;
-                let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
-                    serde_json::from_str(&response_text)?;
+            info!("Fetching nodes from: {}{}", discovery_url, discovery_route);
+            let response = reqwest::Client::new()
+                .get(format!("{}{}", discovery_url, discovery_route))
+                .headers(headers)
+                .send()
+                .await
+                .context("Failed to fetch nodes")?;
 
-                if !parsed_response.success {
-                    error!("Failed to fetch nodes: {:?}", parsed_response);
-                    return Ok(vec![]);
-                }
+            let response_text = response
+                .text()
+                .await
+                .context("Failed to get response text")?;
 
-                Ok(parsed_response.data)
-            });
+            let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
+                serde_json::from_str(&response_text).context("Failed to parse response")?;
+
+            if !parsed_response.success {
+                error!("Failed to fetch nodes: {:?}", parsed_response);
+                return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
+            }
+
+            Ok(parsed_response.data)
+        }) {
+            Ok(n) => n,
+            Err(e) => {
+                error!("Error in node fetching loop: {:#}", e);
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                continue;
+            }
+        };
+
         let non_validated_nodes: Vec<DiscoveryNode> = nodes
             .iter()
-            .flatten()
             .filter(|node| !node.is_validated)
             .cloned()
             .collect();
@@ -122,13 +140,28 @@ fn main() {
         info!("Non validated nodes: {:?}", non_validated_nodes);
 
         for node in non_validated_nodes {
-            let node_address = node.id.trim_start_matches("0x").parse::<Address>().unwrap();
+            let node_address = match node.id.trim_start_matches("0x").parse::<Address>() {
+                Ok(addr) => addr,
+                Err(e) => {
+                    error!("Failed to parse node address {}: {}", node.id, e);
+                    continue;
+                }
+            };
 
-            let provider_address = node
+            let provider_address = match node
                 .provider_address
                 .trim_start_matches("0x")
                 .parse::<Address>()
-                .unwrap();
+            {
+                Ok(addr) => addr,
+                Err(e) => {
+                    error!(
+                        "Failed to parse provider address {}: {}",
+                        node.provider_address, e
+                    );
+                    continue;
+                }
+            };
 
             if let Err(e) = runtime.block_on(
                 contracts
