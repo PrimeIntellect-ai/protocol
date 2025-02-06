@@ -95,7 +95,7 @@ fn main() {
                     .context("Failed to create address header")?,
             );
             headers.insert(
-                "x-signature", 
+                "x-signature",
                 reqwest::header::HeaderValue::from_str(&signature)
                     .context("Failed to create signature header")?,
             );
