@@ -145,7 +145,7 @@ impl DockerService {
                                     let manager_clone = manager_clone.clone();
                                     let state_clone = state.clone();
                                     let has_gpu = self.has_gpu;
-                                    let system_memory_mb = self.system_memory_mb.clone();
+                                    let system_memory_mb = self.system_memory_mb;
                                     let task_bridge_socket_path = self.task_bridge_socket_path.clone();
                                     let handle = tokio::spawn(async move {
                                         let payload = task_clone.unwrap();
