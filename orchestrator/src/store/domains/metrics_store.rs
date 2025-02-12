@@ -37,7 +37,6 @@ impl MetricsStore {
             } else {
                 entry.key.task_id
             };
-
             let cleaned_label = self.clean_label(&entry.key.label);
             let redis_key = format!(
                 "{}:{}:{}",
@@ -51,10 +50,28 @@ impl MetricsStore {
                 sender_address.to_string()
             };
 
-            if let Err(err) =
-                con.hset(redis_key, address, entry.value.to_string()) as RedisResult<()>
-            {
-                error!("Could not update metric value in redis: {}", err);
+            let existing_value: Option<String> = con.hget(&redis_key, &address).unwrap_or(None);
+            let should_update = match existing_value {
+                Some(val) => {
+                    // Only check for max value on dashboard-progress metrics to maintain dashboard integrity
+                    if entry.key.label.contains("dashboard-progress") {
+                        match (val.parse::<f64>(), entry.value) {
+                            (Ok(old_val), new_val) => new_val > old_val,
+                            _ => true,
+                        }
+                    } else {
+                        true
+                    }
+                }
+                None => true,
+            };
+
+            if should_update {
+                if let Err(err) =
+                    con.hset(redis_key, address, entry.value.to_string()) as RedisResult<()>
+                {
+                    error!("Could not update metric value in redis: {}", err);
+                }
             }
         }
     }
