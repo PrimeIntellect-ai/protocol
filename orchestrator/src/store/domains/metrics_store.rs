@@ -57,17 +57,17 @@ impl MetricsStore {
                     if entry.key.label.contains("dashboard-progress") {
                         match (val.parse::<f64>(), entry.value) {
                             (Ok(old_val), new_val) => new_val > old_val,
-                            _ => true
+                            _ => true,
                         }
                     } else {
                         true
                     }
-                },
-                None => true
+                }
+                None => true,
             };
 
             if should_update {
-                if let Err(err) = 
+                if let Err(err) =
                     con.hset(redis_key, address, entry.value.to_string()) as RedisResult<()>
                 {
                     error!("Could not update metric value in redis: {}", err);
@@ -324,7 +324,7 @@ mod tests {
         metrics_store.store_metrics(Some(vec![metric]), node_addr);
 
         let metric_key = MetricKey {
-            task_id: "task_1".to_string(), 
+            task_id: "task_1".to_string(),
             label: "dashboard-progress/test/value".to_string(),
         };
         let metric = MetricEntry {
@@ -334,11 +334,17 @@ mod tests {
         metrics_store.store_metrics(Some(vec![metric]), node_addr);
 
         let metrics = metrics_store.get_metrics_for_node(node_addr);
-        assert_eq!(metrics.get("task_1").unwrap().get("dashboard-progress/test/value"), Some(&2.0));
+        assert_eq!(
+            metrics
+                .get("task_1")
+                .unwrap()
+                .get("dashboard-progress/test/value"),
+            Some(&2.0)
+        );
 
         let metric_key = MetricKey {
             task_id: "task_1".to_string(),
-            label: "dashboard-progress/test/value".to_string(), 
+            label: "dashboard-progress/test/value".to_string(),
         };
         let metric = MetricEntry {
             key: metric_key,
@@ -347,7 +353,13 @@ mod tests {
         metrics_store.store_metrics(Some(vec![metric]), node_addr);
 
         let metrics = metrics_store.get_metrics_for_node(node_addr);
-        assert_eq!(metrics.get("task_1").unwrap().get("dashboard-progress/test/value"), Some(&3.0));
+        assert_eq!(
+            metrics
+                .get("task_1")
+                .unwrap()
+                .get("dashboard-progress/test/value"),
+            Some(&3.0)
+        );
 
         // Test non-dashboard metric gets overwritten regardless of value
         let metric_key = MetricKey {
@@ -387,6 +399,9 @@ mod tests {
         metrics_store.store_metrics(Some(vec![metric]), node_addr);
 
         let metrics = metrics_store.get_metrics_for_node(node_addr);
-        assert_eq!(metrics.get("task_1").unwrap().get("memory_usage"), Some(&1.0));
+        assert_eq!(
+            metrics.get("task_1").unwrap().get("memory_usage"),
+            Some(&1.0)
+        );
     }
 }
