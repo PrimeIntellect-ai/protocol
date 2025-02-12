@@ -8,8 +8,6 @@ use log::{error, info};
 use rand::rng;
 use rand::Rng;
 use serde_json::json;
-use rand::rng;
-use rand::Rng;
 use shared::models::api::ApiResponse;
 use shared::models::challenge::calc_matrix;
 use shared::models::challenge::FixedF64;
