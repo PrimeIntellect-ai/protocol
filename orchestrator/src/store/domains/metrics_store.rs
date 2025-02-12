@@ -37,7 +37,6 @@ impl MetricsStore {
             } else {
                 entry.key.task_id
             };
-
             let cleaned_label = self.clean_label(&entry.key.label);
             let redis_key = format!(
                 "{}:{}:{}",
@@ -51,10 +50,28 @@ impl MetricsStore {
                 sender_address.to_string()
             };
 
-            if let Err(err) =
-                con.hset(redis_key, address, entry.value.to_string()) as RedisResult<()>
-            {
-                error!("Could not update metric value in redis: {}", err);
+            let existing_value: Option<String> = con.hget(&redis_key, &address).unwrap_or(None);
+            let should_update = match existing_value {
+                Some(val) => {
+                    // Only check for max value on dashboard-progress metrics to maintain dashboard integrity
+                    if entry.key.label.contains("dashboard-progress") {
+                        match (val.parse::<f64>(), entry.value) {
+                            (Ok(old_val), new_val) => new_val > old_val,
+                            _ => true,
+                        }
+                    } else {
+                        true
+                    }
+                }
+                None => true,
+            };
+
+            if should_update {
+                if let Err(err) =
+                    con.hset(redis_key, address, entry.value.to_string()) as RedisResult<()>
+                {
+                    error!("Could not update metric value in redis: {}", err);
+                }
             }
         }
     }
@@ -286,6 +303,104 @@ mod tests {
         );
         assert_eq!(
             metrics_1.get("task_2").unwrap().get("cpu_usage"),
+            Some(&1.0)
+        );
+    }
+    #[tokio::test]
+    async fn test_store_metrics_value_overwrite() {
+        let app_state = create_test_app_state().await;
+        let metrics_store = app_state.store_context.metrics_store.clone();
+        let node_addr = Address::ZERO;
+
+        // Test dashboard-progress metric maintains max value
+        let metric_key = MetricKey {
+            task_id: "task_1".to_string(),
+            label: "dashboard-progress/test/value".to_string(),
+        };
+        let metric = MetricEntry {
+            key: metric_key,
+            value: 2.0,
+        };
+        metrics_store.store_metrics(Some(vec![metric]), node_addr);
+
+        let metric_key = MetricKey {
+            task_id: "task_1".to_string(),
+            label: "dashboard-progress/test/value".to_string(),
+        };
+        let metric = MetricEntry {
+            key: metric_key,
+            value: 1.0,
+        };
+        metrics_store.store_metrics(Some(vec![metric]), node_addr);
+
+        let metrics = metrics_store.get_metrics_for_node(node_addr);
+        assert_eq!(
+            metrics
+                .get("task_1")
+                .unwrap()
+                .get("dashboard-progress/test/value"),
+            Some(&2.0)
+        );
+
+        let metric_key = MetricKey {
+            task_id: "task_1".to_string(),
+            label: "dashboard-progress/test/value".to_string(),
+        };
+        let metric = MetricEntry {
+            key: metric_key,
+            value: 3.0,
+        };
+        metrics_store.store_metrics(Some(vec![metric]), node_addr);
+
+        let metrics = metrics_store.get_metrics_for_node(node_addr);
+        assert_eq!(
+            metrics
+                .get("task_1")
+                .unwrap()
+                .get("dashboard-progress/test/value"),
+            Some(&3.0)
+        );
+
+        // Test non-dashboard metric gets overwritten regardless of value
+        let metric_key = MetricKey {
+            task_id: "task_1".to_string(),
+            label: "cpu_usage".to_string(),
+        };
+        let metric = MetricEntry {
+            key: metric_key.clone(),
+            value: 2.0,
+        };
+        metrics_store.store_metrics(Some(vec![metric]), node_addr);
+
+        let metric = MetricEntry {
+            key: metric_key,
+            value: 1.0,
+        };
+        metrics_store.store_metrics(Some(vec![metric]), node_addr);
+
+        let metrics = metrics_store.get_metrics_for_node(node_addr);
+        assert_eq!(metrics.get("task_1").unwrap().get("cpu_usage"), Some(&1.0));
+
+        // Test another non-dashboard metric gets overwritten with larger value
+        let metric_key = MetricKey {
+            task_id: "task_1".to_string(),
+            label: "memory_usage".to_string(),
+        };
+        let metric = MetricEntry {
+            key: metric_key.clone(),
+            value: 2.0,
+        };
+        metrics_store.store_metrics(Some(vec![metric]), node_addr);
+
+        let metric = MetricEntry {
+            key: metric_key,
+            value: 1.0,
+        };
+        metrics_store.store_metrics(Some(vec![metric]), node_addr);
+
+        let metrics = metrics_store.get_metrics_for_node(node_addr);
+        assert_eq!(
+            metrics.get("task_1").unwrap().get("memory_usage"),
             Some(&1.0)
         );
     }
