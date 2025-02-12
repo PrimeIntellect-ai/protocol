@@ -6,7 +6,6 @@ use clap::Parser;
 use log::LevelFilter;
 use log::{error, info};
 use serde_json::json;
-use nalgebra::DMatrix;
 use rand::rng;
 use rand::Rng;
 use shared::models::api::ApiResponse;
