@@ -2211,11 +2211,7 @@ dependencies = [
 
 [[package]]
 name = "discovery"
-<<<<<<< HEAD
 version = "0.1.6"
-=======
-version = "0.1.5"
->>>>>>> main
 dependencies = [
  "actix-web",
  "alloy",
@@ -3600,11 +3596,7 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "miner"
-<<<<<<< HEAD
 version = "0.1.6"
-=======
-version = "0.1.5"
->>>>>>> main
 dependencies = [
  "actix-web",
  "alloy",
@@ -4028,11 +4020,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orchestrator"
-<<<<<<< HEAD
 version = "0.1.6"
-=======
-version = "0.1.5"
->>>>>>> main
 dependencies = [
  "actix-web",
  "alloy",
@@ -5880,11 +5868,7 @@ dependencies = [
 
 [[package]]
 name = "validator"
-<<<<<<< HEAD
 version = "0.1.6"
-=======
-version = "0.1.5"
->>>>>>> main
 dependencies = [
  "actix-web",
  "alloy",
