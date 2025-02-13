@@ -118,13 +118,13 @@ You can find more details on the APIs in the orchestrator and discovery service 
 
 ### Deploying a task
 
-First, you need to create a local miner (after you have all other services running using e.g. `make up`) 
+First, you need to create a local worker (after you have all other services running using e.g. `make up`) 
 
 ```bash
-make watch-miner
+make watch-worker
 ```
 
-check that the miner as been registered on the orchestrator: 
+check that the worker as been registered on the orchestrator: 
 
 ```bash
 curl -X GET http://localhost:8090/nodes -H "Authorization: Bearer admin"
@@ -152,8 +152,8 @@ you can also check docker ps to see that the docker is running locally
 docker ps
 CONTAINER ID   IMAGE                               COMMAND                  CREATED          STATUS          PORTS                                         NAMES
 e860c44a9989   ubuntu:latest                       "sleep infinity"         3 minutes ago    Up 3 minutes                                                  prime-task-29edd356-5c48-4ba6-ab96-73d002daddff
-ef02d23b5c74   redis:alpine                        "docker-entrypoint.s…"   27 minutes ago   Up 27 minutes   0.0.0.0:6380->6379/tcp, [::]:6380->6379/tcp   prime-miner-validator-redis-1
-7761ee7b6dcf   ghcr.io/foundry-rs/foundry:latest   "anvil --host 0.0.0.…"   27 minutes ago   Up 27 minutes   0.0.0.0:8545->8545/tcp, :::8545->8545/tcp     prime-miner-validator-anvil-1
+ef02d23b5c74   redis:alpine                        "docker-entrypoint.s…"   27 minutes ago   Up 27 minutes   0.0.0.0:6380->6379/tcp, [::]:6380->6379/tcp   prime-worker-validator-redis-1
+7761ee7b6dcf   ghcr.io/foundry-rs/foundry:latest   "anvil --host 0.0.0.…"   27 minutes ago   Up 27 minutes   0.0.0.0:8545->8545/tcp, :::8545->8545/tcp     prime-worker-validator-anvil-1
 ```
 
 
