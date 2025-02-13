@@ -174,13 +174,7 @@ make down
 - [Blog](https://www.primeintellect.ai/blog)
 
 ## Contributing
-todo: add 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
 
 ## Security
-todo: add
 See [SECURITY.md](SECURITY.md) for security policies and reporting vulnerabilities.
-
-## License
-todo: add
-Prime Protocol is licensed under the [Apache License 2.0](LICENSE).
