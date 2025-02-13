@@ -118,27 +118,13 @@ You can find more details on the APIs in the orchestrator and discovery service 
 
 ### Deploying a task
 
-### Running a Worker Node
-
-Once the core services are running, you can start a worker node in a new terminal:
-```bash
-make watch-worker
-```
-
-The worker will automatically connect to the discovery service and begin processing tasks.
-It takes a couple of seconds until the worker is whitelisted. This is done using a simple loop on the second page of tmux.
-
-You can find more details on the APIs in the orchestrator and discovery service directory.
-
-### Deploying a task
-
 First, you need to create a local worker (after you have all other services running using e.g. `make up`) 
 
 ```bash
 make watch-worker
 ```
 
-check that the miner as been registered on the orchestrator: 
+check that the worker as been registered on the orchestrator: 
 
 ```bash
 curl -X GET http://localhost:8090/nodes -H "Authorization: Bearer admin"
