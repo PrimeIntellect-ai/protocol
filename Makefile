@@ -73,7 +73,7 @@ watch-discovery:
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS"
+	cargo watch -w worker/src -x "run --bin worker -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS"
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -88,7 +88,7 @@ build-worker:
 
 run-worker-bin:
 	set -a; source .env; set +a; \
-	./target/release/miner run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS
+	./target/release/worker run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS
 
 SSH_CONNECTION ?= your-ssh-conn string
 EXTERNAL_IP ?= 0.0.0.0
@@ -141,7 +141,7 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 			--port $(PORT) \
 			--external-ip \$$EXTERNAL_IP \
 			--compute-pool-id 0 \
-			--validator-address \$$VALIDATOR_ADDRESS  2>&1 | tee miner.log\""
+			--validator-address \$$VALIDATOR_ADDRESS  2>&1 | tee worker.log\""
 # Kill SSH tunnel
 .PHONY: kill-tunnel
 kill-tunnel:
