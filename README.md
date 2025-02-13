@@ -12,7 +12,6 @@
 Prime Network is a peer-to-peer compute and intelligence network that enables decentralized AI development at scale. This repository contains the core infrastructure for contributing compute resources to the network, including workers, validators, and the coordination layer.
 
 ## 📚 Table of Contents
-- [Overview](#overview)
 - [System Architecture](#system-architecture)
 - [Getting Started](#getting-started)
 - [Installation](#installation)
@@ -22,16 +21,6 @@ Prime Network is a peer-to-peer compute and intelligence network that enables de
 - [Contributing](#contributing)
 - [Security](#security)
 - [License](#license)
-
-## Overview
-
-Prime Protocol allows anyone to contribute their compute resources in a decentralized AI network. The key components are:
-
-- **Workers**: Contribute GPU/CPU compute power to run AI workloads
-- **Validators**: Ensure compute quality and fairness through challenges
-- **Orchestrator**: Manages compute tasks and worker coordination for specific pools
-- **Discovery Service**: Secure P2P metadata sharing and node discovery
-- **Smart Contracts**: Handle staking, rewards, and economic incentives
 
 ## System Architecture
 
