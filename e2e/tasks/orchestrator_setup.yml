@@ -8,7 +8,7 @@
     group: "{{ ansible_user }}"
 - name: Download latest orchestrator binary
   get_url:
-    url: "https://storage.googleapis.com/prime-miner/{{ version }}/orchestrator-linux-x86_64"
+    url: "https://storage.googleapis.com/prime-protocol/{{ version }}/orchestrator-linux-x86_64"
     dest: "/opt/prime/orchestrator/orchestrator"
     mode: '0755'
     owner: "{{ ansible_user }}"

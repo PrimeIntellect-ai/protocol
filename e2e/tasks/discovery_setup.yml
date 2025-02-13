@@ -14,7 +14,7 @@
     group: "{{ ansible_user }}"
 - name: Download discovery binary
   get_url:
-    url: "https://storage.googleapis.com/prime-miner/{{ version }}/discovery-linux-x86_64"
+    url: "https://storage.googleapis.com/prime-protocol/{{ version }}/discovery-linux-x86_64"
     dest: "/opt/prime/discovery/discovery"
     mode: '0755'
     owner: "{{ ansible_user }}"

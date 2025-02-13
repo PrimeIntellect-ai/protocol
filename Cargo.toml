@@ -1,5 +1,5 @@
 [workspace]
-members = ["discovery", "miner", "validator", "shared", "orchestrator", "dev-utils"]
+members = ["discovery", "worker", "validator", "shared", "orchestrator", "dev-utils"]
 resolver = "2"
 
 [workspace.package]

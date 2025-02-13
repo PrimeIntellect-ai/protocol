@@ -58,7 +58,7 @@ up:
 down:
 	docker-compose down
 	tmuxinator stop prime-dev
-	pkill -f "target/debug/miner" 2>/dev/null || true
+	pkill -f "target/debug/worker" 2>/dev/null || true
 	pkill -f "target/debug/orchestrator" 2>/dev/null || true
 	pkill -f "target/debug/validator" 2>/dev/null || true
 	pkill -f "target/debug/discovery" 2>/dev/null || true
@@ -71,9 +71,9 @@ watch-discovery:
 	set -a; source .env; set +a; \
 	cargo watch -w discovery/src -x "run --bin discovery -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL}"
 
-watch-miner:
+watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w miner/src -x "run --bin miner -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS"
+	cargo watch -w worker/src -x "run --bin worker -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS"
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -83,12 +83,12 @@ watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090"
 
-build-miner:
-	cargo build --release --bin miner
+build-worker:
+	cargo build --release --bin worker
 
-run-miner-bin:
+run-worker-bin:
 	set -a; source .env; set +a; \
-	./target/release/miner run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS
+	./target/release/worker run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS
 
 SSH_CONNECTION ?= your-ssh-conn string
 EXTERNAL_IP ?= 0.0.0.0
@@ -127,21 +127,21 @@ sync-remote:
 		--exclude 'node_modules/' \
 		. :~/$(notdir $(CURDIR))
 
-# Run miner on remote GPU
-.PHONY: watch-miner-remote
-watch-miner-remote: setup-remote setup-tunnel sync-remote
+# Run worker on remote GPU
+.PHONY: watch-worker-remote
+watch-worker-remote: setup-remote setup-tunnel sync-remote
 	$(SSH_CONNECTION) -t "cd ~/$(notdir $(CURDIR)) && \
 		export PATH=\"\$$HOME/.cargo/bin:\$$PATH\" && \
 		. \"\$$HOME/.cargo/env\" && \
 		set -a && source .env && set +a && \
 		export EXTERNAL_IP=$(EXTERNAL_IP) && \
-		RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w miner/src -x \"run --bin miner -- run \
+		RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w worker/src -x \"run --bin worker -- run \
 			--private-key-provider \$$PROVIDER_PRIVATE_KEY \
 			--private-key-node \$$NODE_PRIVATE_KEY \
 			--port $(PORT) \
 			--external-ip \$$EXTERNAL_IP \
 			--compute-pool-id 0 \
-			--validator-address \$$VALIDATOR_ADDRESS  2>&1 | tee miner.log\""
+			--validator-address \$$VALIDATOR_ADDRESS  2>&1 | tee worker.log\""
 # Kill SSH tunnel
 .PHONY: kill-tunnel
 kill-tunnel:
@@ -149,7 +149,7 @@ kill-tunnel:
 	$(SSH_CONNECTION) "pkill -f \"sshd.*:8091\"" || true
 
 # Full remote execution with cleanup
-.PHONY: remote-miner
-remote-miner:
+.PHONY: remote-worker
+remote-worker:
 	@trap 'make kill-tunnel' EXIT; \
-	make watch-miner-remote
+	make watch-worker-remote

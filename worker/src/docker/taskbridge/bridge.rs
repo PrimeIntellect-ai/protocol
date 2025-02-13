@@ -12,8 +12,8 @@ use tokio::{
 };
 
 pub const SOCKET_NAME: &str = "metrics.sock";
-const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.miner/";
-const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.miner/";
+const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.worker/";
+const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.worker/";
 
 pub struct TaskBridge {
     pub socket_path: String,

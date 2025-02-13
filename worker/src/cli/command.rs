@@ -45,11 +45,11 @@ pub enum Commands {
         #[arg(long, default_value = "http://localhost:8545")]
         rpc_url: String,
 
-        /// Port number for the miner to listen on
+        /// Port number for the worker to listen on
         #[arg(long, default_value = "8080")]
         port: u16,
 
-        /// External IP address for the miner to advertise
+        /// External IP address for the worker to advertise
         #[arg(long)]
         external_ip: String,
 
@@ -57,7 +57,7 @@ pub enum Commands {
         #[arg(long)]
         compute_pool_id: u64,
 
-        /// Dry run the command without starting the miner
+        /// Dry run the command without starting the worker
         #[arg(long, default_value = "false")]
         dry_run: bool,
 
