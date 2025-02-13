@@ -2226,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "discovery"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "actix-web",
  "alloy",
@@ -4060,7 +4060,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orchestrator"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "actix-web",
  "alloy",
@@ -5968,7 +5968,7 @@ dependencies = [
 
 [[package]]
 name = "validator"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "actix-web",
  "alloy",
@@ -6581,7 +6581,7 @@ dependencies = [
 
 [[package]]
 name = "worker"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "actix-web",
  "alloy",
