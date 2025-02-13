@@ -287,7 +287,7 @@ mod tests {
             cancellation_token.clone(),
             false,
             Some(1024),
-            "/tmp/com.prime.miner/metrics.sock".to_string(),
+            "/tmp/com.prime.worker/metrics.sock".to_string(),
             None,
         );
         let task = Task {
@@ -331,7 +331,7 @@ mod tests {
             cancellation_token.clone(),
             false,
             Some(1024),
-            "/tmp/com.prime.miner/metrics.sock".to_string(),
+            "/tmp/com.prime.worker/metrics.sock".to_string(),
             None,
         );
         let state = docker_service.state.clone();

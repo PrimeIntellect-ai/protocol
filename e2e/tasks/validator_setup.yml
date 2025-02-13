@@ -8,7 +8,7 @@
     group: "{{ ansible_user }}"
 - name: Download latest validator binary
   get_url:
-    url: "https://storage.googleapis.com/prime-miner/{{ version }}/validator-linux-x86_64"
+    url: "https://storage.googleapis.com/prime-protocol/{{ version }}/validator-linux-x86_64"
     dest: "/opt/prime/validator/validator"
     mode: '0755'
     owner: "{{ ansible_user }}"

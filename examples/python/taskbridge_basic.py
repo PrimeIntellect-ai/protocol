@@ -6,7 +6,7 @@ import platform
 
 def get_default_socket_path() -> str:
     """Returns the default socket path based on the operating system."""
-    return "/tmp/com.prime.miner/metrics.sock" if platform.system() == "Darwin" else "/var/run/com.prime.miner/metrics.sock"
+    return "/tmp/com.prime.worker/metrics.sock" if platform.system() == "Darwin" else "/var/run/com.prime.worker/metrics.sock"
 
 def send_message(metric: dict, socket_path: str = None) -> bool:
     """Sends a message to the specified socket path or uses the default if none is provided."""
@@ -26,7 +26,7 @@ def send_message(metric: dict, socket_path: str = None) -> bool:
 if __name__ == "__main__":
     """
     You can get the task_id directly from the docker env. 
-    The miner reports the metrics using the heartbeat api but only for the currently running task. 
+    The worker reports the metrics using the heartbeat api but only for the currently running task. 
     """
     task_id = "0725637c-ad20-4c30-b4e2-90cdf63b9974"
     for i in range(5):

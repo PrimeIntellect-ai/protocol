@@ -37,7 +37,7 @@ struct Args {
     #[arg(short = 'd', long, default_value = "0")]
     domain_id: u32,
 
-    /// External ip - advertised to miners
+    /// External ip - advertised to workers
     #[arg(short = 'e', long)]
     host: Option<String>,
 
@@ -45,7 +45,7 @@ struct Args {
     #[arg(short = 'p', long, default_value = "8090")]
     port: u16,
 
-    /// External url - advertised to miners
+    /// External url - advertised to workers
     #[arg(short = 'u', long)]
     url: Option<String>,
 

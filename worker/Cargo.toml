@@ -1,5 +1,5 @@
 [package]
-name = "miner"
+name = "worker"
 version.workspace = true
 edition.workspace = true
 

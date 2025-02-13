@@ -254,6 +254,7 @@ pub async fn challenge_node(
         .await?;
 
     let response_text = response.text().await?;
+    println!("Response text: {}", response_text);
     let parsed_response: ApiResponse<ChallengeResponse> = serde_json::from_str(&response_text)?;
 
     if !parsed_response.success {

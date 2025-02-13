@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 const STATE_FILENAME: &str = "heartbeat_state.toml";
 
 fn get_default_state_dir() -> Option<String> {
-    ProjectDirs::from("com", "prime", "miner")
+    ProjectDirs::from("com", "prime", "worker")
         .map(|proj_dirs| proj_dirs.data_local_dir().to_string_lossy().into_owned())
 }
 

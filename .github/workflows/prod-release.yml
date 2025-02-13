@@ -63,7 +63,7 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         run: |
           mkdir -p release-artifacts
-          for binary in miner validator orchestrator discovery; do
+          for binary in worker validator orchestrator discovery; do
             if [ -f "target/release/$binary" ]; then
               cp "target/release/$binary" "release-artifacts/$binary-linux-x86_64"
             fi
@@ -95,7 +95,7 @@ jobs:
             - Linux x86_64
             
             Components:
-            - Miner
+            - worker
             - Validator
             - Orchestrator
             - Discovery service
@@ -106,8 +106,8 @@ jobs:
             Download the appropriate binary for your system and verify the checksum.
             
             ```bash
-            # Verify checksum (example for miner)
-            sha256sum -c miner-linux-x86_64.checksum
+            # Verify checksum (example for worker)
+            sha256sum -c worker-linux-x86_64.checksum
             ```
             
             ## Changes
@@ -131,9 +131,9 @@ jobs:
       - name: Upload to GCS
         if: steps.check_tag.outputs.exists == 'false'
         run: |
-          gsutil -m cp -r release-artifacts/* gs://prime-miner/v${{ steps.get_version.outputs.version }}/
-          gsutil -m cp -r release-artifacts/* gs://prime-miner/stable/
-          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-miner/stable/**/*
+          gsutil -m cp -r release-artifacts/* gs://prime-protocol/v${{ steps.get_version.outputs.version }}/
+          gsutil -m cp -r release-artifacts/* gs://prime-protocol/stable/
+          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-protocol/stable/**/*
 
       - name: Configure Docker for Artifact Registry
         if: steps.check_tag.outputs.exists == 'false'
@@ -169,8 +169,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:latest
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:v${{ steps.get_version.outputs.version }}
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:latest
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:v${{ steps.get_version.outputs.version }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:latest
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:v${{ steps.get_version.outputs.version }}
 
       - name: Build and push Validator image
         if: steps.check_tag.outputs.exists == 'false'
@@ -182,8 +182,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:latest
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:v${{ steps.get_version.outputs.version }}
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:latest
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:v${{ steps.get_version.outputs.version }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:latest
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:v${{ steps.get_version.outputs.version }}
 
       - name: Build and push Orchestrator image
         if: steps.check_tag.outputs.exists == 'false'
@@ -195,5 +195,5 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:latest
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:v${{ steps.get_version.outputs.version }}
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:latest
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:v${{ steps.get_version.outputs.version }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:latest
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:v${{ steps.get_version.outputs.version }}
