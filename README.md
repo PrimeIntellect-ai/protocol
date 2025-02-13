@@ -22,11 +22,7 @@ Prime Network is a peer-to-peer compute and intelligence network that enables de
 - [Security](#security)
 - [License](#license)
 
-## System Architecture
-
-<div align="center">
-  <img src="docs/assets/architecture-overview.png" width="800" alt="System Architecture">
-</div>
+## System Architecture 
 
 The system follows a modular architecture with the following key components:
 
@@ -37,6 +33,7 @@ The system follows a modular architecture with the following key components:
 - **Orchestrator**: Coordinates compute jobs across worker nodes
 - **Validator Network**: Ensures quality through random challenges
 - **Worker Nodes**: Execute AI workloads in secure containers
+
 ## Getting Started
 
 ### Prerequisites
