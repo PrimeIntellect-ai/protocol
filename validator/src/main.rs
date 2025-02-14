@@ -5,9 +5,15 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use log::LevelFilter;
 use log::{error, info};
+use rand::rng;
+use rand::Rng;
 use serde_json::json;
 use shared::models::api::ApiResponse;
+use shared::models::challenge::calc_matrix;
+use shared::models::challenge::FixedF64;
+use shared::models::challenge::{ChallengeRequest, ChallengeResponse};
 use shared::models::node::DiscoveryNode;
+use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use url::Url;
@@ -163,6 +169,17 @@ fn main() {
                 }
             };
 
+            let challenge_route = "/challenge/submit";
+            let challenge_result =
+                runtime.block_on(challenge_node(&node, &validator_wallet, challenge_route));
+            if challenge_result.is_err() {
+                error!(
+                    "Failed to challenge node {}: {:?}",
+                    node.id, challenge_result
+                );
+                continue;
+            }
+
             if let Err(e) = runtime.block_on(
                 contracts
                     .prime_network
@@ -174,5 +191,134 @@ fn main() {
             }
         }
         std::thread::sleep(std::time::Duration::from_secs(10));
+    }
+}
+
+fn random_challenge(
+    rows_a: usize,
+    cols_a: usize,
+    rows_b: usize,
+    cols_b: usize,
+) -> ChallengeRequest {
+    let mut rng = rng();
+
+    let data_a_vec: Vec<f64> = (0..(rows_a * cols_a))
+        .map(|_| rng.random_range(0.0..1.0))
+        .collect();
+
+    let data_b_vec: Vec<f64> = (0..(rows_b * cols_b))
+        .map(|_| rng.random_range(0.0..1.0))
+        .collect();
+
+    // convert to FixedF64
+    let data_a: Vec<FixedF64> = data_a_vec.iter().map(|x| FixedF64(*x)).collect();
+    let data_b: Vec<FixedF64> = data_b_vec.iter().map(|x| FixedF64(*x)).collect();
+
+    ChallengeRequest {
+        rows_a,
+        cols_a,
+        data_a,
+        rows_b,
+        cols_b,
+        data_b,
+    }
+}
+
+pub async fn challenge_node(
+    node: &DiscoveryNode,
+    wallet: &Wallet,
+    challenge_route: &str,
+) -> Result<i32, Box<dyn std::error::Error>> {
+    let node_url = format!("http://{}:{}", node.node.ip_address, node.node.port);
+
+    let mut headers = reqwest::header::HeaderMap::new();
+
+    // create random challenge matrix
+    let challenge_matrix = random_challenge(3, 3, 3, 3);
+    let challenge_expected = calc_matrix(&challenge_matrix);
+
+    let post_url = format!("{}{}", node_url, challenge_route);
+
+    let address = wallet.wallet.default_signer().address().to_string();
+    let challenge_matrix_value = serde_json::to_value(&challenge_matrix)?;
+    let signature = sign_request(challenge_route, wallet, Some(&challenge_matrix_value)).await?;
+
+    headers.insert("x-address", address.parse().unwrap());
+    headers.insert("x-signature", signature.parse().unwrap());
+
+    let response = reqwest::Client::new()
+        .post(post_url)
+        .headers(headers)
+        .json(&challenge_matrix_value)
+        .send()
+        .await?;
+
+    let response_text = response.text().await?;
+    println!("Response text: {}", response_text);
+    let parsed_response: ApiResponse<ChallengeResponse> = serde_json::from_str(&response_text)?;
+
+    if !parsed_response.success {
+        Err("Error fetching challenge from node".into())
+    } else if challenge_expected.result == parsed_response.data.result {
+        info!("Challenge successful");
+        Ok(0)
+    } else {
+        error!("Challenge failed");
+        Err("Node failed challenge".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{test, App};
+    use actix_web::{
+        web::{self, post},
+        HttpResponse, Scope,
+    };
+
+    pub async fn handle_challenge(
+        challenge: web::Json<ChallengeRequest>,
+        //app_state: Data<AppState>,
+    ) -> HttpResponse {
+        let result = calc_matrix(&challenge);
+        HttpResponse::Ok().json(result)
+    }
+
+    pub fn challenge_routes() -> Scope {
+        web::scope("/challenge")
+            .route("", post().to(handle_challenge))
+            .route("/", post().to(handle_challenge))
+    }
+
+    #[actix_web::test]
+    async fn test_challenge_route() {
+        let app = test::init_service(App::new().service(challenge_routes())).await;
+
+        let vec_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        let vec_b = [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+
+        // convert vectors to FixedF64
+        let data_a: Vec<FixedF64> = vec_a.iter().map(|x| FixedF64(*x)).collect();
+        let data_b: Vec<FixedF64> = vec_b.iter().map(|x| FixedF64(*x)).collect();
+
+        let challenge_request = ChallengeRequest {
+            rows_a: 3,
+            cols_a: 3,
+            data_a,
+            rows_b: 3,
+            cols_b: 3,
+            data_b,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/challenge")
+            .set_json(&challenge_request)
+            .to_request();
+
+        let resp: ChallengeResponse = test::call_and_read_body_json(&app, req).await;
+        let expected_response = calc_matrix(&challenge_request);
+
+        assert_eq!(resp.result, expected_response.result);
     }
 }

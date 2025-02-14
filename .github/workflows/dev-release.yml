@@ -52,8 +52,8 @@ jobs:
       - name: Prepare binaries
         run: |
           mkdir -p release-artifacts
-          if [ -f target/release/miner ]; then
-            cp target/release/miner release-artifacts/miner-linux-x86_64
+          if [ -f target/release/worker ]; then
+            cp target/release/worker release-artifacts/worker-linux-x86_64
           fi
           if [ -f target/release/validator ]; then
             cp target/release/validator release-artifacts/validator-linux-x86_64
@@ -96,7 +96,7 @@ jobs:
             - Linux x86_64
             
             Components:
-            - Miner
+            - worker
             - Validator
             - Orchestrator
             - Discovery svc 
@@ -120,9 +120,9 @@ jobs:
       # Upload to Google Cloud Storage
       - name: Upload to GCS
         run: |
-          gsutil -m cp -r release-artifacts/* gs://prime-miner/${{ steps.tag.outputs.tag_name }}/
-          gsutil -m cp -r gs://prime-miner/${{ steps.tag.outputs.tag_name }}/* gs://prime-miner/latest/
-          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-miner/latest/**/*
+          gsutil -m cp -r release-artifacts/* gs://prime-protocol/${{ steps.tag.outputs.tag_name }}/
+          gsutil -m cp -r gs://prime-protocol/${{ steps.tag.outputs.tag_name }}/* gs://prime-protocol/latest/
+          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-protocol/latest/**/*
 
       - name: Generate Docker metadata
         id: meta
@@ -153,8 +153,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:dev
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.tag.outputs.tag_name }}
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:dev
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/discovery:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:${{ steps.tag.outputs.tag_name }}
 
       - name: Build and push Validator image
         uses: docker/build-push-action@v4
@@ -165,8 +165,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:dev
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:${{ steps.tag.outputs.tag_name }}
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:dev
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/validator:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:${{ steps.tag.outputs.tag_name }}
 
       - name: Build and push Orchestrator image
         uses: docker/build-push-action@v4
@@ -177,5 +177,5 @@ jobs:
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:dev
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:${{ steps.tag.outputs.tag_name }}
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:dev
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-miner/orchestrator:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:${{ steps.tag.outputs.tag_name }}

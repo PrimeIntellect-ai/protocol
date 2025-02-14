@@ -24,3 +24,4 @@ uuid = { version = "1.12.1", features = ["v4", "serde"] }
 redis = "0.28.1"
 dashmap = "6.1.0"
 anyhow = "1.0.95"
+nalgebra = "0.33.2"

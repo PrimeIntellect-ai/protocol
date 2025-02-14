@@ -1,9 +1,9 @@
 [workspace]
-members = ["discovery", "miner", "validator", "shared", "orchestrator", "dev-utils"]
+members = ["discovery", "worker", "validator", "shared", "orchestrator", "dev-utils"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 
 [workspace.features]

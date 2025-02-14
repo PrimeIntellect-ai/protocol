@@ -1,5 +1,5 @@
 [package]
-name = "miner"
+name = "worker"
 version.workspace = true
 edition.workspace = true
 
@@ -41,6 +41,7 @@ chrono = "0.4"
 serial_test = "0.5.1"
 directories = "6.0.0"
 strip-ansi-escapes = "0.2.1"
+nalgebra = "0.33.2"
 
 [dev-dependencies]
 tempfile = "=3.14.0"
