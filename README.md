@@ -5,6 +5,8 @@
   <h3>Decentralized Compute Infrastructure for AI</h3>
 </div>
 
+> ⚠️ **IMPORTANT**: This project is still under active development. Currently, you can only run the protocol locally - connecting to public RPCs is not yet supported. Please check back later for updates.
+
 Prime Network is a peer-to-peer compute and intelligence network that enables decentralized AI development at scale. This repository contains the core infrastructure for contributing compute resources to the network, including workers, validators, and the coordination layer.
 
 ## 📚 Table of Contents
