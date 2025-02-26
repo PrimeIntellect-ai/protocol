@@ -166,7 +166,7 @@ make down
 ```
 
 ### Remote GPU Development Setup
-![Remote GPU Setup](https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/e15ff35743b2c75f57860f1c1c3cb9780e683f33/docs/assets/remote_gpu_small.mp4)
+https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/e15ff35743b2c75f57860f1c1c3cb9780e683f33/docs/assets/remote_gpu_small.mp4
 
 Start the local development environment:
 ```
