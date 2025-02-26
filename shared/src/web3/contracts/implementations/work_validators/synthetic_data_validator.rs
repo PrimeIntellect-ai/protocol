@@ -35,7 +35,7 @@ impl SyntheticDataWorkValidator {
 
         // Map each value to a hex string
         let work_keys = array
-            .into_iter()
+            .iter()
             .map(|value| {
                 let bytes = value
                     .as_fixed_bytes()
@@ -50,7 +50,7 @@ impl SyntheticDataWorkValidator {
                 }
 
                 // Convert bytes to string
-                Ok(hex::encode(&bytes.0))
+                Ok(hex::encode(bytes.0))
             })
             .collect::<Result<Vec<String>, Error>>()?;
 

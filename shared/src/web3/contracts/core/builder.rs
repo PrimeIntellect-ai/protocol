@@ -100,10 +100,7 @@ impl<'a> ContractBuilder<'a> {
                 Some(network) => network,
                 None => return Err(ContractError::Other("PrimeNetwork not initialized".into())), // Custom error handling
             },
-            synthetic_data_validator: match self.synthetic_data_validator {
-                Some(validator) => Some(validator),
-                None => None,
-            },
+            synthetic_data_validator: self.synthetic_data_validator,
         })
     }
 }
