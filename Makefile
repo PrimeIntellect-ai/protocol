@@ -108,6 +108,9 @@ setup-remote:
 		. "$$HOME/.cargo/env"; \
 		if ! command -v cargo-watch > /dev/null; then \
 			cargo install cargo-watch; \
+		fi; \
+		if ! groups | grep -q docker; then \
+			sudo usermod -aG docker $$USER; \
 		fi'
 
 # Setup SSH tunnel
