@@ -45,7 +45,7 @@ struct Args {
     #[arg(long, default_value = None)]
     pool_id: Option<String>,
 
-    /// Optional: Work validation interval in seconds 
+    /// Optional: Work validation interval in seconds
     #[arg(long, default_value = "30")]
     work_validation_interval: u64,
 }
@@ -77,7 +77,9 @@ fn main() {
         }
     });
 
-    let work_validation_address : Option<Address> = args.work_validation_contract.map(|address| address.parse::<Address>().unwrap());
+    let work_validation_address: Option<Address> = args
+        .work_validation_contract
+        .map(|address| address.parse::<Address>().unwrap());
 
     let contracts = ContractBuilder::new(&validator_wallet)
         .with_compute_registry()
@@ -97,7 +99,7 @@ fn main() {
                 let work_keys = runtime.block_on(validator.get_work_keys(pool_id));
                 println!("Work keys: {:?}", work_keys);
             }
-        } 
+        }
 
         async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
             let signature = wallet
@@ -218,7 +220,6 @@ fn main() {
             }
         }
 
-      
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
 }

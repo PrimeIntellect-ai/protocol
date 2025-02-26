@@ -109,7 +109,10 @@ impl PrimeNetworkContract {
         let update_validation_logic_tx = self
             .instance
             .instance()
-            .function("updateValidationLogic", &[domain_id.into(), validation_logic.into()])?
+            .function(
+                "updateValidationLogic",
+                &[domain_id.into(), validation_logic.into()],
+            )?
             .send()
             .await?
             .watch()

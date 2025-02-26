@@ -5,9 +5,9 @@ use log::error;
 use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::Contracts;
-use std::str::FromStr;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::{fs, path::Path};
 use tokio::{
@@ -55,7 +55,7 @@ impl TaskBridge {
             socket_path: path,
             metrics_store,
             contracts,
-            node_config
+            node_config,
         }
     }
 
@@ -131,26 +131,52 @@ impl TaskBridge {
                                 if let Some(json_str) = extract_next_json(&trimmed[current_pos..]) {
                                     println!("Received metric: {:?}", json_str);
                                     if json_str.contains("file_sha") {
-                                        println!("Received file info for validation: {:?}", json_str);
-                                        let file_info_bytes = json_str.as_bytes();
-                                        println!("File info bytes: {:?}", file_info_bytes);
-                                        if let (Some(contracts), Some(node)) = (contracts.clone(), node.clone()) {
-                                            let pool_id = node.compute_pool_id;
-                                            let node_address = node.id;
-                                            let result = contracts.compute_pool.submit_work(U256::from(pool_id), Address::from_str(&node_address).unwrap(), file_info_bytes.to_vec()).await;
-                                            println!("Submit work result: {:?}", result);
+                                        println!(
+                                            "Received file info for validation: {:?}",
+                                            json_str
+                                        );
+                                        if let Ok(file_info) =
+                                            serde_json::from_str::<serde_json::Value>(json_str)
+                                        {
+                                            if let Some(file_sha) = file_info["file_sha"].as_str() {
+                                                if let (Some(contracts), Some(node)) =
+                                                    (contracts.clone(), node.clone())
+                                                {
+                                                    let pool_id = node.compute_pool_id;
+                                                    let node_address = node.id;
+
+                                                    let decoded_sha = hex::decode(file_sha)
+                                                        .expect("Failed to decode hex string");
+                                                    println!(
+                                                        "Decoded file sha: {:?} ({} bytes)",
+                                                        decoded_sha,
+                                                        decoded_sha.len()
+                                                    );
+
+                                                    let result = contracts
+                                                        .compute_pool
+                                                        .submit_work(
+                                                            U256::from(pool_id),
+                                                            Address::from_str(&node_address)
+                                                                .unwrap(),
+                                                            decoded_sha.to_vec(),
+                                                        )
+                                                        .await;
+                                                    println!("Submit work result: {:?}", result);
+                                                }
+                                            }
                                         }
                                     } else {
                                         match serde_json::from_str::<MetricInput>(json_str) {
                                             Ok(input) => {
                                                 println!("Received metric: {:?}", input);
-                                            let _ = store
-                                                .update_metric(
-                                                    input.task_id,
-                                                    input.label,
-                                                    input.value,
-                                                )
-                                                .await;
+                                                let _ = store
+                                                    .update_metric(
+                                                        input.task_id,
+                                                        input.label,
+                                                        input.value,
+                                                    )
+                                                    .await;
                                             }
                                             Err(e) => {
                                                 log::error!(
@@ -247,7 +273,12 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone(), None, None);
+        let bridge = TaskBridge::new(
+            Some(socket_path.to_str().unwrap()),
+            metrics_store.clone(),
+            None,
+            None,
+        );
 
         // Run bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -271,7 +302,12 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone(), None, None);
+        let bridge = TaskBridge::new(
+            Some(socket_path.to_str().unwrap()),
+            metrics_store.clone(),
+            None,
+            None,
+        );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
@@ -309,7 +345,12 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone(), None, None);;
+        let bridge = TaskBridge::new(
+            Some(socket_path.to_str().unwrap()),
+            metrics_store.clone(),
+            None,
+            None,
+        );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
