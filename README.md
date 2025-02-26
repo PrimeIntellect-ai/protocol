@@ -165,6 +165,22 @@ To gracefully shutdown all services:
 make down
 ```
 
+### Remote GPU Development Setup
+
+https://github.com/user-attachments/assets/8b25ad50-7183-4dd5-add6-f9acf3852b03
+
+Start the local development environment:
+```
+make up
+```
+Set up your remote GPU worker:
+1. Provision a GPU instance and ensure Docker is installed
+2. Configure environment variables and start the remote worker:
+```
+SSH_CONNECTION="ssh your-ssh-conn string"
+EXTERNAL_IP="your-external-ip"
+make remote-worker
+```
 ## Community
 
 - [Discord](https://discord.gg/primeintellect)
