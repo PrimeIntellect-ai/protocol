@@ -20,7 +20,7 @@ transfer-eth-to-pool-owner:
 
 create-domain:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-default_domain}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-default_domain}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --validation-logic $${WORK_VALIDATION_CONTRACT} --rpc-url $${RPC_URL}
 
 create-training-domain:
 	set -a; source ${ENV_FILE}; set +a; \

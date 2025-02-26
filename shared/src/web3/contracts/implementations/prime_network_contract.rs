@@ -101,6 +101,23 @@ impl PrimeNetworkContract {
         Ok(create_domain_tx)
     }
 
+    pub async fn update_validation_logic(
+        &self,
+        domain_id: U256,
+        validation_logic: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let update_validation_logic_tx = self
+            .instance
+            .instance()
+            .function("updateValidationLogic", &[domain_id.into(), validation_logic.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
+
+        Ok(update_validation_logic_tx)
+    }
+
     pub async fn set_stake_minimum(
         &self,
         min_stake_amount: U256,
