@@ -222,7 +222,8 @@ pub async fn execute_command(
 
             let metrics_store = Arc::new(MetricsStore::new());
             let heartbeat_metrics_clone = metrics_store.clone();
-            let task_bridge = Arc::new(TaskBridge::new(None, metrics_store));
+            let bridge_contracts = contracts.clone();
+            let task_bridge = Arc::new(TaskBridge::new(None, metrics_store, Some(bridge_contracts), Some(node_config.clone())));
 
             let docker_storage_path = match node_config.clone().compute_specs {
                 Some(specs) => specs.storage_path.clone(),

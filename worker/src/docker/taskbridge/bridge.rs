@@ -1,7 +1,11 @@
 use crate::metrics::store::MetricsStore;
+use alloy::primitives::{Address, U256};
 use anyhow::Result;
 use log::error;
 use serde::{Deserialize, Serialize};
+use shared::models::node::Node;
+use shared::web3::contracts::core::builder::Contracts;
+use std::str::FromStr;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
@@ -18,6 +22,8 @@ const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.worker/";
 pub struct TaskBridge {
     pub socket_path: String,
     pub metrics_store: Arc<MetricsStore>,
+    pub contracts: Option<Arc<Contracts>>,
+    pub node_config: Option<Node>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -28,7 +34,12 @@ struct MetricInput {
 }
 
 impl TaskBridge {
-    pub fn new(socket_path: Option<&str>, metrics_store: Arc<MetricsStore>) -> Self {
+    pub fn new(
+        socket_path: Option<&str>,
+        metrics_store: Arc<MetricsStore>,
+        contracts: Option<Arc<Contracts>>,
+        node_config: Option<Node>,
+    ) -> Self {
         let path = match socket_path {
             Some(path) => path.to_string(),
             None => {
@@ -43,6 +54,8 @@ impl TaskBridge {
         Self {
             socket_path: path,
             metrics_store,
+            contracts,
+            node_config
         }
     }
 
@@ -97,6 +110,8 @@ impl TaskBridge {
 
         loop {
             let store = self.metrics_store.clone();
+            let node = self.node_config.clone();
+            let contracts = self.contracts.clone();
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     tokio::spawn(async move {
@@ -114,9 +129,21 @@ impl TaskBridge {
                             while current_pos < trimmed.len() {
                                 // Try to find a complete JSON object
                                 if let Some(json_str) = extract_next_json(&trimmed[current_pos..]) {
-                                    match serde_json::from_str::<MetricInput>(json_str) {
-                                        Ok(input) => {
-                                            println!("Received metric: {:?}", input);
+                                    println!("Received metric: {:?}", json_str);
+                                    if json_str.contains("file_sha") {
+                                        println!("Received file info for validation: {:?}", json_str);
+                                        let file_info_bytes = json_str.as_bytes();
+                                        println!("File info bytes: {:?}", file_info_bytes);
+                                        if let (Some(contracts), Some(node)) = (contracts.clone(), node.clone()) {
+                                            let pool_id = node.compute_pool_id;
+                                            let node_address = node.id;
+                                            let result = contracts.compute_pool.submit_work(U256::from(pool_id), Address::from_str(&node_address).unwrap(), file_info_bytes.to_vec()).await;
+                                            println!("Submit work result: {:?}", result);
+                                        }
+                                    } else {
+                                        match serde_json::from_str::<MetricInput>(json_str) {
+                                            Ok(input) => {
+                                                println!("Received metric: {:?}", input);
                                             let _ = store
                                                 .update_metric(
                                                     input.task_id,
@@ -124,13 +151,14 @@ impl TaskBridge {
                                                     input.value,
                                                 )
                                                 .await;
-                                        }
-                                        Err(e) => {
-                                            log::error!(
-                                                "Failed to parse metric input: {} {}",
-                                                json_str,
-                                                e
-                                            );
+                                            }
+                                            Err(e) => {
+                                                log::error!(
+                                                    "Failed to parse metric input: {} {}",
+                                                    json_str,
+                                                    e
+                                                );
+                                            }
                                         }
                                     }
                                     current_pos += json_str.len();
@@ -192,7 +220,12 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
+        let bridge = TaskBridge::new(
+            Some(socket_path.to_str().unwrap()),
+            metrics_store.clone(),
+            None,
+            None,
+        );
 
         // Run the bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -214,7 +247,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone(), None, None);
 
         // Run bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -238,7 +271,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone(), None, None);
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
@@ -276,7 +309,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
+        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone(), None, None);;
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
