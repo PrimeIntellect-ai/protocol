@@ -1,5 +1,5 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use alloy::primitives::{hex, Address};
+use alloy::primitives::{hex, Address, U256};
 use alloy::signers::Signer;
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -35,6 +35,19 @@ struct Args {
     /// Discovery url
     #[arg(long, default_value = "http://localhost:8089")]
     discovery_url: String,
+
+    /// Optional: Work validation contract address
+    #[arg(long, default_value = None)]
+    work_validation_contract: Option<String>,
+
+    /// Optional: Pool Id for work validation
+    /// If not provided, the validator will not validate work
+    #[arg(long, default_value = None)]
+    pool_id: Option<String>,
+
+    /// Optional: Work validation interval in seconds 
+    #[arg(long, default_value = "30")]
+    work_validation_interval: u64,
 }
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -64,14 +77,28 @@ fn main() {
         }
     });
 
+    let work_validation_address : Option<Address> = args.work_validation_contract.map(|address| address.parse::<Address>().unwrap());
+
     let contracts = ContractBuilder::new(&validator_wallet)
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
         .with_compute_pool()
+        .with_synthetic_data_validator(work_validation_address)
         .build()
         .unwrap();
+
+    let pool_id = args.pool_id.clone();
     loop {
+        if let Some(pool) = pool_id.clone() {
+            let pool_id = pool.parse::<U256>().unwrap();
+            println!("Pool ID: {:?}", pool_id);
+            if let Some(validator) = contracts.synthetic_data_validator.clone() {
+                let work_keys = runtime.block_on(validator.get_work_keys(pool_id));
+                println!("Work keys: {:?}", work_keys);
+            }
+        } 
+
         async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
             let signature = wallet
                 .signer
@@ -190,6 +217,8 @@ fn main() {
                 info!("Successfully validated node: {}", node.id);
             }
         }
+
+      
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
 }

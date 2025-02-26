@@ -29,8 +29,8 @@ if __name__ == "__main__":
     The worker reports the metrics using the heartbeat api but only for the currently running task. 
     """
     task_id = "0725637c-ad20-4c30-b4e2-90cdf63b9974"
-    file_sha = "c72efd726533f6864d27c99820eb2dee2a5ce1d3d9068502749268fe4d5d1cf4"
-    file_name = "out_9ecd49e0-1e99-45a8-b9bb-ffb58f0f1f11.jsonl"
+    file_sha = "d83fea726533f6864d27c99820eb2dee2a5ce1d3d9068502749268fe4d5d1cf5" 
+    file_name = "out_7bcd49e0-1e99-45a8-b9bb-ffb58f0f1f12.jsonl"
 
     if send_message({"file_sha": file_sha, "file_name": file_name}):
         print(f"Sent: {file_sha} {file_name}")
