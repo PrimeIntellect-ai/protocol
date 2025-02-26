@@ -144,11 +144,6 @@ impl ComputePool {
         node: Address,
         data: Vec<u8>,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Submitting work");
-        println!("Pool ID: {:?}", pool_id);
-        println!("Node: {:?}", node);
-        println!("Data: {:?}", data);
-
         let result = self
             .instance
             .instance()
