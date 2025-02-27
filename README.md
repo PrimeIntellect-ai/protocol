@@ -57,7 +57,7 @@ Before running Prime Protocol, ensure you have the following requirements:
 
 ### 1. Clone Repository
 ```bash
-git clone --recurse-submodules https://github.com/prime-ai/protocol.git
+git clone --recurse-submodules https://github.com/PrimeIntellect-ai/protocol
 cd protocol
 git submodule update --init --recursive
 ```
@@ -85,7 +85,11 @@ gem install tmuxinator
 ```
 
 ### 3. Configure Environment
-- Enable "Allow the default Docker socket to be used" in Docker Desktop settings
+- Enable "Allow the default Docker socket to be used" in Docker Desktop settings (MacOS)
+- On Ubuntu, add your user to the docker group:
+```bash
+sudo usermod -aG docker $USER
+```
 - Create `.env` files in base folder and discovery folder
 
 ## Development
