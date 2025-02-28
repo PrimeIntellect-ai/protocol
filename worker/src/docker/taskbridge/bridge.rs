@@ -1,7 +1,7 @@
 use crate::metrics::store::MetricsStore;
 use alloy::primitives::{Address, U256};
 use anyhow::Result;
-use log::error;
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::Contracts;
@@ -61,13 +61,13 @@ impl TaskBridge {
 
     pub async fn run(&self) -> Result<()> {
         let socket_path = Path::new(&self.socket_path);
-        log::info!("Setting up TaskBridge socket at: {}", socket_path.display());
+        info!("Setting up TaskBridge socket at: {}", socket_path.display());
 
         if let Some(parent) = socket_path.parent() {
             match fs::create_dir_all(parent) {
-                Ok(_) => log::debug!("Created parent directory: {}", parent.display()),
+                Ok(_) => debug!("Created parent directory: {}", parent.display()),
                 Err(e) => {
-                    log::error!(
+                    error!(
                         "Failed to create parent directory {}: {}",
                         parent.display(),
                         e
@@ -80,9 +80,9 @@ impl TaskBridge {
         // Cleanup existing socket if present
         if socket_path.exists() {
             match fs::remove_file(socket_path) {
-                Ok(_) => log::debug!("Removed existing socket file"),
+                Ok(_) => debug!("Removed existing socket file"),
                 Err(e) => {
-                    log::error!("Failed to remove existing socket file: {}", e);
+                    error!("Failed to remove existing socket file: {}", e);
                     return Err(e.into());
                 }
             }
@@ -90,20 +90,20 @@ impl TaskBridge {
 
         let listener = match UnixListener::bind(socket_path) {
             Ok(l) => {
-                log::info!("Successfully bound to Unix socket");
+                info!("Successfully bound to Unix socket");
                 l
             }
             Err(e) => {
-                log::error!("Failed to bind Unix socket: {}", e);
+                error!("Failed to bind Unix socket: {}", e);
                 return Err(e.into());
             }
         };
 
         // allow both owner and group to read/write
         match fs::set_permissions(socket_path, fs::Permissions::from_mode(0o660)) {
-            Ok(_) => log::debug!("Set socket permissions to 0o660"),
+            Ok(_) => debug!("Set socket permissions to 0o660"),
             Err(e) => {
-                log::error!("Failed to set socket permissions: {}", e);
+                error!("Failed to set socket permissions: {}", e);
                 return Err(e.into());
             }
         }
@@ -129,18 +129,18 @@ impl TaskBridge {
                             while current_pos < trimmed.len() {
                                 // Try to find a complete JSON object
                                 if let Some(json_str) = extract_next_json(&trimmed[current_pos..]) {
-                                    println!("Received metric: {:?}", json_str);
+                                    debug!("Received metric: {:?}", json_str);
                                     if json_str.contains("file_name") {
                                         // Ignore file_name metrics for now
                                     } else if json_str.contains("file_sha") {
-                                        println!(
-                                            "Received file info for validation: {:?}",
-                                            json_str
-                                        );
                                         if let Ok(file_info) =
                                             serde_json::from_str::<serde_json::Value>(json_str)
                                         {
                                             if let Some(file_sha) = file_info["value"].as_str() {
+                                                info!(
+                                                    "📄 Received file SHA for validation: {}",
+                                                    file_sha
+                                                );
                                                 if let (Some(contracts), Some(node)) =
                                                     (contracts.clone(), node.clone())
                                                 {
@@ -149,7 +149,7 @@ impl TaskBridge {
 
                                                     let decoded_sha = hex::decode(file_sha)
                                                         .expect("Failed to decode hex string");
-                                                    println!(
+                                                    debug!(
                                                         "Decoded file sha: {:?} ({} bytes)",
                                                         decoded_sha,
                                                         decoded_sha.len()
@@ -164,14 +164,17 @@ impl TaskBridge {
                                                             decoded_sha.to_vec(),
                                                         )
                                                         .await;
-                                                    println!("Submit work result: {:?}", result);
+                                                    debug!("Submit work result: {:?}", result);
                                                 }
                                             }
                                         }
                                     } else {
                                         match serde_json::from_str::<MetricInput>(json_str) {
                                             Ok(input) => {
-                                                println!("Received metric: {:?}", input);
+                                                info!(
+                                                    "📊 Received metric - Task: {}, Label: {}, Value: {}",
+                                                    input.task_id, input.label, input.value
+                                                );
                                                 let _ = store
                                                     .update_metric(
                                                         input.task_id,
@@ -181,10 +184,9 @@ impl TaskBridge {
                                                     .await;
                                             }
                                             Err(e) => {
-                                                log::error!(
+                                                error!(
                                                     "Failed to parse metric input: {} {}",
-                                                    json_str,
-                                                    e
+                                                    json_str, e
                                                 );
                                             }
                                         }
@@ -290,8 +292,8 @@ mod tests {
         // Test client connection
         let stream = UnixStream::connect(&socket_path).await?;
 
-        // Print stream output to debug
-        println!("Connected to stream: {:?}", stream.peer_addr());
+        // Log stream output for debugging
+        debug!("Connected to stream: {:?}", stream.peer_addr());
 
         assert!(stream.peer_addr().is_ok());
 
@@ -322,7 +324,7 @@ mod tests {
             value: 10.0,
         };
         let sample_metric = serde_json::to_string(&sample_metric)?;
-        println!("Sending {:?}", sample_metric);
+        debug!("Sending {:?}", sample_metric);
         let msg = format!("{}{}", sample_metric, "\n");
         stream.write_all(msg.as_bytes()).await?;
         stream.flush().await?;

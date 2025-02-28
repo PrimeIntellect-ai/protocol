@@ -94,15 +94,15 @@ impl HeartbeatService {
                         match Self::send_heartbeat(&client, state.get_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
-                                log::info!("Heartbeat sent successfully");
+                                Console::success("Synced with orchestrator"); // Updated message to reflect sync
                             }
                             Err(e) => {
-                                log::error!("Heartbeat failed: {:?}", e);
+                                Console::error(&format!("Failed to sync with orchestrator: {:?}", e)); // Updated error message
                             }
                         }
                     }
                     _ = cancellation_token.cancelled() => {
-                        log::info!("Heartbeat service received cancellation signal");
+                        log::info!("Sync service received cancellation signal"); // Updated log message
                         state.set_running(false, None).await;
                         break;
                     }

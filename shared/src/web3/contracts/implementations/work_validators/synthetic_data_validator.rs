@@ -1,7 +1,11 @@
 use crate::web3::contracts::core::contract::Contract;
 use crate::web3::wallet::Wallet;
-use alloy::{dyn_abi::{DynSolValue, Word}, primitives::{Address, U256}};
+use alloy::{
+    dyn_abi::{DynSolValue, Word},
+    primitives::{Address, U256},
+};
 use anyhow::Error;
+use log::debug;
 use serde::Deserialize;
 
 #[derive(Clone)]
@@ -12,7 +16,7 @@ pub struct SyntheticDataWorkValidator {
 #[derive(Debug, Deserialize)]
 pub struct WorkInfo {
     pub provider: Address,
-    pub node_id: Address, 
+    pub node_id: Address,
     pub timestamp: u64,
 }
 
@@ -65,12 +69,12 @@ impl SyntheticDataWorkValidator {
 
     pub async fn get_work_info(&self, pool_id: U256, work_key: &str) -> Result<WorkInfo, Error> {
         // Convert work_key from hex string to bytes32
-        println!("work_key: {:?}", work_key);
+        debug!("Processing work key: {}", work_key);
         let work_key_bytes = hex::decode(work_key)?;
         if work_key_bytes.len() != 32 {
             return Err(Error::msg("Work key must be 32 bytes"));
         }
-        println!("work_key_bytes: {:?}", work_key_bytes);
+        debug!("Decoded work key bytes: {:?}", work_key_bytes);
 
         let fixed_bytes = DynSolValue::FixedBytes(Word::from_slice(&work_key_bytes), 32);
 
@@ -80,7 +84,7 @@ impl SyntheticDataWorkValidator {
             .function("getWorkInfo", &[pool_id.into(), fixed_bytes])?
             .call()
             .await?;
-        println!("result: {:?}", result);
+        debug!("Got work info result: {:?}", result);
 
         let tuple = result
             .into_iter()
@@ -101,14 +105,15 @@ impl SyntheticDataWorkValidator {
 
         let node_id = tuple_array[1]
             .as_address()
-            .ok_or_else(|| Error::msg("Node ID is not an address"))?; 
+            .ok_or_else(|| Error::msg("Node ID is not an address"))?;
 
         let timestamp = u64::try_from(
             tuple_array[2]
                 .as_uint()
                 .ok_or_else(|| Error::msg("Timestamp is not a uint"))?
-                .0
-        ).map_err(|_| Error::msg("Timestamp conversion failed"))?;
+                .0,
+        )
+        .map_err(|_| Error::msg("Timestamp conversion failed"))?;
 
         Ok(WorkInfo {
             provider,
@@ -117,7 +122,11 @@ impl SyntheticDataWorkValidator {
         })
     }
 
-    pub async fn get_work_since(&self, pool_id: U256, timestamp: U256) -> Result<Vec<String>, Error> {
+    pub async fn get_work_since(
+        &self,
+        pool_id: U256,
+        timestamp: U256,
+    ) -> Result<Vec<String>, Error> {
         let result = self
             .instance
             .instance()

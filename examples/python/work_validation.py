@@ -1,3 +1,4 @@
+from random import randint
 import socket
 import time
 import json
@@ -23,7 +24,8 @@ def send_message(metric: dict, socket_path: str = None) -> bool:
         return False
 
 if __name__ == "__main__":
-    file_sha = "1fc3f572b3630f34a92dc6a26d8e677f208e6a2f2c1f8ae2036388dbe85f4fc2" 
+    # Generate random SHA-256 hash (64 hex characters)
+    file_sha = ''.join([format(randint(0, 15), 'x') for _ in range(64)])
     file_name = "out_7bcd49e0-1e99-45a8-b9bb-ffb58f0f1f12.jsonl"
 
     if send_message({"label": "file_name", "value": file_name, "task_id": "4063bbd7-c458-4cd3-b082-6c2ea8f0e46a"}):
