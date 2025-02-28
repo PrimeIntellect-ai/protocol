@@ -102,7 +102,11 @@ brew install tmux
 ```
 
 ### 3. Configure Environment
-- Enable "Allow the default Docker socket to be used" in Docker Desktop settings
+- Enable "Allow the default Docker socket to be used" in Docker Desktop settings (MacOS)
+- On Ubuntu, add your user to the docker group:
+```bash
+sudo usermod -aG docker $USER
+```
 - Create `.env` files in base folder and discovery folder
 
 ## Development
