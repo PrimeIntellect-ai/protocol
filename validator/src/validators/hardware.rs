@@ -1,7 +1,7 @@
 use alloy::primitives::Address;
 use anyhow::{Context, Error, Result};
 use log::{error, info};
-use rand::Rng;
+use rand::{rng, Rng};
 use shared::models::api::ApiResponse;
 use shared::models::challenge::{calc_matrix, ChallengeRequest, ChallengeResponse, FixedF64};
 use shared::models::node::DiscoveryNode;
@@ -138,14 +138,14 @@ impl<'a> HardwareValidator<'a> {
         rows_b: usize,
         cols_b: usize,
     ) -> ChallengeRequest {
-        let mut rng = rand::thread_rng();
+        let mut rng = rng();
 
         let data_a_vec: Vec<f64> = (0..(rows_a * cols_a))
-            .map(|_| rng.gen_range(0.0..1.0))
+            .map(|_| rng.random_range(0.0..1.0))
             .collect();
 
         let data_b_vec: Vec<f64> = (0..(rows_b * cols_b))
-            .map(|_| rng.gen_range(0.0..1.0))
+            .map(|_| rng.random_range(0.0..1.0))
             .collect();
 
         // convert to FixedF64
