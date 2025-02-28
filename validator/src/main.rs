@@ -91,13 +91,20 @@ fn main() {
         .unwrap();
 
     let pool_id = args.pool_id.clone();
+
+    let last_validation_timestamp = U256::from(0);
     loop {
         if let Some(pool) = pool_id.clone() {
             let pool_id = pool.parse::<U256>().unwrap();
             println!("Pool ID: {:?}", pool_id);
+
             if let Some(validator) = contracts.synthetic_data_validator.clone() {
-                let work_keys = runtime.block_on(validator.get_work_keys(pool_id));
+                let work_keys = runtime.block_on(validator.get_work_keys(pool_id)).unwrap();
                 println!("Work keys: {:?}", work_keys);
+                for work_key in work_keys {
+                    let work_info = runtime.block_on(validator.get_work_info(pool_id, &work_key));
+                    println!("Work info: {:?}", work_info);
+                }
             }
         }
 
