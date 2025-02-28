@@ -130,7 +130,9 @@ impl TaskBridge {
                                 // Try to find a complete JSON object
                                 if let Some(json_str) = extract_next_json(&trimmed[current_pos..]) {
                                     println!("Received metric: {:?}", json_str);
-                                    if json_str.contains("file_sha") {
+                                    if json_str.contains("file_name") {
+                                        // Ignore file_name metrics for now
+                                    } else if json_str.contains("file_sha") {
                                         println!(
                                             "Received file info for validation: {:?}",
                                             json_str
@@ -138,7 +140,7 @@ impl TaskBridge {
                                         if let Ok(file_info) =
                                             serde_json::from_str::<serde_json::Value>(json_str)
                                         {
-                                            if let Some(file_sha) = file_info["file_sha"].as_str() {
+                                            if let Some(file_sha) = file_info["value"].as_str() {
                                                 if let (Some(contracts), Some(node)) =
                                                     (contracts.clone(), node.clone())
                                                 {

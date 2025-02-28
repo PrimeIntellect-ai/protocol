@@ -23,10 +23,15 @@ def send_message(metric: dict, socket_path: str = None) -> bool:
         return False
 
 if __name__ == "__main__":
-    file_sha = "b59ef2af5837d44a670ec6731cca834a533033c83a81dd308f1a55c5a45e4453" 
+    file_sha = "1fc3f572b3630f34a92dc6a26d8e677f208e6a2f2c1f8ae2036388dbe85f4fc2" 
     file_name = "out_7bcd49e0-1e99-45a8-b9bb-ffb58f0f1f12.jsonl"
 
-    if send_message({"file_sha": file_sha, "file_name": file_name}):
-        print(f"Sent: {file_sha} {file_name}")
+    if send_message({"label": "file_name", "value": file_name, "task_id": "4063bbd7-c458-4cd3-b082-6c2ea8f0e46a"}):
+        print(f"Sent: {file_name}")
     else:
-        print(f"Failed to send: {file_sha} {file_name}")
+        print(f"Failed to send: {file_name}")
+
+    if send_message({"label": "file_sha", "value": file_sha, "task_id": "4063bbd7-c458-4cd3-b082-6c2ea8f0e46a"}):
+        print(f"Sent: {file_sha}")
+    else:
+        print(f"Failed to send: {file_sha}")
