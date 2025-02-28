@@ -1,6 +1,6 @@
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use alloy::primitives::{hex, Address};
+use alloy::primitives::Address;
 use anyhow::{Context, Result};
 use clap::Parser;
 use log::LevelFilter;
@@ -178,7 +178,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
     use actix_web::{test, App};
     use actix_web::{
         web::{self, post},

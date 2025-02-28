@@ -94,7 +94,7 @@ impl<'a> HardwareValidator<'a> {
 
         let address = self.wallet.wallet.default_signer().address().to_string();
         let challenge_matrix_value = serde_json::to_value(&challenge_matrix)?;
-        let signature = sign_request(challenge_route, &self.wallet, Some(&challenge_matrix_value))
+        let signature = sign_request(challenge_route, self.wallet, Some(&challenge_matrix_value))
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
