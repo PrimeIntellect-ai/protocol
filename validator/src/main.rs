@@ -93,7 +93,7 @@ fn main() {
 
     let pool_id = args.pool_id.clone();
     let mut synthetic_validator = match contracts.synthetic_data_validator.clone() {
-        Some(validator) => SyntheticDataValidator::new(pool_id.unwrap(), validator),
+        Some(validator) => SyntheticDataValidator::new(None, pool_id.unwrap(), validator),
         None => {
             error!("Synthetic data validator not found");
             std::process::exit(1);
@@ -178,7 +178,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    
+
     use actix_web::{test, App};
     use actix_web::{
         web::{self, post},
