@@ -368,7 +368,7 @@ dependencies = [
  "itoa",
  "serde",
  "serde_json",
- "winnow",
+ "winnow 0.6.24",
 ]
 
 [[package]]
@@ -799,7 +799,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1eda2711ab2e1fb517fc6e2ffa9728c9a232e296d16810810e6957b781a1b8bc"
 dependencies = [
  "serde",
- "winnow",
+ "winnow 0.6.24",
 ]
 
 [[package]]
@@ -5719,9 +5719,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.8.19"
+version = "0.8.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1ed1f98e3fdc28d6d910e6737ae6ab1a93bf1985935a1193e68f93eeb68d24e"
+checksum = "cd87a5cdd6ffab733b2f74bc4fd7ee5fff6634124999ac278c35fc78c6120148"
 dependencies = [
  "serde",
  "serde_spanned",
@@ -5740,15 +5740,15 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.22.22"
+version = "0.22.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ae48d6208a266e853d946088ed816055e556cc6028c5e8e2b84d9fa5dd7c7f5"
+checksum = "17b4795ff5edd201c7cd6dca065ae59972ce77d1b80fa0a84d94950ece7d1474"
 dependencies = [
  "indexmap 2.7.0",
  "serde",
  "serde_spanned",
  "toml_datetime",
- "winnow",
+ "winnow 0.7.3",
 ]
 
 [[package]]
@@ -5975,6 +5975,7 @@ dependencies = [
  "alloy",
  "anyhow",
  "clap 4.5.27",
+ "directories",
  "env_logger 0.11.6",
  "log",
  "nalgebra",
@@ -5983,7 +5984,9 @@ dependencies = [
  "serde",
  "serde_json",
  "shared",
+ "tempfile",
  "tokio",
+ "toml",
  "url",
 ]
 
@@ -6572,6 +6575,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "winnow"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e7f4ea97f6f78012141bcdb6a216b2609f0979ada50b20ca5b52dde2eac2bb1"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "wit-bindgen-rt"
 version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6750,7 +6762,7 @@ dependencies = [
  "tracing",
  "uds_windows",
  "windows-sys 0.59.0",
- "winnow",
+ "winnow 0.6.24",
  "xdg-home",
  "zbus_macros",
  "zbus_names",
@@ -6780,7 +6792,7 @@ checksum = "856b7a38811f71846fd47856ceee8bccaec8399ff53fb370247e66081ace647b"
 dependencies = [
  "serde",
  "static_assertions",
- "winnow",
+ "winnow 0.6.24",
  "zvariant",
 ]
 
@@ -6926,7 +6938,7 @@ dependencies = [
  "enumflags2",
  "serde",
  "static_assertions",
- "winnow",
+ "winnow 0.6.24",
  "zvariant_derive",
  "zvariant_utils",
 ]
@@ -6955,5 +6967,5 @@ dependencies = [
  "serde",
  "static_assertions",
  "syn 2.0.92",
- "winnow",
+ "winnow 0.6.24",
 ]

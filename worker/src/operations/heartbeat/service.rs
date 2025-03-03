@@ -94,10 +94,10 @@ impl HeartbeatService {
                         match Self::send_heartbeat(&client, state.get_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
-                                Console::success("Synced with orchestrator"); // Updated message to reflect sync
+                                log::info!("Synced with orchestrator"); // Updated message to reflect sync
                             }
                             Err(e) => {
-                                Console::error(&format!("Failed to sync with orchestrator: {:?}", e)); // Updated error message
+                                log::error!("{}", &format!("Failed to sync with orchestrator: {:?}", e)); // Updated error message
                             }
                         }
                     }
