@@ -130,7 +130,7 @@ impl TaskBridge {
             let contracts = self.contracts.clone();
             let wallet = self.node_wallet.clone();
             let storage_path_clone = self.docker_storage_path.clone();
-            
+
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     tokio::spawn(async move {
@@ -153,25 +153,36 @@ impl TaskBridge {
                                         let storage_path = match &storage_path_clone {
                                             Some(path) => path,
                                             None => {
-                                                println!("Storage path is not set - cannot upload file.");
+                                                println!(
+                                                    "Storage path is not set - cannot upload file."
+                                                );
                                                 continue;
                                             }
                                         };
 
                                         println!("Received file upload request");
-                                        if let Ok(file_info) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                        if let Ok(file_info) =
+                                            serde_json::from_str::<serde_json::Value>(json_str)
+                                        {
                                             println!("File info: {:?}", file_info);
                                             if let Some(file_name) = file_info["value"].as_str() {
-                                                let task_id = file_info["task_id"].as_str().unwrap();
-                                                info!("📄 Received file upload request: {}", file_name);
+                                                let task_id =
+                                                    file_info["task_id"].as_str().unwrap();
+                                                info!(
+                                                    "📄 Received file upload request: {}",
+                                                    file_name
+                                                );
 
                                                 //let cwd = std::env::current_dir().unwrap();
                                                 // let testfile = format!("{}/examples/python/{}", cwd.display(), file_name);
                                                 //println!("Test file: {:?}", testfile);
 
-                                                let file = format!("{}/prime-task-{}/{}", storage_path, task_id, file_name);
+                                                let file = format!(
+                                                    "{}/prime-task-{}/{}",
+                                                    storage_path, task_id, file_name
+                                                );
                                                 println!("File: {:?}", file);
-                                                
+
                                                 let file_size = std::fs::metadata(&file)
                                                     .map(|m| m.len())
                                                     .unwrap_or(0);
@@ -179,13 +190,16 @@ impl TaskBridge {
                                                 let file_sha = tokio::fs::read(&file)
                                                     .await
                                                     .map(|contents| {
-                                                        use sha2::{Sha256, Digest};
+                                                        use sha2::{Digest, Sha256};
                                                         let mut hasher = Sha256::new();
                                                         hasher.update(&contents);
                                                         format!("{:x}", hasher.finalize())
                                                     })
                                                     .unwrap_or_else(|e| {
-                                                        error!("Failed to calculate file SHA: {}", e);
+                                                        error!(
+                                                            "Failed to calculate file SHA: {}",
+                                                            e
+                                                        );
                                                         String::new()
                                                     });
 
@@ -204,11 +218,25 @@ impl TaskBridge {
                                                     "/storage/request-upload",
                                                     wallet.as_ref().unwrap(),
                                                     Some(&serde_json::to_value(&request).unwrap()),
-                                                ).await.unwrap();
+                                                )
+                                                .await
+                                                .unwrap();
 
                                                 let mut headers = reqwest::header::HeaderMap::new();
-                                                headers.insert("x-address", wallet.as_ref().unwrap().address().to_string().parse().unwrap());
-                                                headers.insert("x-signature", signature.parse().unwrap());
+                                                headers.insert(
+                                                    "x-address",
+                                                    wallet
+                                                        .as_ref()
+                                                        .unwrap()
+                                                        .address()
+                                                        .to_string()
+                                                        .parse()
+                                                        .unwrap(),
+                                                );
+                                                headers.insert(
+                                                    "x-signature",
+                                                    signature.parse().unwrap(),
+                                                );
 
                                                 match client
                                                     .post("http://localhost:8090/storage/request-upload")
@@ -221,7 +249,6 @@ impl TaskBridge {
                                                                 Ok(json) => {
                                                                     if let Some(signed_url) = json["signed_url"].as_str() {
                                                                         info!("Got signed URL for upload: {}", signed_url);
-                                                                        
                                                                         // Read file contents
                                                                         match tokio::fs::read(&file).await {
                                                                             Ok(file_contents) => {
@@ -370,7 +397,7 @@ mod tests {
             None,
             None,
             None,
-            None
+            None,
         );
 
         // Run the bridge in background
@@ -398,8 +425,8 @@ mod tests {
             metrics_store.clone(),
             None,
             None,
-            None, 
-            None
+            None,
+            None,
         );
 
         // Run bridge in background
@@ -430,7 +457,7 @@ mod tests {
             None,
             None,
             None,
-            None
+            None,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -475,7 +502,7 @@ mod tests {
             None,
             None,
             None,
-            None
+            None,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });

@@ -2,6 +2,7 @@ use alloy::primitives::U256;
 use alloy::signers::k256::elliptic_curve::consts::U26;
 use anyhow::{Context, Error, Result};
 use directories::ProjectDirs;
+use hex;
 use log::debug;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,6 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use toml;
-use hex;
 
 use crate::validators::Validator;
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::SyntheticDataWorkValidator;
@@ -131,9 +131,14 @@ impl SyntheticDataValidator {
     }
 
     pub async fn invalidate_work(&self, work_key: &str) -> Result<()> {
-        let data = hex::decode(work_key).map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+        let data = hex::decode(work_key)
+            .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
         println!("Invalidating work: {}", work_key);
-        match self.prime_network.invalidate_work(self.pool_id, U256::from(1), data).await {
+        match self
+            .prime_network
+            .invalidate_work(self.pool_id, U256::from(1), data)
+            .await
+        {
             Ok(_) => Ok(()),
             Err(e) => {
                 error!("Failed to invalidate work {}: {}", work_key, e);
@@ -167,10 +172,10 @@ impl SyntheticDataValidator {
                     // Start validation by calling validation endpoint with retries
                     let validate_url = format!("{}/validate/{}", self.leviticus_url, work_key);
                     let client = reqwest::Client::new();
-                    
+
                     let mut validate_attempts = 0;
                     const MAX_VALIDATE_ATTEMPTS: u32 = 3;
-                    
+
                     let validation_result = loop {
                         let body = serde_json::json!({
                             "file_sha": work_key
@@ -183,14 +188,20 @@ impl SyntheticDataValidator {
                             }
                             Err(e) => {
                                 validate_attempts += 1;
-                                error!("Attempt {} failed to start validation for {}: {}", validate_attempts, work_key, e);
-                                
+                                error!(
+                                    "Attempt {} failed to start validation for {}: {}",
+                                    validate_attempts, work_key, e
+                                );
+
                                 if validate_attempts >= MAX_VALIDATE_ATTEMPTS {
                                     break Err(e);
                                 }
-                                
+
                                 // Exponential backoff
-                                tokio::time::sleep(tokio::time::Duration::from_secs(2u64.pow(validate_attempts))).await;
+                                tokio::time::sleep(tokio::time::Duration::from_secs(
+                                    2u64.pow(validate_attempts),
+                                ))
+                                .await;
                             }
                         }
                     };
@@ -201,26 +212,41 @@ impl SyntheticDataValidator {
                             let status_url = format!("{}/status/{}", self.leviticus_url, work_key);
                             let mut status_attempts = 0;
                             const MAX_STATUS_ATTEMPTS: u32 = 5;
-                            
+
                             loop {
                                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                                
+
                                 match client.get(&status_url).send().await {
                                     Ok(response) => {
                                         match response.json::<serde_json::Value>().await {
                                             Ok(status_json) => {
-                                                match status_json.get("status").and_then(|s| s.as_str()) {
+                                                match status_json
+                                                    .get("status")
+                                                    .and_then(|s| s.as_str())
+                                                {
                                                     Some(status) => {
-                                                        info!("Validation status for {}: {}", work_key, status);
-                                                        
+                                                        info!(
+                                                            "Validation status for {}: {}",
+                                                            work_key, status
+                                                        );
+
                                                         match status {
                                                             "accept" => {
-                                                                info!("Work {} was accepted", work_key);
+                                                                info!(
+                                                                    "Work {} was accepted",
+                                                                    work_key
+                                                                );
                                                                 break;
                                                             }
                                                             "reject" => {
-                                                                error!("Work {} was rejected", work_key);
-                                                                if let Err(e) = self.invalidate_work(&work_key).await {
+                                                                error!(
+                                                                    "Work {} was rejected",
+                                                                    work_key
+                                                                );
+                                                                if let Err(e) = self
+                                                                    .invalidate_work(&work_key)
+                                                                    .await
+                                                                {
                                                                     error!("Failed to invalidate work {}: {}", work_key, e);
                                                                 } else {
                                                                     info!("Successfully invalidated work {}", work_key);
@@ -228,20 +254,30 @@ impl SyntheticDataValidator {
                                                                 break;
                                                             }
                                                             "crashed" => {
-                                                                error!("Validation crashed for {}", work_key);
+                                                                error!(
+                                                                    "Validation crashed for {}",
+                                                                    work_key
+                                                                );
                                                                 break;
                                                             }
                                                             "pending" => {
                                                                 status_attempts += 1;
-                                                                if status_attempts >= MAX_STATUS_ATTEMPTS {
+                                                                if status_attempts
+                                                                    >= MAX_STATUS_ATTEMPTS
+                                                                {
                                                                     error!("Max status attempts reached for {}", work_key);
                                                                     break;
                                                                 }
                                                             }
                                                             _ => {
                                                                 status_attempts += 1;
-                                                                error!("Unknown status {} for {}", status, work_key);
-                                                                if status_attempts >= MAX_STATUS_ATTEMPTS {
+                                                                error!(
+                                                                    "Unknown status {} for {}",
+                                                                    status, work_key
+                                                                );
+                                                                if status_attempts
+                                                                    >= MAX_STATUS_ATTEMPTS
+                                                                {
                                                                     break;
                                                                 }
                                                             }
@@ -249,7 +285,10 @@ impl SyntheticDataValidator {
                                                     }
                                                     None => {
                                                         status_attempts += 1;
-                                                        error!("No status field in response for {}", work_key);
+                                                        error!(
+                                                            "No status field in response for {}",
+                                                            work_key
+                                                        );
                                                         if status_attempts >= MAX_STATUS_ATTEMPTS {
                                                             error!("Max status attempts reached for {}", work_key);
                                                             break;
@@ -260,9 +299,12 @@ impl SyntheticDataValidator {
                                             Err(e) => {
                                                 status_attempts += 1;
                                                 error!("Attempt {} failed to parse status JSON for {}: {}", status_attempts, work_key, e);
-                                                
+
                                                 if status_attempts >= MAX_STATUS_ATTEMPTS {
-                                                    error!("Max status attempts reached for {}", work_key);
+                                                    error!(
+                                                        "Max status attempts reached for {}",
+                                                        work_key
+                                                    );
                                                     break;
                                                 }
                                             }
@@ -270,8 +312,11 @@ impl SyntheticDataValidator {
                                     }
                                     Err(e) => {
                                         status_attempts += 1;
-                                        error!("Attempt {} failed to get status for {}: {}", status_attempts, work_key, e);
-                                        
+                                        error!(
+                                            "Attempt {} failed to get status for {}: {}",
+                                            status_attempts, work_key, e
+                                        );
+
                                         if status_attempts >= MAX_STATUS_ATTEMPTS {
                                             error!("Max status attempts reached for {}", work_key);
                                             break;

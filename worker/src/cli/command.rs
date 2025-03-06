@@ -224,7 +224,6 @@ pub async fn execute_command(
             let heartbeat_metrics_clone = metrics_store.clone();
             let bridge_contracts = contracts.clone();
             let bridge_wallet = node_wallet_instance.clone();
-           
 
             let docker_storage_path = match node_config.clone().compute_specs {
                 Some(specs) => specs.storage_path.clone(),

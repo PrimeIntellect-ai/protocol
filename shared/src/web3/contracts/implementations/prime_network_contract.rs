@@ -170,7 +170,10 @@ impl PrimeNetworkContract {
         let invalidate_work_tx = self
             .instance
             .instance()
-            .function("invalidateWork", &[pool_id.into(), penalty.into(), data.into()])?
+            .function(
+                "invalidateWork",
+                &[pool_id.into(), penalty.into(), data.into()],
+            )?
             .send()
             .await?
             .watch()

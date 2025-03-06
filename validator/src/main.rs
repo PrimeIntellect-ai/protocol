@@ -99,12 +99,18 @@ fn main() {
     let mut synthetic_validator = match contracts.synthetic_data_validator.clone() {
         Some(validator) => {
             if let Some(leviticus_url) = args.leviticus_url {
-                SyntheticDataValidator::new(None, pool_id.unwrap(), validator, contracts.prime_network.clone(), leviticus_url)
+                SyntheticDataValidator::new(
+                    None,
+                    pool_id.unwrap(),
+                    validator,
+                    contracts.prime_network.clone(),
+                    leviticus_url,
+                )
             } else {
                 error!("Leviticus URL is not provided");
                 std::process::exit(1);
             }
-        },
+        }
         None => {
             error!("Synthetic data validator not found");
             std::process::exit(1);
