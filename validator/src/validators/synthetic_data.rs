@@ -136,14 +136,91 @@ impl SyntheticDataValidator {
         // Process each work key
         for work_key in work_keys {
             info!("Processing work key: {}", work_key);
-
             match self.validator.get_work_info(self.pool_id, &work_key).await {
                 Ok(work_info) => {
                     info!(
-                        "Validated work info - Provider: {:?}, Node: {:?}, Timestamp: {}",
+                        "Got work info - Provider: {:?}, Node: {:?}, Timestamp: {}",
                         work_info.provider, work_info.node_id, work_info.timestamp
                     );
-                    // TODO: Add actual validation logic based on work_info
+
+                    // Start validation by calling validation endpoint with retries
+                    let validate_url = format!("http://151.115.79.170:8000/validate/{}", work_key);
+                    println!("Validate URL: {}", validate_url);
+                    let client = reqwest::Client::new();
+                    
+                    let mut validate_attempts = 0;
+                    const MAX_VALIDATE_ATTEMPTS: u32 = 3;
+                    
+                    let validation_result = loop {
+                        let body = serde_json::json!({
+                            "file_sha": work_key
+                        });
+
+                        match client.post(&validate_url).json(&body).send().await {
+                            Ok(_) => {
+                                info!("Started validation for work key: {}", work_key);
+                                break Ok(());
+                            }
+                            Err(e) => {
+                                validate_attempts += 1;
+                                error!("Attempt {} failed to start validation for {}: {}", validate_attempts, work_key, e);
+                                
+                                if validate_attempts >= MAX_VALIDATE_ATTEMPTS {
+                                    break Err(e);
+                                }
+                                
+                                // Exponential backoff
+                                tokio::time::sleep(tokio::time::Duration::from_secs(2u64.pow(validate_attempts))).await;
+                            }
+                        }
+                    };
+
+                    match validation_result {
+                        Ok(_) => {
+                            // Poll status endpoint until we get a proper response
+                            let status_url = format!("http://151.115.79.170:8000/status/{}", work_key);
+                            let mut status_attempts = 0;
+                            const MAX_STATUS_ATTEMPTS: u32 = 5;
+                            
+                            loop {
+                                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                                
+                                match client.get(&status_url).send().await {
+                                    Ok(response) => {
+                                        match response.text().await {
+                                            Ok(status) => {
+                                                info!("Validation status for {}: {}", work_key, status);
+                                                // TODO: Add logic to break loop based on status response
+                                                break;
+                                            }
+                                            Err(e) => {
+                                                status_attempts += 1;
+                                                error!("Attempt {} failed to get status text for {}: {}", status_attempts, work_key, e);
+                                                
+                                                if status_attempts >= MAX_STATUS_ATTEMPTS {
+                                                    error!("Max status attempts reached for {}", work_key);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        status_attempts += 1;
+                                        error!("Attempt {} failed to get status for {}: {}", status_attempts, work_key, e);
+                                        
+                                        if status_attempts >= MAX_STATUS_ATTEMPTS {
+                                            error!("Max status attempts reached for {}", work_key);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            error!("Failed all validation attempts for {}", work_key);
+                            continue;
+                        }
+                    }
                 }
                 Err(e) => {
                     error!("Failed to get work info for key {}: {}", work_key, e);
