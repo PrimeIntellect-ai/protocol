@@ -4,7 +4,6 @@ use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, FixedBytes, U256};
 use alloy::providers::Provider;
-use alloy::signers::k256::elliptic_curve::consts::N100;
 
 #[derive(Clone)]
 pub struct PrimeNetworkContract {

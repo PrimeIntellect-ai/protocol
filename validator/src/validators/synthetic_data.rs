@@ -1,5 +1,4 @@
 use alloy::primitives::U256;
-use alloy::signers::k256::elliptic_curve::consts::U26;
 use anyhow::{Context, Error, Result};
 use directories::ProjectDirs;
 use hex;

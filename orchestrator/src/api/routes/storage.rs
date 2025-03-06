@@ -4,8 +4,6 @@ use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,
 };
-use alloy::primitives::Address;
-use std::str::FromStr;
 use std::time::Duration;
 
 #[derive(serde::Deserialize)]
