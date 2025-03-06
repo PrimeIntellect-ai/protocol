@@ -46,6 +46,10 @@ struct Args {
     /// Optional: Work validation interval in seconds
     #[arg(long, default_value = "30")]
     work_validation_interval: u64,
+
+    /// Optional: Leviticus Validator URL
+    #[arg(long, default_value = None)]
+    leviticus_url: Option<String>,
 }
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -93,7 +97,14 @@ fn main() {
 
     let pool_id = args.pool_id.clone();
     let mut synthetic_validator = match contracts.synthetic_data_validator.clone() {
-        Some(validator) => SyntheticDataValidator::new(None, pool_id.unwrap(), validator),
+        Some(validator) => {
+            if let Some(leviticus_url) = args.leviticus_url {
+                SyntheticDataValidator::new(None, pool_id.unwrap(), validator, contracts.prime_network.clone(), leviticus_url)
+            } else {
+                error!("Leviticus URL is not provided");
+                std::process::exit(1);
+            }
+        },
         None => {
             error!("Synthetic data validator not found");
             std::process::exit(1);

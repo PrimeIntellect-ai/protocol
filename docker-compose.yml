@@ -3,7 +3,10 @@ version: "3.8"
 networks:
   prime:
     driver: bridge
-    attachable: true  
+    attachable: true
+  app-network:
+    name: app-network
+    external: true
 
 volumes:
   redis-data:
@@ -17,6 +20,7 @@ services:
       - "8545:8545"
     networks:
       - prime
+      - app-network
     restart: always
   redis:
     image: redis:alpine

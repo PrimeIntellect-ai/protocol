@@ -4,7 +4,9 @@ use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, FixedBytes, U256};
 use alloy::providers::Provider;
+use alloy::signers::k256::elliptic_curve::consts::N100;
 
+#[derive(Clone)]
 pub struct PrimeNetworkContract {
     pub instance: Contract,
 }
@@ -157,5 +159,23 @@ impl PrimeNetworkContract {
         println!("Receipt: {:?}", receipt);
 
         Ok(whitelist_provider_tx)
+    }
+
+    pub async fn invalidate_work(
+        &self,
+        pool_id: U256,
+        penalty: U256,
+        data: Vec<u8>,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let invalidate_work_tx = self
+            .instance
+            .instance()
+            .function("invalidateWork", &[pool_id.into(), penalty.into(), data.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
+
+        Ok(invalidate_work_tx)
     }
 }

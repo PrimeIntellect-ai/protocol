@@ -6320,6 +6320,7 @@ dependencies = [
  "clap 4.5.27",
  "directories",
  "env_logger 0.11.6",
+ "hex",
  "log",
  "nalgebra",
  "rand 0.9.0",

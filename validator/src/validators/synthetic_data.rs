@@ -1,13 +1,16 @@
 use alloy::primitives::U256;
-use anyhow::{Context, Result};
+use alloy::signers::k256::elliptic_curve::consts::U26;
+use anyhow::{Context, Error, Result};
 use directories::ProjectDirs;
 use log::debug;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
+use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use toml;
+use hex;
 
 use crate::validators::Validator;
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::SyntheticDataWorkValidator;
@@ -30,8 +33,10 @@ struct PersistedWorkState {
 pub struct SyntheticDataValidator {
     pool_id: U256,
     validator: SyntheticDataWorkValidator,
+    prime_network: PrimeNetworkContract,
     last_validation_timestamp: U256,
     state_dir: Option<PathBuf>,
+    leviticus_url: String,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -47,6 +52,8 @@ impl SyntheticDataValidator {
         state_dir: Option<String>,
         pool_id_str: String,
         validator: SyntheticDataWorkValidator,
+        prime_network: PrimeNetworkContract,
+        leviticus_url: String,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
         let default_state_dir = get_default_state_dir();
@@ -89,8 +96,10 @@ impl SyntheticDataValidator {
         Self {
             pool_id,
             validator,
+            prime_network,
             last_validation_timestamp: last_validation_timestamp.unwrap(),
             state_dir: state_path.clone(),
+            leviticus_url,
         }
     }
 
@@ -121,13 +130,25 @@ impl SyntheticDataValidator {
         Ok(None)
     }
 
+    pub async fn invalidate_work(&self, work_key: &str) -> Result<()> {
+        let data = hex::decode(work_key).map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+        println!("Invalidating work: {}", work_key);
+        match self.prime_network.invalidate_work(self.pool_id, U256::from(1), data).await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                error!("Failed to invalidate work {}: {}", work_key, e);
+                Err(Error::msg(format!("Failed to invalidate work: {}", e)))
+            }
+        }
+    }
+
     pub async fn validate_work(&mut self) -> Result<()> {
         info!("Validating work for pool ID: {:?}", self.pool_id);
 
         // Get all work keys for the pool
         let work_keys = self
             .validator
-            .get_work_since(self.pool_id, self.last_validation_timestamp)
+            .get_work_since(self.pool_id, U256::from(0))
             .await
             .context("Failed to get work keys")?;
 
@@ -144,8 +165,7 @@ impl SyntheticDataValidator {
                     );
 
                     // Start validation by calling validation endpoint with retries
-                    let validate_url = format!("http://151.115.79.170:8000/validate/{}", work_key);
-                    println!("Validate URL: {}", validate_url);
+                    let validate_url = format!("{}/validate/{}", self.leviticus_url, work_key);
                     let client = reqwest::Client::new();
                     
                     let mut validate_attempts = 0;
@@ -178,7 +198,7 @@ impl SyntheticDataValidator {
                     match validation_result {
                         Ok(_) => {
                             // Poll status endpoint until we get a proper response
-                            let status_url = format!("http://151.115.79.170:8000/status/{}", work_key);
+                            let status_url = format!("{}/status/{}", self.leviticus_url, work_key);
                             let mut status_attempts = 0;
                             const MAX_STATUS_ATTEMPTS: u32 = 5;
                             
@@ -187,15 +207,59 @@ impl SyntheticDataValidator {
                                 
                                 match client.get(&status_url).send().await {
                                     Ok(response) => {
-                                        match response.text().await {
-                                            Ok(status) => {
-                                                info!("Validation status for {}: {}", work_key, status);
-                                                // TODO: Add logic to break loop based on status response
-                                                break;
+                                        match response.json::<serde_json::Value>().await {
+                                            Ok(status_json) => {
+                                                match status_json.get("status").and_then(|s| s.as_str()) {
+                                                    Some(status) => {
+                                                        info!("Validation status for {}: {}", work_key, status);
+                                                        
+                                                        match status {
+                                                            "accept" => {
+                                                                info!("Work {} was accepted", work_key);
+                                                                break;
+                                                            }
+                                                            "reject" => {
+                                                                error!("Work {} was rejected", work_key);
+                                                                if let Err(e) = self.invalidate_work(&work_key).await {
+                                                                    error!("Failed to invalidate work {}: {}", work_key, e);
+                                                                } else {
+                                                                    info!("Successfully invalidated work {}", work_key);
+                                                                }
+                                                                break;
+                                                            }
+                                                            "crashed" => {
+                                                                error!("Validation crashed for {}", work_key);
+                                                                break;
+                                                            }
+                                                            "pending" => {
+                                                                status_attempts += 1;
+                                                                if status_attempts >= MAX_STATUS_ATTEMPTS {
+                                                                    error!("Max status attempts reached for {}", work_key);
+                                                                    break;
+                                                                }
+                                                            }
+                                                            _ => {
+                                                                status_attempts += 1;
+                                                                error!("Unknown status {} for {}", status, work_key);
+                                                                if status_attempts >= MAX_STATUS_ATTEMPTS {
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    None => {
+                                                        status_attempts += 1;
+                                                        error!("No status field in response for {}", work_key);
+                                                        if status_attempts >= MAX_STATUS_ATTEMPTS {
+                                                            error!("Max status attempts reached for {}", work_key);
+                                                            break;
+                                                        }
+                                                    }
+                                                }
                                             }
                                             Err(e) => {
                                                 status_attempts += 1;
-                                                error!("Attempt {} failed to get status text for {}: {}", status_attempts, work_key, e);
+                                                error!("Attempt {} failed to parse status JSON for {}: {}", status_attempts, work_key, e);
                                                 
                                                 if status_attempts >= MAX_STATUS_ATTEMPTS {
                                                     error!("Max status attempts reached for {}", work_key);
