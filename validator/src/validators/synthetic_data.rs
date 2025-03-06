@@ -148,7 +148,7 @@ impl SyntheticDataValidator {
         // Get all work keys for the pool
         let work_keys = self
             .validator
-            .get_work_since(self.pool_id, U256::from(0))
+            .get_work_since(self.pool_id, self.last_validation_timestamp)
             .await
             .context("Failed to get work keys")?;
 
