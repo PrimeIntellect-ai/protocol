@@ -1,16 +1,14 @@
+use crate::docker::taskbridge::file_handler;
 use crate::metrics::store::MetricsStore;
-use alloy::primitives::{Address, U256};
+use crate::state::system_state::SystemState;
 use anyhow::Result;
 use log::{debug, error, info};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
-use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::{fs, path::Path};
 use tokio::{
@@ -29,6 +27,7 @@ pub struct TaskBridge {
     pub node_config: Option<Node>,
     pub node_wallet: Option<Arc<Wallet>>,
     pub docker_storage_path: Option<String>,
+    pub state: Arc<SystemState>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -53,6 +52,7 @@ impl TaskBridge {
         node_config: Option<Node>,
         node_wallet: Option<Arc<Wallet>>,
         docker_storage_path: Option<String>,
+        state: Arc<SystemState>,
     ) -> Self {
         let path = match socket_path {
             Some(path) => path.to_string(),
@@ -72,6 +72,7 @@ impl TaskBridge {
             node_config,
             node_wallet,
             docker_storage_path,
+            state,
         }
     }
 
@@ -130,6 +131,7 @@ impl TaskBridge {
             let contracts = self.contracts.clone();
             let wallet = self.node_wallet.clone();
             let storage_path_clone = self.docker_storage_path.clone();
+            let state_clone = self.state.clone();
 
             match listener.accept().await {
                 Ok((stream, _addr)) => {
@@ -160,117 +162,24 @@ impl TaskBridge {
                                             }
                                         };
 
-                                        println!("Received file upload request");
                                         if let Ok(file_info) =
                                             serde_json::from_str::<serde_json::Value>(json_str)
                                         {
-                                            println!("File info: {:?}", file_info);
                                             if let Some(file_name) = file_info["value"].as_str() {
                                                 let task_id =
                                                     file_info["task_id"].as_str().unwrap();
-                                                info!(
-                                                    "📄 Received file upload request: {}",
-                                                    file_name
-                                                );
 
-                                                //let cwd = std::env::current_dir().unwrap();
-                                                // let testfile = format!("{}/examples/python/{}", cwd.display(), file_name);
-                                                //println!("Test file: {:?}", testfile);
-
-                                                let file = format!(
-                                                    "{}/prime-task-{}/{}",
-                                                    storage_path, task_id, file_name
-                                                );
-                                                println!("File: {:?}", file);
-
-                                                let file_size = std::fs::metadata(&file)
-                                                    .map(|m| m.len())
-                                                    .unwrap_or(0);
-
-                                                let file_sha = tokio::fs::read(&file)
-                                                    .await
-                                                    .map(|contents| {
-                                                        use sha2::{Digest, Sha256};
-                                                        let mut hasher = Sha256::new();
-                                                        hasher.update(&contents);
-                                                        format!("{:x}", hasher.finalize())
-                                                    })
-                                                    .unwrap_or_else(|e| {
-                                                        error!(
-                                                            "Failed to calculate file SHA: {}",
-                                                            e
-                                                        );
-                                                        String::new()
-                                                    });
-
-                                                // Create copy with SHA filename
-                                                println!("File size: {:?}", file_size);
-                                                println!("File SHA: {}", file_sha);
-
-                                                let client = Client::new();
-                                                let request = RequestUploadRequest {
-                                                    file_name: file_sha.to_string(),
-                                                    file_size,
-                                                    file_type: "application/json".to_string(), // Assume JSON
-                                                };
-
-                                                let signature = sign_request(
-                                                    "/storage/request-upload",
+                                                if let Err(e) = file_handler::handle_file_upload(
+                                                    storage_path,
+                                                    task_id,
+                                                    file_name,
                                                     wallet.as_ref().unwrap(),
-                                                    Some(&serde_json::to_value(&request).unwrap()),
+                                                    &state_clone,
                                                 )
                                                 .await
-                                                .unwrap();
-
-                                                let mut headers = reqwest::header::HeaderMap::new();
-                                                headers.insert(
-                                                    "x-address",
-                                                    wallet
-                                                        .as_ref()
-                                                        .unwrap()
-                                                        .address()
-                                                        .to_string()
-                                                        .parse()
-                                                        .unwrap(),
-                                                );
-                                                headers.insert(
-                                                    "x-signature",
-                                                    signature.parse().unwrap(),
-                                                );
-
-                                                match client
-                                                    .post("http://localhost:8090/storage/request-upload")
-                                                    .json(&request)
-                                                    .headers(headers)
-                                                    .send()
-                                                    .await {
-                                                        Ok(response) => {
-                                                            match response.json::<serde_json::Value>().await {
-                                                                Ok(json) => {
-                                                                    if let Some(signed_url) = json["signed_url"].as_str() {
-                                                                        info!("Got signed URL for upload: {}", signed_url);
-                                                                        // Read file contents
-                                                                        match tokio::fs::read(&file).await {
-                                                                            Ok(file_contents) => {
-                                                                                // Upload file to S3 using signed URL
-                                                                                match client.put(signed_url)
-                                                                                    .body(file_contents)
-                                                                                    .header("Content-Type", "application/json")
-                                                                                    .send()
-                                                                                    .await {
-                                                                                        Ok(_) => info!("Successfully uploaded file to S3"),
-                                                                                        Err(e) => error!("Failed to upload file to S3: {}", e)
-                                                                                    }
-                                                                            },
-                                                                            Err(e) => error!("Failed to read file: {}", e)
-                                                                        }
-                                                                    }
-                                                                }
-                                                                Err(e) => error!("Failed to parse response: {}", e)
-                                                            }
-                                                        }
-                                                        Err(e) => error!("Failed to request upload URL: {}", e)
-                                                    }
+                                                {
+                                                    error!("Failed to handle file upload: {}", e);
+                                                }
                                             }
                                         }
                                     } else if json_str.contains("file_sha") {
@@ -278,34 +187,22 @@ impl TaskBridge {
                                             serde_json::from_str::<serde_json::Value>(json_str)
                                         {
                                             if let Some(file_sha) = file_info["value"].as_str() {
-                                                info!(
-                                                    "📄 Received file SHA for validation: {}",
-                                                    file_sha
-                                                );
-                                                if let (Some(contracts), Some(node)) =
+                                                if let (Some(contracts_ref), Some(node_ref)) =
                                                     (contracts.clone(), node.clone())
                                                 {
-                                                    let pool_id = node.compute_pool_id;
-                                                    let node_address = node.id;
-
-                                                    let decoded_sha = hex::decode(file_sha)
-                                                        .expect("Failed to decode hex string");
-                                                    debug!(
-                                                        "Decoded file sha: {:?} ({} bytes)",
-                                                        decoded_sha,
-                                                        decoded_sha.len()
-                                                    );
-
-                                                    let result = contracts
-                                                        .compute_pool
-                                                        .submit_work(
-                                                            U256::from(pool_id),
-                                                            Address::from_str(&node_address)
-                                                                .unwrap(),
-                                                            decoded_sha.to_vec(),
+                                                    if let Err(e) =
+                                                        file_handler::handle_file_validation(
+                                                            file_sha,
+                                                            &contracts_ref,
+                                                            &node_ref,
                                                         )
-                                                        .await;
-                                                    debug!("Submit work result: {:?}", result);
+                                                        .await
+                                                    {
+                                                        error!(
+                                                            "Failed to handle file validation: {}",
+                                                            e
+                                                        );
+                                                    }
                                                 }
                                             }
                                         }
@@ -391,6 +288,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
+        let state = Arc::new(SystemState::new(None, false));
         let bridge = TaskBridge::new(
             Some(socket_path.to_str().unwrap()),
             metrics_store.clone(),
@@ -398,6 +296,7 @@ mod tests {
             None,
             None,
             None,
+            state,
         );
 
         // Run the bridge in background
@@ -420,6 +319,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
+        let state = Arc::new(SystemState::new(None, false));
         let bridge = TaskBridge::new(
             Some(socket_path.to_str().unwrap()),
             metrics_store.clone(),
@@ -427,6 +327,7 @@ mod tests {
             None,
             None,
             None,
+            state,
         );
 
         // Run bridge in background
@@ -451,6 +352,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
+        let state = Arc::new(SystemState::new(None, false));
         let bridge = TaskBridge::new(
             Some(socket_path.to_str().unwrap()),
             metrics_store.clone(),
@@ -458,6 +360,7 @@ mod tests {
             None,
             None,
             None,
+            state,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -496,6 +399,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
+        let state = Arc::new(SystemState::new(None, false));
         let bridge = TaskBridge::new(
             Some(socket_path.to_str().unwrap()),
             metrics_store.clone(),
@@ -503,6 +407,7 @@ mod tests {
             None,
             None,
             None,
+            state,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });

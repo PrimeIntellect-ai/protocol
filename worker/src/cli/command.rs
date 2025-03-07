@@ -10,6 +10,7 @@ use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderError;
 use crate::operations::provider::ProviderOperations;
 use crate::services::discovery::DiscoveryService;
+use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::U256;
 use clap::{Parser, Subcommand};
@@ -220,6 +221,10 @@ pub async fn execute_command(
                 }
             };
 
+            let state = Arc::new(SystemState::new(
+                state_dir_overwrite.clone(),
+                *disable_state_storing,
+            ));
             let metrics_store = Arc::new(MetricsStore::new());
             let heartbeat_metrics_clone = metrics_store.clone();
             let bridge_contracts = contracts.clone();
@@ -236,6 +241,7 @@ pub async fn execute_command(
                 Some(node_config.clone()),
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
+                state.clone(),
             ));
 
             let system_memory = node_config
@@ -262,13 +268,12 @@ pub async fn execute_command(
             });
             let heartbeat_service = HeartbeatService::new(
                 Duration::from_secs(10),
-                state_dir_overwrite.clone(),
-                *disable_state_storing,
                 cancellation_token.clone(),
                 task_handles.clone(),
                 node_wallet_instance.clone(),
                 docker_service.clone(),
                 heartbeat_metrics_clone.clone(),
+                state,
             );
 
             let mut attempts = 0;
