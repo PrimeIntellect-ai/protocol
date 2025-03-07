@@ -112,6 +112,7 @@ impl DockerManager {
 
         let mut final_volumes = Vec::new();
         if self.storage_path.is_some() {
+            // Create task-specific data volume
             let volume_name = format!("{}_data", name);
             let path = format!(
                 "{}/{}",
@@ -134,6 +135,25 @@ impl DockerManager {
                 .await?;
 
             final_volumes.push((volume_name, "/data".to_string(), false));
+
+            // Create shared volume if it doesn't exist
+            let shared_path = format!("{}/shared", self.storage_path.clone().unwrap());
+            std::fs::create_dir_all(&shared_path)?;
+
+            self.docker
+                .create_volume(CreateVolumeOptions {
+                    name: "shared_data".to_string(),
+                    driver: "local".to_string(),
+                    driver_opts: HashMap::from([
+                        ("type".to_string(), "none".to_string()),
+                        ("o".to_string(), "bind".to_string()),
+                        ("device".to_string(), shared_path),
+                    ]),
+                    labels: HashMap::new(),
+                })
+                .await?;
+
+            final_volumes.push(("shared_data".to_string(), "/shared".to_string(), false));
         }
 
         self.pull_image(image).await?;
