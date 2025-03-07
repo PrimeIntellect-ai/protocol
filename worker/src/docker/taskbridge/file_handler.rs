@@ -106,7 +106,7 @@ pub async fn handle_file_upload(
         let file_contents = tokio::fs::read(&file).await?;
 
         // Upload file to S3 using signed URL
-        let upload_response = client
+        client
             .put(signed_url)
             .body(file_contents)
             .header("Content-Type", "application/json")
