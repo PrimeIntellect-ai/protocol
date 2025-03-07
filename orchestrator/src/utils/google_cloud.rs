@@ -15,7 +15,6 @@ pub async fn generate_upload_signed_url(
     // Decode base64 to JSON string
     let credentials_json = general_purpose::STANDARD.decode(credentials_base64)?;
     let credentials_str = String::from_utf8(credentials_json)?;
-    println!("credentials_str: {}", credentials_str);
 
     // Create client config directly from the JSON string
     let credentials = CredentialsFile::new_from_str(&credentials_str)
@@ -39,6 +38,5 @@ pub async fn generate_upload_signed_url(
     let signed_url = client
         .signed_url(bucket, object_path, None, None, options)
         .await?;
-    println!("signed_url: {}", signed_url);
     Ok(signed_url)
 }
