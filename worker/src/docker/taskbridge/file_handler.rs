@@ -27,11 +27,9 @@ pub async fn handle_file_upload(
     wallet: &Arc<Wallet>,
     state: &Arc<SystemState>,
 ) -> Result<()> {
-    println!("Starting file upload handler...");
     info!("📄 Received file upload request: {}", file_name);
 
     // Get orchestrator endpoint
-    println!("Getting orchestrator endpoint...");
     let endpoint = state
         .get_heartbeat_endpoint()
         .await
@@ -40,19 +38,15 @@ pub async fn handle_file_upload(
             anyhow::anyhow!("Orchestrator endpoint not set")
         })?
         .replace("/heartbeat", "");
-    println!("Got endpoint: {}", endpoint);
 
     // Construct file path
     let file = format!("{}/prime-task-{}/{}", storage_path, task_id, file_name);
-    println!("Constructed file path: {}", file);
     debug!("File: {:?}", file);
 
     // Get file size
-    println!("Getting file size...");
     let file_size = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
 
     // Calculate SHA
-    println!("Calculating file SHA...");
     let file_sha = tokio::fs::read(&file)
         .await
         .map(|contents| {
@@ -68,10 +62,8 @@ pub async fn handle_file_upload(
 
     debug!("File size: {:?}", file_size);
     debug!("File SHA: {}", file_sha);
-    println!("File size: {}, SHA: {}", file_size, file_sha);
 
     // Create upload request
-    println!("Creating upload request...");
     let client = Client::new();
     let request = RequestUploadRequest {
         file_name: file_sha.to_string(),
@@ -80,15 +72,12 @@ pub async fn handle_file_upload(
     };
 
     // Sign request
-    println!("Signing request...");
     let request_value = serde_json::to_value(&request)?;
     let signature = sign_request("/storage/request-upload", wallet, Some(&request_value))
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    println!("Request signed with signature: {}", signature);
 
     // Prepare headers
-    println!("Preparing request headers...");
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         "x-address",
@@ -98,10 +87,8 @@ pub async fn handle_file_upload(
 
     // Create upload URL
     let upload_url = format!("{}/storage/request-upload", endpoint);
-    println!("Upload URL: {}", upload_url);
 
     // Send request
-    println!("Sending request to get signed URL...");
     let response = client
         .post(&upload_url)
         .json(&request)
@@ -109,22 +96,16 @@ pub async fn handle_file_upload(
         .send()
         .await?;
 
-    println!("Response: {:?}", response);
     // Process response
     let json = response.json::<serde_json::Value>().await?;
-    println!("Response JSON: {:?}", json);
 
     if let Some(signed_url) = json["signed_url"].as_str() {
         info!("Got signed URL for upload: {}", signed_url);
-        println!("Got signed URL: {}", signed_url);
 
         // Read file contents
-        println!("Reading file contents...");
         let file_contents = tokio::fs::read(&file).await?;
-        println!("File contents size: {} bytes", file_contents.len());
 
         // Upload file to S3 using signed URL
-        println!("Uploading file to S3...");
         let upload_response = client
             .put(signed_url)
             .body(file_contents)
@@ -132,14 +113,12 @@ pub async fn handle_file_upload(
             .send()
             .await?;
 
-        println!("S3 upload response: {:?}", upload_response);
         info!("Successfully uploaded file to S3");
     } else {
         println!("Error: Missing signed_url in response");
         return Err(anyhow::anyhow!("Missing signed_url in response"));
     }
 
-    println!("File upload completed successfully");
     Ok(())
 }
 
