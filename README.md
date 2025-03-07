@@ -57,7 +57,7 @@ Before running Prime Protocol, ensure you have the following requirements:
 
 ### 1. Clone Repository
 ```bash
-git clone --recurse-submodules https://github.com/PrimeIntellect-ai/protocol
+git clone https://github.com/PrimeIntellect-ai/protocol.git
 cd protocol
 git submodule update --init --recursive
 ```
@@ -66,6 +66,10 @@ git submodule update --init --recursive
 ```bash
 # Install Foundry
 curl -L https://foundry.paradigm.xyz | bash
+
+# Reload .bashrc (or .bash_profile, depends on the system)
+source ~/.bashrc
+
 foundryup
 
 # Install Rust
@@ -80,8 +84,21 @@ brew install redis
 # Install Redis (Ubuntu)
 # sudo apt-get install redis-server
 
+# Install Ruby (MacOS)
+brew install ruby
+
+# Install Ruby (Ubuntu)
+# sudo apt-get install redis-server
+
 # Install tmuxinator (do not use brew)
 gem install tmuxinator
+
+# Install Tmux (MacOS)
+brew install tmux
+
+# Install Tmux (Ubuntu)
+#sudo apt install tmux
+#sudo apt-get install libssl-dev
 ```
 
 ### 3. Configure Environment

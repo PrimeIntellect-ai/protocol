@@ -56,7 +56,7 @@ setup-dev-env:
 up:
 	tmuxinator start prime-dev
 down:
-	docker-compose down
+	docker compose down
 	tmuxinator stop prime-dev
 	pkill -f "target/debug/worker" 2>/dev/null || true
 	pkill -f "target/debug/orchestrator" 2>/dev/null || true
