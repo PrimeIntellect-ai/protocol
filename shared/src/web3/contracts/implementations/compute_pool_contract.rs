@@ -138,6 +138,24 @@ impl ComputePool {
         Ok(result)
     }
 
+    pub async fn submit_work(
+        &self,
+        pool_id: U256,
+        node: Address,
+        data: Vec<u8>,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let result = self
+            .instance
+            .instance()
+            .function("submitWork", &[pool_id.into(), node.into(), data.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
+        println!("Result: {:?}", result);
+        Ok(result)
+    }
+
     pub async fn blacklist_node(
         &self,
         pool_id: u32,

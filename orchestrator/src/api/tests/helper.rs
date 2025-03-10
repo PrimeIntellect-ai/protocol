@@ -40,6 +40,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
             )
             .unwrap(),
         ),
+        s3_credentials: None,
     })
 }
 

@@ -5,6 +5,7 @@ use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, FixedBytes, U256};
 use alloy::providers::Provider;
 
+#[derive(Clone)]
 pub struct PrimeNetworkContract {
     pub instance: Contract,
 }
@@ -101,6 +102,26 @@ impl PrimeNetworkContract {
         Ok(create_domain_tx)
     }
 
+    pub async fn update_validation_logic(
+        &self,
+        domain_id: U256,
+        validation_logic: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let update_validation_logic_tx = self
+            .instance
+            .instance()
+            .function(
+                "updateValidationLogic",
+                &[domain_id.into(), validation_logic.into()],
+            )?
+            .send()
+            .await?
+            .watch()
+            .await?;
+
+        Ok(update_validation_logic_tx)
+    }
+
     pub async fn set_stake_minimum(
         &self,
         min_stake_amount: U256,
@@ -137,5 +158,26 @@ impl PrimeNetworkContract {
         println!("Receipt: {:?}", receipt);
 
         Ok(whitelist_provider_tx)
+    }
+
+    pub async fn invalidate_work(
+        &self,
+        pool_id: U256,
+        penalty: U256,
+        data: Vec<u8>,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let invalidate_work_tx = self
+            .instance
+            .instance()
+            .function(
+                "invalidateWork",
+                &[pool_id.into(), penalty.into(), data.into()],
+            )?
+            .send()
+            .await?
+            .watch()
+            .await?;
+
+        Ok(invalidate_work_tx)
     }
 }

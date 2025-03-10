@@ -1,7 +1,7 @@
-use super::state::HeartbeatState;
 use crate::console::Console;
 use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
+use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use log;
 use log::info;
@@ -15,7 +15,7 @@ use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 #[derive(Clone)]
 pub struct HeartbeatService {
-    state: HeartbeatState,
+    state: Arc<SystemState>,
     interval: Duration,
     client: Client,
     cancellation_token: CancellationToken,
@@ -36,16 +36,13 @@ impl HeartbeatService {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         interval: Duration,
-        state_dir_overwrite: Option<String>,
-        disable_state_storing: bool,
         cancellation_token: CancellationToken,
         task_handles: TaskHandles,
         node_wallet: Arc<Wallet>,
         docker_service: Arc<DockerService>,
         metrics_store: Arc<MetricsStore>,
+        state: Arc<SystemState>,
     ) -> Result<Arc<Self>, HeartbeatError> {
-        let state = HeartbeatState::new(state_dir_overwrite.or(None), disable_state_storing);
-
         let client = Client::builder()
             .timeout(Duration::from_secs(5)) // 5 second timeout
             .build()
@@ -64,7 +61,7 @@ impl HeartbeatService {
     }
 
     pub async fn activate_heartbeat_if_endpoint_exists(&self) {
-        if let Some(endpoint) = self.state.get_endpoint().await {
+        if let Some(endpoint) = self.state.get_heartbeat_endpoint().await {
             info!("Starting heartbeat from recovered state");
             self.start(endpoint).await.unwrap();
         }
@@ -91,18 +88,18 @@ impl HeartbeatService {
                         if !state.is_running().await {
                             break;
                         }
-                        match Self::send_heartbeat(&client, state.get_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone()).await {
+                        match Self::send_heartbeat(&client, state.get_heartbeat_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
-                                log::info!("Heartbeat sent successfully");
+                                log::info!("Synced with orchestrator"); // Updated message to reflect sync
                             }
                             Err(e) => {
-                                log::error!("Heartbeat failed: {:?}", e);
+                                log::error!("{}", &format!("Failed to sync with orchestrator: {:?}", e)); // Updated error message
                             }
                         }
                     }
                     _ = cancellation_token.cancelled() => {
-                        log::info!("Heartbeat service received cancellation signal");
+                        log::info!("Sync service received cancellation signal"); // Updated log message
                         state.set_running(false, None).await;
                         break;
                     }

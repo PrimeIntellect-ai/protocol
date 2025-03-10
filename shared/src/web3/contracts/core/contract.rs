@@ -15,6 +15,7 @@ macro_rules! include_abi {
     }};
 }
 
+#[derive(Clone)]
 pub struct Contract {
     instance: ContractInstance<Http<Client>, WalletProvider, Ethereum>,
     provider: WalletProvider,
@@ -41,6 +42,9 @@ impl Contract {
             "ai_token.json" => include_abi!("../../../../artifacts/abi/ai_token.json"),
             "prime_network.json" => include_abi!("../../../../artifacts/abi/prime_network.json"),
             "compute_pool.json" => include_abi!("../../../../artifacts/abi/compute_pool.json"),
+            "synthetic_data_work_validator.json" => {
+                include_abi!("../../../../artifacts/abi/synthetic_data_work_validator.json")
+            }
             _ => panic!("Unknown ABI file: {}", path),
         };
 

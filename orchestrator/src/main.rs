@@ -3,6 +3,7 @@ mod discovery;
 mod models;
 mod node;
 mod store;
+mod utils;
 use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
@@ -68,6 +69,10 @@ struct Args {
     /// Disable instance ejection from chain
     #[arg(long)]
     disable_ejection: bool,
+
+    /// S3 credentials
+    #[arg(long)]
+    s3_credentials: Option<String>,
 }
 
 #[tokio::main]
@@ -149,7 +154,7 @@ async fn main() -> Result<()> {
 
     let server_store_context = store_context.clone();
     tokio::select! {
-        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key) => {
+        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key, args.s3_credentials) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
             }

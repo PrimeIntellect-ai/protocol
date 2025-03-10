@@ -1,3 +1,5 @@
+use alloy::primitives::Address;
+
 use crate::web3::{
     contracts::{
         core::error::ContractError, // Using custom error ContractError
@@ -5,6 +7,7 @@ use crate::web3::{
             ai_token_contract::AIToken, compute_pool_contract::ComputePool,
             compute_registry_contract::ComputeRegistryContract,
             prime_network_contract::PrimeNetworkContract,
+            work_validators::synthetic_data_validator::SyntheticDataWorkValidator,
         },
     },
     wallet::Wallet,
@@ -17,6 +20,7 @@ pub struct Contracts {
     pub ai_token: AIToken,
     pub prime_network: PrimeNetworkContract,
     pub compute_pool: ComputePool,
+    pub synthetic_data_validator: Option<SyntheticDataWorkValidator>,
 }
 
 pub struct ContractBuilder<'a> {
@@ -25,6 +29,7 @@ pub struct ContractBuilder<'a> {
     ai_token: Option<AIToken>,
     prime_network: Option<PrimeNetworkContract>,
     compute_pool: Option<ComputePool>,
+    synthetic_data_validator: Option<SyntheticDataWorkValidator>,
 }
 
 impl<'a> ContractBuilder<'a> {
@@ -35,6 +40,7 @@ impl<'a> ContractBuilder<'a> {
             ai_token: None,
             prime_network: None,
             compute_pool: None,
+            synthetic_data_validator: None,
         }
     }
 
@@ -58,6 +64,15 @@ impl<'a> ContractBuilder<'a> {
 
     pub fn with_compute_pool(mut self) -> Self {
         self.compute_pool = Some(ComputePool::new(self.wallet, "compute_pool.json"));
+        self
+    }
+
+    pub fn with_synthetic_data_validator(mut self, address: Option<Address>) -> Self {
+        self.synthetic_data_validator = Some(SyntheticDataWorkValidator::new(
+            address.unwrap_or(Address::ZERO),
+            self.wallet,
+            "synthetic_data_work_validator.json",
+        ));
         self
     }
 
@@ -85,6 +100,7 @@ impl<'a> ContractBuilder<'a> {
                 Some(network) => network,
                 None => return Err(ContractError::Other("PrimeNetwork not initialized".into())), // Custom error handling
             },
+            synthetic_data_validator: self.synthetic_data_validator,
         })
     }
 }

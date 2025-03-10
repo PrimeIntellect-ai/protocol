@@ -23,10 +23,6 @@ pub async fn get_nodes_for_pool(
     let id_clone = pool_id.clone();
     let pool_contract_id: U256 = id_clone.parse::<U256>().unwrap();
     let pool_id: u32 = pool_id.parse().unwrap();
-    println!("Pool id: {:?}", pool_id);
-    println!("Pool contract id: {:?}", pool_contract_id);
-    let debug_address = req.headers().get("x-address");
-    println!("Address: {:?}", debug_address);
 
     match data.contracts.clone() {
         Some(contracts) => {
