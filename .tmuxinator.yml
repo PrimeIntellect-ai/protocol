@@ -4,12 +4,12 @@ windows:
   - services:
       layout: even-horizontal 
       panes:
-        - bash -c 'tmux select-pane -T "Worker" && sleep 5 && cd smart-contracts && sh deploy.sh && cd .. && make setup && clear' 
+        - bash -c 'tmux select-pane -T "Worker" && sleep 5 && cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd .. && make setup && clear' 
         - bash -c 'tmux select-pane -T "Discovery" && sleep 10 && make watch-discovery'
         - bash -c 'tmux select-pane -T "Validator" && sleep 15 && make watch-validator' 
         - bash -c 'tmux select-pane -T "Orchestrator" && sleep 20 && make watch-orchestrator' 
   - background:
-      layout: even-horizontal 
+      layout: even-horizontal
       panes:
         - bash -c 'tmux rename-window "Prime Dev Services" && docker compose up'
         - bash -c 'while true; do make whitelist-provider; sleep 10; done'

@@ -20,7 +20,7 @@ transfer-eth-to-pool-owner:
 
 create-domain:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-default_domain}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-default_domain}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --validation-logic $${WORK_VALIDATION_CONTRACT} --rpc-url $${RPC_URL}
 
 create-training-domain:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -77,11 +77,11 @@ watch-worker:
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} "
+	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id 0 --work-validation-contract $${WORK_VALIDATION_CONTRACT} --leviticus-url $${LEVITICUS_URL}"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090"
+	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS"
 
 build-worker:
 	cargo build --release --bin worker
@@ -108,6 +108,9 @@ setup-remote:
 		. "$$HOME/.cargo/env"; \
 		if ! command -v cargo-watch > /dev/null; then \
 			cargo install cargo-watch; \
+		fi; \
+		if ! groups | grep -q docker; then \
+			sudo usermod -aG docker $$USER; \
 		fi'
 
 # Setup SSH tunnel

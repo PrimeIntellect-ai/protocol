@@ -1,7 +1,12 @@
+use crate::docker::taskbridge::file_handler;
 use crate::metrics::store::MetricsStore;
+use crate::state::system_state::SystemState;
 use anyhow::Result;
-use log::error;
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
+use shared::models::node::Node;
+use shared::web3::contracts::core::builder::Contracts;
+use shared::web3::wallet::Wallet;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
@@ -18,6 +23,11 @@ const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.worker/";
 pub struct TaskBridge {
     pub socket_path: String,
     pub metrics_store: Arc<MetricsStore>,
+    pub contracts: Option<Arc<Contracts>>,
+    pub node_config: Option<Node>,
+    pub node_wallet: Option<Arc<Wallet>>,
+    pub docker_storage_path: Option<String>,
+    pub state: Arc<SystemState>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -27,8 +37,23 @@ struct MetricInput {
     value: f64,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+struct RequestUploadRequest {
+    file_name: String,
+    file_size: u64,
+    file_type: String,
+}
+
 impl TaskBridge {
-    pub fn new(socket_path: Option<&str>, metrics_store: Arc<MetricsStore>) -> Self {
+    pub fn new(
+        socket_path: Option<&str>,
+        metrics_store: Arc<MetricsStore>,
+        contracts: Option<Arc<Contracts>>,
+        node_config: Option<Node>,
+        node_wallet: Option<Arc<Wallet>>,
+        docker_storage_path: Option<String>,
+        state: Arc<SystemState>,
+    ) -> Self {
         let path = match socket_path {
             Some(path) => path.to_string(),
             None => {
@@ -43,18 +68,23 @@ impl TaskBridge {
         Self {
             socket_path: path,
             metrics_store,
+            contracts,
+            node_config,
+            node_wallet,
+            docker_storage_path,
+            state,
         }
     }
 
     pub async fn run(&self) -> Result<()> {
         let socket_path = Path::new(&self.socket_path);
-        log::info!("Setting up TaskBridge socket at: {}", socket_path.display());
+        info!("Setting up TaskBridge socket at: {}", socket_path.display());
 
         if let Some(parent) = socket_path.parent() {
             match fs::create_dir_all(parent) {
-                Ok(_) => log::debug!("Created parent directory: {}", parent.display()),
+                Ok(_) => debug!("Created parent directory: {}", parent.display()),
                 Err(e) => {
-                    log::error!(
+                    error!(
                         "Failed to create parent directory {}: {}",
                         parent.display(),
                         e
@@ -67,9 +97,9 @@ impl TaskBridge {
         // Cleanup existing socket if present
         if socket_path.exists() {
             match fs::remove_file(socket_path) {
-                Ok(_) => log::debug!("Removed existing socket file"),
+                Ok(_) => debug!("Removed existing socket file"),
                 Err(e) => {
-                    log::error!("Failed to remove existing socket file: {}", e);
+                    error!("Failed to remove existing socket file: {}", e);
                     return Err(e.into());
                 }
             }
@@ -77,26 +107,32 @@ impl TaskBridge {
 
         let listener = match UnixListener::bind(socket_path) {
             Ok(l) => {
-                log::info!("Successfully bound to Unix socket");
+                info!("Successfully bound to Unix socket");
                 l
             }
             Err(e) => {
-                log::error!("Failed to bind Unix socket: {}", e);
+                error!("Failed to bind Unix socket: {}", e);
                 return Err(e.into());
             }
         };
 
         // allow both owner and group to read/write
         match fs::set_permissions(socket_path, fs::Permissions::from_mode(0o660)) {
-            Ok(_) => log::debug!("Set socket permissions to 0o660"),
+            Ok(_) => debug!("Set socket permissions to 0o660"),
             Err(e) => {
-                log::error!("Failed to set socket permissions: {}", e);
+                error!("Failed to set socket permissions: {}", e);
                 return Err(e.into());
             }
         }
 
         loop {
             let store = self.metrics_store.clone();
+            let node = self.node_config.clone();
+            let contracts = self.contracts.clone();
+            let wallet = self.node_wallet.clone();
+            let storage_path_clone = self.docker_storage_path.clone();
+            let state_clone = self.state.clone();
+
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     tokio::spawn(async move {
@@ -114,23 +150,83 @@ impl TaskBridge {
                             while current_pos < trimmed.len() {
                                 // Try to find a complete JSON object
                                 if let Some(json_str) = extract_next_json(&trimmed[current_pos..]) {
-                                    match serde_json::from_str::<MetricInput>(json_str) {
-                                        Ok(input) => {
-                                            println!("Received metric: {:?}", input);
-                                            let _ = store
-                                                .update_metric(
-                                                    input.task_id,
-                                                    input.label,
-                                                    input.value,
+                                    debug!("Received metric: {:?}", json_str);
+                                    if json_str.contains("file_name") {
+                                        let storage_path = match &storage_path_clone {
+                                            Some(path) => path,
+                                            None => {
+                                                println!(
+                                                    "Storage path is not set - cannot upload file."
+                                                );
+                                                continue;
+                                            }
+                                        };
+
+                                        if let Ok(file_info) =
+                                            serde_json::from_str::<serde_json::Value>(json_str)
+                                        {
+                                            if let Some(file_name) = file_info["value"].as_str() {
+                                                let task_id =
+                                                    file_info["task_id"].as_str().unwrap();
+
+                                                if let Err(e) = file_handler::handle_file_upload(
+                                                    storage_path,
+                                                    task_id,
+                                                    file_name,
+                                                    wallet.as_ref().unwrap(),
+                                                    &state_clone,
                                                 )
-                                                .await;
+                                                .await
+                                                {
+                                                    error!("Failed to handle file upload: {}", e);
+                                                }
+                                            }
                                         }
-                                        Err(e) => {
-                                            log::error!(
-                                                "Failed to parse metric input: {} {}",
-                                                json_str,
-                                                e
-                                            );
+                                    } else if json_str.contains("file_sha") {
+                                        if let Ok(file_info) =
+                                            serde_json::from_str::<serde_json::Value>(json_str)
+                                        {
+                                            if let Some(file_sha) = file_info["value"].as_str() {
+                                                if let (Some(contracts_ref), Some(node_ref)) =
+                                                    (contracts.clone(), node.clone())
+                                                {
+                                                    if let Err(e) =
+                                                        file_handler::handle_file_validation(
+                                                            file_sha,
+                                                            &contracts_ref,
+                                                            &node_ref,
+                                                        )
+                                                        .await
+                                                    {
+                                                        error!(
+                                                            "Failed to handle file validation: {}",
+                                                            e
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        match serde_json::from_str::<MetricInput>(json_str) {
+                                            Ok(input) => {
+                                                info!(
+                                                    "📊 Received metric - Task: {}, Label: {}, Value: {}",
+                                                    input.task_id, input.label, input.value
+                                                );
+                                                let _ = store
+                                                    .update_metric(
+                                                        input.task_id,
+                                                        input.label,
+                                                        input.value,
+                                                    )
+                                                    .await;
+                                            }
+                                            Err(e) => {
+                                                error!(
+                                                    "Failed to parse metric input: {} {}",
+                                                    json_str, e
+                                                );
+                                            }
                                         }
                                     }
                                     current_pos += json_str.len();
@@ -192,7 +288,16 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
+        let state = Arc::new(SystemState::new(None, false));
+        let bridge = TaskBridge::new(
+            Some(socket_path.to_str().unwrap()),
+            metrics_store.clone(),
+            None,
+            None,
+            None,
+            None,
+            state,
+        );
 
         // Run the bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -214,7 +319,16 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
+        let state = Arc::new(SystemState::new(None, false));
+        let bridge = TaskBridge::new(
+            Some(socket_path.to_str().unwrap()),
+            metrics_store.clone(),
+            None,
+            None,
+            None,
+            None,
+            state,
+        );
 
         // Run bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -224,8 +338,8 @@ mod tests {
         // Test client connection
         let stream = UnixStream::connect(&socket_path).await?;
 
-        // Print stream output to debug
-        println!("Connected to stream: {:?}", stream.peer_addr());
+        // Log stream output for debugging
+        debug!("Connected to stream: {:?}", stream.peer_addr());
 
         assert!(stream.peer_addr().is_ok());
 
@@ -238,7 +352,16 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
+        let state = Arc::new(SystemState::new(None, false));
+        let bridge = TaskBridge::new(
+            Some(socket_path.to_str().unwrap()),
+            metrics_store.clone(),
+            None,
+            None,
+            None,
+            None,
+            state,
+        );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
@@ -251,7 +374,7 @@ mod tests {
             value: 10.0,
         };
         let sample_metric = serde_json::to_string(&sample_metric)?;
-        println!("Sending {:?}", sample_metric);
+        debug!("Sending {:?}", sample_metric);
         let msg = format!("{}{}", sample_metric, "\n");
         stream.write_all(msg.as_bytes()).await?;
         stream.flush().await?;
@@ -276,7 +399,16 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let bridge = TaskBridge::new(Some(socket_path.to_str().unwrap()), metrics_store.clone());
+        let state = Arc::new(SystemState::new(None, false));
+        let bridge = TaskBridge::new(
+            Some(socket_path.to_str().unwrap()),
+            metrics_store.clone(),
+            None,
+            None,
+            None,
+            None,
+            state,
+        );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 

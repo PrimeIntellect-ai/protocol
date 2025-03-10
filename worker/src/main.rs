@@ -6,6 +6,7 @@ mod docker;
 mod metrics;
 mod operations;
 mod services;
+mod state;
 use clap::Parser;
 use cli::{execute_command, Cli};
 use log::{debug, LevelFilter};
