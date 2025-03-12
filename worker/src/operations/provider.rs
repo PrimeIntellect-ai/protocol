@@ -148,7 +148,7 @@ impl<'c> ProviderOperations<'c> {
 
         Console::success("Provider stake increased successfully");
         Ok(())
-    } 
+    }
 }
 
 #[derive(Debug)]

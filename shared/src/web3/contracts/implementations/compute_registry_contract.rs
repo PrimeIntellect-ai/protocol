@@ -52,7 +52,9 @@ impl ComputeRegistryContract {
             .call()
             .await?;
 
-        Ok(U256::from(provider_response.first().unwrap().as_uint().unwrap().0))
+        Ok(U256::from(
+            provider_response.first().unwrap().as_uint().unwrap().0,
+        ))
     }
 
     pub async fn get_node(

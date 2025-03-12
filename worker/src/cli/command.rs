@@ -19,11 +19,11 @@ use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use url::Url;
-use std::str::FromStr;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -294,7 +294,13 @@ pub async fn execute_command(
 
             let compute_units = U256::from(gpu_count * 1000);
 
-            let provider_total_compute = match contracts.compute_registry.get_provider_total_compute(provider_wallet_instance.wallet.default_signer().address()).await {
+            let provider_total_compute = match contracts
+                .compute_registry
+                .get_provider_total_compute(
+                    provider_wallet_instance.wallet.default_signer().address(),
+                )
+                .await
+            {
                 Ok(compute) => compute,
                 Err(e) => {
                     Console::error(&format!("❌ Failed to get provider total compute: {}", e));
@@ -309,7 +315,10 @@ pub async fn execute_command(
                 }
             };
 
-            let required_stake = match stake_manager.calculate_stake(compute_units, provider_total_compute).await {
+            let required_stake = match stake_manager
+                .calculate_stake(compute_units, provider_total_compute)
+                .await
+            {
                 Ok(stake) => stake,
                 Err(e) => {
                     Console::error(&format!("❌ Failed to calculate required stake: {}", e));
@@ -350,7 +359,10 @@ pub async fn execute_command(
                 std::process::exit(1);
             };
 
-            let provider_stake = match stake_manager.get_stake(provider_wallet_instance.wallet.default_signer().address()).await {
+            let provider_stake = match stake_manager
+                .get_stake(provider_wallet_instance.wallet.default_signer().address())
+                .await
+            {
                 Ok(stake) => stake,
                 Err(e) => {
                     Console::error(&format!("❌ Failed to get provider stake: {}", e));
@@ -361,14 +373,16 @@ pub async fn execute_command(
 
             if provider_stake < required_stake {
                 let spinner = Console::spinner("Increasing stake...");
-                if let Err(e) = provider_ops.increase_stake(required_stake - provider_stake).await {
+                if let Err(e) = provider_ops
+                    .increase_stake(required_stake - provider_stake)
+                    .await
+                {
                     spinner.finish_and_clear();
                     Console::error(&format!("❌ Failed to increase stake: {}", e));
                     std::process::exit(1);
                 }
                 spinner.finish_and_clear();
             }
-
 
             match compute_node_ops.add_compute_node(compute_units).await {
                 Ok(added_node) => {
