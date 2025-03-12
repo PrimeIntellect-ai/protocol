@@ -47,7 +47,7 @@ impl StakeManagerContract {
         provider_total_compute: U256,
     ) -> Result<U256, Box<dyn std::error::Error>> {
         let min_stake_per_unit = self.get_stake_minimum().await?;
-        let total_compute = provider_total_compute + compute_units;
+        let total_compute = provider_total_compute + compute_units + 1;
         let required_stake = total_compute * min_stake_per_unit;
         Ok(required_stake)
     }
