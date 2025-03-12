@@ -4,10 +4,7 @@ use crate::web3::{
     contracts::{
         core::error::ContractError, // Using custom error ContractError
         implementations::{
-            ai_token_contract::AIToken, compute_pool_contract::ComputePool,
-            compute_registry_contract::ComputeRegistryContract,
-            prime_network_contract::PrimeNetworkContract,
-            work_validators::synthetic_data_validator::SyntheticDataWorkValidator,
+            ai_token_contract::AIToken, compute_pool_contract::ComputePool, compute_registry_contract::ComputeRegistryContract, prime_network_contract::PrimeNetworkContract, stake_manager::StakeManagerContract, work_validators::synthetic_data_validator::SyntheticDataWorkValidator
         },
     },
     wallet::Wallet,
@@ -20,6 +17,7 @@ pub struct Contracts {
     pub ai_token: AIToken,
     pub prime_network: PrimeNetworkContract,
     pub compute_pool: ComputePool,
+    pub stake_manager: Option<StakeManagerContract>,
     pub synthetic_data_validator: Option<SyntheticDataWorkValidator>,
 }
 
@@ -29,6 +27,7 @@ pub struct ContractBuilder<'a> {
     ai_token: Option<AIToken>,
     prime_network: Option<PrimeNetworkContract>,
     compute_pool: Option<ComputePool>,
+    stake_manager: Option<StakeManagerContract>,
     synthetic_data_validator: Option<SyntheticDataWorkValidator>,
 }
 
@@ -40,6 +39,7 @@ impl<'a> ContractBuilder<'a> {
             ai_token: None,
             prime_network: None,
             compute_pool: None,
+            stake_manager: None,
             synthetic_data_validator: None,
         }
     }
@@ -76,6 +76,11 @@ impl<'a> ContractBuilder<'a> {
         self
     }
 
+    pub fn with_stake_manager(mut self) -> Self {
+        self.stake_manager = Some(StakeManagerContract::new(self.wallet, "stake_manager.json"));
+        self
+    }
+
     // TODO: This is not ideal yet - now you have to init all contracts all the time
     pub fn build(self) -> Result<Contracts, ContractError> {
         // Using custom error ContractError
@@ -101,6 +106,7 @@ impl<'a> ContractBuilder<'a> {
                 None => return Err(ContractError::Other("PrimeNetwork not initialized".into())), // Custom error handling
             },
             synthetic_data_validator: self.synthetic_data_validator,
+            stake_manager: self.stake_manager,
         })
     }
 }

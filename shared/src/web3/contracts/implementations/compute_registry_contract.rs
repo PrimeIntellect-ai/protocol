@@ -5,7 +5,7 @@ use super::{
 use crate::web3::contracts::helpers::utils::get_selector;
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
-use alloy::primitives::Address;
+use alloy::primitives::{Address, U256};
 
 pub struct ComputeRegistryContract {
     instance: Contract,
@@ -39,6 +39,20 @@ impl ComputeRegistryContract {
             nodes: vec![],
         };
         Ok(provider)
+    }
+
+    pub async fn get_provider_total_compute(
+        &self,
+        address: Address,
+    ) -> Result<U256, Box<dyn std::error::Error>> {
+        let provider_response = self
+            .instance
+            .instance()
+            .function("getProviderTotalCompute", &[address.into()])?
+            .call()
+            .await?;
+
+        Ok(U256::from(provider_response.first().unwrap().as_uint().unwrap().0))
     }
 
     pub async fn get_node(

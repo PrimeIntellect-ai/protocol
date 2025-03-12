@@ -32,6 +32,22 @@ impl PrimeNetworkContract {
         Ok(register_tx)
     }
 
+    pub async fn stake(
+        &self,
+        additional_stake: U256,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let stake_tx = self
+            .instance
+            .instance()
+            .function("increaseStake", &[additional_stake.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
+
+        Ok(stake_tx)
+    }
+
     pub async fn add_compute_node(
         &self,
         node_address: Address,
