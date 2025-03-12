@@ -31,7 +31,7 @@ impl<'c> ComputeNodeOperations<'c> {
     // Returns true if the compute node was added, false if it already exists
     pub async fn add_compute_node(
         &self,
-        gpu_count: u32,
+        compute_units: U256,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         Console::section("🔄 Adding compute node");
         let compute_node = self
@@ -80,7 +80,6 @@ impl<'c> ComputeNodeOperations<'c> {
             .as_bytes();
 
         // Create the signature bytes
-        let compute_units: U256 = U256::from(1000 * gpu_count);
         let add_node_tx = self
             .prime_network
             .add_compute_node(node_address, compute_units, signature.to_vec())

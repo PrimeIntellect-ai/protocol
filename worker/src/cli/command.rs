@@ -78,10 +78,6 @@ pub enum Commands {
         #[arg(long)]
         discovery_url: Option<String>,
 
-        // Amount of stake to use when provider is newly registered
-        #[arg(long, default_value = "10")]
-        provider_stake: i32,
-
         #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
         validator_address: Option<String>,
     },
@@ -103,7 +99,6 @@ pub async fn execute_command(
             compute_pool_id,
             dry_run: _,
             rpc_url,
-            provider_stake,
             discovery_url,
             state_dir_overwrite,
             disable_state_storing,
@@ -153,6 +148,7 @@ pub async fn execute_command(
                     .with_ai_token()
                     .with_prime_network()
                     .with_compute_pool()
+                    .with_stake_manager()
                     .build()
                     .unwrap(),
             );
@@ -175,22 +171,25 @@ pub async fn execute_command(
                 DiscoveryService::new(&node_wallet_instance, discovery_url.clone(), None);
             let pool_id = U256::from(*compute_pool_id as u32);
 
+            Console::progress("Loading pool info");
+            println!("Loading pool info {}", pool_id);
             let pool_info = loop {
                 match contracts.compute_pool.get_pool_info(pool_id).await {
                     Ok(pool) if pool.status == PoolStatus::ACTIVE => break Arc::new(pool),
                     Ok(_) => {
-                        Console::error("❌ Pool is not active yet. Checking again in 15 seconds.");
+                        Console::warning("Pool is not active yet. Checking again in 15 seconds.");
                         tokio::select! {
                             _ = tokio::time::sleep(tokio::time::Duration::from_secs(15)) => {},
                             _ = cancellation_token.cancelled() => return Ok(()),
                         }
                     }
                     Err(e) => {
-                        Console::error(&format!("❌ Failed to get pool info. {}", e));
+                        Console::error(&format!("Failed to get pool info: {}", e));
                         return Ok(());
                     }
                 }
             };
+            println!("Pool info: {:?}", pool_info);
 
             let node_config = Node {
                 id: node_wallet_instance
@@ -278,10 +277,55 @@ pub async fn execute_command(
 
             let mut attempts = 0;
             let max_attempts = 100;
-            let stake = U256::from(*provider_stake);
+            let gpu_count: u32 = match &node_config.compute_specs {
+                Some(specs) => specs
+                    .gpu
+                    .as_ref()
+                    .map(|gpu| gpu.count.unwrap_or(0))
+                    .unwrap_or(0),
+                None => 0,
+            };
+
+            let compute_units = U256::from(gpu_count * 1000);
+
+            let provider_total_compute = match contracts
+                .compute_registry
+                .get_provider_total_compute(
+                    provider_wallet_instance.wallet.default_signer().address(),
+                )
+                .await
+            {
+                Ok(compute) => compute,
+                Err(e) => {
+                    Console::error(&format!("❌ Failed to get provider total compute: {}", e));
+                    std::process::exit(1);
+                }
+            };
+            let stake_manager = match contracts.stake_manager.as_ref() {
+                Some(stake_manager) => stake_manager,
+                None => {
+                    Console::error("❌ Stake manager not initialized");
+                    std::process::exit(1);
+                }
+            };
+
+            let required_stake = match stake_manager
+                .calculate_stake(compute_units, provider_total_compute)
+                .await
+            {
+                Ok(stake) => stake,
+                Err(e) => {
+                    Console::error(&format!("❌ Failed to calculate required stake: {}", e));
+                    std::process::exit(1);
+                }
+            };
+            println!("Required stake: {}", required_stake);
+
+            // TODO: Currently we do not increase stake when adding more nodes
+
             while attempts < max_attempts {
                 let spinner = Console::spinner("Registering provider...");
-                if let Err(e) = provider_ops.register_provider(stake).await {
+                if let Err(e) = provider_ops.register_provider(required_stake).await {
                     spinner.finish_and_clear(); // Finish spinner before logging error
                     if let ProviderError::NotWhitelisted = e {
                         Console::error("❌ Provider not whitelisted, retrying in 15 seconds...");
@@ -309,16 +353,32 @@ pub async fn execute_command(
                 std::process::exit(1);
             };
 
-            let gpu_count: u32 = match &node_config.compute_specs {
-                Some(specs) => specs
-                    .gpu
-                    .as_ref()
-                    .map(|gpu| gpu.count.unwrap_or(0))
-                    .unwrap_or(0),
-                None => 0,
+            let provider_stake = match stake_manager
+                .get_stake(provider_wallet_instance.wallet.default_signer().address())
+                .await
+            {
+                Ok(stake) => stake,
+                Err(e) => {
+                    Console::error(&format!("❌ Failed to get provider stake: {}", e));
+                    std::process::exit(1);
+                }
             };
+            Console::info("Provider stake:", &format!("{}", provider_stake));
 
-            match compute_node_ops.add_compute_node(gpu_count).await {
+            if provider_stake < required_stake {
+                let spinner = Console::spinner("Increasing stake...");
+                if let Err(e) = provider_ops
+                    .increase_stake(required_stake - provider_stake)
+                    .await
+                {
+                    spinner.finish_and_clear();
+                    Console::error(&format!("❌ Failed to increase stake: {}", e));
+                    std::process::exit(1);
+                }
+                spinner.finish_and_clear();
+            }
+
+            match compute_node_ops.add_compute_node(compute_units).await {
                 Ok(added_node) => {
                     if added_node {
                         // If we are adding a new compute node we wait for a proper

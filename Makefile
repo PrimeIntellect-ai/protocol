@@ -73,22 +73,22 @@ watch-discovery:
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS"
+	cargo watch -w worker/src -x "run --bin worker -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS"
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id 0 --work-validation-contract $${WORK_VALIDATION_CONTRACT} --leviticus-url $${LEVITICUS_URL}"
+	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id 1 --work-validation-contract $${WORK_VALIDATION_CONTRACT} --leviticus-url $${LEVITICUS_URL}"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS"
+	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID"
 
 build-worker:
 	cargo build --release --bin worker
 
 run-worker-bin:
 	set -a; source .env; set +a; \
-	./target/release/worker run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id 0 --validator-address $$VALIDATOR_ADDRESS
+	./target/release/worker run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS
 
 SSH_CONNECTION ?= your-ssh-conn string
 EXTERNAL_IP ?= 0.0.0.0
@@ -143,8 +143,10 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 			--private-key-node \$$NODE_PRIVATE_KEY \
 			--port $(PORT) \
 			--external-ip \$$EXTERNAL_IP \
-			--compute-pool-id 0 \
-			--validator-address \$$VALIDATOR_ADDRESS  2>&1 | tee worker.log\""
+			--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
+			--validator-address \$$VALIDATOR_ADDRESS \
+			2>&1 | tee worker.log\""
+
 # Kill SSH tunnel
 .PHONY: kill-tunnel
 kill-tunnel:
