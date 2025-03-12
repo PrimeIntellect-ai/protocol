@@ -78,10 +78,6 @@ pub enum Commands {
         #[arg(long)]
         discovery_url: Option<String>,
 
-        // Amount of stake to use when provider is newly registered
-        #[arg(long, default_value = "10")]
-        provider_stake: f64,
-
         #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
         validator_address: Option<String>,
     },
@@ -103,7 +99,6 @@ pub async fn execute_command(
             compute_pool_id,
             dry_run: _,
             rpc_url,
-            provider_stake,
             discovery_url,
             state_dir_overwrite,
             disable_state_storing,
