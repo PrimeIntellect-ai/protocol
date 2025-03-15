@@ -36,7 +36,6 @@ impl StakeManagerContract {
             .function("getStake", &[staker.into()])?
             .call()
             .await?;
-        println!("Result: {:?}", result);
 
         Ok(result[0].as_uint().unwrap_or_default().0)
     }
