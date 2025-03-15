@@ -85,35 +85,41 @@ services:
       contract-deployer:
         condition: service_started
 
-  # orchestrator:
-  #   image: ghcr.io/primeintellect-ai/protocol/orchestrator:dev
-  #   platform: linux/amd64
-  #   ports:
-  #     - "8090:8090"
-  #   environment:
-  #     - RPC_URL=http://anvil:8545
-  #     - REDIS_STORE_URL=redis://redis:6379
-  #     - DISCOVERY_URL=http://discovery:8089
-  #     - COORDINATOR_KEY=${POOL_OWNER_PRIVATE_KEY}
-  #     - COMPUTE_POOL_ID=1
-  #     - DOMAIN_ID=0
-  #     - ADMIN_API_KEY=admin
-  #     - DISABLE_EJECTION=false
-  #   networks:
-  #     - prime
-  #   depends_on:
-  #     anvil:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     discovery:
-  #       condition: service_started
+  orchestrator:
+    image: ghcr.io/primeintellect-ai/protocol/orchestrator:dev
+    platform: linux/amd64
+    ports:
+      - "8090:8090"
+    environment:
+      - RPC_URL=http://anvil:8545
+      - REDIS_STORE_URL=redis://redis:6379
+      - DISCOVERY_URL=http://discovery:8089
+      - URL=http://localhost:8090
+      - COORDINATOR_KEY=${POOL_OWNER_PRIVATE_KEY}
+      - COMPUTE_POOL_ID=${WORKER_COMPUTE_POOL_ID}
+      - DOMAIN_ID=0
+      - PORT=8090
+      - DISCOVERY_REFRESH_INTERVAL=10
+      - S3_CREDENTIALS=${S3_CREDENTIALS}
+    networks:
+      - prime
+    depends_on:
+      anvil:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      discovery:
+        condition: service_started
 
   validator:
     image: ghcr.io/primeintellect-ai/protocol/validator:dev
     platform: linux/amd64
     ports:
       - "8099:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - prime
     environment:
       - RPC_URL=http://anvil:8545
       - DISCOVERY_URL=http://discovery:8089
@@ -122,8 +128,6 @@ services:
       - POOL_ID=${WORKER_COMPUTE_POOL_ID}
       - WORK_VALIDATION_INTERVAL=30
       - LEVITICUS_URL=${LEVITICUS_URL}
-    networks:
-      - prime
     depends_on:
       anvil:
         condition: service_healthy
