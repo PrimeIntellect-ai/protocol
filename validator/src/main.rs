@@ -95,33 +95,38 @@ fn main() {
     let contracts = Arc::new(contracts);
     let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
 
-    let pool_id = args.pool_id.clone();
-    let mut synthetic_validator = match contracts.synthetic_data_validator.clone() {
-        Some(validator) => {
-            if let Some(leviticus_url) = args.leviticus_url {
-                SyntheticDataValidator::new(
-                    None,
-                    pool_id.unwrap(),
-                    validator,
-                    contracts.prime_network.clone(),
-                    leviticus_url,
-                )
-            } else {
-                error!("Leviticus URL is not provided");
+    let mut synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
+        match contracts.synthetic_data_validator.clone() {
+            Some(validator) => {
+                if let Some(leviticus_url) = args.leviticus_url {
+                    Some(SyntheticDataValidator::new(
+                        None,
+                        pool_id,
+                        validator,
+                        contracts.prime_network.clone(),
+                        leviticus_url,
+                    ))
+                } else {
+                    error!("Leviticus URL is not provided");
+                    std::process::exit(1);
+                }
+            }
+            None => {
+                error!("Synthetic data validator not found");
                 std::process::exit(1);
             }
         }
-        None => {
-            error!("Synthetic data validator not found");
-            std::process::exit(1);
-        }
+    } else {
+        None
     };
 
     loop {
-        runtime.block_on(async {
-            let validation_result = synthetic_validator.validate_work().await;
-            println!("Validation result: {:?}", validation_result);
-        });
+        if let Some(validator) = &mut synthetic_validator {
+            runtime.block_on(async {
+                let validation_result = validator.validate_work().await;
+                println!("Validation result: {:?}", validation_result);
+            });
+        }
 
         async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
             let signature = sign_request(message, wallet, None)
