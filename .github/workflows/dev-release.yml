@@ -117,13 +117,7 @@ jobs:
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
       
-      # Upload to Google Cloud Storage
-      - name: Upload to GCS
-        run: |
-          gsutil -m cp -r release-artifacts/* gs://prime-protocol/${{ steps.tag.outputs.tag_name }}/
-          gsutil -m cp -r gs://prime-protocol/${{ steps.tag.outputs.tag_name }}/* gs://prime-protocol/latest/
-          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-protocol/latest/**/*
-
+   
       - name: Generate Docker metadata
         id: meta
         run: |
