@@ -319,7 +319,10 @@ pub async fn execute_command(
                     std::process::exit(1);
                 }
             };
-            println!("Required stake: {}", required_stake);
+            Console::info(
+                "Required stake",
+                &format!("{}", required_stake / U256::from(10u128.pow(18))),
+            );
 
             // TODO: Currently we do not increase stake when adding more nodes
 
@@ -363,7 +366,10 @@ pub async fn execute_command(
                     std::process::exit(1);
                 }
             };
-            Console::info("Provider stake:", &format!("{}", provider_stake));
+            Console::info(
+                "Provider stake",
+                &format!("{}", provider_stake / U256::from(10u128.pow(18))),
+            );
 
             if provider_stake < required_stake {
                 let spinner = Console::spinner("Increasing stake...");
