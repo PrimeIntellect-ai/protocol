@@ -112,7 +112,7 @@ fn main() {
                     validator,
                     contracts.prime_network.clone(),
                     leviticus_url,
-                    penalty
+                    penalty,
                 )
             } else {
                 error!("Leviticus URL is not provided");
