@@ -36,6 +36,7 @@ pub struct SyntheticDataValidator {
     last_validation_timestamp: U256,
     state_dir: Option<PathBuf>,
     leviticus_url: String,
+    penalty: U256,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -53,6 +54,7 @@ impl SyntheticDataValidator {
         validator: SyntheticDataWorkValidator,
         prime_network: PrimeNetworkContract,
         leviticus_url: String,
+        penalty: U256,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
         let default_state_dir = get_default_state_dir();
@@ -99,6 +101,7 @@ impl SyntheticDataValidator {
             last_validation_timestamp: last_validation_timestamp.unwrap(),
             state_dir: state_path.clone(),
             leviticus_url,
+            penalty,
         }
     }
 
@@ -135,7 +138,7 @@ impl SyntheticDataValidator {
         println!("Invalidating work: {}", work_key);
         match self
             .prime_network
-            .invalidate_work(self.pool_id, U256::from(1), data)
+            .invalidate_work(self.pool_id, self.penalty, data)
             .await
         {
             Ok(_) => Ok(()),
