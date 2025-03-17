@@ -39,8 +39,14 @@ pub async fn handle_file_upload(
         })?
         .replace("/heartbeat", "");
 
+    // Clean filename by removing /data prefix if present
+    let clean_file_name = file_name.trim_start_matches("/data/");
+
     // Construct file path
-    let file = format!("{}/prime-task-{}/{}", storage_path, task_id, file_name);
+    let file = format!(
+        "{}/prime-task-{}/{}",
+        storage_path, task_id, clean_file_name
+    );
     debug!("File: {:?}", file);
 
     // Get file size
@@ -66,7 +72,11 @@ pub async fn handle_file_upload(
     // Create upload request
     let client = Client::new();
     let request = RequestUploadRequest {
-        file_name: file_sha.to_string(),
+        file_name: if clean_file_name.ends_with(".parquet") {
+            format!("{}.parquet", file_sha)
+        } else {
+            file_sha
+        },
         file_size,
         file_type: "application/json".to_string(), // Assume JSON
     };
