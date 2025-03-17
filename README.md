@@ -142,7 +142,7 @@ make setup
 3. You can now launch a worker.
 - Adjust the .env var `WORKER_EXTERNAL_IP` to: `WORKER_EXTERNAL_IP=host.docker.internal` 
 - Launch the worker using `make watch-worker`
-- whitelist the worker once you see the whitelist alert using: `make whitelist-provide`
+- whitelist the worker once you see the whitelist alert using: `make whitelist-provider`
 
 ### Running a Worker Node
 
