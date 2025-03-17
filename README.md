@@ -126,6 +126,24 @@ This will launch:
 - Redis instance
 - Supporting infrastructure
 
+### Running in docker compose
+You can run all supporting services (chain, validator, discovery, orchestrator) in docker compose.
+
+1.Start docker compose:
+```bash
+docker compose up
+```
+
+2. Run Setup:  
+```
+make setup
+```
+
+3. You can now launch a worker.
+- Adjust the .env var `WORKER_EXTERNAL_IP` to: `WORKER_EXTERNAL_IP=host.docker.internal` 
+- Launch the worker using `make watch-worker`
+- whitelist the worker once you see the whitelist alert using: `make whitelist-provider`
+
 ### Running a Worker Node
 
 Once the core services are running, you can start a worker node in a new terminal:
@@ -213,3 +231,7 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 
 ## Security
 See [SECURITY.md](SECURITY.md) for security policies and reporting vulnerabilities.
+
+## Additional Resources
+
+- [Anvil Testchain Deployment Guide](./docs/testchain-deployment.md) - Commands and troubleshooting for setting up an Anvil testchain
