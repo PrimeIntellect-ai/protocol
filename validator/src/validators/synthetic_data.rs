@@ -169,7 +169,8 @@ impl SyntheticDataValidator {
                     );
 
                     // Start validation by calling validation endpoint with retries
-                    let validate_url = format!("{}/validate/{}", self.leviticus_url, work_key);
+                    let validate_url =
+                        format!("{}/validate/{}.parquet", self.leviticus_url, work_key);
                     let client = reqwest::Client::new();
 
                     let mut validate_attempts = 0;
@@ -208,7 +209,8 @@ impl SyntheticDataValidator {
                     match validation_result {
                         Ok(_) => {
                             // Poll status endpoint until we get a proper response
-                            let status_url = format!("{}/status/{}", self.leviticus_url, work_key);
+                            let status_url =
+                                format!("{}/status/{}.parquet", self.leviticus_url, work_key);
                             let mut status_attempts = 0;
                             const MAX_STATUS_ATTEMPTS: u32 = 5;
 
