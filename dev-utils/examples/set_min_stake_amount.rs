@@ -1,3 +1,4 @@
+use alloy::primitives::utils::Unit;
 use alloy::primitives::U256;
 use clap::Parser;
 use eyre::Result;
@@ -9,7 +10,7 @@ use url::Url;
 struct Args {
     /// Minimum stake amount to set
     #[arg(short = 'm', long)]
-    min_stake_amount: u64,
+    min_stake_amount: f64,
 
     /// Private key for transaction signing
     #[arg(short = 'k', long)]
@@ -34,13 +35,13 @@ async fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    let min_stake_amount = U256::from(args.min_stake_amount);
+    let min_stake_amount = U256::from(args.min_stake_amount) * Unit::ETHER.wei();
+    println!("Min stake amount: {}", min_stake_amount);
 
     let tx = contracts
         .prime_network
         .set_stake_minimum(min_stake_amount)
         .await;
-    println!("Setting minimum stake amount: {}", args.min_stake_amount);
     println!("Transaction: {:?}", tx);
 
     Ok(())
