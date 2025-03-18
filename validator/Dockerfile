@@ -11,6 +11,7 @@ ENV WORK_VALIDATION_CONTRACT=""
 ENV POOL_ID=""
 ENV WORK_VALIDATION_INTERVAL="30"
 ENV LEVITICUS_URL=""
+ENV LEVITICUS_TOKEN=""
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/validator \
@@ -21,6 +22,7 @@ exec /usr/local/bin/validator \
 --pool-id "$POOL_ID" \
 --work-validation-interval "$WORK_VALIDATION_INTERVAL" \
 --leviticus-url "$LEVITICUS_URL" \
+$([ ! -z "$LEVITICUS_TOKEN" ] && echo "--leviticus-token $LEVITICUS_TOKEN") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 
