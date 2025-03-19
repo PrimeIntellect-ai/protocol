@@ -177,6 +177,48 @@ impl ComputePool {
         Ok(result)
     }
 
+    pub async fn is_node_blacklisted(
+        &self,
+        pool_id: u32,
+        node: Address,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let arg_pool_id: U256 = U256::from(pool_id);
+        let result = self
+            .instance
+            .instance()
+            .function(
+                "isNodeBlacklistedFromPool",
+                &[arg_pool_id.into(), node.into()],
+            )?
+            .call()
+            .await?;
+        Ok(result.first().unwrap().as_bool().unwrap())
+    }
+
+    pub async fn get_blacklisted_nodes(
+        &self,
+        pool_id: u32,
+    ) -> Result<Vec<Address>, Box<dyn std::error::Error>> {
+        let arg_pool_id: U256 = U256::from(pool_id);
+        let result = self
+            .instance
+            .instance()
+            .function("getBlacklistedNodes", &[arg_pool_id.into()])?
+            .call()
+            .await?;
+
+        let blacklisted_nodes = result
+            .first()
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|node| node.as_address().unwrap())
+            .collect();
+
+        Ok(blacklisted_nodes)
+    }
+
     pub async fn eject_node(
         &self,
         pool_id: u32,
