@@ -50,6 +50,10 @@ struct Args {
     /// Optional: Leviticus Validator URL
     #[arg(long, default_value = None)]
     leviticus_url: Option<String>,
+
+    /// Optional: Leviticus Auth Token
+    #[arg(long, default_value = None)]
+    leviticus_token: Option<String>,
 }
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -105,6 +109,7 @@ fn main() {
                         validator,
                         contracts.prime_network.clone(),
                         leviticus_url,
+                        args.leviticus_token,
                     ))
                 } else {
                     error!("Leviticus URL is not provided");

@@ -129,6 +129,7 @@ services:
       - POOL_ID=${WORKER_COMPUTE_POOL_ID}
       - WORK_VALIDATION_INTERVAL=30
       - LEVITICUS_URL=${LEVITICUS_URL}
+      - LEVITICUS_TOKEN=${LEVITICUS_TOKEN}
     depends_on:
       anvil:
         condition: service_healthy
