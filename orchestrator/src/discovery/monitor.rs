@@ -125,7 +125,7 @@ impl<'b> DiscoveryMonitor<'b> {
             match self.store_context.node_store.get_node(&node.address) {
                 Some(existing_node) => {
                     if discovery_node.is_validated
-                        && discovery_node.is_provider_whitelisted == false
+                        && !discovery_node.is_provider_whitelisted
                     {
                         self.store_context
                             .node_store
@@ -139,7 +139,7 @@ impl<'b> DiscoveryMonitor<'b> {
                             "Node {} is no longer active on chain, marking as dead",
                             node.address
                         );
-                        if discovery_node.is_provider_whitelisted == false {
+                        if !discovery_node.is_provider_whitelisted {
                             self.store_context
                                 .node_store
                                 .update_node_status(&node.address, NodeStatus::Ejected);
