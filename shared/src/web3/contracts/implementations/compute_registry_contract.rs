@@ -73,7 +73,6 @@ impl ComputeRegistryContract {
             )?
             .call()
             .await;
-
         // TODO: This should be cleaned up - either we add additional check if this is actually the no-exist error or work on the contract response
         match node_response {
             Ok(response) => {

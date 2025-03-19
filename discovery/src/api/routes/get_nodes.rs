@@ -33,8 +33,6 @@ pub async fn get_nodes_for_pool(
                 .unwrap();
             let owner = pool_info.creator;
             let manager = pool_info.compute_manager_key;
-            println!("Owner: {:?}", owner);
-            println!("Manager: {:?}", manager);
             let address_str = match req.headers().get("x-address") {
                 Some(address) => match address.to_str() {
                     Ok(addr) => addr.to_string(),
