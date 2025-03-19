@@ -111,6 +111,57 @@ impl ProviderOperations {
         });
     }
 
+    pub async fn check_provider_exists(&self) -> Result<bool, ProviderError> {
+        let address = self.wallet.wallet.default_signer().address();
+
+        let provider = self
+            .contracts
+            .compute_registry
+            .get_provider(address)
+            .await
+            .map_err(|_| ProviderError::Other)?;
+
+        Ok(provider.provider_address != Address::default())
+    }
+    pub async fn retry_register_provider(
+        &self,
+        stake: U256,
+        max_attempts: u32,
+        cancellation_token: CancellationToken,
+    ) -> Result<(), ProviderError> {
+        let mut attempts = 0;
+        while attempts < max_attempts {
+            let spinner = Console::spinner("Registering provider...");
+            match self.register_provider(stake).await {
+                Ok(_) => {
+                    spinner.finish_and_clear();
+                    return Ok(());
+                }
+                Err(e) => {
+                    spinner.finish_and_clear();
+                    if let ProviderError::NotWhitelisted = e {
+                        Console::error("❌ Provider not whitelisted, retrying in 15 seconds...");
+                        tokio::select! {
+                            _ = tokio::time::sleep(tokio::time::Duration::from_secs(15)) => {}
+                            _ = cancellation_token.cancelled() => {
+                                return Err(e);
+                            }
+                        }
+                        attempts += 1;
+                        continue;
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        Console::error(&format!(
+            "❌ Failed to register provider after {} attempts",
+            attempts
+        ));
+        Err(ProviderError::Other)
+    }
+
     pub async fn register_provider(&self, stake: U256) -> Result<(), ProviderError> {
         Console::section("🏗️ Registering Provider");
 
@@ -128,15 +179,8 @@ impl ProviderOperations {
             .await
             .map_err(|_| ProviderError::Other)?;
 
-        // Check if we are already provider
-        let provider = self
-            .contracts
-            .compute_registry
-            .get_provider(address)
-            .await
-            .map_err(|_| ProviderError::Other)?;
+        let provider_exists = self.check_provider_exists().await?;
 
-        let provider_exists = provider.provider_address != Address::default();
         Console::info(
             "AI Token Balance",
             &format!("{} tokens", balance / U256::from(10u128.pow(18))),

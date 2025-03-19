@@ -72,12 +72,7 @@ impl<'c> ComputeNodeOperations<'c> {
         });
     }
 
-    // Returns true if the compute node was added, false if it already exists
-    pub async fn add_compute_node(
-        &self,
-        compute_units: U256,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        Console::section("🔄 Adding compute node");
+    pub async fn check_compute_node_exists(&self) -> Result<bool, Box<dyn std::error::Error>> {
         let compute_node = self
             .contracts
             .compute_registry
@@ -90,14 +85,27 @@ impl<'c> ComputeNodeOperations<'c> {
         match compute_node {
             Ok(_) => {
                 Console::info("Compute node status", "Compute node already exists");
-                return Ok(false);
+                Ok(true)
             }
             Err(_) => {
                 Console::info(
                     "Compute node status",
                     "Compute node does not exist - creating",
                 );
+                Ok(false)
             }
+        }
+    }
+
+    // Returns true if the compute node was added, false if it already exists
+    pub async fn add_compute_node(
+        &self,
+        compute_units: U256,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        Console::section("🔄 Adding compute node");
+
+        if self.check_compute_node_exists().await? {
+            return Ok(false);
         }
 
         Console::progress("Adding compute node");
