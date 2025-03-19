@@ -328,20 +328,6 @@ pub async fn execute_command(
 
             provider_ops.start_monitoring(provider_ops_cancellation);
 
-            /*if provider_stake < required_stake {
-                let spinner = Console::spinner("Increasing stake...");
-                if let Err(e) = provider_ops
-                    .increase_stake(required_stake - provider_stake)
-                    .await
-                {
-                    spinner.finish_and_clear();
-                    Console::error(&format!("❌ Failed to increase stake: {}", e));
-                    std::process::exit(1);
-                }
-                spinner.finish_and_clear();
-            }*/
-
-            // TODO: Does the compute node already exist - is this a restart?
             let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
                 Ok(exists) => exists,
                 Err(e) => {
