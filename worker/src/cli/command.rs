@@ -166,7 +166,6 @@ pub async fn execute_command(
             let pool_id = U256::from(*compute_pool_id as u32);
 
             Console::progress("Loading pool info");
-            println!("Loading pool info {}", pool_id);
             let pool_info = loop {
                 match contracts.compute_pool.get_pool_info(pool_id).await {
                     Ok(pool) if pool.status == PoolStatus::ACTIVE => break Arc::new(pool),
