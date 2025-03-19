@@ -47,10 +47,13 @@ async fn request_upload(
             "success": true,
             "signed_url": signed_url
         })),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "success": false,
-            "error": format!("Failed to generate upload URL: {}", e)
-        })),
+        Err(e) => {
+            log::error!("Failed to generate upload URL: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to generate upload URL: {}", e)
+            }))
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+use alloy::primitives::utils::Unit;
 use alloy::primitives::Address;
 use alloy::primitives::U256;
 use clap::Parser;
@@ -22,7 +23,7 @@ struct Args {
     rpc_url: String,
 
     /// Amount to mint
-    #[arg(short = 'm', long, default_value = "1000")]
+    #[arg(short = 'm', long, default_value = "30000")]
     amount: u64,
 }
 
@@ -41,7 +42,7 @@ async fn main() -> Result<()> {
         .unwrap();
 
     let address = Address::from_str(&args.address).unwrap();
-    let amount = U256::from(args.amount);
+    let amount = U256::from(args.amount) * Unit::ETHER.wei();
     let tx = contracts.ai_token.mint(address, amount).await;
     println!("Minting to address: {}", args.address);
     println!("Transaction: {:?}", tx);

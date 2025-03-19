@@ -13,6 +13,7 @@ use crate::services::discovery::DiscoveryService;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::U256;
+use alloy::signers::local::PrivateKeySigner;
 use clap::{Parser, Subcommand};
 use log::debug;
 use shared::models::node::Node;
@@ -81,8 +82,10 @@ pub enum Commands {
         #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
         validator_address: Option<String>,
     },
-    /// Run system checks to verify hardware and software compatibility
     Check {},
+
+    /// Generate new wallets for provider and node
+    GenerateWallets {},
 }
 
 pub async fn execute_command(
@@ -319,7 +322,10 @@ pub async fn execute_command(
                     std::process::exit(1);
                 }
             };
-            println!("Required stake: {}", required_stake);
+            Console::info(
+                "Required stake",
+                &format!("{}", required_stake / U256::from(10u128.pow(18))),
+            );
 
             // TODO: Currently we do not increase stake when adding more nodes
 
@@ -363,7 +369,10 @@ pub async fn execute_command(
                     std::process::exit(1);
                 }
             };
-            Console::info("Provider stake:", &format!("{}", provider_stake));
+            Console::info(
+                "Provider stake",
+                &format!("{}", provider_stake / U256::from(10u128.pow(18))),
+            );
 
             if provider_stake < required_stake {
                 let spinner = Console::spinner("Increasing stake...");
@@ -456,6 +465,24 @@ pub async fn execute_command(
                 }
             }
             let _ = software_check::run_software_check();
+            Ok(())
+        }
+        Commands::GenerateWallets {} => {
+            let provider_signer = PrivateKeySigner::random();
+            let node_signer = PrivateKeySigner::random();
+
+            println!("Provider wallet:");
+            println!("  Address: {}", provider_signer.address());
+            println!(
+                "  Private key: {}",
+                hex::encode(provider_signer.credential().to_bytes())
+            );
+            println!("\nNode wallet:");
+            println!("  Address: {}", node_signer.address());
+            println!(
+                "  Private key: {}",
+                hex::encode(node_signer.credential().to_bytes())
+            );
             Ok(())
         }
     }

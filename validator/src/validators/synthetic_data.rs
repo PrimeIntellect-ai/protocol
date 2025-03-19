@@ -36,6 +36,7 @@ pub struct SyntheticDataValidator {
     last_validation_timestamp: U256,
     state_dir: Option<PathBuf>,
     leviticus_url: String,
+    leviticus_token: Option<String>,
     penalty: U256,
 }
 
@@ -54,6 +55,7 @@ impl SyntheticDataValidator {
         validator: SyntheticDataWorkValidator,
         prime_network: PrimeNetworkContract,
         leviticus_url: String,
+        leviticus_token: Option<String>,
         penalty: U256,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
@@ -101,6 +103,7 @@ impl SyntheticDataValidator {
             last_validation_timestamp: last_validation_timestamp.unwrap(),
             state_dir: state_path.clone(),
             leviticus_url,
+            leviticus_token,
             penalty,
         }
     }
@@ -172,8 +175,27 @@ impl SyntheticDataValidator {
                     );
 
                     // Start validation by calling validation endpoint with retries
-                    let validate_url = format!("{}/validate/{}", self.leviticus_url, work_key);
-                    let client = reqwest::Client::new();
+                    let validate_url =
+                        format!("{}/validate/{}.parquet", self.leviticus_url, work_key);
+                    let mut client = reqwest::Client::builder();
+
+                    // Add auth token if provided
+                    if let Some(token) = &self.leviticus_token {
+                        client = client.default_headers({
+                            let mut headers = reqwest::header::HeaderMap::new();
+                            headers.insert(
+                                reqwest::header::AUTHORIZATION,
+                                reqwest::header::HeaderValue::from_str(&format!(
+                                    "Bearer {}",
+                                    token
+                                ))
+                                .expect("Invalid token"),
+                            );
+                            headers
+                        });
+                    }
+
+                    let client = client.build().expect("Failed to build HTTP client");
 
                     let mut validate_attempts = 0;
                     const MAX_VALIDATE_ATTEMPTS: u32 = 3;
@@ -211,7 +233,8 @@ impl SyntheticDataValidator {
                     match validation_result {
                         Ok(_) => {
                             // Poll status endpoint until we get a proper response
-                            let status_url = format!("{}/status/{}", self.leviticus_url, work_key);
+                            let status_url =
+                                format!("{}/status/{}.parquet", self.leviticus_url, work_key);
                             let mut status_attempts = 0;
                             const MAX_STATUS_ATTEMPTS: u32 = 5;
 

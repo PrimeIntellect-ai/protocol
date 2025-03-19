@@ -52,9 +52,16 @@ impl<'c> ProviderOperations<'c> {
             .map_err(|_| ProviderError::Other)?;
 
         let provider_exists = provider.provider_address != Address::default();
-        Console::info("AI Token Balance", &format!("{} tokens", balance));
-        Console::info("ETH Balance", &format!("{} ETH", eth_balance));
+        Console::info(
+            "AI Token Balance",
+            &format!("{} tokens", balance / U256::from(10u128.pow(18))),
+        );
+        Console::info(
+            "ETH Balance",
+            &format!("{} ETH", eth_balance / U256::from(10u128.pow(18))),
+        );
         Console::info("Provider registered:", &format!("{}", provider_exists));
+
         if !provider_exists {
             let spinner = Console::spinner("Approving AI Token for Stake transaction");
             let approve_tx = self
@@ -115,8 +122,14 @@ impl<'c> ProviderOperations<'c> {
             .await
             .map_err(|_| ProviderError::Other)?;
 
-        Console::info("Current AI Token Balance", &format!("{} tokens", balance));
-        Console::info("Additional stake amount", &format!("{}", additional_stake));
+        Console::info(
+            "Current AI Token Balance",
+            &format!("{} tokens", balance / U256::from(10u128.pow(18))),
+        );
+        Console::info(
+            "Additional stake amount",
+            &format!("{}", additional_stake / U256::from(10u128.pow(18))),
+        );
 
         if balance < additional_stake {
             Console::error("Insufficient token balance for stake increase");

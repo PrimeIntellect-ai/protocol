@@ -128,13 +128,6 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         uses: google-github-actions/setup-gcloud@v1
       
-      - name: Upload to GCS
-        if: steps.check_tag.outputs.exists == 'false'
-        run: |
-          gsutil -m cp -r release-artifacts/* gs://prime-protocol/v${{ steps.get_version.outputs.version }}/
-          gsutil -m cp -r release-artifacts/* gs://prime-protocol/stable/
-          gsutil -m setmeta -h "Cache-Control:no-cache, max-age=0" gs://prime-protocol/stable/**/*
-
       - name: Configure Docker for Artifact Registry
         if: steps.check_tag.outputs.exists == 'false'
         run: |
