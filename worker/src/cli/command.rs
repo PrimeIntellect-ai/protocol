@@ -400,7 +400,7 @@ pub async fn execute_command(
                 }
             }
 
-            // Start monitoring compute node status
+            // Start monitoring compute node status on chain
             compute_node_ops.start_monitoring(cancellation_token.clone());
 
             if let Err(e) = discovery_service.upload_discovery_info(&node_config).await {

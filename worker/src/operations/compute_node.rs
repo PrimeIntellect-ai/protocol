@@ -1,10 +1,10 @@
 use crate::console::Console;
 use alloy::{primitives::utils::keccak256 as keccak, primitives::U256, signers::Signer};
-use shared::web3::contracts::core::builder::{ContractBuilder, Contracts};
+use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
+use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
-use std::sync::Arc;
 
 pub struct ComputeNodeOperations<'c> {
     provider_wallet: &'c Wallet,
