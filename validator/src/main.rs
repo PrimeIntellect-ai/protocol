@@ -60,7 +60,6 @@ struct Args {
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
     #[arg(long, default_value = "1000")]
     validator_penalty: u64,
-   
 }
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
