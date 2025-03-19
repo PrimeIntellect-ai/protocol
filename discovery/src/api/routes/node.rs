@@ -31,13 +31,13 @@ pub async fn register_node(
             .json(ApiResponse::new(false, "Invalid x-address header"));
     }
     if let Some(contracts) = data.contracts.clone() {
-        if let Err(_) = contracts
+        if (contracts
             .compute_registry
             .get_node(
                 node.provider_address.parse().unwrap(),
                 node.id.parse().unwrap(),
             )
-            .await
+            .await).is_err()
         {
             return HttpResponse::BadRequest().json(ApiResponse::new(
                 false,
