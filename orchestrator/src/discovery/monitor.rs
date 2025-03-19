@@ -124,9 +124,7 @@ impl<'b> DiscoveryMonitor<'b> {
             let node = OrchestratorNode::from(discovery_node.clone());
             match self.store_context.node_store.get_node(&node.address) {
                 Some(existing_node) => {
-                    if discovery_node.is_validated
-                        && !discovery_node.is_provider_whitelisted
-                    {
+                    if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
                         self.store_context
                             .node_store
                             .update_node_status(&node.address, NodeStatus::Ejected);

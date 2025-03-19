@@ -153,7 +153,7 @@ mod tests {
             node,
             is_validated: true,
             is_active: true,
-            is_provider_whitelisted: false
+            is_provider_whitelisted: false,
         };
 
         app_state.node_store.update_node(validated);
