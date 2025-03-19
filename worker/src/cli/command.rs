@@ -35,14 +35,6 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     Run {
-        /// Wallet private key (as a hex string)
-        #[arg(long)]
-        private_key_provider: String,
-
-        /// Wallet private key (as a hex string)
-        #[arg(long)]
-        private_key_node: String,
-
         /// RPC URL
         #[arg(long, default_value = "http://localhost:8545")]
         rpc_url: String,
@@ -95,8 +87,6 @@ pub async fn execute_command(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match command {
         Commands::Run {
-            private_key_provider,
-            private_key_node,
             port,
             external_ip,
             compute_pool_id,
@@ -115,6 +105,11 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
+            let private_key_provider =
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set");
+            let private_key_node =
+                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set");
+
             let mut recover_last_state = *auto_recover;
             let version = env!("CARGO_PKG_VERSION");
             Console::section("🚀 PRIME MINER INITIALIZATION");
@@ -123,7 +118,7 @@ pub async fn execute_command(
              Initialize Wallet instances
             */
             let provider_wallet_instance = Arc::new(
-                match Wallet::new(private_key_provider, Url::parse(rpc_url).unwrap()) {
+                match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         Console::error(&format!("❌ Failed to create wallet: {}", err));
@@ -133,7 +128,7 @@ pub async fn execute_command(
             );
 
             let node_wallet_instance = Arc::new(
-                match Wallet::new(private_key_node, Url::parse(rpc_url).unwrap()) {
+                match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         Console::error(&format!("❌ Failed to create wallet: {}", err));

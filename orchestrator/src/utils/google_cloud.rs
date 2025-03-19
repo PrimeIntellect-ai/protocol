@@ -11,6 +11,7 @@ pub async fn generate_upload_signed_url(
     credentials_base64: &str,
     content_type: Option<String>,
     expiration: Duration,
+    max_bytes: Option<u64>, // Maximum file size in bytes
 ) -> Result<String> {
     // Decode base64 to JSON string
     let credentials_json = general_purpose::STANDARD.decode(credentials_base64)?;
@@ -27,12 +28,17 @@ pub async fn generate_upload_signed_url(
     let client = Client::new(config);
 
     // Set options for the signed URL
-    let options = SignedURLOptions {
+    let mut options = SignedURLOptions {
         method: SignedURLMethod::PUT,
         expires: expiration,
         content_type,
         ..Default::default()
     };
+
+    // Set max bytes if specified
+    if let Some(bytes) = max_bytes {
+        options.headers = vec![format!("content-length:{}", bytes)];
+    }
 
     // Generate the signed URL
     let signed_url = client

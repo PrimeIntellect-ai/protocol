@@ -1,6 +1,7 @@
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use alloy::primitives::Address;
+use alloy::primitives::utils::Unit;
+use alloy::primitives::{Address, U256};
 use anyhow::{Context, Result};
 use clap::Parser;
 use log::LevelFilter;
@@ -54,6 +55,11 @@ struct Args {
     /// Optional: Leviticus Auth Token
     #[arg(long, default_value = None)]
     leviticus_token: Option<String>,
+
+    /// Optional: Validator penalty in whole tokens
+    /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
+    #[arg(long, default_value = "1000")]
+    validator_penalty: u64,
 }
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -100,6 +106,7 @@ fn main() {
     let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
 
     let mut synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
+        let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
                 if let Some(leviticus_url) = args.leviticus_url {
@@ -110,6 +117,7 @@ fn main() {
                         contracts.prime_network.clone(),
                         leviticus_url,
                         args.leviticus_token,
+                        penalty,
                     ))
                 } else {
                     error!("Leviticus URL is not provided");

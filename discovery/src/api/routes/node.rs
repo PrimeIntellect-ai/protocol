@@ -3,6 +3,7 @@ use actix_web::{
     web::{self, put, Data},
     HttpResponse, Scope,
 };
+use alloy::primitives::U256;
 use shared::models::api::ApiResponse;
 use shared::models::node::Node;
 
@@ -11,6 +12,20 @@ pub async fn register_node(
     data: Data<AppState>,
     req: actix_web::HttpRequest,
 ) -> HttpResponse {
+    if let Some(contracts) = data.contracts.clone() {
+        let balance = contracts
+            .ai_token
+            .balance_of(node.provider_address.parse().unwrap())
+            .await
+            .unwrap_or_default();
+        if balance == U256::ZERO {
+            return HttpResponse::BadRequest().json(ApiResponse::new(
+                false,
+                "Node provider address does not hold AI tokens",
+            ));
+        }
+    }
+
     let node_store = data.node_store.clone();
 
     // Check for the x-address header
@@ -154,6 +169,7 @@ mod tests {
             is_validated: true,
             is_active: true,
             is_provider_whitelisted: false,
+            is_blacklisted: false,
         };
 
         app_state.node_store.update_node(validated);
