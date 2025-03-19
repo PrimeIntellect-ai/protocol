@@ -158,3 +158,8 @@ kill-tunnel:
 remote-worker:
 	@trap 'make kill-tunnel' EXIT; \
 	make watch-worker-remote
+
+# testing:
+eject-node:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example eject_node -- --pool-id $${WORKER_COMPUTE_POOL_ID} --node $${NODE_ADDRESS} --provider-address $${PROVIDER_ADDRESS} --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL}

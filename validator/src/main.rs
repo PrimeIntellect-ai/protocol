@@ -123,8 +123,9 @@ fn main() {
     loop {
         if let Some(validator) = &mut synthetic_validator {
             runtime.block_on(async {
-                let validation_result = validator.validate_work().await;
-                println!("Validation result: {:?}", validation_result);
+                if let Err(e) = validator.validate_work().await {
+                    error!("Failed to validate work: {}", e);
+                }
             });
         }
 

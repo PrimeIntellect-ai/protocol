@@ -166,8 +166,7 @@ pub async fn execute_command(
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,
                 &node_wallet_instance,
-                &contracts.compute_registry,
-                &contracts.prime_network,
+                contracts.clone(),
             );
 
             let discovery_service =
@@ -400,6 +399,9 @@ pub async fn execute_command(
                     std::process::exit(1);
                 }
             }
+
+            // Start monitoring compute node status
+            compute_node_ops.start_monitoring(cancellation_token.clone());
 
             if let Err(e) = discovery_service.upload_discovery_info(&node_config).await {
                 Console::error(&format!("❌ Failed to upload discovery info: {}", e));
