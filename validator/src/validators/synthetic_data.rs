@@ -1,4 +1,3 @@
-use alloy::primitives::utils::Unit;
 use alloy::primitives::U256;
 use anyhow::{Context, Error, Result};
 use directories::ProjectDirs;
