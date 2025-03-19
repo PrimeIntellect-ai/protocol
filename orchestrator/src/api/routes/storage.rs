@@ -40,6 +40,7 @@ async fn request_upload(
         credentials,
         Some(file_type.to_string()),
         Duration::from_secs(3600), // 1 hour expiry
+        Some(*file_size),
     )
     .await
     {
