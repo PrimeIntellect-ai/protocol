@@ -52,7 +52,8 @@ struct Args {
     #[arg(long, default_value = None)]
     leviticus_url: Option<String>,
 
-    /// Optional: Validator penalty
+    /// Optional: Validator penalty in whole tokens
+    /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
     #[arg(long, default_value = "1000")]
     validator_penalty: u64,
 }
