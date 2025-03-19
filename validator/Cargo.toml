@@ -4,25 +4,28 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-actix-web = "4.9.0"
-alloy = { version = "0.9.2", features = ["full"] }
-anyhow = "1.0.95"
-chrono = "0.4.40"
-clap = { version = "4.5.26", features = ["derive"] }
-directories = "6.0.0"
-env_logger = "0.11.6"
-futures = "0.3.31"
-hex = "0.4.3"
-log = "0.4.25"
-nalgebra = "0.33.2"
+actix-web = { workspace = true }
+alloy = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+directories = { workspace = true }
+env_logger = { workspace = true }
+futures = { workspace = true }
+hex = { workspace = true }
+log = { workspace = true }
+nalgebra = { workspace = true }
 rand = "0.9.0"
-redis = "0.28.1"
-redis-test = "0.8.0"
-reqwest = "0.12.12"
-serde = "1.0.217"
-serde_json = "1.0.135"
-shared = { path = "../shared" }
-tokio = "1.43.0"
-tokio-util = "0.7.14"
-toml = "0.8.20"
-url = "2.5.4"
+redis = { workspace = true }
+redis-test = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+shared = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+toml = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+tempfile = "=3.14.0"

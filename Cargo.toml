@@ -1,6 +1,38 @@
 [workspace]
-members = ["discovery", "worker", "validator", "shared", "orchestrator", "dev-utils"]
+members = [
+    "discovery",
+    "worker",
+    "validator",
+    "shared",
+    "orchestrator",
+    "dev-utils",
+]
 resolver = "2"
+
+[workspace.dependencies]
+shared = { path = "shared" }
+actix-web = "4.9.0"
+clap = { version = "4.5.27", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.43.0", features = ["full"] }
+uuid = { version = "1.5", features = ["v4", "serde"] }
+log = { version = "0.4.26" }
+env_logger = { version = "0.11.6" }
+futures-util = { version = "0.3.31" }
+alloy = { version = "0.9.2", features = ["full"] }
+url = "2.5.4"
+serde_json = "1.0.137"
+reqwest = "0.12.12"
+hex = "0.4.3"
+anyhow = "1.0.95"
+toml = "0.8.20"
+tokio-util = "0.7.13"
+futures = "0.3.31"
+chrono = "0.4.40"
+directories = "6.0.0"
+nalgebra = "0.33.2"
+redis = "0.28.1"
+redis-test = "0.8.0"
 
 [workspace.package]
 version = "0.2.4"
