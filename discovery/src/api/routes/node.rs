@@ -37,7 +37,8 @@ pub async fn register_node(
                 node.provider_address.parse().unwrap(),
                 node.id.parse().unwrap(),
             )
-            .await).is_err()
+            .await)
+            .is_err()
         {
             return HttpResponse::BadRequest().json(ApiResponse::new(
                 false,
