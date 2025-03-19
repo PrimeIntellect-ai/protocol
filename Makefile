@@ -73,7 +73,9 @@ watch-discovery:
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS"
+	PRIVATE_KEY_PROVIDER=$${PROVIDER_PRIVATE_KEY} \
+	PRIVATE_KEY_NODE=$${NODE_PRIVATE_KEY} \
+	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS"
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -87,8 +89,10 @@ build-worker:
 	cargo build --release --bin worker
 
 run-worker-bin:
+	@test -n "$$PRIVATE_KEY_PROVIDER" || (echo "PRIVATE_KEY_PROVIDER is not set" && exit 1)
+	@test -n "$$PRIVATE_KEY_NODE" || (echo "PRIVATE_KEY_NODE is not set" && exit 1)
 	set -a; source .env; set +a; \
-	./target/release/worker run --private-key-provider $$PROVIDER_PRIVATE_KEY --private-key-node $$NODE_PRIVATE_KEY --port 8091 --external-ip 0.0.0.0 --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS
+	./target/release/worker run --port 8091 --external-ip 0.0.0.0 --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS
 
 SSH_CONNECTION ?= your-ssh-conn string
 EXTERNAL_IP ?= 0.0.0.0
@@ -138,9 +142,7 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 		. \"\$$HOME/.cargo/env\" && \
 		set -a && source .env && set +a && \
 		export EXTERNAL_IP=$(EXTERNAL_IP) && \
-		RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w worker/src -x \"run --bin worker -- run \
-			--private-key-provider \$$PROVIDER_PRIVATE_KEY \
-			--private-key-node \$$NODE_PRIVATE_KEY \
+		RUST_BACKTRACE=1 RUST_LOG=debug PRIVATE_KEY_PROVIDER="$$PROVIDER_PRIVATE_KEY" PRIVATE_KEY_NODE="$$NODE_PRIVATE_KEY" cargo watch -w worker/src -x \"run --bin worker -- run \
 			--port $(PORT) \
 			--external-ip \$$EXTERNAL_IP \
 			--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
