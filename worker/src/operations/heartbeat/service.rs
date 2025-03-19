@@ -187,9 +187,20 @@ impl HeartbeatService {
 
         let heartbeat_response = response.data.clone();
         log::debug!("Heartbeat response: {:?}", heartbeat_response);
+
+        // Get current task before updating
+        let current_task = docker_service.state.get_current_task().await;
+
         let task = match heartbeat_response.current_task {
             Some(task) => {
-                log::info!("Current task is to run image: {:?}", task.image);
+                // Only log if task image changed or there was no previous task
+                if current_task
+                    .as_ref()
+                    .map(|t| t.image != task.image)
+                    .unwrap_or(true)
+                {
+                    log::info!("Current task is to run image: {:?}", task.image);
+                }
                 Some(task)
             }
             None => None,

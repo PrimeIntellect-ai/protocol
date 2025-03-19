@@ -1,3 +1,4 @@
+use alloy::primitives::utils::Unit;
 use alloy::primitives::U256;
 use anyhow::{Context, Error, Result};
 use directories::ProjectDirs;
@@ -138,7 +139,7 @@ impl SyntheticDataValidator {
         println!("Invalidating work: {}", work_key);
         match self
             .prime_network
-            .invalidate_work(self.pool_id, U256::from(1), data)
+            .invalidate_work(self.pool_id, U256::from(1000000) * Unit::ETHER.wei(), data)
             .await
         {
             Ok(_) => Ok(()),

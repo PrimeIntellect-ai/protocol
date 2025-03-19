@@ -29,6 +29,8 @@ impl DockerState {
             if task.id == task_id {
                 task.state = state;
             }
+        } else {
+            println!("No current task found when trying to update state");
         }
     }
 

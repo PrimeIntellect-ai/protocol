@@ -2,6 +2,7 @@ use crate::api::routes::nodes::nodes_routes;
 use crate::api::routes::storage::storage_routes;
 use crate::api::routes::task::tasks_routes;
 use crate::api::routes::{heartbeat::heartbeat_routes, metrics::metrics_routes};
+use crate::models::node::NodeStatus;
 use crate::store::core::StoreContext;
 use actix_web::middleware::{Compress, NormalizePath, TrailingSlash};
 use actix_web::{middleware, web::Data, App, HttpServer};
@@ -36,10 +37,13 @@ pub async fn start_server(
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
-    let validator_state = Arc::new(
-        ValidatorState::new(vec![])
-            .with_validator(move |address| node_store_clone.get_node(address).is_some()),
-    );
+    let validator_state = Arc::new(ValidatorState::new(vec![]).with_validator(move |address| {
+        if let Some(node) = node_store_clone.get_node(address) {
+            node.status != NodeStatus::Ejected
+        } else {
+            false
+        }
+    }));
 
     let api_key_middleware = Arc::new(ApiKeyMiddleware::new(admin_api_key));
 

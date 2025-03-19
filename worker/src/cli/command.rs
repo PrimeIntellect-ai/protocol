@@ -156,12 +156,10 @@ pub async fn execute_command(
                     .unwrap(),
             );
 
-            let provider_ops = ProviderOperations::new(
-                &provider_wallet_instance,
-                &contracts.compute_registry,
-                &contracts.ai_token,
-                &contracts.prime_network,
-            );
+            let provider_ops =
+                ProviderOperations::new(provider_wallet_instance.clone(), contracts.clone());
+
+            let provider_ops_cancellation = cancellation_token.clone();
 
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,
@@ -357,6 +355,8 @@ pub async fn execute_command(
                 ));
                 std::process::exit(1);
             };
+
+            provider_ops.start_monitoring(provider_ops_cancellation);
 
             let provider_stake = match stake_manager
                 .get_stake(provider_wallet_instance.wallet.default_signer().address())

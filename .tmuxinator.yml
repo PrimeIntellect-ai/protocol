@@ -12,4 +12,3 @@ windows:
       layout: even-horizontal
       panes:
         - bash -c 'tmux rename-window "Prime Dev Services" && docker compose up anvil redis'
-        - bash -c 'while true; do make whitelist-provider; sleep 10; done'

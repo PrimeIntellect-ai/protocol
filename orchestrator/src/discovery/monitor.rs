@@ -124,6 +124,13 @@ impl<'b> DiscoveryMonitor<'b> {
             let node = OrchestratorNode::from(discovery_node.clone());
             match self.store_context.node_store.get_node(&node.address) {
                 Some(existing_node) => {
+                    if discovery_node.is_validated
+                        && discovery_node.is_provider_whitelisted == false
+                    {
+                        self.store_context
+                            .node_store
+                            .update_node_status(&node.address, NodeStatus::Ejected);
+                    }
                     if !discovery_node.is_active && existing_node.status == NodeStatus::Healthy {
                         // Node is active False but we have it in store and it is healthy
                         // This means that the node likely got kicked by e.g. the validator
@@ -132,9 +139,15 @@ impl<'b> DiscoveryMonitor<'b> {
                             "Node {} is no longer active on chain, marking as dead",
                             node.address
                         );
-                        self.store_context
-                            .node_store
-                            .update_node_status(&node.address, NodeStatus::Dead);
+                        if discovery_node.is_provider_whitelisted == false {
+                            self.store_context
+                                .node_store
+                                .update_node_status(&node.address, NodeStatus::Ejected);
+                        } else {
+                            self.store_context
+                                .node_store
+                                .update_node_status(&node.address, NodeStatus::Dead);
+                        }
                     }
 
                     if existing_node.ip_address != node.ip_address {
