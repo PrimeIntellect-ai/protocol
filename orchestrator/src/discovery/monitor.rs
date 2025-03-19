@@ -1,3 +1,4 @@
+use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::store::core::StoreContext;
 use anyhow::Error;
@@ -55,8 +56,7 @@ impl<'b> DiscoveryMonitor<'b> {
             }
         }
     }
-
-    pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<OrchestratorNode>, Error> {
+    pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<DiscoveryNode>, Error> {
         let discovery_route = format!("/api/pool/{}", self.compute_pool_id);
         let address = self.coordinator_wallet.address().to_string();
 
@@ -112,18 +112,31 @@ impl<'b> DiscoveryMonitor<'b> {
         let nodes = nodes
             .into_iter()
             .filter(|node| node.is_validated)
-            .map(OrchestratorNode::from)
-            .collect::<Vec<OrchestratorNode>>();
+            .collect::<Vec<DiscoveryNode>>();
 
         Ok(nodes)
     }
 
     pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
-        let nodes = self.fetch_nodes_from_discovery().await?;
+        let discovery_nodes = self.fetch_nodes_from_discovery().await?;
 
-        for node in &nodes {
+        for discovery_node in &discovery_nodes {
+            let node = OrchestratorNode::from(discovery_node.clone());
             match self.store_context.node_store.get_node(&node.address) {
                 Some(existing_node) => {
+                    if !discovery_node.is_active && existing_node.status == NodeStatus::Healthy {
+                        // Node is active False but we have it in store and it is healthy
+                        // This means that the node likely got kicked by e.g. the validator
+                        // We simply remove it from the store now and will rediscover it later?
+                        println!(
+                            "Node {} is no longer active on chain, marking as dead",
+                            node.address
+                        );
+                        self.store_context
+                            .node_store
+                            .update_node_status(&node.address, NodeStatus::Dead);
+                    }
+
                     if existing_node.ip_address != node.ip_address {
                         info!(
                             "Node {} IP changed from {} to {}",
@@ -139,6 +152,9 @@ impl<'b> DiscoveryMonitor<'b> {
             }
         }
 
-        Ok(nodes)
+        Ok(discovery_nodes
+            .into_iter()
+            .map(OrchestratorNode::from)
+            .collect())
     }
 }
