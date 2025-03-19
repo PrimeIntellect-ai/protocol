@@ -43,7 +43,7 @@ impl ProviderOperations {
                         };
 
                         // Monitor stake
-                        let stake = match stake_manager.get_stake(provider_address).await {
+                        match stake_manager.get_stake(provider_address).await {
                             Ok(stake) => {
                                 if first_check || stake != last_stake {
                                     Console::info("Provider stake", &format!("{} tokens", stake / U256::from(10u128.pow(18))));
@@ -64,7 +64,7 @@ impl ProviderOperations {
                         };
 
                         // Monitor AI token balance
-                        let balance = match contracts.ai_token.balance_of(provider_address).await {
+                        match contracts.ai_token.balance_of(provider_address).await {
                             Ok(balance) => {
                                 if first_check || balance != last_balance {
                                     Console::info("AI Token Balance", &format!("{} tokens", balance / U256::from(10u128.pow(18))));
