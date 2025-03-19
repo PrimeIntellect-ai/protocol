@@ -161,7 +161,7 @@ pub async fn execute_command(
                 &contracts.compute_registry,
                 &contracts.ai_token,
                 &contracts.prime_network,
-                &auto_accept,
+                auto_accept,
             );
 
             let compute_node_ops = ComputeNodeOperations::new(
