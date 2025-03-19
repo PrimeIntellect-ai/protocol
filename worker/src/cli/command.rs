@@ -73,6 +73,10 @@ pub enum Commands {
 
         #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
         validator_address: Option<String>,
+
+        /// Auto accept transactions
+        #[arg(long, default_value = "false")]
+        auto_accept: bool,
     },
     Check {},
 
@@ -97,6 +101,7 @@ pub async fn execute_command(
             disable_state_storing,
             auto_recover,
             validator_address,
+            auto_accept,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -156,6 +161,7 @@ pub async fn execute_command(
                 &contracts.compute_registry,
                 &contracts.ai_token,
                 &contracts.prime_network,
+                &auto_accept,
             );
 
             let compute_node_ops = ComputeNodeOperations::new(
@@ -325,9 +331,7 @@ pub async fn execute_command(
             // TODO: Currently we do not increase stake when adding more nodes
 
             while attempts < max_attempts {
-                let spinner = Console::spinner("Registering provider...");
                 if let Err(e) = provider_ops.register_provider(required_stake).await {
-                    spinner.finish_and_clear(); // Finish spinner before logging error
                     if let ProviderError::NotWhitelisted = e {
                         Console::error("❌ Provider not whitelisted, retrying in 15 seconds...");
                         tokio::select! {
@@ -343,8 +347,7 @@ pub async fn execute_command(
                         std::process::exit(1);
                     }
                 }
-                spinner.finish_and_clear(); // Finish spinner if registration is successful
-                break; // Exit loop if registration is successful
+                break;
             }
             if attempts >= max_attempts {
                 Console::error(&format!(

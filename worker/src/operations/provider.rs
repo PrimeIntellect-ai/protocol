@@ -6,11 +6,14 @@ use shared::web3::contracts::implementations::{
 };
 use shared::web3::wallet::Wallet;
 use std::fmt;
+use std::io::{self, Write};
+
 pub struct ProviderOperations<'c> {
     wallet: &'c Wallet,
     compute_registry: &'c ComputeRegistryContract,
     ai_token: &'c AIToken,
     prime_network: &'c PrimeNetworkContract,
+    auto_accept: &'c bool,
 }
 
 impl<'c> ProviderOperations<'c> {
@@ -19,12 +22,30 @@ impl<'c> ProviderOperations<'c> {
         compute_registry: &'c ComputeRegistryContract,
         ai_token: &'c AIToken,
         prime_network: &'c PrimeNetworkContract,
+        auto_accept: &'c bool,
     ) -> Self {
         Self {
             wallet,
             compute_registry,
             ai_token,
             prime_network,
+            auto_accept,
+        }
+    }
+
+    fn prompt_user_confirmation(&self, message: &str) -> bool {
+        if *self.auto_accept {
+            return true;
+        }
+
+        print!("{} [y/N]: ", message);
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        if io::stdin().read_line(&mut input).is_ok() {
+            input.trim().to_lowercase() == "y"
+        } else {
+            false
         }
     }
 
@@ -63,16 +84,22 @@ impl<'c> ProviderOperations<'c> {
         Console::info("Provider registered:", &format!("{}", provider_exists));
 
         if !provider_exists {
-            let spinner = Console::spinner("Approving AI Token for Stake transaction");
+            let stake_amount = stake / U256::from(10u128.pow(18));
+            if !self.prompt_user_confirmation(&format!(
+                "Do you want to approve staking {} tokens?",
+                stake_amount
+            )) {
+                Console::info("Operation cancelled by user", "Staking approval declined");
+                return Err(ProviderError::UserCancelled);
+            }
+
             let approve_tx = self
                 .ai_token
                 .approve(stake)
                 .await
                 .map_err(|_| ProviderError::Other)?;
             Console::info("Transaction approved", &format!("{:?}", approve_tx));
-            spinner.finish_and_clear();
 
-            let spinner = Console::spinner("Registering Provider");
             let register_tx = match self.prime_network.register_provider(stake).await {
                 Ok(tx) => tx,
                 Err(e) => {
@@ -84,7 +111,6 @@ impl<'c> ProviderOperations<'c> {
                 "Registration transaction completed: ",
                 &format!("{:?}", register_tx),
             );
-            spinner.finish_and_clear();
         }
 
         // Get provider details again  - cleanup later
@@ -96,7 +122,6 @@ impl<'c> ProviderOperations<'c> {
             .map_err(|_| ProviderError::Other)?;
         spinner.finish_and_clear();
         spinner.abandon();
-        Console::info("Is whitelisted", &format!("{:?}", provider.is_whitelisted));
 
         let provider_exists = provider.provider_address != Address::default();
         if !provider_exists {
@@ -136,6 +161,14 @@ impl<'c> ProviderOperations<'c> {
             return Err(ProviderError::Other);
         }
 
+        if !self.prompt_user_confirmation(&format!(
+            "Do you want to approve staking {} additional tokens?",
+            additional_stake / U256::from(10u128.pow(18))
+        )) {
+            Console::info("Operation cancelled by user", "Staking approval declined");
+            return Err(ProviderError::UserCancelled);
+        }
+
         let spinner = Console::spinner("Approving AI Token for additional stake");
         let approve_tx = self
             .ai_token
@@ -167,6 +200,7 @@ impl<'c> ProviderOperations<'c> {
 #[derive(Debug)]
 pub enum ProviderError {
     NotWhitelisted,
+    UserCancelled,
     Other,
 }
 
@@ -174,6 +208,7 @@ impl fmt::Display for ProviderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotWhitelisted => write!(f, "Provider is not whitelisted"),
+            Self::UserCancelled => write!(f, "Operation cancelled by user"),
             Self::Other => write!(f, "Provider could not be registered"),
         }
     }
