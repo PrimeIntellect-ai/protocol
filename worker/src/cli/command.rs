@@ -105,10 +105,23 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
-            let private_key_provider =
-                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set");
-            let private_key_node =
-                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set");
+            let private_key_provider = match std::env::var("PRIVATE_KEY_PROVIDER") {
+                Ok(key) => key,
+                Err(_) => {
+                    Console::error("❌ PRIVATE_KEY_PROVIDER environment variable is not set. Set the env variable with your provider's private key.");
+                    Console::info("Example", "export PRIVATE_KEY_PROVIDER=0x123...");
+                    std::process::exit(1);
+                }
+            };
+
+            let private_key_node = match std::env::var("PRIVATE_KEY_NODE") {
+                Ok(key) => key,
+                Err(_) => {
+                    Console::error("❌ PRIVATE_KEY_NODE environment variable is not set. Set the env variable with your node's private key.");
+                    Console::info("Example", "export PRIVATE_KEY_NODE=0x123...");
+                    std::process::exit(1);
+                }
+            };
 
             let mut recover_last_state = *auto_recover;
             let version = env!("CARGO_PKG_VERSION");
@@ -170,7 +183,6 @@ pub async fn execute_command(
             let pool_id = U256::from(*compute_pool_id as u32);
 
             Console::progress("Loading pool info");
-            println!("Loading pool info {}", pool_id);
             let pool_info = loop {
                 match contracts.compute_pool.get_pool_info(pool_id).await {
                     Ok(pool) if pool.status == PoolStatus::ACTIVE => break Arc::new(pool),
@@ -187,7 +199,6 @@ pub async fn execute_command(
                     }
                 }
             };
-            println!("Pool info: {:?}", pool_info);
 
             let node_config = Node {
                 id: node_wallet_instance
@@ -437,7 +448,6 @@ pub async fn execute_command(
         }
         Commands::Check {} => {
             Console::section("🔍 PRIME MINER SYSTEM CHECK");
-            Console::info("═", &"═".repeat(50));
 
             // Run hardware checks
             let hardware_checker = HardwareChecker::new();
@@ -452,7 +462,7 @@ pub async fn execute_command(
 
             match hardware_checker.enrich_node_config(node_config) {
                 Ok(_) => {
-                    Console::success("✅ Hardware check passed!");
+                    Console::success("Hardware check completed");
                 }
                 Err(err) => {
                     Console::error(&format!("❌ Hardware check failed: {}", err));
@@ -466,18 +476,25 @@ pub async fn execute_command(
             let provider_signer = PrivateKeySigner::random();
             let node_signer = PrivateKeySigner::random();
 
-            println!("Provider wallet:");
-            println!("  Address: {}", provider_signer.address());
-            println!(
-                "  Private key: {}",
-                hex::encode(provider_signer.credential().to_bytes())
+            Console::section("🔑 GENERATED WALLET CREDENTIALS");
+            Console::info(
+                "Provider Address",
+                &format!("{}", provider_signer.address().to_string()),
             );
-            println!("\nNode wallet:");
-            println!("  Address: {}", node_signer.address());
-            println!(
-                "  Private key: {}",
-                hex::encode(node_signer.credential().to_bytes())
+            Console::info(
+                "Provider Private Key",
+                &format!("{}", hex::encode(provider_signer.credential().to_bytes())),
             );
+            Console::info(
+                "Node Address",
+                &format!("{}", node_signer.address().to_string()),
+            );
+            Console::info(
+                "Node Private Key",
+                &format!("{}", hex::encode(node_signer.credential().to_bytes())),
+            );
+
+            Console::warning("Important: Save these credentials in a secure location. They cannot be recovered if lost.");
             Ok(())
         }
     }

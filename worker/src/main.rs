@@ -87,6 +87,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(_) => log::warn!("Timeout waiting for tasks to cleanup"),
     }
 
-    log::info!("Shutdown complete");
     Ok(())
 }
