@@ -16,7 +16,7 @@ echo -e "${BLUE}"
 echo "╔═══════════════════════════════════════════╗"
 echo "║                                           ║"
 echo "║      Prime Intellect Protocol Worker      ║"
-echo "║             Uninstallation               ║"
+echo "║             Uninstallation                ║"
 echo "╚═══════════════════════════════════════════╝"
 
 # Check for binary
