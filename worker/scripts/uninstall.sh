@@ -40,10 +40,10 @@ echo -e "${GREEN}✓ Binary removed${NC}"
 
 # Clean up PATH in shell config files
 if [[ -f "$HOME/.bashrc" ]]; then
-    sed -i '/export PATH="$PATH:'$USER_INSTALL_DIR'"/d' "$HOME/.bashrc"
+    sed -i "s|export PATH=\"\$PATH:$USER_INSTALL_DIR\"||g" "$HOME/.bashrc"
 fi
 if [[ -f "$HOME/.zshrc" ]]; then
-    sed -i '/export PATH="$PATH:'$USER_INSTALL_DIR'"/d' "$HOME/.zshrc"
+    sed -i "s|export PATH=\"\$PATH:$USER_INSTALL_DIR\"||g" "$HOME/.zshrc"
 fi
 
 echo -e "${GREEN}✓ Prime Intellect Protocol Worker successfully uninstalled${NC}"
