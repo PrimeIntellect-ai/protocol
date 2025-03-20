@@ -75,4 +75,4 @@ else
   echo -e "${RED}✗ Installation verification failed.${NC}"
   echo -e "${BLUE}→ The binary is located at: $INSTALL_DIR/$BINARY_NAME${NC}"
 fi
-echo -e "\n${GREEN}Thank you for installing the Prime Intellect Protocol Worker!${NC}"
+echo -e "\n${GREEN}The Prime Intellect Protocol Worker was successfully installed${NC}"
