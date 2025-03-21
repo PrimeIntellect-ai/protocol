@@ -2,20 +2,43 @@ use crate::console::Console;
 use alloy::primitives::{Address, U256};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
-use std::fmt;
+use std::io::Write;
 use std::sync::Arc;
+use std::{fmt, io};
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 
 pub struct ProviderOperations {
     wallet: Arc<Wallet>,
     contracts: Arc<Contracts>,
+    auto_accept: bool,
 }
 
 impl ProviderOperations {
-    pub fn new(wallet: Arc<Wallet>, contracts: Arc<Contracts>) -> Self {
-        Self { wallet, contracts }
+    pub fn new(wallet: Arc<Wallet>, contracts: Arc<Contracts>, auto_accept: bool) -> Self {
+        Self {
+            wallet,
+            contracts,
+            auto_accept,
+        }
     }
+
+    fn prompt_user_confirmation(&self, message: &str) -> bool {
+        if self.auto_accept {
+            return true;
+        }
+
+        print!("{} [y/N]: ", message);
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        if io::stdin().read_line(&mut input).is_ok() {
+            input.trim().to_lowercase() == "y"
+        } else {
+            false
+        }
+    }
+
     pub fn start_monitoring(&self, cancellation_token: CancellationToken) {
         let provider_address = self.wallet.wallet.default_signer().address();
         let contracts = self.contracts.clone();
@@ -204,6 +227,13 @@ impl ProviderOperations {
                 &format!("{} ETH", eth_balance / U256::from(10u128.pow(18))),
             );
             let spinner = Console::spinner("Approving AI Token for Stake transaction");
+            if !self.prompt_user_confirmation(&format!(
+                "Do you want to approve staking {} tokens?",
+                stake / U256::from(10u128.pow(18))
+            )) {
+                Console::info("Operation cancelled by user", "Staking approval declined");
+                return Err(ProviderError::UserCancelled);
+            }
             self.contracts
                 .ai_token
                 .approve(stake)
@@ -272,6 +302,14 @@ impl ProviderOperations {
             return Err(ProviderError::Other);
         }
 
+        if !self.prompt_user_confirmation(&format!(
+            "Do you want to approve staking {} additional tokens?",
+            additional_stake / U256::from(10u128.pow(18))
+        )) {
+            Console::info("Operation cancelled by user", "Staking approval declined");
+            return Err(ProviderError::UserCancelled);
+        }
+
         let spinner = Console::spinner("Approving AI Token for additional stake");
         let approve_tx = self
             .contracts
@@ -304,6 +342,7 @@ impl ProviderOperations {
 #[derive(Debug)]
 pub enum ProviderError {
     NotWhitelisted,
+    UserCancelled,
     Other,
 }
 
@@ -311,6 +350,7 @@ impl fmt::Display for ProviderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotWhitelisted => write!(f, "Provider is not whitelisted"),
+            Self::UserCancelled => write!(f, "Operation cancelled by user"),
             Self::Other => write!(f, "Provider could not be registered"),
         }
     }
