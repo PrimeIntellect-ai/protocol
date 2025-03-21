@@ -99,7 +99,7 @@ pub async fn execute_command(
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
-                    "❌ Cannot disable state storing and enable auto recover at the same time.",
+                    "Cannot disable state storing and enable auto recover at the same time.",
                 );
                 std::process::exit(1);
             }
@@ -111,8 +111,8 @@ pub async fn execute_command(
 
             let mut recover_last_state = *auto_recover;
             let version = env!("CARGO_PKG_VERSION");
-            Console::section("🚀 PRIME MINER INITIALIZATION");
-            Console::info("Version:", version);
+            Console::section("🚀 PRIME WORKER INITIALIZATION");
+            Console::info("Version", version);
             /*
              Initialize Wallet instances
             */
@@ -120,7 +120,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        Console::error(&format!("❌ Failed to create wallet: {}", err));
+                        Console::error(&format!("Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
                 },
@@ -165,7 +165,6 @@ pub async fn execute_command(
                 DiscoveryService::new(&node_wallet_instance, discovery_url.clone(), None);
             let pool_id = U256::from(*compute_pool_id as u32);
 
-            Console::progress("Loading pool info");
             let pool_info = loop {
                 match contracts.compute_pool.get_pool_info(pool_id).await {
                     Ok(pool) if pool.status == PoolStatus::ACTIVE => break Arc::new(pool),
@@ -182,7 +181,6 @@ pub async fn execute_command(
                     }
                 }
             };
-            println!("Pool info: {:?}", pool_info);
 
             let node_config = Node {
                 id: node_wallet_instance
@@ -278,6 +276,8 @@ pub async fn execute_command(
             };
             let compute_units = U256::from(std::cmp::max(1, gpu_count * 1000));
 
+            Console::section("Syncing with Network");
+
             // Check if provider exists first
             let provider_exists = match provider_ops.check_provider_exists().await {
                 Ok(exists) => exists,
@@ -295,7 +295,18 @@ pub async fn execute_command(
                 }
             };
 
-            if !provider_exists {
+            Console::title("Provider Status");
+            let is_whitelisted = match provider_ops.check_provider_whitelisted().await {
+                Ok(is_whitelisted) => is_whitelisted,
+                Err(e) => {
+                    Console::error(&format!("Failed to check provider whitelist status: {}", e));
+                    std::process::exit(1);
+                }
+            };
+
+            if provider_exists && is_whitelisted {
+                Console::success("Provider is registered and whitelisted");
+            } else {
                 let required_stake = match stake_manager
                     .calculate_stake(compute_units, U256::from(0))
                     .await
@@ -311,7 +322,7 @@ pub async fn execute_command(
                     &format!("{}", required_stake / U256::from(10u128.pow(18))),
                 );
 
-                const MAX_REGISTER_PROVIDER_ATTEMPTS: u32 = 100;
+                const MAX_REGISTER_PROVIDER_ATTEMPTS: u32 = 200;
                 if let Err(e) = provider_ops
                     .retry_register_provider(
                         required_stake,
@@ -325,8 +336,6 @@ pub async fn execute_command(
                 }
             }
 
-            provider_ops.start_monitoring(provider_ops_cancellation);
-
             let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
                 Ok(exists) => exists,
                 Err(e) => {
@@ -335,12 +344,10 @@ pub async fn execute_command(
                 }
             };
 
+            Console::title("Compute Node Status");
             if compute_node_exists {
                 // TODO: What if we have two nodes?
-                Console::info(
-                    "Compute node status",
-                    "Already exists, recovering from previous state",
-                );
+                Console::success("Compute node is registered");
                 recover_last_state = true;
             } else {
                 let provider_total_compute = match contracts
@@ -412,15 +419,18 @@ pub async fn execute_command(
                 }
             }
 
-            // Start monitoring compute node status on chain
-            compute_node_ops.start_monitoring(cancellation_token.clone());
-
             if let Err(e) = discovery_service.upload_discovery_info(&node_config).await {
                 Console::error(&format!("❌ Failed to upload discovery info: {}", e));
                 std::process::exit(1);
             }
 
-            Console::success("✅ Discovery info uploaded");
+            Console::success("Discovery info uploaded");
+
+            Console::section("Starting Worker");
+
+            // Start monitoring compute node status on chain
+            provider_ops.start_monitoring(provider_ops_cancellation);
+            compute_node_ops.start_monitoring(cancellation_token.clone());
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             Console::info(
@@ -455,7 +465,7 @@ pub async fn execute_command(
             Ok(())
         }
         Commands::Check {} => {
-            Console::section("🔍 PRIME MINER SYSTEM CHECK");
+            Console::section("🔍 PRIME WORKER SYSTEM CHECK");
             Console::info("═", &"═".repeat(50));
 
             // Run hardware checks

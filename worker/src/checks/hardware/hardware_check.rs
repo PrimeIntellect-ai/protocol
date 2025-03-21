@@ -24,7 +24,6 @@ impl HardwareChecker {
     ) -> Result<Node, Box<dyn std::error::Error>> {
         self.collect_system_info(&mut node_config)?;
         self.print_system_info(&node_config);
-        Console::success("All hardware checks passed");
         Ok(node_config)
     }
 
@@ -32,6 +31,7 @@ impl HardwareChecker {
         &self,
         node_config: &mut Node,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        Console::section("Hardware Checks");
         if self.sys.cpus().is_empty() {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -95,10 +95,8 @@ impl HardwareChecker {
     }
 
     fn print_system_info(&self, node_config: &Node) {
-        Console::section("Hardware Requirements Check");
-
         // Print CPU Info
-        Console::section("CPU Information:");
+        Console::title("CPU Information:");
         if let Some(compute_specs) = &node_config.compute_specs {
             if let Some(cpu) = &compute_specs.cpu {
                 Console::info("Cores", &cpu.cores.unwrap_or(0).to_string());
@@ -116,7 +114,7 @@ impl HardwareChecker {
 
             // Print Storage Info
             if let Some(storage_gb) = &compute_specs.storage_gb {
-                Console::section("Storage Information:");
+                Console::title("Storage Information:");
                 Console::info("Total Storage", &format!("{} GB", storage_gb));
             }
             if let Some(storage_path) = &compute_specs.storage_path {
@@ -141,8 +139,6 @@ impl HardwareChecker {
                     0.0
                 };
                 Console::info("Memory", &format!("{:.0} GB", memory_gb));
-            } else {
-                Console::warning("No compatible GPU detected");
             }
         } else {
             Console::warning("No compute specs available");

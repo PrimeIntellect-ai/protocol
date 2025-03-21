@@ -33,8 +33,6 @@ pub async fn start_server(
     pool_info: Arc<PoolInfo>,
     validator_address: String,
 ) -> std::io::Result<()> {
-    println!("Starting server at http://{}:{}", host, port);
-
     let app_state = Data::new(AppState {
         contracts,
         node_wallet,
