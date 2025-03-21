@@ -16,7 +16,7 @@ pub fn convert_to_mb(memory: u64) -> u64 {
 pub fn print_memory_info(total_memory: u64, free_memory: u64) {
     let total_gb = (total_memory + BYTES_TO_GB / 2) / BYTES_TO_GB;
     let free_gb = (free_memory + BYTES_TO_GB / 2) / BYTES_TO_GB;
-    Console::section("Memory Information:");
+    Console::title("Memory Information:");
     Console::info("Total Memory", &format!("{:.1} GB", total_gb));
     Console::info("Free Memory", &format!("{:.1} GB", free_gb));
 }

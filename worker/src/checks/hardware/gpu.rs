@@ -24,6 +24,7 @@ enum GpuDevice {
 }
 
 pub fn detect_gpu() -> Option<GpuSpecs> {
+    Console::title("GPU Detection");
     // Changed return type to GpuSpecs
     match get_gpu_status() {
         GpuDevice::Available {

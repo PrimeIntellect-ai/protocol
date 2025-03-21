@@ -78,7 +78,7 @@ impl TaskBridge {
 
     pub async fn run(&self) -> Result<()> {
         let socket_path = Path::new(&self.socket_path);
-        info!("Setting up TaskBridge socket at: {}", socket_path.display());
+        debug!("Setting up TaskBridge socket at: {}", socket_path.display());
 
         if let Some(parent) = socket_path.parent() {
             match fs::create_dir_all(parent) {
@@ -107,7 +107,7 @@ impl TaskBridge {
 
         let listener = match UnixListener::bind(socket_path) {
             Ok(l) => {
-                info!("Successfully bound to Unix socket");
+                debug!("Successfully bound to Unix socket");
                 l
             }
             Err(e) => {

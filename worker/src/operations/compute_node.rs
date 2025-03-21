@@ -31,7 +31,6 @@ impl<'c> ComputeNodeOperations<'c> {
         let mut last_active = false;
         let mut last_validated = false;
         let mut first_check = true;
-
         tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -42,24 +41,28 @@ impl<'c> ComputeNodeOperations<'c> {
                     _ = async {
                         match contracts.compute_registry.get_node(provider_address, node_address).await {
                             Ok((active, validated)) => {
-                                if first_check {
-                                    Console::info("Initial node status", &format!("Part of compute pool: {}, Validated: {}", active, validated));
-                                    first_check = false;
+                                if first_check || active != last_active {
+                                    Console::info("🔄 Chain Sync - Node pool membership", &format!("{}", active));
+                                    if !first_check {
+                                        Console::info("🔄 Chain Sync - Pool membership changed", &format!("From {} to {}",
+                                            last_active,
+                                            active
+                                        ));
+                                    }
                                     last_active = active;
-                                    last_validated = validated;
-                                } else if active != last_active {
-                                    Console::info(
-                                        "Node pool membership status changed on chain",
-                                        &format!("Part of compute pool: {}", active),
-                                    );
-                                    last_active = active;
-                                } else if validated != last_validated {
-                                    Console::info(
-                                        "Node validation status changed on chain",
-                                        &format!("Validated: {}", validated),
-                                    );
+                                }
+
+                                if first_check || validated != last_validated {
+                                    Console::info("🔄 Chain Sync - Node validation", &format!("{}", validated));
+                                    if !first_check {
+                                        Console::info("🔄 Chain Sync - Validation changed", &format!("From {} to {}",
+                                            last_validated,
+                                            validated
+                                        ));
+                                    }
                                     last_validated = validated;
                                 }
+                                first_check = false;
                             }
                             Err(e) => {
                                 Console::error(&format!("Failed to get node status: {}", e));
@@ -83,17 +86,8 @@ impl<'c> ComputeNodeOperations<'c> {
             .await;
 
         match compute_node {
-            Ok(_) => {
-                Console::info("Compute node status", "Compute node already exists");
-                Ok(true)
-            }
-            Err(_) => {
-                Console::info(
-                    "Compute node status",
-                    "Compute node does not exist - creating",
-                );
-                Ok(false)
-            }
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
         }
     }
 
@@ -102,25 +96,13 @@ impl<'c> ComputeNodeOperations<'c> {
         &self,
         compute_units: U256,
     ) -> Result<bool, Box<dyn std::error::Error>> {
-        Console::section("🔄 Adding compute node");
+        Console::title("🔄 Adding compute node");
 
         if self.check_compute_node_exists().await? {
             return Ok(false);
         }
 
         Console::progress("Adding compute node");
-        Console::info(
-            "Provider wallet",
-            &format!(
-                "{:?}",
-                self.provider_wallet.wallet.default_signer().address()
-            ),
-        );
-        Console::info(
-            "Node wallet",
-            &format!("{:?}", self.node_wallet.wallet.default_signer().address()),
-        );
-
         let provider_address = self.provider_wallet.wallet.default_signer().address();
         let node_address = self.node_wallet.wallet.default_signer().address();
         let digest = keccak([provider_address.as_slice(), node_address.as_slice()].concat());
