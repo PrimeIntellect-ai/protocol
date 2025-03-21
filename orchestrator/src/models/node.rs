@@ -53,4 +53,5 @@ pub enum NodeStatus {
     Healthy,
     Unhealthy,
     Dead,
+    Ejected,
 }

@@ -20,6 +20,11 @@ impl DockerState {
 
     pub async fn set_current_task(&self, task: Option<Task>) {
         let mut current_task = self.current_task.lock().await;
+        if let (Some(new_task), Some(existing_task)) = (&task, &*current_task) {
+            if new_task.id == existing_task.id {
+                return;
+            }
+        }
         *current_task = task;
     }
 
@@ -29,6 +34,8 @@ impl DockerState {
             if task.id == task_id {
                 task.state = state;
             }
+        } else {
+            println!("No current task found when trying to update state");
         }
     }
 

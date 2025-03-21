@@ -59,7 +59,7 @@ impl ComputeRegistryContract {
 
     pub async fn get_node(
         &self,
-        #[allow(unused_variables)] provider_address: Address,
+        provider_address: Address,
         node_address: Address,
     ) -> Result<(bool, bool), Box<dyn std::error::Error>> {
         let get_node_selector = get_selector("getNode(address,address)");
@@ -72,21 +72,24 @@ impl ComputeRegistryContract {
                 &[provider_address.into(), node_address.into()],
             )?
             .call()
-            .await;
-        // TODO: This should be cleaned up - either we add additional check if this is actually the no-exist error or work on the contract response
-        match node_response {
-            Ok(response) => {
-                if let Some(_node_data) = response.first() {
-                    let node_tuple = _node_data.as_tuple().unwrap();
-                    let active = node_tuple[5].as_bool().unwrap();
-                    let validated = node_tuple[6].as_bool().unwrap();
-                    Ok((active, validated))
-                } else {
-                    println!("Node is not registered. Proceeding to add the node.");
-                    Err("Node is not registered".into())
-                }
+            .await?;
+
+        if let Some(_node_data) = node_response.first() {
+            let node_tuple = _node_data.as_tuple().unwrap();
+
+            // Check that provider and subkey match
+            let node_provider = node_tuple[0].as_address().unwrap();
+            let node_subkey = node_tuple[1].as_address().unwrap();
+
+            if node_provider != provider_address || node_subkey != node_address {
+                return Err("Node does not match provider or subkey".into());
             }
-            Err(_) => Err("Node is not registered".into()),
+
+            let active = node_tuple[5].as_bool().unwrap();
+            let validated = node_tuple[6].as_bool().unwrap();
+            Ok((active, validated))
+        } else {
+            Err("Node is not registered".into())
         }
     }
 }

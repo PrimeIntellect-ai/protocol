@@ -1,40 +1,83 @@
 use crate::console::Console;
 use alloy::{primitives::utils::keccak256 as keccak, primitives::U256, signers::Signer};
-use shared::web3::contracts::implementations::{
-    compute_registry_contract::ComputeRegistryContract,
-    prime_network_contract::PrimeNetworkContract,
-};
+use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
+use std::sync::Arc;
+use tokio::time::{sleep, Duration};
+use tokio_util::sync::CancellationToken;
 
 pub struct ComputeNodeOperations<'c> {
     provider_wallet: &'c Wallet,
     node_wallet: &'c Wallet,
-    compute_registry: &'c ComputeRegistryContract,
-    prime_network: &'c PrimeNetworkContract,
+    contracts: Arc<Contracts>,
 }
 
 impl<'c> ComputeNodeOperations<'c> {
     pub fn new(
         provider_wallet: &'c Wallet,
         node_wallet: &'c Wallet,
-        compute_registry: &'c ComputeRegistryContract,
-        prime_network: &'c PrimeNetworkContract,
+        contracts: Arc<Contracts>,
     ) -> Self {
         Self {
             provider_wallet,
             node_wallet,
-            compute_registry,
-            prime_network,
+            contracts,
         }
     }
+    pub fn start_monitoring(&self, cancellation_token: CancellationToken) {
+        let provider_address = self.provider_wallet.wallet.default_signer().address();
+        let node_address = self.node_wallet.wallet.default_signer().address();
+        let contracts = self.contracts.clone();
+        let mut last_active = false;
+        let mut last_validated = false;
+        let mut first_check = true;
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = cancellation_token.cancelled() => {
+                        Console::info("Monitor", "Shutting down node status monitor...");
+                        break;
+                    }
+                    _ = async {
+                        match contracts.compute_registry.get_node(provider_address, node_address).await {
+                            Ok((active, validated)) => {
+                                if first_check || active != last_active {
+                                    Console::info("🔄 Chain Sync - Node pool membership", &format!("{}", active));
+                                    if !first_check {
+                                        Console::info("🔄 Chain Sync - Pool membership changed", &format!("From {} to {}",
+                                            last_active,
+                                            active
+                                        ));
+                                    }
+                                    last_active = active;
+                                }
 
-    // Returns true if the compute node was added, false if it already exists
-    pub async fn add_compute_node(
-        &self,
-        compute_units: U256,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        Console::section("🔄 Adding compute node");
+                                if first_check || validated != last_validated {
+                                    Console::info("🔄 Chain Sync - Node validation", &format!("{}", validated));
+                                    if !first_check {
+                                        Console::info("🔄 Chain Sync - Validation changed", &format!("From {} to {}",
+                                            last_validated,
+                                            validated
+                                        ));
+                                    }
+                                    last_validated = validated;
+                                }
+                                first_check = false;
+                            }
+                            Err(e) => {
+                                Console::error(&format!("Failed to get node status: {}", e));
+                            }
+                        }
+                        sleep(Duration::from_secs(5)).await;
+                    } => {}
+                }
+            }
+        });
+    }
+
+    pub async fn check_compute_node_exists(&self) -> Result<bool, Box<dyn std::error::Error>> {
         let compute_node = self
+            .contracts
             .compute_registry
             .get_node(
                 self.provider_wallet.wallet.default_signer().address(),
@@ -43,31 +86,23 @@ impl<'c> ComputeNodeOperations<'c> {
             .await;
 
         match compute_node {
-            Ok(_) => {
-                Console::info("Compute node status", "Compute node already exists");
-                return Ok(false);
-            }
-            Err(_) => {
-                Console::info(
-                    "Compute node status",
-                    "Compute node does not exist - creating",
-                );
-            }
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
+    // Returns true if the compute node was added, false if it already exists
+    pub async fn add_compute_node(
+        &self,
+        compute_units: U256,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        Console::title("🔄 Adding compute node");
+
+        if self.check_compute_node_exists().await? {
+            return Ok(false);
         }
 
         Console::progress("Adding compute node");
-        Console::info(
-            "Provider wallet",
-            &format!(
-                "{:?}",
-                self.provider_wallet.wallet.default_signer().address()
-            ),
-        );
-        Console::info(
-            "Node wallet",
-            &format!("{:?}", self.node_wallet.wallet.default_signer().address()),
-        );
-
         let provider_address = self.provider_wallet.wallet.default_signer().address();
         let node_address = self.node_wallet.wallet.default_signer().address();
         let digest = keccak([provider_address.as_slice(), node_address.as_slice()].concat());
@@ -81,6 +116,7 @@ impl<'c> ComputeNodeOperations<'c> {
 
         // Create the signature bytes
         let add_node_tx = self
+            .contracts
             .prime_network
             .add_compute_node(node_address, compute_units, signature.to_vec())
             .await?;

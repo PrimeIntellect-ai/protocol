@@ -22,7 +22,7 @@ impl<'b> DiscoveryService<'b> {
         &self,
         node_config: &Node,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        Console::section("📦 Uploading discovery info");
+        Console::title("📦 Uploading discovery info");
 
         let request_data = serde_json::to_value(node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
@@ -43,7 +43,6 @@ impl<'b> DiscoveryService<'b> {
         );
         headers.insert("x-signature", signature_string.parse().unwrap());
         let request_url = format!("{}{}", self.base_url, &self.endpoint);
-        println!("Request URL: {:?}", request_url);
 
         let response = reqwest::Client::new()
             .put(&request_url)

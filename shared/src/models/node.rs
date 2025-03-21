@@ -45,6 +45,8 @@ pub struct DiscoveryNode {
     pub is_validated: bool,
     pub is_active: bool,
     #[serde(default)]
+    pub is_provider_whitelisted: bool,
+    #[serde(default)]
     pub is_blacklisted: bool,
 }
 
@@ -54,6 +56,7 @@ impl DiscoveryNode {
             node: new_node,
             is_validated: self.is_validated,
             is_active: self.is_active,
+            is_provider_whitelisted: self.is_provider_whitelisted,
             is_blacklisted: self.is_blacklisted,
         }
     }
@@ -73,6 +76,7 @@ impl From<Node> for DiscoveryNode {
             node,
             is_validated: false, // Default values for new discovery nodes
             is_active: false,
+            is_provider_whitelisted: false,
             is_blacklisted: false,
         }
     }

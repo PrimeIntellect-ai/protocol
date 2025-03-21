@@ -73,8 +73,6 @@ watch-discovery:
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	PRIVATE_KEY_PROVIDER=$${PROVIDER_PRIVATE_KEY} \
-	PRIVATE_KEY_NODE=$${NODE_PRIVATE_KEY} \
 	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS"
 
 watch-validator:
@@ -140,14 +138,17 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 	$(SSH_CONNECTION) -t "cd ~/$(notdir $(CURDIR)) && \
 		export PATH=\"\$$HOME/.cargo/bin:\$$PATH\" && \
 		. \"\$$HOME/.cargo/env\" && \
-		set -a && source .env && set +a && \
-		export EXTERNAL_IP=$(EXTERNAL_IP) && \
-		RUST_BACKTRACE=1 RUST_LOG=debug PRIVATE_KEY_PROVIDER="$$PROVIDER_PRIVATE_KEY" PRIVATE_KEY_NODE="$$NODE_PRIVATE_KEY" cargo watch -w worker/src -x \"run --bin worker -- run \
-			--port $(PORT) \
-			--external-ip \$$EXTERNAL_IP \
-			--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
-			--validator-address \$$VALIDATOR_ADDRESS \
-			2>&1 | tee worker.log\""
+		export TERM=xterm-256color && \
+		bash --login -i -c '\
+			set -a && source .env && set +a && \
+			export EXTERNAL_IP=$(EXTERNAL_IP) && \
+			clear && \
+			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w worker/src -x \"run --bin worker -- run \
+				--port $(PORT) \
+				--external-ip \$$EXTERNAL_IP \
+				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
+				--validator-address \$$VALIDATOR_ADDRESS \
+				2>&1 | tee worker.log\"'"
 
 # Kill SSH tunnel
 .PHONY: kill-tunnel
@@ -160,3 +161,8 @@ kill-tunnel:
 remote-worker:
 	@trap 'make kill-tunnel' EXIT; \
 	make watch-worker-remote
+
+# testing:
+eject-node:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example eject_node -- --pool-id $${WORKER_COMPUTE_POOL_ID} --node $${NODE_ADDRESS} --provider-address $${PROVIDER_ADDRESS} --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL}

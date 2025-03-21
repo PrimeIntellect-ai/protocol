@@ -3,7 +3,6 @@ use actix_web::{
     web::{self, put, Data},
     HttpResponse, Scope,
 };
-use alloy::primitives::U256;
 use shared::models::api::ApiResponse;
 use shared::models::node::Node;
 
@@ -12,22 +11,6 @@ pub async fn register_node(
     data: Data<AppState>,
     req: actix_web::HttpRequest,
 ) -> HttpResponse {
-    if let Some(contracts) = data.contracts.clone() {
-        let balance = contracts
-            .ai_token
-            .balance_of(node.provider_address.parse().unwrap())
-            .await
-            .unwrap_or_default();
-        if balance == U256::ZERO {
-            return HttpResponse::BadRequest().json(ApiResponse::new(
-                false,
-                "Node provider address does not hold AI tokens",
-            ));
-        }
-    }
-
-    let node_store = data.node_store.clone();
-
     // Check for the x-address header
     let address_str = match req.headers().get("x-address") {
         Some(address) => match address.to_str() {
@@ -47,6 +30,24 @@ pub async fn register_node(
         return HttpResponse::BadRequest()
             .json(ApiResponse::new(false, "Invalid x-address header"));
     }
+    if let Some(contracts) = data.contracts.clone() {
+        if (contracts
+            .compute_registry
+            .get_node(
+                node.provider_address.parse().unwrap(),
+                node.id.parse().unwrap(),
+            )
+            .await)
+            .is_err()
+        {
+            return HttpResponse::BadRequest().json(ApiResponse::new(
+                false,
+                "Node not found in compute registry",
+            ));
+        }
+    }
+
+    let node_store = data.node_store.clone();
 
     node_store.register_node(node.clone());
     HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully"))
@@ -168,6 +169,7 @@ mod tests {
             node,
             is_validated: true,
             is_active: true,
+            is_provider_whitelisted: false,
             is_blacklisted: false,
         };
 
