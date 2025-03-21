@@ -75,6 +75,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
+            ports: None
         };
         let req = test::TestRequest::post()
             .uri("/tasks")
@@ -117,6 +118,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
+            ports: Some(vec!["14141".to_string()]),
         }
         .into();
 
@@ -159,6 +161,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
+            ports: None,
         }
         .into();
 

@@ -3,6 +3,7 @@ use super::DockerManager;
 use super::DockerState;
 use crate::console::Console;
 use bollard::models::ContainerStateStatusEnum;
+use bollard::models::PortBinding;
 use chrono::{DateTime, Utc};
 use shared::models::task::Task;
 use shared::models::task::TaskState;
@@ -23,6 +24,7 @@ pub struct DockerService {
 }
 
 const TASK_PREFIX: &str = "prime-task";
+const BINDABLE_PORTS_START : u16 = 20000;
 
 impl DockerService {
     pub fn new(
@@ -157,6 +159,20 @@ impl DockerService {
                                             (Some(c), None) => vec![c],
                                             _ => vec!["sleep".to_string(), "infinity".to_string()],
                                         };
+                                        let mut port_bindings = ::std::collections::HashMap::new();
+                                        if let Some(ports) = &payload.ports {
+                                            let mut next_bound_port = BINDABLE_PORTS_START;
+                                            for port in ports {
+                                                port_bindings.insert(
+                                                    port.clone(),
+                                                    Some(vec![PortBinding {
+                                                        host_ip: Some(String::from("127.0.0.1")),
+                                                        host_port: Some(next_bound_port.to_string()),
+                                                    }]),
+                                                );
+                                                next_bound_port += 1;
+                                            }
+                                        }
 
                                         let mut env_vars: HashMap<String, String> = HashMap::new();
                                         if let Some(env) = &payload.env_vars {
@@ -179,7 +195,7 @@ impl DockerService {
                                                 67108864 // Default to 64MB in bytes
                                             }
                                         };
-                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), has_gpu, Some(volumes), Some(shm_size)).await {
+                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), Some(port_bindings), has_gpu, Some(volumes), Some(shm_size)).await {
                                             Ok(container_id) => {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
@@ -303,6 +319,7 @@ mod tests {
             env_vars: None,
             command: Some("sleep".to_string()),
             args: Some(vec!["100".to_string()]),
+            ports: None,
             state: TaskState::PENDING,
         };
         let task_clone = task.clone();
@@ -350,6 +367,7 @@ mod tests {
             env_vars: None,
             command: Some("invalid_command".to_string()),
             args: None,
+            ports: None,
             state: TaskState::PENDING,
         };
 

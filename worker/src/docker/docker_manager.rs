@@ -7,6 +7,7 @@ use bollard::image::CreateImageOptions;
 use bollard::models::ContainerStateStatusEnum;
 use bollard::models::DeviceRequest;
 use bollard::models::HostConfig;
+use bollard::models::PortBinding;
 use bollard::volume::CreateVolumeOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
@@ -103,6 +104,7 @@ impl DockerManager {
         name: &str,
         env_vars: Option<HashMap<String, String>>,
         command: Option<Vec<String>>,
+        port_bindings: Option<HashMap<String, Option<Vec<PortBinding>>>>,
         gpu_enabled: bool,
         // Simple Vec of (host_path, container_path, read_only)
         volumes: Option<Vec<(String, String, bool)>>,
@@ -201,6 +203,7 @@ impl DockerManager {
                 }]),
                 binds: volume_binds,
                 shm_size: shm_size.map(|s| s as i64),
+                port_bindings: port_bindings,
                 ..Default::default()
             })
         } else {

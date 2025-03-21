@@ -53,6 +53,7 @@ pub struct TaskRequest {
     pub env_vars: Option<std::collections::HashMap<String, String>>,
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
+    pub ports: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +64,7 @@ pub struct Task {
     pub env_vars: Option<std::collections::HashMap<String, String>>,
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
+    pub ports: Option<Vec<String>>,
     pub state: TaskState,
 }
 
@@ -75,6 +77,7 @@ impl From<TaskRequest> for Task {
             command: request.command,
             args: request.args,
             env_vars: request.env_vars,
+            ports: request.ports,
             state: TaskState::PENDING,
         }
     }

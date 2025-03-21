@@ -104,6 +104,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
+            ports: None,
         };
         app_state.store_context.task_store.set_task(task.into());
 
