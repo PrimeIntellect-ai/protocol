@@ -169,6 +169,7 @@ mod tests {
             node,
             is_validated: true,
             is_active: true,
+            is_provider_whitelisted: false,
             is_blacklisted: false,
         };
 
