@@ -164,7 +164,7 @@ First, you need to create a local worker (after you have all other services runn
 make watch-worker
 ```
 
-check that the worker as been registered on the orchestrator: 
+check that the worker has been registered on the orchestrator: 
 
 ```bash
 curl -X GET http://localhost:8090/nodes -H "Authorization: Bearer admin"
