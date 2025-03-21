@@ -335,7 +335,7 @@ impl DockerManager {
                 .unwrap_or_default(),
         };
 
-        info!("Retrieved details for container {}", container_id);
+        debug!("Retrieved details for container {}", container_id);
         Ok(info)
     }
 

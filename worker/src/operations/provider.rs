@@ -1,31 +1,165 @@
 use crate::console::Console;
 use alloy::primitives::{Address, U256};
-use shared::web3::contracts::implementations::{
-    ai_token_contract::AIToken, compute_registry_contract::ComputeRegistryContract,
-    prime_network_contract::PrimeNetworkContract,
-};
+use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 use std::fmt;
-pub struct ProviderOperations<'c> {
-    wallet: &'c Wallet,
-    compute_registry: &'c ComputeRegistryContract,
-    ai_token: &'c AIToken,
-    prime_network: &'c PrimeNetworkContract,
+use std::sync::Arc;
+use tokio::time::{sleep, Duration};
+use tokio_util::sync::CancellationToken;
+
+pub struct ProviderOperations {
+    wallet: Arc<Wallet>,
+    contracts: Arc<Contracts>,
 }
 
-impl<'c> ProviderOperations<'c> {
-    pub fn new(
-        wallet: &'c Wallet,
-        compute_registry: &'c ComputeRegistryContract,
-        ai_token: &'c AIToken,
-        prime_network: &'c PrimeNetworkContract,
-    ) -> Self {
-        Self {
-            wallet,
-            compute_registry,
-            ai_token,
-            prime_network,
+impl ProviderOperations {
+    pub fn new(wallet: Arc<Wallet>, contracts: Arc<Contracts>) -> Self {
+        Self { wallet, contracts }
+    }
+    pub fn start_monitoring(&self, cancellation_token: CancellationToken) {
+        let provider_address = self.wallet.wallet.default_signer().address();
+        let contracts = self.contracts.clone();
+
+        // Only start monitoring if we have a stake manager
+        let mut last_stake = U256::ZERO;
+        let mut last_balance = U256::ZERO;
+        let mut last_whitelist_status = false;
+        let mut first_check = true;
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = cancellation_token.cancelled() => {
+                        Console::info("Monitor", "Shutting down provider status monitor...");
+                        break;
+                    }
+                    _ = async {
+                        let stake_manager = match contracts.stake_manager.as_ref() {
+                            Some(sm) => sm,
+                            None => {
+                                Console::error("Cannot start monitoring - stake manager not initialized");
+                                return;
+                            }
+                        };
+
+                        // Monitor stake
+                        match stake_manager.get_stake(provider_address).await {
+                            Ok(stake) => {
+                                if first_check || stake != last_stake {
+                                    Console::info("Provider stake", &format!("{} tokens", stake / U256::from(10u128.pow(18))));
+                                    if !first_check {
+                                        Console::info("Stake changed", &format!("From {} to {} tokens",
+                                            last_stake / U256::from(10u128.pow(18)),
+                                            stake / U256::from(10u128.pow(18))
+                                        ));
+                                    }
+                                    last_stake = stake;
+                                }
+                                Some(stake)
+                            },
+                            Err(e) => {
+                                Console::error(&format!("Failed to get stake: {}", e));
+                                None
+                            }
+                        };
+
+                        // Monitor AI token balance
+                        match contracts.ai_token.balance_of(provider_address).await {
+                            Ok(balance) => {
+                                if first_check || balance != last_balance {
+                                    Console::info("AI Token Balance", &format!("{} tokens", balance / U256::from(10u128.pow(18))));
+                                    if !first_check {
+                                        Console::info("Balance changed", &format!("From {} to {} tokens",
+                                            last_balance / U256::from(10u128.pow(18)),
+                                            balance / U256::from(10u128.pow(18))
+                                        ));
+                                    }
+                                    last_balance = balance;
+                                }
+                                Some(balance)
+                            },
+                            Err(e) => {
+                                Console::error(&format!("Failed to get AI token balance: {}", e));
+                                None
+                            }
+                        };
+
+                        // Monitor whitelist status
+                        match contracts.compute_registry.get_provider(provider_address).await {
+                            Ok(provider) => {
+                                if first_check || provider.is_whitelisted != last_whitelist_status {
+                                    Console::info("Whitelist status", &format!("{}", provider.is_whitelisted));
+                                    if !first_check {
+                                        Console::info("Whitelist status changed", &format!("From {} to {}",
+                                            last_whitelist_status,
+                                            provider.is_whitelisted
+                                        ));
+                                    }
+                                    last_whitelist_status = provider.is_whitelisted;
+                                }
+                            },
+                            Err(e) => {
+                                Console::error(&format!("Failed to get provider whitelist status: {}", e));
+                            }
+                        };
+
+                        first_check = false;
+                        sleep(Duration::from_secs(5)).await;
+                    } => {}
+                }
+            }
+        });
+    }
+
+    pub async fn check_provider_exists(&self) -> Result<bool, ProviderError> {
+        let address = self.wallet.wallet.default_signer().address();
+
+        let provider = self
+            .contracts
+            .compute_registry
+            .get_provider(address)
+            .await
+            .map_err(|_| ProviderError::Other)?;
+
+        Ok(provider.provider_address != Address::default())
+    }
+    pub async fn retry_register_provider(
+        &self,
+        stake: U256,
+        max_attempts: u32,
+        cancellation_token: CancellationToken,
+    ) -> Result<(), ProviderError> {
+        let mut attempts = 0;
+        while attempts < max_attempts {
+            let spinner = Console::spinner("Registering provider...");
+            match self.register_provider(stake).await {
+                Ok(_) => {
+                    spinner.finish_and_clear();
+                    return Ok(());
+                }
+                Err(e) => {
+                    spinner.finish_and_clear();
+                    if let ProviderError::NotWhitelisted = e {
+                        Console::error("❌ Provider not whitelisted, retrying in 15 seconds...");
+                        tokio::select! {
+                            _ = tokio::time::sleep(tokio::time::Duration::from_secs(15)) => {}
+                            _ = cancellation_token.cancelled() => {
+                                return Err(e);
+                            }
+                        }
+                        attempts += 1;
+                        continue;
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
         }
+        Console::error(&format!(
+            "❌ Failed to register provider after {} attempts",
+            attempts
+        ));
+        Err(ProviderError::Other)
     }
 
     pub async fn register_provider(&self, stake: U256) -> Result<(), ProviderError> {
@@ -33,6 +167,7 @@ impl<'c> ProviderOperations<'c> {
 
         let address = self.wallet.wallet.default_signer().address();
         let balance: U256 = self
+            .contracts
             .ai_token
             .balance_of(address)
             .await
@@ -44,14 +179,8 @@ impl<'c> ProviderOperations<'c> {
             .await
             .map_err(|_| ProviderError::Other)?;
 
-        // Check if we are already provider
-        let provider = self
-            .compute_registry
-            .get_provider(address)
-            .await
-            .map_err(|_| ProviderError::Other)?;
+        let provider_exists = self.check_provider_exists().await?;
 
-        let provider_exists = provider.provider_address != Address::default();
         Console::info(
             "AI Token Balance",
             &format!("{} tokens", balance / U256::from(10u128.pow(18))),
@@ -65,6 +194,7 @@ impl<'c> ProviderOperations<'c> {
         if !provider_exists {
             let spinner = Console::spinner("Approving AI Token for Stake transaction");
             let approve_tx = self
+                .contracts
                 .ai_token
                 .approve(stake)
                 .await
@@ -73,7 +203,7 @@ impl<'c> ProviderOperations<'c> {
             spinner.finish_and_clear();
 
             let spinner = Console::spinner("Registering Provider");
-            let register_tx = match self.prime_network.register_provider(stake).await {
+            let register_tx = match self.contracts.prime_network.register_provider(stake).await {
                 Ok(tx) => tx,
                 Err(e) => {
                     println!("Failed to register provider: {:?}", e);
@@ -90,6 +220,7 @@ impl<'c> ProviderOperations<'c> {
         // Get provider details again  - cleanup later
         let spinner = Console::spinner("Getting provider details");
         let provider = self
+            .contracts
             .compute_registry
             .get_provider(address)
             .await
@@ -117,6 +248,7 @@ impl<'c> ProviderOperations<'c> {
 
         let address = self.wallet.wallet.default_signer().address();
         let balance: U256 = self
+            .contracts
             .ai_token
             .balance_of(address)
             .await
@@ -138,6 +270,7 @@ impl<'c> ProviderOperations<'c> {
 
         let spinner = Console::spinner("Approving AI Token for additional stake");
         let approve_tx = self
+            .contracts
             .ai_token
             .approve(additional_stake)
             .await
@@ -146,7 +279,7 @@ impl<'c> ProviderOperations<'c> {
         spinner.finish_and_clear();
 
         let spinner = Console::spinner("Increasing stake");
-        let stake_tx = match self.prime_network.stake(additional_stake).await {
+        let stake_tx = match self.contracts.prime_network.stake(additional_stake).await {
             Ok(tx) => tx,
             Err(e) => {
                 println!("Failed to increase stake: {:?}", e);

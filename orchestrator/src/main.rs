@@ -139,6 +139,9 @@ async fn main() -> Result<()> {
         inviter.run().await
     });
 
+    // The node status updater is responsible for checking the heartbeats
+    // and calculating the status of the node.
+    // It also ejects nodes when they are dead.
     let status_update_store_context = store_context.clone();
     tasks.spawn(async move {
         let status_updater = NodeStatusUpdater::new(
