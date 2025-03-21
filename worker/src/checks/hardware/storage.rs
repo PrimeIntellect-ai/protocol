@@ -131,7 +131,7 @@ pub fn find_largest_storage() -> Option<MountPoint> {
 pub fn print_storage_info() {
     match get_storage_info() {
         Ok((total, free)) => {
-            Console::section("Storage Information:");
+            Console::title("Storage Information:");
             Console::info("Total Storage", &format!("{:.1} GB", total));
             Console::info("Free Storage", &format!("{:.1} GB", free));
         }
