@@ -155,8 +155,11 @@ pub async fn execute_command(
                     .unwrap(),
             );
 
-            let provider_ops =
-                ProviderOperations::new(provider_wallet_instance.clone(), contracts.clone());
+            let provider_ops = ProviderOperations::new(
+                provider_wallet_instance.clone(),
+                contracts.clone(),
+                *auto_accept,
+            );
 
             let provider_ops_cancellation = cancellation_token.clone();
 
