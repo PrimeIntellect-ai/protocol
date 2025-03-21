@@ -24,7 +24,7 @@ pub struct DockerService {
 }
 
 const TASK_PREFIX: &str = "prime-task";
-const BINDABLE_PORTS_START : u16 = 20000;
+const BINDABLE_PORTS_START: u16 = 20000;
 
 impl DockerService {
     pub fn new(

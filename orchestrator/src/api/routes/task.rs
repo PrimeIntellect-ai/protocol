@@ -75,7 +75,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
-            ports: None
+            ports: None,
         };
         let req = test::TestRequest::post()
             .uri("/tasks")

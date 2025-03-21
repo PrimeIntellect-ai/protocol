@@ -203,7 +203,7 @@ impl DockerManager {
                 }]),
                 binds: volume_binds,
                 shm_size: shm_size.map(|s| s as i64),
-                port_bindings: port_bindings,
+                port_bindings,
                 ..Default::default()
             })
         } else {
