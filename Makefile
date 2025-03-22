@@ -167,3 +167,7 @@ remote-worker:
 eject-node:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example eject_node -- --pool-id $${WORKER_COMPUTE_POOL_ID} --node $${NODE_ADDRESS} --provider-address $${PROVIDER_ADDRESS} --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL}
+
+sign-message:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo watch -w worker/src -x "run --bin worker -- sign-message --message example --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$PRIVATE_KEY_NODE"
