@@ -279,6 +279,28 @@ pub async fn get_container_status(
         .await;
 }
 
+
+async fn prover_send<T: serde::de::DeserializeOwned>(
+    endpoint: &str,
+    payload: Option<serde_json::Value>,
+) -> anyhow::Result<T> {
+    let client = reqwest::Client::new();
+    let mut builder = client.post(format!("http://localhost:20000{}", endpoint));
+
+    if let Some(json) = payload {
+        builder = builder.json(&json);
+    }
+
+    let response = builder.send().await?;
+
+    if !response.status().is_success() {
+        let error_text = response.text().await?;
+        return Err(anyhow::anyhow!("Prover request failed: {}", error_text));
+    }
+
+    response.json::<T>().await.map_err(anyhow::Error::from)
+}
+
 // Start a GPU challenge
 pub async fn init_container(
     challenge_req: web::Json<GpuChallengeWorkerStart>,
@@ -385,27 +407,6 @@ pub async fn get_status(req: HttpRequest) -> HttpResponse {
     }
 }
 
-async fn prover_send<T: serde::de::DeserializeOwned>(
-    endpoint: &str,
-    payload: Option<serde_json::Value>,
-) -> anyhow::Result<T> {
-    let client = reqwest::Client::new();
-    let mut builder = client.post(format!("http://localhost:20000{}", endpoint));
-
-    if let Some(json) = payload {
-        builder = builder.json(&json);
-    }
-
-    let response = builder.send().await?;
-
-    if !response.status().is_success() {
-        let error_text = response.text().await?;
-        return Err(anyhow::anyhow!("Prover request failed: {}", error_text));
-    }
-
-    response.json::<T>().await.map_err(anyhow::Error::from)
-}
-
 pub async fn compute_commitment(
     challenge_req: web::Json<GpuChallengeWorkerComputeCommitment>,
     // app_state: Data<AppState>,
@@ -413,6 +414,17 @@ pub async fn compute_commitment(
     let session_id = &challenge_req.session_id;
     let n = challenge_req.n;
     let master_seed = challenge_req.master_seed.clone();
+
+    {
+        // check that session ID matches
+        let state = CURRENT_CHALLENGE.lock().await;
+        if session_id != state.get_session_id().as_deref().unwrap_or("") {
+            return HttpResponse::NotFound().json(ApiResponse::new(
+                false,
+                format!("No challenge found with session ID: {}", session_id),
+            ));
+        }
+    }
 
     // Call prover's setAB endpoint
     match prover_send::<GpuSetABResponse>(
@@ -468,13 +480,15 @@ pub async fn compute_cr(
     let session_id = &challenge_req.session_id;
     let challenge_vector = challenge_req.r.clone();
 
-    // check that session ID matches
-    let state = CURRENT_CHALLENGE.lock().await;
-    if session_id != state.get_session_id().as_deref().unwrap_or("") {
-        return HttpResponse::NotFound().json(ApiResponse::new(
-            false,
-            format!("No challenge found with session ID: {}", session_id),
-        ));
+    {
+        // check that session ID matches
+        let state = CURRENT_CHALLENGE.lock().await;
+        if session_id != state.get_session_id().as_deref().unwrap_or("") {
+            return HttpResponse::NotFound().json(ApiResponse::new(
+                false,
+                format!("No challenge found with session ID: {}", session_id),
+            ));
+        }
     }
 
     match prover_send::<GpuComputeCRResponse>(
@@ -516,13 +530,15 @@ pub async fn compute_row_proofs(
     let session_id = &challenge_req.session_id;
     let row_indices = challenge_req.row_idxs.clone();
 
-    // check that session ID matches
-    let state = CURRENT_CHALLENGE.lock().await;
-    if session_id != state.get_session_id().as_deref().unwrap_or("") {
-        return HttpResponse::NotFound().json(ApiResponse::new(
-            false,
-            format!("No challenge found with session ID: {}", session_id),
-        ));
+    {
+        // check that session ID matches
+        let state = CURRENT_CHALLENGE.lock().await;
+        if session_id != state.get_session_id().as_deref().unwrap_or("") {
+            return HttpResponse::NotFound().json(ApiResponse::new(
+                false,
+                format!("No challenge found with session ID: {}", session_id),
+            ));
+        }
     }
 
     match prover_send::<GpuRowProofsResponse>(
