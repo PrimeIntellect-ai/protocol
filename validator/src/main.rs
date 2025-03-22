@@ -207,8 +207,6 @@ fn main() {
         if let Err(e) = runtime.block_on(hardware_validator.validate_nodes(nodes)) {
             error!("Error validating nodes: {:#}", e);
         }
-
-        std::thread::sleep(std::time::Duration::from_secs(10));
     }
 }
 

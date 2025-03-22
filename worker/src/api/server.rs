@@ -1,4 +1,5 @@
 use crate::api::routes::challenge::challenge_routes;
+use crate::api::routes::gpu_challenge::gpu_challenge_routes;
 use crate::api::routes::invite::invite_routes;
 use crate::api::routes::task::task_routes;
 use crate::docker::DockerService;
@@ -54,6 +55,7 @@ pub async fn start_server(
             .service(invite_routes())
             .service(task_routes())
             .service(challenge_routes())
+            .service(gpu_challenge_routes())
     })
     .bind((host, port))?
     .run()
