@@ -80,6 +80,10 @@ pub enum Commands {
         /// Private key for the node (not recommended, use environment variable PRIVATE_KEY_NODE instead)
         #[arg(long)]
         private_key_node: Option<String>,
+
+        /// Auto accept transactions
+        #[arg(long, default_value = "false")]
+        auto_accept: bool,
     },
     Check {},
 
@@ -106,6 +110,7 @@ pub async fn execute_command(
             validator_address,
             private_key_provider,
             private_key_node,
+            auto_accept,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -169,8 +174,11 @@ pub async fn execute_command(
                     .unwrap(),
             );
 
-            let provider_ops =
-                ProviderOperations::new(provider_wallet_instance.clone(), contracts.clone());
+            let provider_ops = ProviderOperations::new(
+                provider_wallet_instance.clone(),
+                contracts.clone(),
+                *auto_accept,
+            );
 
             let provider_ops_cancellation = cancellation_token.clone();
 
