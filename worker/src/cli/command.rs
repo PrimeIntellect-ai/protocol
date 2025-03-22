@@ -73,6 +73,14 @@ pub enum Commands {
         #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
         validator_address: Option<String>,
 
+        /// Private key for the provider (not recommended, use environment variable PRIVATE_KEY_PROVIDER instead)
+        #[arg(long)]
+        private_key_provider: Option<String>,
+
+        /// Private key for the node (not recommended, use environment variable PRIVATE_KEY_NODE instead)
+        #[arg(long)]
+        private_key_node: Option<String>,
+
         /// Auto accept transactions
         #[arg(long, default_value = "false")]
         auto_accept: bool,
@@ -100,6 +108,8 @@ pub async fn execute_command(
             disable_state_storing,
             auto_recover,
             validator_address,
+            private_key_provider,
+            private_key_node,
             auto_accept,
         } => {
             if *disable_state_storing && *auto_recover {
@@ -109,10 +119,19 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
-            let private_key_provider =
-                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set");
-            let private_key_node =
-                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set");
+            let private_key_provider = if let Some(key) = private_key_provider {
+                Console::warning("Using private key from command line is not recommended. Consider using PRIVATE_KEY_PROVIDER environment variable instead.");
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
+            };
+
+            let private_key_node = if let Some(key) = private_key_node {
+                Console::warning("Using private key from command line is not recommended. Consider using PRIVATE_KEY_NODE environment variable instead.");
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
+            };
 
             let mut recover_last_state = *auto_recover;
             let version = env!("CARGO_PKG_VERSION");
