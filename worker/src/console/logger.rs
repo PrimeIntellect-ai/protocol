@@ -1,7 +1,5 @@
 use console::{style, Term};
-use indicatif::{ProgressBar, ProgressStyle};
 use std::cmp;
-use std::time::Duration;
 use unicode_width::UnicodeWidthStr;
 
 pub struct Console;
@@ -79,17 +77,5 @@ impl Console {
     /// Prints a progress message.
     pub fn progress(text: &str) {
         println!("{} {}", style("→").cyan().bold(), style(text).cyan());
-    }
-
-    /// Creates and returns an enhanced spinner with a dark-themed style.
-    pub fn spinner(_text: &str) -> ProgressBar {
-        let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.white} {msg}")
-                .unwrap(),
-        );
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb
     }
 }
