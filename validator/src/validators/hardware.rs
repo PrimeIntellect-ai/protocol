@@ -15,10 +15,35 @@ use std::env;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+const VALIDATION_TIMEOUT: u64 = 600;
+const ERROR_TIME_BUFFER: u64 = 30;
+const MATRIX_CHALLENGE_SIZE: u64 = 8192;
+const MAX_CHALLENGE_ATTEMPTS: u64 = 3;
+const H100_TIME_CUTOFF: u64 = 150;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeChallengeStatus {
+    Init,
+    Running,
+    Completed,
+    Failed,
+    Blacklisted,
+}
+
 #[derive(Debug, Clone)]
 pub struct NodeChallengeState {
     pub session_id: Option<String>,
     pub timestamp: u64,
+    pub commitment_time: u64,
+    pub status: NodeChallengeStatus,
+    pub attempts: u64,
+}
+
+fn get_time_as_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }
 
 pub struct HardwareValidator<'a> {
@@ -42,12 +67,10 @@ impl<'a> HardwareValidator<'a> {
     }
 
     pub async fn validate_nodes(&self, nodes: Vec<DiscoveryNode>) -> Result<()> {
-        //let non_validated_nodes: Vec<DiscoveryNode> = nodes
-        //   .into_iter()
-        //   .filter(|node| !node.is_validated)
-        //   .collect();
-
-        let non_validated_nodes = nodes;
+        let non_validated_nodes: Vec<DiscoveryNode> = nodes
+            .into_iter()
+            .filter(|node| !node.is_validated)
+            .collect();
 
         for node in non_validated_nodes {
             let node_address = match node.id.trim_start_matches("0x").parse::<Address>() {
@@ -83,10 +106,53 @@ impl<'a> HardwareValidator<'a> {
                 continue;
             }
 
-            // skip if node is already being checked
-            if self.node_sessions.lock().await.contains_key(&node.id) {
-                info!("Node {} is already being checked", node.id);
-                continue;
+            // skip if node is already being checked and hasn't timed out
+            {
+                let mut sessions = self.node_sessions.lock().await;
+                if let Some(session) = sessions.get_mut(&node.id) {
+                    let current_time = get_time_as_secs();
+                    let session_age = current_time - session.timestamp;
+
+                    match session.status {
+                        NodeChallengeStatus::Init | NodeChallengeStatus::Running => {
+                            info!("Node {} challenge is still pending", node.id);
+                            if session_age < VALIDATION_TIMEOUT {
+                                info!("Node {} challenge is still pending", node.id);
+                                continue;
+                            } else {
+                                session.attempts += 1;
+                                session.status = NodeChallengeStatus::Init;
+                                session.timestamp = get_time_as_secs();
+                                session.session_id = None;
+                            }
+                        }
+                        NodeChallengeStatus::Failed => {
+                            info!("Node {} challenge failed", node.id);
+                            if session.attempts >= MAX_CHALLENGE_ATTEMPTS {
+                                session.status = NodeChallengeStatus::Blacklisted;
+                                info!("Node {} is blacklisted", node.id);
+                            } else {
+                                let failure_age = current_time - session.timestamp;
+                                if failure_age > VALIDATION_TIMEOUT + ERROR_TIME_BUFFER {
+                                    info!("Node {} challenge is still pending", node.id);
+                                    session.status = NodeChallengeStatus::Init;
+                                    session.timestamp = get_time_as_secs();
+                                    session.session_id = None;
+                                    session.attempts += 1;
+                                }
+                            }
+                            continue;
+                        }
+                        NodeChallengeStatus::Completed => {
+                            info!("Node {} challenge has completed", node.id);
+                            return Ok(());
+                        }
+                        NodeChallengeStatus::Blacklisted => {
+                            info!("Node {} is blacklisted", node.id);
+                            continue;
+                        }
+                    }
+                }
             }
 
             // Then perform the GPU challenge
@@ -96,7 +162,27 @@ impl<'a> HardwareValidator<'a> {
                     "Node {} failed GPU challenge: {:?}",
                     node.id, gpu_challenge_result
                 );
+                let mut sessions = self.node_sessions.lock().await;
+                if let Some(session) = sessions.get_mut(&node.id) {
+                    session.status = NodeChallengeStatus::Failed;
+                    session.timestamp = get_time_as_secs();
+                }
                 continue;
+            } else {
+                let mut sessions = self.node_sessions.lock().await;
+                let session = sessions.get_mut(&node.id).unwrap();
+                if session.commitment_time != 0 && session.commitment_time < H100_TIME_CUTOFF {
+                    info!(
+                        "Node {} is validated as having H100 level performance",
+                        node.id
+                    );
+                    session.status = NodeChallengeStatus::Completed;
+                } else {
+                    info!("Node {} did not meet performance requirements", node.id);
+                    session.status = NodeChallengeStatus::Failed;
+                    session.timestamp = get_time_as_secs();
+                    continue;
+                }
             }
 
             // If both challenges pass, validate the node on-chain
@@ -323,19 +409,12 @@ impl<'a> HardwareValidator<'a> {
             let mut sessions = self.node_sessions.lock().await;
 
             if let Some(session) = sessions.get(&node.id) {
-                let current_time = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                let session_age = current_time - session.timestamp;
-
-                if session_age < 600 {
+                // if we get here, it should be in the init stage
+                if session.status != NodeChallengeStatus::Init {
+                    info!("Node {} already has a challenge session running", node.id);
                     return Err(anyhow::anyhow!(
-                        "Node is already running a challenge session"
+                        "Node already has a challenge session running"
                     ));
-                } else {
-                    info!("Removing expired session for node: {}", node.id);
-                    sessions.remove(&node.id);
                 }
             } else {
                 info!("No session found for node, creating: {}", node.id);
@@ -343,10 +422,10 @@ impl<'a> HardwareValidator<'a> {
                     node.id.clone(),
                     NodeChallengeState {
                         session_id: None,
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
+                        timestamp: get_time_as_secs(),
+                        status: NodeChallengeStatus::Init,
+                        attempts: 0,
+                        commitment_time: 0,
                     },
                 );
             }
@@ -354,7 +433,7 @@ impl<'a> HardwareValidator<'a> {
 
         // STEP 1: Initialize a new challenge with the verifier service
         let init_request = GpuChallengeInitRequest {
-            n: 8192, // Default matrix size
+            n: MATRIX_CHALLENGE_SIZE, // Default matrix size
         };
 
         let init_data: GpuChallengeResponse = self
@@ -364,25 +443,19 @@ impl<'a> HardwareValidator<'a> {
 
         info!("Initialized verifier session: {}", init_data.session_id);
 
-        // store session id in node_sessions
-        let challenge_state = NodeChallengeState {
-            session_id: Some(init_data.session_id.clone()),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        };
+        {
+            let mut sessions = self.node_sessions.lock().await;
+            let session = sessions.get_mut(&node.id).unwrap();
+            session.session_id = Some(init_data.session_id.clone());
+            session.status = NodeChallengeStatus::Running;
+            session.timestamp = get_time_as_secs();
 
-        self.node_sessions
-            .lock()
-            .await
-            .insert(node.id.clone(), challenge_state.clone());
-
-        info!(
-            "Starting challenge state: {}, {}",
-            challenge_state.session_id.unwrap(),
-            challenge_state.timestamp
-        );
+            info!(
+                "Starting challenge state: {}, {}",
+                session.session_id.as_ref().unwrap(),
+                session.timestamp
+            );
+        }
 
         // STEP 2: Start GPU challenge on worker node
         let start_route = "/gpu-challenge/init-container";
@@ -441,6 +514,13 @@ impl<'a> HardwareValidator<'a> {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
 
+        // reset timestamp to calculate time taken to compute commitment
+        {
+            let mut sessions = self.node_sessions.lock().await;
+            let session = sessions.get_mut(&node.id).unwrap();
+            session.timestamp = get_time_as_secs();
+        }
+
         // STEP 4: Send initial challenge parameters to worker, get commitment
         let compute_commitment_route = "/gpu-challenge/compute-commitment";
 
@@ -457,6 +537,13 @@ impl<'a> HardwareValidator<'a> {
                 Some(compute_commitment_payload),
             )
             .await?;
+
+        {
+            let mut sessions = self.node_sessions.lock().await;
+            let session = sessions.get_mut(&node.id).unwrap();
+            // the following value is the time it took the node to compute the A*B matmul
+            session.commitment_time = get_time_as_secs() - session.timestamp;
+        }
 
         // STEP 5: Send commitment to verifier
         let commitment_request = GpuCommitmentRequest {

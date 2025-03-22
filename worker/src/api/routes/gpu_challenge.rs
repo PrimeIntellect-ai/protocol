@@ -279,7 +279,6 @@ pub async fn get_container_status(
         .await;
 }
 
-
 async fn prover_send<T: serde::de::DeserializeOwned>(
     endpoint: &str,
     payload: Option<serde_json::Value>,
