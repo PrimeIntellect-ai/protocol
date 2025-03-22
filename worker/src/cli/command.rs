@@ -588,12 +588,7 @@ pub async fn execute_command(
             let combined_signature =
                 [provider_signature.as_bytes(), node_signature.as_bytes()].concat();
 
-            println!(
-                "\nProvider signature: {}",
-                hex::encode(provider_signature.as_bytes())
-            );
-            println!("Node signature: {}", hex::encode(node_signature.as_bytes()));
-            println!("\nCombined signature: {}", hex::encode(combined_signature));
+            println!("\nSignature: {}", hex::encode(combined_signature));
 
             Ok(())
         }
