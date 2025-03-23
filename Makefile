@@ -169,7 +169,7 @@ eject-node:
 
 sign-message:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- sign-message --message 99a89d3263f04ed3ab157c88f0be8d75 --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$PRIVATE_KEY_NODE"
+	cargo watch -w worker/src -x "run --bin worker -- sign-message --message example-content --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$PRIVATE_KEY_NODE"
 
 balance:
 	set -a; source ${ENV_FILE}; set +a; \
