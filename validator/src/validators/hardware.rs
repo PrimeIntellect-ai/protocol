@@ -343,44 +343,16 @@ impl<'a> HardwareValidator<'a> {
         Ok(parsed_response.data)
     }
 
-    async fn worker_get(
-        &self,
-        node: &DiscoveryNode,
-        endpoint: &str,
-        payload_struct: Option<Value>,
-    ) -> Result<String, Error> {
+    async fn worker_get(&self, node: &DiscoveryNode, endpoint: &str) -> Result<String, Error> {
         info!("Sending request to worker node: {}", endpoint);
         let client = reqwest::Client::new();
         let node_url = format!("http://{}:{}", node.node.ip_address, node.node.port);
 
         let mut request = client.get(format!("{}{}", node_url, endpoint));
 
-        let payload = payload_struct.map(serde_json::to_value).transpose()?;
-
-        if let Some(payload) = payload {
-            // For GET requests, add the payload as query parameters instead of JSON body
-            let query_params =
-                serde_json::from_value::<std::collections::HashMap<String, String>>(payload)
-                    .map_err(|e| {
-                        anyhow::anyhow!("Failed to convert payload to query params: {}", e)
-                    })?;
-
-            for (key, value) in query_params {
-                request = request.query(&[(key, value)]);
-            }
-        }
-
-        // get the built /endpoint?query=param URL
-        let request_url = request
-            .try_clone()
-            .unwrap()
-            .build()
-            .map_err(|e| anyhow::anyhow!("Failed to build request URL: {}", e))?;
-        let request_url_str = request_url.url().to_string();
-
         // Add signature and address headers
         let address = self.wallet.wallet.default_signer().address().to_string();
-        let signature = sign_request(&request_url_str, self.wallet, None)
+        let signature = sign_request(endpoint, self.wallet, None)
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -489,11 +461,12 @@ impl<'a> HardwareValidator<'a> {
         let mut max_attempts = 100;
 
         loop {
-            match self.worker_get(node, status_route, None).await {
+            match self.worker_get(node, status_route).await {
                 Ok(response_text) => {
-                    let status_response: GpuChallengeStatus = serde_json::from_str(&response_text)?;
-                    info!("Worker status: {}", status_response.status);
-                    if status_response.status == "ready" {
+                    let status_response: ApiResponse<GpuChallengeStatus> =
+                        serde_json::from_str(&response_text)?;
+                    info!("Worker response: {:?}", status_response);
+                    if status_response.data.status == "ready" {
                         info!("Worker node is ready for GPU challenge");
                         break;
                     }
