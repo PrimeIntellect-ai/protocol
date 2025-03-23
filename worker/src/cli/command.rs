@@ -13,6 +13,7 @@ use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
+use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
 use log::debug;
 use shared::models::node::Node;
@@ -89,6 +90,21 @@ pub enum Commands {
 
     /// Generate new wallets for provider and node
     GenerateWallets {},
+
+    /// Sign Message
+    SignMessage {
+        /// Message to sign
+        #[arg(long)]
+        message: String,
+
+        /// Private key for the provider
+        #[arg(long)]
+        private_key_provider: Option<String>,
+
+        /// Private key for the node
+        #[arg(long)]
+        private_key_node: Option<String>,
+    },
 }
 
 pub async fn execute_command(
@@ -534,6 +550,46 @@ pub async fn execute_command(
                 "  Private key: {}",
                 hex::encode(node_signer.credential().to_bytes())
             );
+            Ok(())
+        }
+        Commands::SignMessage {
+            message,
+            private_key_provider,
+            private_key_node,
+        } => {
+            let private_key_provider = if let Some(key) = private_key_provider {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
+            };
+
+            let private_key_node = if let Some(key) = private_key_node {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
+            };
+
+            let provider_wallet = Wallet::new(
+                &private_key_provider,
+                Url::parse("http://localhost:8545").unwrap(),
+            )
+            .unwrap();
+            let node_wallet = Wallet::new(
+                &private_key_node,
+                Url::parse("http://localhost:8545").unwrap(),
+            )
+            .unwrap();
+
+            let message_hash = provider_wallet.signer.sign_message(message.as_bytes());
+            let node_signature = node_wallet.signer.sign_message(message.as_bytes());
+
+            let provider_signature = message_hash.await?;
+            let node_signature = node_signature.await?;
+            let combined_signature =
+                [provider_signature.as_bytes(), node_signature.as_bytes()].concat();
+
+            println!("\nSignature: {}", hex::encode(combined_signature));
+
             Ok(())
         }
     }
