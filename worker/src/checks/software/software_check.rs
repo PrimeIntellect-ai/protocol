@@ -16,12 +16,11 @@ impl std::fmt::Display for SoftwareCheckError {
 impl Error for SoftwareCheckError {}
 
 pub fn run_software_check() -> Result<(), SoftwareCheckError> {
-    Console::section("Software Requirements Check");
+    Console::section("Software Checks");
 
     // Check Docker installation and connectivity
     Console::title("Docker:");
     check_docker_installed()?;
 
-    Console::success("All software checks passed");
     Ok(())
 }

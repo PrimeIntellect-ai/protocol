@@ -1,5 +1,6 @@
+use crate::console::Console;
+
 use super::types::SoftwareCheckError;
-use colored::*;
 
 pub fn check_docker_installed() -> Result<(), SoftwareCheckError> {
     let docker_path = std::process::Command::new("which")
@@ -24,6 +25,8 @@ pub fn check_docker_installed() -> Result<(), SoftwareCheckError> {
         return Err(SoftwareCheckError::DockerNotRunning);
     }
 
+    Console::success("Docker ready");
+
     // Check if NVIDIA Container Toolkit is installed using which command
     let nvidia_toolkit = std::process::Command::new("which")
         .arg("nvidia-ctk")
@@ -38,23 +41,12 @@ pub fn check_docker_installed() -> Result<(), SoftwareCheckError> {
             .map_err(|e| SoftwareCheckError::Other(format!("Failed to run nvidia-ctk: {}", e)))?;
 
         if version_check.status.success() {
-            println!(
-                "{}",
-                "✓ Docker check passed - Docker and NVIDIA Container Toolkit are installed and running"
-                    .green()
-            );
+            Console::success("NVIDIA toolkit ready");
         } else {
-            println!(
-                "{}",
-                "⚠ Docker is running but NVIDIA Container Toolkit is not properly configured"
-                    .yellow()
-            );
+            Console::error("NVIDIA toolkit not configured");
         }
     } else {
-        println!(
-            "{}",
-            "⚠ Docker is running but NVIDIA Container Toolkit is not installed".yellow()
-        );
+        Console::error("NVIDIA toolkit not found");
     }
 
     Ok(())

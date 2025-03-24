@@ -7,13 +7,13 @@ use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
-use crate::operations::provider::ProviderError;
 use crate::operations::provider::ProviderOperations;
 use crate::services::discovery::DiscoveryService;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
+use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
 use log::debug;
 use shared::models::node::Node;
@@ -73,11 +73,53 @@ pub enum Commands {
 
         #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
         validator_address: Option<String>,
+
+        /// Private key for the provider (not recommended, use environment variable PRIVATE_KEY_PROVIDER instead)
+        #[arg(long)]
+        private_key_provider: Option<String>,
+
+        /// Private key for the node (not recommended, use environment variable PRIVATE_KEY_NODE instead)
+        #[arg(long)]
+        private_key_node: Option<String>,
+
+        /// Auto accept transactions
+        #[arg(long, default_value = "false")]
+        auto_accept: bool,
+
+        /// Retry count until provider has enough balance to stake (0 for unlimited retries)
+        #[arg(long, default_value = "0")]
+        funding_retry_count: u32,
     },
     Check {},
 
     /// Generate new wallets for provider and node
     GenerateWallets {},
+
+    /// Get balance of provider and node
+    Balance {
+        /// Private key for the provider
+        #[arg(long)]
+        private_key: Option<String>,
+
+        /// RPC URL
+        #[arg(long, default_value = "http://localhost:8545")]
+        rpc_url: String,
+    },
+
+    /// Sign Message
+    SignMessage {
+        /// Message to sign
+        #[arg(long)]
+        message: String,
+
+        /// Private key for the provider
+        #[arg(long)]
+        private_key_provider: Option<String>,
+
+        /// Private key for the node
+        #[arg(long)]
+        private_key_node: Option<String>,
+    },
 }
 
 pub async fn execute_command(
@@ -97,10 +139,14 @@ pub async fn execute_command(
             disable_state_storing,
             auto_recover,
             validator_address,
+            private_key_provider,
+            private_key_node,
+            auto_accept,
+            funding_retry_count,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
-                    "❌ Cannot disable state storing and enable auto recover at the same time.",
+                    "Cannot disable state storing and enable auto recover at the same time.",
                 );
                 std::process::exit(1);
             }
@@ -125,8 +171,8 @@ pub async fn execute_command(
 
             let mut recover_last_state = *auto_recover;
             let version = env!("CARGO_PKG_VERSION");
-            Console::section("🚀 PRIME MINER INITIALIZATION");
-            Console::info("Version:", version);
+            Console::section("🚀 PRIME WORKER INITIALIZATION");
+            Console::info("Version", version);
             /*
              Initialize Wallet instances
             */
@@ -134,7 +180,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        Console::error(&format!("❌ Failed to create wallet: {}", err));
+                        Console::error(&format!("Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
                 },
@@ -165,24 +211,23 @@ pub async fn execute_command(
             );
 
             let provider_ops = ProviderOperations::new(
-                &provider_wallet_instance,
-                &contracts.compute_registry,
-                &contracts.ai_token,
-                &contracts.prime_network,
+                provider_wallet_instance.clone(),
+                contracts.clone(),
+                *auto_accept,
             );
+
+            let provider_ops_cancellation = cancellation_token.clone();
 
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,
                 &node_wallet_instance,
-                &contracts.compute_registry,
-                &contracts.prime_network,
+                contracts.clone(),
             );
 
             let discovery_service =
                 DiscoveryService::new(&node_wallet_instance, discovery_url.clone(), None);
             let pool_id = U256::from(*compute_pool_id as u32);
 
-            Console::progress("Loading pool info");
             let pool_info = loop {
                 match contracts.compute_pool.get_pool_info(pool_id).await {
                     Ok(pool) if pool.status == PoolStatus::ACTIVE => break Arc::new(pool),
@@ -284,8 +329,6 @@ pub async fn execute_command(
                 state,
             );
 
-            let mut attempts = 0;
-            let max_attempts = 100;
             let gpu_count: u32 = match &node_config.compute_specs {
                 Some(specs) => specs
                     .gpu
@@ -294,22 +337,19 @@ pub async fn execute_command(
                     .unwrap_or(0),
                 None => 0,
             };
+            let compute_units = U256::from(std::cmp::max(1, gpu_count * 1000));
 
-            let compute_units = U256::from(gpu_count * 1000);
+            Console::section("Syncing with Network");
 
-            let provider_total_compute = match contracts
-                .compute_registry
-                .get_provider_total_compute(
-                    provider_wallet_instance.wallet.default_signer().address(),
-                )
-                .await
-            {
-                Ok(compute) => compute,
+            // Check if provider exists first
+            let provider_exists = match provider_ops.check_provider_exists().await {
+                Ok(exists) => exists,
                 Err(e) => {
-                    Console::error(&format!("❌ Failed to get provider total compute: {}", e));
+                    Console::error(&format!("❌ Failed to check if provider exists: {}", e));
                     std::process::exit(1);
                 }
             };
+
             let stake_manager = match contracts.stake_manager.as_ref() {
                 Some(stake_manager) => stake_manager,
                 None => {
@@ -318,92 +358,126 @@ pub async fn execute_command(
                 }
             };
 
-            let required_stake = match stake_manager
-                .calculate_stake(compute_units, provider_total_compute)
-                .await
-            {
-                Ok(stake) => stake,
+            Console::title("Provider Status");
+            let is_whitelisted = match provider_ops.check_provider_whitelisted().await {
+                Ok(is_whitelisted) => is_whitelisted,
                 Err(e) => {
-                    Console::error(&format!("❌ Failed to calculate required stake: {}", e));
+                    Console::error(&format!("Failed to check provider whitelist status: {}", e));
                     std::process::exit(1);
                 }
             };
-            Console::info(
-                "Required stake",
-                &format!("{}", required_stake / U256::from(10u128.pow(18))),
-            );
 
-            // TODO: Currently we do not increase stake when adding more nodes
-
-            while attempts < max_attempts {
-                let spinner = Console::spinner("Registering provider...");
-                if let Err(e) = provider_ops.register_provider(required_stake).await {
-                    spinner.finish_and_clear(); // Finish spinner before logging error
-                    if let ProviderError::NotWhitelisted = e {
-                        Console::error("❌ Provider not whitelisted, retrying in 15 seconds...");
-                        tokio::select! {
-                            _ = tokio::time::sleep(tokio::time::Duration::from_secs(15)) => {}
-                            _ = cancellation_token.cancelled() => {
-                                return Ok(());  // or return an error if you prefer
-                            }
-                        }
-                        attempts += 1;
-                        continue; // Retry registration
-                    } else {
-                        Console::error(&format!("❌ Failed to register provider: {}", e));
-                        std::process::exit(1);
-                    }
-                }
-                spinner.finish_and_clear(); // Finish spinner if registration is successful
-                break; // Exit loop if registration is successful
-            }
-            if attempts >= max_attempts {
-                Console::error(&format!(
-                    "❌ Failed to register provider after {} attempts",
-                    attempts
-                ));
-                std::process::exit(1);
-            };
-
-            let provider_stake = match stake_manager
-                .get_stake(provider_wallet_instance.wallet.default_signer().address())
-                .await
-            {
-                Ok(stake) => stake,
-                Err(e) => {
-                    Console::error(&format!("❌ Failed to get provider stake: {}", e));
-                    std::process::exit(1);
-                }
-            };
-            Console::info(
-                "Provider stake",
-                &format!("{}", provider_stake / U256::from(10u128.pow(18))),
-            );
-
-            if provider_stake < required_stake {
-                let spinner = Console::spinner("Increasing stake...");
-                if let Err(e) = provider_ops
-                    .increase_stake(required_stake - provider_stake)
+            if provider_exists && is_whitelisted {
+                Console::success("Provider is registered and whitelisted");
+            } else {
+                let required_stake = match stake_manager
+                    .calculate_stake(compute_units, U256::from(0))
                     .await
                 {
-                    spinner.finish_and_clear();
-                    Console::error(&format!("❌ Failed to increase stake: {}", e));
+                    Ok(stake) => stake,
+                    Err(e) => {
+                        Console::error(&format!("❌ Failed to calculate required stake: {}", e));
+                        std::process::exit(1);
+                    }
+                };
+                Console::info(
+                    "Required stake",
+                    &format!("{}", required_stake / U256::from(10u128.pow(18))),
+                );
+
+                if let Err(e) = provider_ops
+                    .retry_register_provider(
+                        required_stake,
+                        *funding_retry_count,
+                        cancellation_token.clone(),
+                    )
+                    .await
+                {
+                    Console::error(&format!("❌ Failed to register provider: {}", e));
                     std::process::exit(1);
                 }
-                spinner.finish_and_clear();
             }
 
-            match compute_node_ops.add_compute_node(compute_units).await {
-                Ok(added_node) => {
-                    if added_node {
-                        // If we are adding a new compute node we wait for a proper
-                        // invite and do not recover from previous state
-                        recover_last_state = false;
+            let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
+                Ok(exists) => exists,
+                Err(e) => {
+                    Console::error(&format!("❌ Failed to check if compute node exists: {}", e));
+                    std::process::exit(1);
+                }
+            };
+
+            Console::title("Compute Node Status");
+            if compute_node_exists {
+                // TODO: What if we have two nodes?
+                Console::success("Compute node is registered");
+                recover_last_state = true;
+            } else {
+                let provider_total_compute = match contracts
+                    .compute_registry
+                    .get_provider_total_compute(
+                        provider_wallet_instance.wallet.default_signer().address(),
+                    )
+                    .await
+                {
+                    Ok(compute) => compute,
+                    Err(e) => {
+                        Console::error(&format!("❌ Failed to get provider total compute: {}", e));
+                        std::process::exit(1);
+                    }
+                };
+
+                let provider_stake = stake_manager
+                    .get_stake(provider_wallet_instance.wallet.default_signer().address())
+                    .await
+                    .unwrap_or_default();
+
+                let required_stake = match stake_manager
+                    .calculate_stake(compute_units, provider_total_compute)
+                    .await
+                {
+                    Ok(stake) => stake,
+                    Err(e) => {
+                        Console::error(&format!("❌ Failed to calculate required stake: {}", e));
+                        std::process::exit(1);
+                    }
+                };
+
+                if required_stake > provider_stake {
+                    Console::info(
+                        "Provider stake is less than required stake",
+                        &format!(
+                            "Required: {} tokens, Current: {} tokens",
+                            required_stake / U256::from(10u128.pow(18)),
+                            provider_stake / U256::from(10u128.pow(18))
+                        ),
+                    );
+
+                    match provider_ops
+                        .increase_stake(required_stake - provider_stake)
+                        .await
+                    {
+                        Ok(_) => {
+                            Console::success("Successfully increased stake");
+                        }
+                        Err(e) => {
+                            Console::error(&format!("❌ Failed to increase stake: {}", e));
+                            std::process::exit(1);
+                        }
                     }
                 }
-                Err(e) => {
-                    Console::error(&format!("❌ Failed to add compute node: {}", e));
-                    std::process::exit(1);
+
+                match compute_node_ops.add_compute_node(compute_units).await {
+                    Ok(added_node) => {
+                        if added_node {
+                            // If we are adding a new compute node we wait for a proper
+                            // invite and do not recover from previous state
+                            recover_last_state = false;
+                        }
+                    }
+                    Err(e) => {
+                        Console::error(&format!("❌ Failed to add compute node: {}", e));
+                        std::process::exit(1);
+                    }
                 }
             }
 
@@ -412,7 +486,13 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
-            Console::success("✅ Discovery info uploaded");
+            Console::success("Discovery info uploaded");
+
+            Console::section("Starting Worker");
+
+            // Start monitoring compute node status on chain
+            provider_ops.start_monitoring(provider_ops_cancellation);
+            compute_node_ops.start_monitoring(cancellation_token.clone());
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             Console::info(
@@ -447,7 +527,8 @@ pub async fn execute_command(
             Ok(())
         }
         Commands::Check {} => {
-            Console::section("🔍 PRIME MINER SYSTEM CHECK");
+            Console::section("🔍 PRIME WORKER SYSTEM CHECK");
+            Console::info("═", &"═".repeat(50));
 
             // Run hardware checks
             let hardware_checker = HardwareChecker::new();
@@ -495,6 +576,80 @@ pub async fn execute_command(
             );
 
             Console::warning("Important: Save these credentials in a secure location. They cannot be recovered if lost.");
+            Ok(())
+        }
+
+        Commands::Balance {
+            private_key,
+            rpc_url,
+        } => {
+            let private_key = if let Some(key) = private_key {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set")
+            };
+
+            let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();
+
+            let contracts = Arc::new(
+                ContractBuilder::new(&provider_wallet)
+                    .with_compute_registry()
+                    .with_ai_token()
+                    .with_prime_network()
+                    .with_compute_pool()
+                    .build()
+                    .unwrap(),
+            );
+
+            let provider_balance = contracts
+                .ai_token
+                .balance_of(provider_wallet.wallet.default_signer().address())
+                .await
+                .unwrap();
+
+            let format_balance = format!("{}", provider_balance / U256::from(10u128.pow(18)));
+
+            println!("Provider balance: {}", format_balance);
+            Ok(())
+        }
+        Commands::SignMessage {
+            message,
+            private_key_provider,
+            private_key_node,
+        } => {
+            let private_key_provider = if let Some(key) = private_key_provider {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
+            };
+
+            let private_key_node = if let Some(key) = private_key_node {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
+            };
+
+            let provider_wallet = Wallet::new(
+                &private_key_provider,
+                Url::parse("http://localhost:8545").unwrap(),
+            )
+            .unwrap();
+            let node_wallet = Wallet::new(
+                &private_key_node,
+                Url::parse("http://localhost:8545").unwrap(),
+            )
+            .unwrap();
+
+            let message_hash = provider_wallet.signer.sign_message(message.as_bytes());
+            let node_signature = node_wallet.signer.sign_message(message.as_bytes());
+
+            let provider_signature = message_hash.await?;
+            let node_signature = node_signature.await?;
+            let combined_signature =
+                [provider_signature.as_bytes(), node_signature.as_bytes()].concat();
+
+            println!("\nSignature: {}", hex::encode(combined_signature));
+
             Ok(())
         }
     }

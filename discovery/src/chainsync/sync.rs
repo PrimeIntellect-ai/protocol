@@ -46,9 +46,11 @@ impl ChainSync {
                             let node_address = Address::from_str(&node.id).unwrap();
                             let is_blacklisted = contracts_clone.compute_pool.is_node_blacklisted(node.node.compute_pool_id, node_address).await.unwrap();
                             let node_info = contracts_clone.compute_registry.get_node(provider_address, node_address).await.unwrap();
+                            let provider_info = contracts_clone.compute_registry.get_provider(provider_address).await.unwrap();
                             let (is_active, is_validated) = node_info;
                             n.is_active = is_active;
                             n.is_validated = is_validated;
+                            n.is_provider_whitelisted = provider_info.is_whitelisted;
                             n.is_blacklisted = is_blacklisted;
                             node_store_clone.update_node(n);
                         }
