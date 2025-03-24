@@ -173,4 +173,4 @@ sign-message:
 
 balance:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- balance --private-key-provider $$PRIVATE_KEY_PROVIDER --rpc-url $$RPC_URL"
+	cargo watch -w worker/src -x "run --bin worker -- balance --private-key $$PRIVATE_KEY_PROVIDER --rpc-url $$RPC_URL"

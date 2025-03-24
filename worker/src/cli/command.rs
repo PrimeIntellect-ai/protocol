@@ -99,7 +99,7 @@ pub enum Commands {
     Balance {
         /// Private key for the provider
         #[arg(long)]
-        private_key_provider: Option<String>,
+        private_key: Option<String>,
 
         /// RPC URL
         #[arg(long, default_value = "http://localhost:8545")]
@@ -569,17 +569,16 @@ pub async fn execute_command(
         }
 
         Commands::Balance {
-            private_key_provider,
+            private_key,
             rpc_url,
         } => {
-            let private_key_provider = if let Some(key) = private_key_provider {
+            let private_key = if let Some(key) = private_key {
                 key.clone()
             } else {
-                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
+                std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set")
             };
 
-            let provider_wallet =
-                Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()).unwrap();
+            let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();
 
             let contracts = Arc::new(
                 ContractBuilder::new(&provider_wallet)
