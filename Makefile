@@ -9,7 +9,6 @@ set-min-stake-amount:
 mint-ai-tokens-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
-
 transfer-eth-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example transfer_eth -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
@@ -170,4 +169,8 @@ eject-node:
 
 sign-message:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- sign-message --message example --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$PRIVATE_KEY_NODE"
+	cargo watch -w worker/src -x "run --bin worker -- sign-message --message example-content --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$PRIVATE_KEY_NODE"
+
+balance:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo watch -w worker/src -x "run --bin worker -- balance --private-key $$PRIVATE_KEY_PROVIDER --rpc-url $$RPC_URL"

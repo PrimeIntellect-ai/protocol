@@ -85,11 +85,26 @@ pub enum Commands {
         /// Auto accept transactions
         #[arg(long, default_value = "false")]
         auto_accept: bool,
+
+        /// Retry count until provider has enough balance to stake (0 for unlimited retries)
+        #[arg(long, default_value = "0")]
+        funding_retry_count: u32,
     },
     Check {},
 
     /// Generate new wallets for provider and node
     GenerateWallets {},
+
+    /// Get balance of provider and node
+    Balance {
+        /// Private key for the provider
+        #[arg(long)]
+        private_key: Option<String>,
+
+        /// RPC URL
+        #[arg(long, default_value = "http://localhost:8545")]
+        rpc_url: String,
+    },
 
     /// Sign Message
     SignMessage {
@@ -127,6 +142,7 @@ pub async fn execute_command(
             private_key_provider,
             private_key_node,
             auto_accept,
+            funding_retry_count,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -365,11 +381,10 @@ pub async fn execute_command(
                     &format!("{}", required_stake / U256::from(10u128.pow(18))),
                 );
 
-                const MAX_REGISTER_PROVIDER_ATTEMPTS: u32 = 200;
                 if let Err(e) = provider_ops
                     .retry_register_provider(
                         required_stake,
-                        MAX_REGISTER_PROVIDER_ATTEMPTS,
+                        *funding_retry_count,
                         cancellation_token.clone(),
                     )
                     .await
@@ -550,6 +565,40 @@ pub async fn execute_command(
                 "  Private key: {}",
                 hex::encode(node_signer.credential().to_bytes())
             );
+            Ok(())
+        }
+
+        Commands::Balance {
+            private_key,
+            rpc_url,
+        } => {
+            let private_key = if let Some(key) = private_key {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set")
+            };
+
+            let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();
+
+            let contracts = Arc::new(
+                ContractBuilder::new(&provider_wallet)
+                    .with_compute_registry()
+                    .with_ai_token()
+                    .with_prime_network()
+                    .with_compute_pool()
+                    .build()
+                    .unwrap(),
+            );
+
+            let provider_balance = contracts
+                .ai_token
+                .balance_of(provider_wallet.wallet.default_signer().address())
+                .await
+                .unwrap();
+
+            let format_balance = format!("{}", provider_balance / U256::from(10u128.pow(18)));
+
+            println!("Provider balance: {}", format_balance);
             Ok(())
         }
         Commands::SignMessage {

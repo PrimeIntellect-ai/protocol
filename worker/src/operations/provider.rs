@@ -168,15 +168,15 @@ impl ProviderOperations {
     ) -> Result<(), ProviderError> {
         Console::title("Registering Provider");
         let mut attempts = 0;
-        while attempts < max_attempts {
+        while attempts < max_attempts || max_attempts == 0 {
             Console::progress("Registering provider...");
             match self.register_provider(stake).await {
                 Ok(_) => {
                     return Ok(());
                 }
-                Err(e) => {
-                    if let ProviderError::NotWhitelisted = e {
-                        Console::error("Provider not whitelisted, retrying in 10 seconds...");
+                Err(e) => match e {
+                    ProviderError::NotWhitelisted | ProviderError::InsufficientBalance => {
+                        Console::info("Info", "Retrying in 10 seconds...");
                         tokio::select! {
                             _ = tokio::time::sleep(tokio::time::Duration::from_secs(10)) => {}
                             _ = cancellation_token.cancelled() => {
@@ -185,10 +185,9 @@ impl ProviderOperations {
                         }
                         attempts += 1;
                         continue;
-                    } else {
-                        return Err(e);
                     }
-                }
+                    _ => return Err(e),
+                },
             }
         }
         Console::error(&format!(
@@ -224,6 +223,10 @@ impl ProviderOperations {
                 "ETH Balance",
                 &format!("{} ETH", eth_balance / U256::from(10u128.pow(18))),
             );
+            if balance < stake {
+                Console::error("Insufficient AI Token balance for stake");
+                return Err(ProviderError::InsufficientBalance);
+            }
             Console::progress("Approving AI Token for Stake transaction");
             if !self.prompt_user_confirmation(&format!(
                 "Do you want to approve staking {} tokens?",
@@ -265,6 +268,7 @@ impl ProviderOperations {
 
         Console::success("Provider registered");
         if !provider.is_whitelisted {
+            Console::error("Provider is not whitelisted yet.");
             return Err(ProviderError::NotWhitelisted);
         }
 
@@ -336,6 +340,7 @@ pub enum ProviderError {
     NotWhitelisted,
     UserCancelled,
     Other,
+    InsufficientBalance,
 }
 
 impl fmt::Display for ProviderError {
@@ -344,6 +349,7 @@ impl fmt::Display for ProviderError {
             Self::NotWhitelisted => write!(f, "Provider is not whitelisted"),
             Self::UserCancelled => write!(f, "Operation cancelled by user"),
             Self::Other => write!(f, "Provider could not be registered"),
+            Self::InsufficientBalance => write!(f, "Insufficient AI Token balance for stake"),
         }
     }
 }
