@@ -1,5 +1,6 @@
 use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
+use crate::checks::issue::IssueReport;
 use crate::checks::software::software_check;
 use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
@@ -257,8 +258,8 @@ pub async fn execute_command(
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
             };
-            let hardware_check = HardwareChecker::new();
-            let node_config = hardware_check.enrich_node_config(node_config).unwrap();
+            let mut hardware_check = HardwareChecker::new(None);
+            let node_config = hardware_check.check_hardware(node_config).await.unwrap();
 
             // TODO: Move to proper check
             let _ = software_check::run_software_check();
@@ -524,10 +525,10 @@ pub async fn execute_command(
         }
         Commands::Check {} => {
             Console::section("🔍 PRIME WORKER SYSTEM CHECK");
-            Console::info("═", &"═".repeat(50));
+            let issues = IssueReport::new();
 
             // Run hardware checks
-            let hardware_checker = HardwareChecker::new();
+            let mut hardware_checker = HardwareChecker::new(Some(issues));
             let node_config = Node {
                 id: String::new(),
                 ip_address: String::new(),
@@ -537,9 +538,9 @@ pub async fn execute_command(
                 compute_pool_id: 0,
             };
 
-            match hardware_checker.enrich_node_config(node_config) {
+            match hardware_checker.check_hardware(node_config).await {
                 Ok(_) => {
-                    Console::success("✅ Hardware check passed!");
+                    Console::success("Hardware check completed!");
                 }
                 Err(err) => {
                     Console::error(&format!("❌ Hardware check failed: {}", err));
@@ -547,6 +548,11 @@ pub async fn execute_command(
                 }
             }
             let _ = software_check::run_software_check();
+
+            /*if issues.has_critical_issues() {
+                Console::error("Critical hardware issues detected");
+                std::process::exit(1);
+            }*/
             Ok(())
         }
         Commands::GenerateWallets {} => {

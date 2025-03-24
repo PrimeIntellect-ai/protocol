@@ -74,6 +74,9 @@ watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS"
 
+watch-check:
+	cargo watch -w worker/src -x "run --bin worker -- check"	
+
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --work-validation-contract $${WORK_VALIDATION_CONTRACT} --leviticus-url $${LEVITICUS_URL} --leviticus-token $${LEVITICUS_TOKEN}"
