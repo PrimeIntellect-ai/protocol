@@ -11,6 +11,7 @@ pub struct RequestUploadRequest {
     pub file_name: String,
     pub file_size: u64,
     pub file_type: String,
+    pub sha256: String,
 }
 
 async fn request_upload(
@@ -20,6 +21,7 @@ async fn request_upload(
     let file_name = &request_upload.file_name;
     let file_size = &request_upload.file_size;
     let file_type = &request_upload.file_type;
+    let sha256 = &request_upload.sha256;
     println!("request_upload: {} {} {}", file_name, file_size, file_type);
 
     // Get credentials from app state
@@ -40,7 +42,7 @@ async fn request_upload(
         credentials,
         Some(file_type.to_string()),
         Duration::from_secs(3600), // 1 hour expiry
-        Some(*file_size),
+        Some(*file_size)
     )
     .await
     {

@@ -2,8 +2,56 @@ use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
 use google_cloud_storage::client::google_cloud_auth::credentials::CredentialsFile;
 use google_cloud_storage::client::{Client, ClientConfig};
+use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use google_cloud_storage::sign::{SignedURLMethod, SignedURLOptions};
 use std::time::Duration;
+
+pub async fn generate_mapping_file(
+    bucket: &str,
+    credentials_base64: &str,
+    sha256: &str,
+    file_name: &str,
+) -> Result<String> {
+    // Decode base64 to JSON string
+    let credentials_json = general_purpose::STANDARD.decode(credentials_base64)?;
+    let credentials_str = String::from_utf8(credentials_json)?;
+
+    // Create client config directly from the JSON string
+    let credentials = CredentialsFile::new_from_str(&credentials_str)
+        .await
+        .unwrap();
+    let config = ClientConfig::default()
+        .with_credentials(credentials)
+        .await
+        .unwrap();
+
+    let client = Client::new(config);
+
+    let (encoded_sha256, encoded_file_name) = encode_sha(sha256, file_name);
+
+    let mapping_content = format!("{}:{}", encoded_sha256, encoded_file_name);
+    let mapping_path = format!("mapping/{}", mapping_content);
+    let upload_type = UploadType::Simple(Media::new(mapping_path));
+
+    let uploaded = client.upload_object(&UploadObjectRequest {
+        bucket: bucket.to_string(),
+        ..Default::default()
+    }, "".as_bytes(), &upload_type).await;
+
+    println!("uploaded: {:?}", uploaded);
+
+    Ok(mapping_content)
+}
+
+fn encode_sha(sha256: &str, file_name: &str) -> (String, String) {
+    let encoded_sha256 = sha256.replace(":", "%3A");
+    let encoded_file_name = file_name.replace("/", "%2F").replace(":", "%3A");
+    (encoded_sha256, encoded_file_name)
+}
+
+fn decode_sha(encoded_sha: &str) -> String {
+    encoded_sha.replace("%3A", ":").replace("%2F", "/")
+}
 
 pub async fn generate_upload_signed_url(
     bucket: &str,
@@ -21,10 +69,12 @@ pub async fn generate_upload_signed_url(
     let credentials = CredentialsFile::new_from_str(&credentials_str)
         .await
         .unwrap();
+
     let config = ClientConfig::default()
         .with_credentials(credentials)
         .await
         .unwrap();
+
     let client = Client::new(config);
 
     // Set options for the signed URL
