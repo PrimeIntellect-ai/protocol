@@ -38,11 +38,7 @@ pub async fn generate_mapping_file(
     let mapping_path = format!("mapping/{}", sha256); // Use sha256 as filename
     let upload_type = UploadType::Simple(Media::new(mapping_path.clone()));
 
-    let file_name = if file_name.starts_with('/') {
-        &file_name[1..]
-    } else {
-        file_name
-    };
+    let file_name = file_name.strip_prefix('/').unwrap_or(file_name); // Adjusted to use strip_prefix
     let content = file_name.to_string().into_bytes();
 
     let uploaded = client
@@ -86,6 +82,7 @@ pub async fn resolve_mapping_for_sha(
 
     Ok(file_name)
 }
+
 pub async fn generate_upload_signed_url(
     bucket: &str,
     object_path: &str,
@@ -95,11 +92,7 @@ pub async fn generate_upload_signed_url(
     max_bytes: Option<u64>,
 ) -> Result<String> {
     // Ensure object_path does not start with a /
-    let object_path = if object_path.starts_with('/') {
-        &object_path[1..]
-    } else {
-        object_path
-    };
+    let object_path = object_path.strip_prefix('/').unwrap_or(object_path); // Adjusted to use strip_prefix
 
     let client = create_gcs_client(credentials_base64).await?;
 

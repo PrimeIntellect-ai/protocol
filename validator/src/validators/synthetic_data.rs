@@ -186,7 +186,7 @@ impl SyntheticDataValidator {
                     println!("Resolving original file name for work key: {}", work_key);
 
                     let original_file_name = resolve_mapping_for_sha(
-                        &self.bucket_name.clone().unwrap().as_str(),
+                        self.bucket_name.clone().unwrap().as_str(),
                         &self.s3_credentials.clone().unwrap(),
                         &work_key,
                     )
