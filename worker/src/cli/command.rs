@@ -1,5 +1,6 @@
 use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
+use crate::checks::issue::IssueReport;
 use crate::checks::software::software_check;
 use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
@@ -22,6 +23,7 @@ use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
@@ -89,6 +91,10 @@ pub enum Commands {
         /// Retry count until provider has enough balance to stake (0 for unlimited retries)
         #[arg(long, default_value = "0")]
         funding_retry_count: u32,
+
+        /// Ignore issues
+        #[arg(long, default_value = "false")]
+        ignore_issues: bool,
     },
     Check {},
 
@@ -143,6 +149,7 @@ pub async fn execute_command(
             private_key_node,
             auto_accept,
             funding_retry_count,
+            ignore_issues,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -257,11 +264,26 @@ pub async fn execute_command(
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
             };
-            let hardware_check = HardwareChecker::new();
-            let node_config = hardware_check.enrich_node_config(node_config).unwrap();
+            let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
+            let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
+            let node_config = hardware_check.check_hardware(node_config).await.unwrap();
+            if let Err(err) = software_check::run_software_check(Some(issue_tracker.clone())).await
+            {
+                Console::error(&format!("❌ Software check failed: {}", err));
+                std::process::exit(1);
+            }
 
-            // TODO: Move to proper check
-            let _ = software_check::run_software_check();
+            let issues = issue_tracker.read().await;
+            issues.print_issues();
+            if issues.has_critical_issues() {
+                if !*ignore_issues {
+                    Console::error("❌ Critical issues found. Exiting.");
+                    std::process::exit(1);
+                } else {
+                    Console::warning("Critical issues found. Ignoring and continuing.");
+                }
+            }
+
             let has_gpu = match node_config.compute_specs {
                 Some(ref specs) => specs.gpu.is_some(),
                 None => {
@@ -524,10 +546,10 @@ pub async fn execute_command(
         }
         Commands::Check {} => {
             Console::section("🔍 PRIME WORKER SYSTEM CHECK");
-            Console::info("═", &"═".repeat(50));
+            let issues = Arc::new(RwLock::new(IssueReport::new()));
 
             // Run hardware checks
-            let hardware_checker = HardwareChecker::new();
+            let mut hardware_checker = HardwareChecker::new(Some(issues.clone()));
             let node_config = Node {
                 id: String::new(),
                 ip_address: String::new(),
@@ -537,16 +559,24 @@ pub async fn execute_command(
                 compute_pool_id: 0,
             };
 
-            match hardware_checker.enrich_node_config(node_config) {
-                Ok(_) => {
-                    Console::success("✅ Hardware check passed!");
-                }
-                Err(err) => {
-                    Console::error(&format!("❌ Hardware check failed: {}", err));
-                    std::process::exit(1);
-                }
+            if let Err(err) = hardware_checker.check_hardware(node_config).await {
+                Console::error(&format!("❌ Hardware check failed: {}", err));
+                std::process::exit(1);
             }
-            let _ = software_check::run_software_check();
+
+            if let Err(err) = software_check::run_software_check(Some(issues.clone())).await {
+                Console::error(&format!("❌ Software check failed: {}", err));
+                std::process::exit(1);
+            }
+
+            let issues = issues.read().await;
+            issues.print_issues();
+
+            if issues.has_critical_issues() {
+                Console::error("❌ Critical issues found. Exiting.");
+                std::process::exit(1);
+            }
+
             Ok(())
         }
         Commands::GenerateWallets {} => {
