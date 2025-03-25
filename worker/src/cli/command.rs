@@ -21,7 +21,7 @@ use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -262,7 +262,7 @@ pub async fn execute_command(
             let node_config = hardware_check.check_hardware(node_config).await.unwrap();
 
             // TODO: Move to proper check
-            let _ = software_check::run_software_check();
+            let _ = software_check::run_software_check(None);
             let has_gpu = match node_config.compute_specs {
                 Some(ref specs) => specs.gpu.is_some(),
                 None => {
@@ -525,10 +525,10 @@ pub async fn execute_command(
         }
         Commands::Check {} => {
             Console::section("🔍 PRIME WORKER SYSTEM CHECK");
-            let issues = IssueReport::new();
+            let issues = Arc::new(RwLock::new(IssueReport::new()));
 
             // Run hardware checks
-            let mut hardware_checker = HardwareChecker::new(Some(issues));
+            let mut hardware_checker = HardwareChecker::new(Some(issues.clone()));
             let node_config = Node {
                 id: String::new(),
                 ip_address: String::new(),
@@ -538,21 +538,21 @@ pub async fn execute_command(
                 compute_pool_id: 0,
             };
 
-            match hardware_checker.check_hardware(node_config).await {
-                Ok(_) => {
-                    Console::success("Hardware check completed!");
-                }
-                Err(err) => {
-                    Console::error(&format!("❌ Hardware check failed: {}", err));
-                    std::process::exit(1);
-                }
-            }
-            let _ = software_check::run_software_check();
-
-            /*if issues.has_critical_issues() {
-                Console::error("Critical hardware issues detected");
+            if let Err(err) = hardware_checker.check_hardware(node_config).await {
+                Console::error(&format!("❌ Hardware check failed: {}", err));
                 std::process::exit(1);
-            }*/
+            }
+
+            let _ = software_check::run_software_check(Some(issues.clone()));
+
+            let issues = issues.read().unwrap();
+            issues.print_issues();
+
+            if issues.has_critical_issues() {
+                Console::error("❌ Critical issues found. Exiting.");
+                std::process::exit(1);
+            }
+
             Ok(())
         }
         Commands::GenerateWallets {} => {

@@ -1,28 +1,46 @@
+use crate::checks::issue::{IssueReport, IssueType};
 use crate::console::Console;
+use std::sync::{Arc, RwLock};
 
-use super::types::SoftwareCheckError;
-
-pub fn check_docker_installed() -> Result<(), SoftwareCheckError> {
+pub fn check_docker_installed(
+    issues: &Arc<RwLock<IssueReport>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let docker_path = std::process::Command::new("which")
         .arg("docker")
         .output()
         .map_err(|e| {
-            SoftwareCheckError::Other(format!("Failed to execute 'which docker': {}", e))
+            issues.write().unwrap().add_issue(
+                IssueType::DockerNotInstalled,
+                format!("Failed to execute 'which docker': {}", e),
+            );
+            e
         })?;
 
     if !docker_path.status.success() {
-        return Err(SoftwareCheckError::DockerNotInstalled);
+        issues
+            .write()
+            .unwrap()
+            .add_issue(IssueType::DockerNotInstalled, "Docker is not installed");
+        return Ok(());
     }
 
     let docker_info = std::process::Command::new("docker").output().map_err(|e| {
-        SoftwareCheckError::Other(format!(
-            "Failed to execute 'docker ps': {}. You may need to add your user to the docker group.",
-            e
-        ))
+        issues.write().unwrap().add_issue(
+            IssueType::DockerNotInstalled,
+            format!(
+                "Failed to execute 'docker ps': {}. You may need to add your user to the docker group.",
+                e
+            )
+        );
+        e
     })?;
 
     if !docker_info.status.success() {
-        return Err(SoftwareCheckError::DockerNotRunning);
+        issues.write().unwrap().add_issue(
+            IssueType::DockerNotInstalled,
+            "Docker daemon is not running",
+        );
+        return Ok(());
     }
 
     Console::success("Docker ready");
@@ -31,22 +49,40 @@ pub fn check_docker_installed() -> Result<(), SoftwareCheckError> {
     let nvidia_toolkit = std::process::Command::new("which")
         .arg("nvidia-ctk")
         .output()
-        .map_err(|e| SoftwareCheckError::Other(format!("Failed to check for nvidia-ctk: {}", e)))?;
+        .map_err(|e| {
+            issues.write().unwrap().add_issue(
+                IssueType::ContainerToolkitNotInstalled,
+                format!("Failed to check for nvidia-ctk: {}", e),
+            );
+            e
+        })?;
 
     if nvidia_toolkit.status.success() {
         // If which succeeds, check if it's working properly
         let version_check = std::process::Command::new("nvidia-ctk")
             .arg("--version")
             .output()
-            .map_err(|e| SoftwareCheckError::Other(format!("Failed to run nvidia-ctk: {}", e)))?;
+            .map_err(|e| {
+                issues.write().unwrap().add_issue(
+                    IssueType::ContainerToolkitNotInstalled,
+                    format!("Failed to run nvidia-ctk: {}", e),
+                );
+                e
+            })?;
 
         if version_check.status.success() {
             Console::success("NVIDIA toolkit ready");
         } else {
-            Console::error("NVIDIA toolkit not configured");
+            issues.write().unwrap().add_issue(
+                IssueType::ContainerToolkitNotInstalled,
+                "NVIDIA toolkit not configured properly",
+            );
         }
     } else {
-        Console::error("NVIDIA toolkit not found");
+        issues.write().unwrap().add_issue(
+            IssueType::ContainerToolkitNotInstalled,
+            "NVIDIA toolkit not found",
+        );
     }
 
     Ok(())

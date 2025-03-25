@@ -1,26 +1,17 @@
 use super::docker::check_docker_installed;
-use super::types::SoftwareCheckError;
+use crate::checks::issue::IssueReport;
 use crate::console::Console;
-use std::error::Error;
+use std::sync::{Arc, RwLock};
 
-impl std::fmt::Display for SoftwareCheckError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::DockerNotInstalled => write!(f, "Docker is not installed"),
-            Self::DockerNotRunning => write!(f, "Docker daemon is not running"),
-            Self::Other(msg) => write!(f, "Software error: {}", msg),
-        }
-    }
-}
-
-impl Error for SoftwareCheckError {}
-
-pub fn run_software_check() -> Result<(), SoftwareCheckError> {
+pub fn run_software_check(
+    issues: Option<Arc<RwLock<IssueReport>>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     Console::section("Software Checks");
+    let issues = issues.unwrap_or_else(|| Arc::new(RwLock::new(IssueReport::new())));
 
     // Check Docker installation and connectivity
     Console::title("Docker:");
-    check_docker_installed()?;
+    check_docker_installed(&issues)?;
 
     Ok(())
 }

@@ -1,5 +1,6 @@
 use crate::console::Console;
 use std::fmt;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -15,7 +16,6 @@ pub enum IssueType {
     InsufficientStorage,          // Minimum storage needed
     InsufficientMemory,           // Minimum RAM needed
     InsufficientCpu,              // Minimum CPU cores needed
-    UnsupportedArchitecture,      // Must be x86_64/amd64
     NetworkConnectivityIssue,     // Network performance issues
 }
 
@@ -63,9 +63,9 @@ impl fmt::Display for Issue {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct IssueReport {
-    issues: Vec<Issue>,
+    issues: Arc<RwLock<Vec<Issue>>>,
 }
 
 impl IssueReport {
@@ -73,25 +73,37 @@ impl IssueReport {
         Self::default()
     }
 
-    pub fn add_issue(&mut self, issue_type: IssueType, message: impl Into<String>) {
-        self.issues.push(Issue::new(issue_type, message));
+    pub fn add_issue(&self, issue_type: IssueType, message: impl Into<String>) {
+        if let Ok(mut issues) = self.issues.write() {
+            issues.push(Issue::new(issue_type, message));
+        }
     }
 
     pub fn print_issues(&self) {
-        if self.issues.is_empty() {
-            Console::success("No issues found");
-            return;
-        }
+        if let Ok(issues) = self.issues.read() {
+            if issues.is_empty() {
+                Console::success("No issues found");
+                return;
+            }
 
-        Console::section("System Check Issues");
-        for issue in &self.issues {
-            issue.print();
+            Console::section("System Check Issues");
+
+            for issue in issues.iter().filter(|i| i.severity() == Severity::Error) {
+                issue.print();
+            }
+
+            for issue in issues.iter().filter(|i| i.severity() == Severity::Warning) {
+                issue.print();
+            }
         }
     }
 
     pub fn has_critical_issues(&self) -> bool {
-        self.issues
-            .iter()
-            .any(|issue| matches!(issue.severity(), Severity::Error))
+        if let Ok(issues) = self.issues.read() {
+            return issues
+                .iter()
+                .any(|issue| matches!(issue.severity(), Severity::Error));
+        }
+        false
     }
 }
