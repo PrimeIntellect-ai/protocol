@@ -183,6 +183,8 @@ impl SyntheticDataValidator {
 
                     // This is a temporary solution to get the original file name
                     // it will be replaced by file data loading from dht
+                    println!("Resolving original file name for work key: {}", work_key);
+
                     let original_file_name = resolve_mapping_for_sha(
                         &self.bucket_name.clone().unwrap().as_str(),
                         &self.s3_credentials.clone().unwrap(),
@@ -192,13 +194,23 @@ impl SyntheticDataValidator {
                     .unwrap();
 
                     if original_file_name.is_empty() {
-                        error!("Failed to resolve original file name for work key: {}", work_key);
+                        error!(
+                            "Failed to resolve original file name for work key: {}",
+                            work_key
+                        );
                         continue;
                     }
+                    let cleaned_file_name = if original_file_name.starts_with('/') {
+                        original_file_name[1..].to_string()
+                    } else {
+                        original_file_name.clone()
+                    };
+                    println!("Original file name: {}", cleaned_file_name);
 
                     // Start validation by calling validation endpoint with retries
                     let validate_url =
-                        format!("{}/validate/{}", self.leviticus_url, original_file_name);
+                        format!("{}/validate/{}", self.leviticus_url, cleaned_file_name);
+                    println!("Validation URL: {}", validate_url);
 
                     let mut client = reqwest::Client::builder();
 
@@ -257,7 +269,7 @@ impl SyntheticDataValidator {
                         Ok(_) => {
                             // Poll status endpoint until we get a proper response
                             let status_url =
-                                format!("{}/status/{}.parquet", self.leviticus_url, work_key);
+                                format!("{}/status/{}", self.leviticus_url, cleaned_file_name);
                             let mut status_attempts = 0;
                             const MAX_STATUS_ATTEMPTS: u32 = 5;
 
@@ -268,6 +280,7 @@ impl SyntheticDataValidator {
                                     Ok(response) => {
                                         match response.json::<serde_json::Value>().await {
                                             Ok(status_json) => {
+                                                println!("Status JSON: {:?}", status_json);
                                                 match status_json
                                                     .get("status")
                                                     .and_then(|s| s.as_str())
