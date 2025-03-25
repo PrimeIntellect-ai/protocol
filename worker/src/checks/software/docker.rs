@@ -1,15 +1,17 @@
 use crate::checks::issue::{IssueReport, IssueType};
 use crate::console::Console;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-pub fn check_docker_installed(
+pub async fn check_docker_installed(
     issues: &Arc<RwLock<IssueReport>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let issue_tracker = issues.read().await;
     let docker_path = std::process::Command::new("which")
         .arg("docker")
         .output()
         .map_err(|e| {
-            issues.write().unwrap().add_issue(
+            issue_tracker.add_issue(
                 IssueType::DockerNotInstalled,
                 format!("Failed to execute 'which docker': {}", e),
             );
@@ -17,15 +19,12 @@ pub fn check_docker_installed(
         })?;
 
     if !docker_path.status.success() {
-        issues
-            .write()
-            .unwrap()
-            .add_issue(IssueType::DockerNotInstalled, "Docker is not installed");
+        issue_tracker.add_issue(IssueType::DockerNotInstalled, "Docker is not installed");
         return Ok(());
     }
 
     let docker_info = std::process::Command::new("docker").output().map_err(|e| {
-        issues.write().unwrap().add_issue(
+        issue_tracker.add_issue(
             IssueType::DockerNotInstalled,
             format!(
                 "Failed to execute 'docker ps': {}. You may need to add your user to the docker group.",
@@ -36,7 +35,7 @@ pub fn check_docker_installed(
     })?;
 
     if !docker_info.status.success() {
-        issues.write().unwrap().add_issue(
+        issue_tracker.add_issue(
             IssueType::DockerNotInstalled,
             "Docker daemon is not running",
         );
@@ -50,7 +49,7 @@ pub fn check_docker_installed(
         .arg("nvidia-ctk")
         .output()
         .map_err(|e| {
-            issues.write().unwrap().add_issue(
+            issue_tracker.add_issue(
                 IssueType::ContainerToolkitNotInstalled,
                 format!("Failed to check for nvidia-ctk: {}", e),
             );
@@ -63,7 +62,7 @@ pub fn check_docker_installed(
             .arg("--version")
             .output()
             .map_err(|e| {
-                issues.write().unwrap().add_issue(
+                issue_tracker.add_issue(
                     IssueType::ContainerToolkitNotInstalled,
                     format!("Failed to run nvidia-ctk: {}", e),
                 );
@@ -73,13 +72,13 @@ pub fn check_docker_installed(
         if version_check.status.success() {
             Console::success("NVIDIA toolkit ready");
         } else {
-            issues.write().unwrap().add_issue(
+            issue_tracker.add_issue(
                 IssueType::ContainerToolkitNotInstalled,
                 "NVIDIA toolkit not configured properly",
             );
         }
     } else {
-        issues.write().unwrap().add_issue(
+        issue_tracker.add_issue(
             IssueType::ContainerToolkitNotInstalled,
             "NVIDIA toolkit not found",
         );

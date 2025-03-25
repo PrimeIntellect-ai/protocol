@@ -1,5 +1,3 @@
-use std::sync::{Arc, RwLock};
-
 use super::{
     gpu::detect_gpu,
     interconnect::InterconnectCheck,
@@ -11,7 +9,9 @@ use crate::{
     console::Console,
 };
 use shared::models::node::{ComputeSpecs, CpuSpecs, GpuSpecs, Node};
+use std::sync::Arc;
 use sysinfo::{self, System};
+use tokio::sync::RwLock;
 
 pub struct HardwareChecker {
     sys: System,
@@ -43,8 +43,9 @@ impl HardwareChecker {
         node_config: &mut Node,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Console::section("Hardware Checks");
+        let issue_tracker = self.issues.write().await;
         if self.sys.cpus().is_empty() {
-            self.issues.write().unwrap().add_issue(
+            issue_tracker.add_issue(
                 IssueType::InsufficientCpu,
                 "Failed to detect CPU information",
             );
@@ -60,33 +61,24 @@ impl HardwareChecker {
 
         // Check minimum requirements
         if cpu_specs.cores.unwrap_or(0) < 4 {
-            self.issues
-                .write()
-                .unwrap()
-                .add_issue(IssueType::InsufficientCpu, "Minimum 4 CPU cores required");
+            issue_tracker.add_issue(IssueType::InsufficientCpu, "Minimum 4 CPU cores required");
         }
 
         if ram_mb < 8192 {
             // 8GB minimum
-            self.issues
-                .write()
-                .unwrap()
-                .add_issue(IssueType::InsufficientMemory, "Minimum 8GB RAM required");
+            issue_tracker.add_issue(IssueType::InsufficientMemory, "Minimum 8GB RAM required");
         }
 
         if storage_gb < 100 {
             // 100GB minimum
-            self.issues.write().unwrap().add_issue(
+            issue_tracker.add_issue(
                 IssueType::InsufficientStorage,
                 "Minimum 100GB storage required",
             );
         }
 
         if gpu_specs.is_none() {
-            self.issues
-                .write()
-                .unwrap()
-                .add_issue(IssueType::NoGpu, "No GPU detected");
+            issue_tracker.add_issue(IssueType::NoGpu, "No GPU detected");
         }
 
         let (storage_path, available_space) = if cfg!(target_os = "linux") {
@@ -112,14 +104,14 @@ impl HardwareChecker {
                 Console::info("Upload Speed", &format!("{:.2} Mbps", upload_speed));
 
                 if download_speed < 50.0 || upload_speed < 50.0 {
-                    self.issues.write().unwrap().add_issue(
+                    issue_tracker.add_issue(
                         IssueType::NetworkConnectivityIssue,
                         "Network speed below recommended 50Mbps",
                     );
                 }
             }
             Err(_) => {
-                self.issues.write().unwrap().add_issue(
+                issue_tracker.add_issue(
                     IssueType::NetworkConnectivityIssue,
                     "Failed to perform network speed test",
                 );

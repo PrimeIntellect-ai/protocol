@@ -21,8 +21,9 @@ use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
@@ -266,9 +267,13 @@ pub async fn execute_command(
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
             let node_config = hardware_check.check_hardware(node_config).await.unwrap();
-            let _ = software_check::run_software_check(Some(issue_tracker.clone()));
+            if let Err(err) = software_check::run_software_check(Some(issue_tracker.clone())).await
+            {
+                Console::error(&format!("❌ Software check failed: {}", err));
+                std::process::exit(1);
+            }
 
-            let issues = issue_tracker.read().unwrap();
+            let issues = issue_tracker.read().await;
             issues.print_issues();
             if issues.has_critical_issues() {
                 if !*ignore_issues {
@@ -559,9 +564,12 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
-            let _ = software_check::run_software_check(Some(issues.clone()));
+            if let Err(err) = software_check::run_software_check(Some(issues.clone())).await {
+                Console::error(&format!("❌ Software check failed: {}", err));
+                std::process::exit(1);
+            }
 
-            let issues = issues.read().unwrap();
+            let issues = issues.read().await;
             issues.print_issues();
 
             if issues.has_critical_issues() {
