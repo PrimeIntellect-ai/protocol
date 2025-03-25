@@ -33,10 +33,16 @@ pub async fn generate_mapping_file(
     let mapping_path = format!("mapping/{}", mapping_content);
     let upload_type = UploadType::Simple(Media::new(mapping_path));
 
-    let uploaded = client.upload_object(&UploadObjectRequest {
-        bucket: bucket.to_string(),
-        ..Default::default()
-    }, "".as_bytes(), &upload_type).await;
+    let uploaded = client
+        .upload_object(
+            &UploadObjectRequest {
+                bucket: bucket.to_string(),
+                ..Default::default()
+            },
+            "".as_bytes(),
+            &upload_type,
+        )
+        .await;
 
     println!("uploaded: {:?}", uploaded);
 

@@ -1,5 +1,5 @@
-use crate::api::server::AppState;
 use crate::utils::google_cloud::generate_upload_signed_url;
+use crate::{api::server::AppState, utils::google_cloud::generate_mapping_file};
 use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,
@@ -35,6 +35,21 @@ async fn request_upload(
         }
     };
 
+    if let Err(e) = generate_mapping_file(
+        "protocol-development-bucket", // TODO
+        credentials,
+        sha256,
+        file_name,
+    )
+    .await
+    {
+        log::error!("Failed to generate mapping file: {}", e);
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "success": false,
+            "error": format!("Failed to generate mapping file: {}", e)
+        }));
+    }
+
     // Generate signed upload URL
     match generate_upload_signed_url(
         "protocol-development-bucket", // TODO: Make configurable
@@ -42,7 +57,7 @@ async fn request_upload(
         credentials,
         Some(file_type.to_string()),
         Duration::from_secs(3600), // 1 hour expiry
-        Some(*file_size)
+        Some(*file_size),
     )
     .await
     {

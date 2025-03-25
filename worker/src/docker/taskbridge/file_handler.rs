@@ -17,6 +17,7 @@ pub struct RequestUploadRequest {
     pub file_name: String,
     pub file_size: u64,
     pub file_type: String,
+    pub sha256: String,
 }
 
 /// Handles a file upload request
@@ -45,7 +46,7 @@ pub async fn handle_file_upload(
     // Construct file path
     let file = format!(
         "{}/prime-task-{}/{}",
-        storage_path, task_id, clean_file_name
+        storage_path, task_id, clean_file_name 
     );
     debug!("File: {:?}", file);
 
@@ -72,13 +73,10 @@ pub async fn handle_file_upload(
     // Create upload request
     let client = Client::new();
     let request = RequestUploadRequest {
-        file_name: if clean_file_name.ends_with(".parquet") {
-            format!("{}.parquet", file_sha)
-        } else {
-            file_sha
-        },
+        file_name: file_name.to_string(),
         file_size,
         file_type: "application/json".to_string(), // Assume JSON
+        sha256: file_sha.clone() 
     };
 
     // Sign request
