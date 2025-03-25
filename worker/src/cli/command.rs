@@ -90,6 +90,10 @@ pub enum Commands {
         /// Retry count until provider has enough balance to stake (0 for unlimited retries)
         #[arg(long, default_value = "0")]
         funding_retry_count: u32,
+
+        /// Ignore issues
+        #[arg(long, default_value = "false")]
+        ignore_issues: bool,
     },
     Check {},
 
@@ -144,6 +148,7 @@ pub async fn execute_command(
             private_key_node,
             auto_accept,
             funding_retry_count,
+            ignore_issues,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -258,11 +263,22 @@ pub async fn execute_command(
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
             };
-            let mut hardware_check = HardwareChecker::new(None);
+            let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
+            let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
             let node_config = hardware_check.check_hardware(node_config).await.unwrap();
+            let _ = software_check::run_software_check(Some(issue_tracker.clone()));
 
-            // TODO: Move to proper check
-            let _ = software_check::run_software_check(None);
+            let issues = issue_tracker.read().unwrap();
+            issues.print_issues();
+            if issues.has_critical_issues() {
+                if !*ignore_issues {
+                    Console::error("❌ Critical issues found. Exiting.");
+                    std::process::exit(1);
+                } else {
+                    Console::warning("Critical issues found. Ignoring and continuing.");
+                }
+            }
+
             let has_gpu = match node_config.compute_specs {
                 Some(ref specs) => specs.gpu.is_some(),
                 None => {
