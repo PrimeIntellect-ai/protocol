@@ -4,4 +4,3 @@ mod interconnect;
 mod memory;
 mod storage;
 pub use hardware_check::HardwareChecker;
-pub use interconnect::InterconnectCheck;

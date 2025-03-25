@@ -41,7 +41,7 @@ impl InterconnectCheck {
         // Upload test: Generate 10 MB of random data.
         let upload_url = "https://speed.cloudflare.com/__up";
         let upload_size = 5 * 1024 * 1024; // 5 MB
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut upload_data = vec![0u8; upload_size];
         rng.fill_bytes(&mut upload_data);
 
