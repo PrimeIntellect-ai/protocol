@@ -227,7 +227,6 @@ impl ProviderOperations {
                 Console::error("Insufficient AI Token balance for stake");
                 return Err(ProviderError::InsufficientBalance);
             }
-            Console::progress("Approving AI Token for Stake transaction");
             if !self.prompt_user_confirmation(&format!(
                 "Do you want to approve staking {} tokens?",
                 stake / U256::from(10u128.pow(18))
@@ -235,12 +234,13 @@ impl ProviderOperations {
                 Console::info("Operation cancelled by user", "Staking approval declined");
                 return Err(ProviderError::UserCancelled);
             }
+
+            Console::progress("Approving AI Token for Stake transaction");
             self.contracts
                 .ai_token
                 .approve(stake)
                 .await
                 .map_err(|_| ProviderError::Other)?;
-
             Console::progress("Registering Provider");
             let register_tx = match self.contracts.prime_network.register_provider(stake).await {
                 Ok(tx) => tx,
