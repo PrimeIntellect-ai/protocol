@@ -52,6 +52,7 @@ impl Validator for SyntheticDataValidator {
 }
 
 impl SyntheticDataValidator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         state_dir: Option<String>,
         pool_id_str: String,
@@ -200,11 +201,9 @@ impl SyntheticDataValidator {
                         );
                         continue;
                     }
-                    let cleaned_file_name = if original_file_name.starts_with('/') {
-                        original_file_name[1..].to_string()
-                    } else {
-                        original_file_name.clone()
-                    };
+                    let cleaned_file_name = original_file_name
+                        .strip_prefix('/')
+                        .unwrap_or(original_file_name.as_str());
                     println!("Original file name: {}", cleaned_file_name);
 
                     // Start validation by calling validation endpoint with retries
