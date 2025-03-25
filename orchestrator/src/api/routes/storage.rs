@@ -1,5 +1,5 @@
-use crate::utils::google_cloud::generate_upload_signed_url;
-use crate::{api::server::AppState, utils::google_cloud::generate_mapping_file};
+use crate::api::server::AppState;
+use shared::utils::google_cloud::{generate_mapping_file, generate_upload_signed_url};
 use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,

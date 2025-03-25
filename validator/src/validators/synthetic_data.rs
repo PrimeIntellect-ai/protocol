@@ -5,6 +5,7 @@ use hex;
 use log::debug;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
+use shared::utils::google_cloud::resolve_mapping_for_sha;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use std::fs;
 use std::path::Path;
@@ -38,6 +39,8 @@ pub struct SyntheticDataValidator {
     leviticus_url: String,
     leviticus_token: Option<String>,
     penalty: U256,
+    s3_credentials: Option<String>,
+    bucket_name: Option<String>,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -57,6 +60,8 @@ impl SyntheticDataValidator {
         leviticus_url: String,
         leviticus_token: Option<String>,
         penalty: U256,
+        s3_credentials: Option<String>,
+        bucket_name: Option<String>,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
         let default_state_dir = get_default_state_dir();
@@ -105,6 +110,8 @@ impl SyntheticDataValidator {
             leviticus_url,
             leviticus_token,
             penalty,
+            s3_credentials,
+            bucket_name,
         }
     }
 
@@ -174,9 +181,23 @@ impl SyntheticDataValidator {
                         work_info.provider, work_info.node_id, work_info.timestamp
                     );
 
+                    let original_file_name = resolve_mapping_for_sha(
+                        &self.bucket_name.clone().unwrap().as_str(),
+                        &self.s3_credentials.clone().unwrap(),
+                        &work_key,
+                    )
+                    .await
+                    .unwrap();
+
+                    if original_file_name.is_empty() {
+                        error!("Failed to resolve original file name for work key: {}", work_key);
+                        continue;
+                    }
+
                     // Start validation by calling validation endpoint with retries
                     let validate_url =
-                        format!("{}/validate/{}.parquet", self.leviticus_url, work_key);
+                        format!("{}/validate/{}", self.leviticus_url, original_file_name);
+
                     let mut client = reqwest::Client::builder();
 
                     // Add auth token if provided

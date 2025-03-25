@@ -12,6 +12,10 @@ ENV POOL_ID=""
 ENV WORK_VALIDATION_INTERVAL="30"
 ENV LEVITICUS_URL=""
 ENV LEVITICUS_TOKEN=""
+ENV S3_CREDENTIALS=""
+ENV BUCKET_NAME=""
+ENV S3_CREDENTIALS=""
+
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/validator \
@@ -23,6 +27,8 @@ exec /usr/local/bin/validator \
 --work-validation-interval "$WORK_VALIDATION_INTERVAL" \
 --leviticus-url "$LEVITICUS_URL" \
 $([ ! -z "$LEVITICUS_TOKEN" ] && echo "--leviticus-token $LEVITICUS_TOKEN") \
+$([ ! -z "$S3_CREDENTIALS" ] && echo "--s3-credentials $S3_CREDENTIALS") \
+$([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 

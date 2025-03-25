@@ -60,6 +60,14 @@ struct Args {
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
     #[arg(long, default_value = "1000")]
     validator_penalty: u64,
+
+    /// Temporary: S3 credentials
+    #[arg(long, default_value = None)]
+    s3_credentials: Option<String>,
+
+    /// Temporary: S3 bucket name
+    #[arg(long, default_value = None)]
+    bucket_name: Option<String>,
 }
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -118,6 +126,8 @@ fn main() {
                         leviticus_url,
                         args.leviticus_token,
                         penalty,
+                        args.s3_credentials,
+                        args.bucket_name,
                     ))
                 } else {
                     error!("Leviticus URL is not provided");
