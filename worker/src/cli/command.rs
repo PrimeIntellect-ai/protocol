@@ -94,6 +94,9 @@ pub enum Commands {
 
     /// Generate new wallets for provider and node
     GenerateWallets {},
+    
+    /// Generate new wallet for node only
+    GenerateNodeWallet {},
 
     /// Get balance of provider and node
     Balance {
@@ -560,6 +563,18 @@ pub async fn execute_command(
                 hex::encode(provider_signer.credential().to_bytes())
             );
             println!("\nNode wallet:");
+            println!("  Address: {}", node_signer.address());
+            println!(
+                "  Private key: {}",
+                hex::encode(node_signer.credential().to_bytes())
+            );
+            Ok(())
+        }
+        
+        Commands::GenerateNodeWallet {} => {
+            let node_signer = PrivateKeySigner::random();
+
+            println!("Node wallet:");
             println!("  Address: {}", node_signer.address());
             println!(
                 "  Private key: {}",
