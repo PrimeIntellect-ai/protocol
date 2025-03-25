@@ -22,7 +22,6 @@ async fn request_upload(
     let file_size = &request_upload.file_size;
     let file_type = &request_upload.file_type;
     let sha256 = &request_upload.sha256;
-    println!("request_upload: {} {} {}", file_name, file_size, file_type);
 
     // Get credentials from app state
     let credentials = match &app_state.s3_credentials {
@@ -36,7 +35,7 @@ async fn request_upload(
     };
 
     if let Err(e) = generate_mapping_file(
-        "protocol-development-bucket", // TODO
+        app_state.bucket_name.clone().unwrap().as_str(),
         credentials,
         sha256,
         file_name,

@@ -46,7 +46,7 @@ pub async fn handle_file_upload(
     // Construct file path
     let file = format!(
         "{}/prime-task-{}/{}",
-        storage_path, task_id, clean_file_name 
+        storage_path, task_id, clean_file_name
     );
     debug!("File: {:?}", file);
 
@@ -76,7 +76,7 @@ pub async fn handle_file_upload(
         file_name: file_name.to_string(),
         file_size,
         file_type: "application/json".to_string(), // Assume JSON
-        sha256: file_sha.clone() 
+        sha256: file_sha.clone(),
     };
 
     // Sign request
