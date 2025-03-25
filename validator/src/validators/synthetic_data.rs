@@ -181,6 +181,8 @@ impl SyntheticDataValidator {
                         work_info.provider, work_info.node_id, work_info.timestamp
                     );
 
+                    // This is a temporary solution to get the original file name
+                    // it will be replaced by file data loading from dht
                     let original_file_name = resolve_mapping_for_sha(
                         &self.bucket_name.clone().unwrap().as_str(),
                         &self.s3_credentials.clone().unwrap(),
