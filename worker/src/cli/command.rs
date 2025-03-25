@@ -100,7 +100,7 @@ pub enum Commands {
 
     /// Generate new wallets for provider and node
     GenerateWallets {},
-    
+
     /// Generate new wallet for node only
     GenerateNodeWallet {},
 
@@ -600,7 +600,7 @@ pub async fn execute_command(
             );
             Ok(())
         }
-        
+
         Commands::GenerateNodeWallet {} => {
             let node_signer = PrivateKeySigner::random();
 
