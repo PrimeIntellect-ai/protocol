@@ -229,6 +229,8 @@ mod tests {
                 compute_specs: None,
             },
             is_blacklisted: false,
+            last_updated: None,
+            created_at: None,
         };
 
         let mut orchestrator_node = OrchestratorNode::from(discovery_node.clone());
