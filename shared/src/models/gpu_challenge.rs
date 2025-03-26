@@ -13,6 +13,12 @@ pub struct GpuSetABResponse {
     pub status: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GpuSetABRequest {
+    pub seed: String,
+    pub n: u64,
+}
+
 // Response containing the commitment root
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GpuCommitmentResponse {

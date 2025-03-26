@@ -152,7 +152,7 @@ pub async fn start_task_via_service(app_state: Data<AppState>) {
         .state
         .set_current_task(Some(task_clone))
         .await;
-    // sleep for a minute
+    // sleep for a bit
     tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
     // Spawn a background task to wait for the container to start
     tokio::spawn(async move {
@@ -187,8 +187,20 @@ pub async fn start_task_via_manager(app_state: Data<AppState>) -> anyhow::Result
     // before trying to start a new container, check that there isn't a stale one already running
     match manager.get_container_details(PROVER_CONTAINER_ID).await {
         Ok(container_details) => {
-            manager.remove_container(&container_details.id).await?;
-            info!("Stopped stale GPU challenge container.");
+            match manager.remove_container(&container_details.id).await {
+                Ok(_) => {
+                    info!("Stopped stale GPU challenge container.");
+                    // sleep for 5 seconds to prevent race condition in docker state
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                }
+                Err(e) => {
+                    info!("Failed to stop stale GPU challenge container: {:?}", e);
+                    return Err(anyhow::anyhow!(
+                        "Failed to stop stale GPU challenge container: {:?}",
+                        e
+                    ));
+                }
+            }
         }
         Err(_) => {
             info!("No stale containers, we're safe to proceed.");
@@ -197,7 +209,7 @@ pub async fn start_task_via_manager(app_state: Data<AppState>) -> anyhow::Result
 
     let image = IMAGE_NAME.to_string();
     let container_task_id = PROVER_CONTAINER_ID.to_string();
-    let has_gpu = true;
+    let has_gpu = false;
     let mut env_vars: HashMap<String, String> = HashMap::new();
     env_vars.insert("PORT".to_string(), "12121".to_string());
     let cmd = vec!["/usr/bin/python3".to_string(), "prover.py".to_string()];
@@ -283,14 +295,42 @@ async fn prover_send<T: serde::de::DeserializeOwned>(
     endpoint: &str,
     payload: Option<serde_json::Value>,
 ) -> anyhow::Result<T> {
-    let client = reqwest::Client::new();
-    let mut builder = client.post(format!("http://localhost:20000{}", endpoint));
+    let prover_url = format!("http://{}:{}{}", "localhost", 20000, endpoint);
+    let mut builder = reqwest::Client::builder().http1_only().build().unwrap().post(&prover_url);
 
     if let Some(json) = payload {
         builder = builder.json(&json);
     }
 
-    let response = builder.send().await?;
+    info!("Sending request to prover ... (prover_send)");
+    let response = match builder.send().await {
+        Ok(response) => response,
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to send prover request: {:?}", e));
+        }
+    };
+
+    if !response.status().is_success() {
+        let error_text = response.text().await?;
+        return Err(anyhow::anyhow!("Prover request failed: {}", error_text));
+    }
+
+    response.json::<T>().await.map_err(anyhow::Error::from)
+}
+
+async fn prover_get<T: serde::de::DeserializeOwned>(
+    endpoint: &str,
+) -> anyhow::Result<T> {
+    let prover_url = format!("http://{}:{}{}", "localhost", 20000, endpoint);
+    let builder = reqwest::Client::builder().http1_only().build().unwrap().get(&prover_url);
+
+    info!("Sending request to prover ... (prover_get)");
+    let response = match builder.send().await {
+        Ok(response) => response,
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to send prover request: {:?}", e));
+        }
+    };
 
     if !response.status().is_success() {
         let error_text = response.text().await?;
@@ -348,6 +388,9 @@ pub async fn init_container(
                                 if container_details.status.unwrap()
                                     == ContainerStateStatusEnum::RUNNING
                                 {
+                                    info!("GPU challenge container is now running.");
+                                    // sleep for 10 seconds to allow the prover service to become ready
+                                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                                     let mut state = CURRENT_CHALLENGE.lock().await;
                                     state.set_status("ready");
                                     break;
@@ -376,7 +419,7 @@ pub async fn init_container(
         }
     }
 
-    info!("Started GPU challenge container.");
+    info!("Sent start command to docker for GPU challenge container.");
 
     // Return success with the session ID
     HttpResponse::Ok().json(ApiResponse::new(
@@ -389,11 +432,9 @@ pub async fn init_container(
 }
 
 // Get challenge status
-pub async fn get_status(req: HttpRequest) -> HttpResponse {
-    info!("Received status request: {:?}", req);
-
+pub async fn get_status(_req: HttpRequest) -> HttpResponse {
     let state = CURRENT_CHALLENGE.lock().await;
-    info!("Current session ID: {:?}", state.get_session_id());
+    info!("Current session ID, status: {:?}, {:?}", state.get_session_id(), state.get_status());
 
     if let Some(status) = &state.get_status() {
         let response = GpuChallengeStatus {
@@ -437,7 +478,7 @@ pub async fn compute_commitment(
     {
         Ok(_) => {
             // Get commitment from prover
-            match prover_send::<GpuCommitmentResponse>("/getCommitment", None).await {
+            match prover_get::<GpuCommitmentResponse>("/getCommitment").await {
                 Ok(commitment_data) => {
                     let commitment_root = commitment_data.commitment_root;
 

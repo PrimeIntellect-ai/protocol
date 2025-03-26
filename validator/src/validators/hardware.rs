@@ -67,9 +67,9 @@ impl<'a> HardwareValidator<'a> {
     }
 
     pub async fn validate_nodes(&self, nodes: Vec<DiscoveryNode>) -> Result<()> {
-        let non_validated_nodes: Vec<DiscoveryNode> = nodes
-            .into_iter()
-            .filter(|node| !node.is_validated)
+         let non_validated_nodes: Vec<DiscoveryNode> = nodes
+             .into_iter()
+             .filter(|node| !node.is_validated)
             .collect();
 
         for node in non_validated_nodes {
@@ -333,11 +333,7 @@ impl<'a> HardwareValidator<'a> {
 
         // Clone the response so we can read the body twice
         let response_text = response.text().await?;
-        info!("Worker response body: {}", response_text);
-
         let parsed_response: ApiResponse<T> = serde_json::from_str(&response_text)?;
-
-        info!("Parsed worker response: {:?}", parsed_response.data);
 
         // process this json into T struct
         Ok(parsed_response.data)
@@ -369,7 +365,6 @@ impl<'a> HardwareValidator<'a> {
             Err(anyhow::anyhow!("Worker request failed: {}", error_text))
         } else {
             let response_text = response.text().await?;
-            info!("Worker response body: {}", response_text);
             Ok(response_text)
         }
     }
@@ -446,8 +441,6 @@ impl<'a> HardwareValidator<'a> {
                 return Err(anyhow::anyhow!("Failed to start GPU challenge: {}", e));
             }
         };
-
-        info!("Worker response: {:?}", response);
 
         if response.status != "initializing" {
             return Err(anyhow::anyhow!(
@@ -559,7 +552,8 @@ impl<'a> HardwareValidator<'a> {
         // STEP 7: Get row proofs from worker
         let row_proofs_route = "/gpu-challenge/compute-row-proofs";
 
-        let row_proofs_payload = GpuRowProofsRequest {
+        let row_proofs_payload = GpuChallengeWorkerComputeRowProofs {
+            session_id: init_data.session_id.clone(),
             row_idxs: cr_result.spot_rows,
         };
 
