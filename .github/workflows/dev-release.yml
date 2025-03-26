@@ -29,7 +29,6 @@ jobs:
   build-and-release:
     name: Build and Create Development Release
     needs: cleanup-old-releases
-    # Using a larger runner with more CPU cores and memory
     runs-on: ubuntu-22.04
     
     steps:
@@ -75,22 +74,41 @@ jobs:
           done
           cd .. 
 
-      - name: Generate release tag
-        id: tag
-        run: |
-          echo "tag_name=dev-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+    - name: Generate next version number
+      id: next_version
+      run: |
+        # Get the latest production version (e.g., v0.1.7)
+        LATEST_PROD=$(git tag --list "v*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || echo "v0.1.7")
+
+        # Compute next version (increment the patch version)
+        NEXT_PROD=$(echo "$LATEST_PROD" | awk -F. -v OFS=. '{$NF++; print}')
+
+        # Find the last beta version and increment it, or start at beta.1 if none exists
+        LAST_BETA=$(git tag --list "${NEXT_PROD}-beta.*" | sort -V | tail -n1)
+
+        # If there is no existing beta version, start from beta.1
+        if [ -z "$LAST_BETA" ]; then
+          COUNT=1
+        else
+          COUNT=$(echo $LAST_BETA | sed 's/.*beta\.\([0-9]*\)/\1/')
+          COUNT=$((COUNT + 1))
+        fi
+
+        TAG_NAME="${NEXT_PROD}-beta.${COUNT}"
+
+        echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.tag.outputs.tag_name }}
-          name: Development Build ${{ steps.tag.outputs.tag_name }}
+          tag_name: ${{ steps.next_version.outputs.tag_name }}
+          name: Development Build ${{ steps.next_version.outputs.tag_name }}
           body: |
             ⚠️ Development Build (Not for Production Use)
             
             Branch: develop
             Commit: ${{ github.sha }}
-            Build Date: ${{ steps.tag.outputs.tag_name }}
+            Build Date: ${{ steps.next_version.outputs.tag_name }}
             
             Platform:
             - Linux x86_64
@@ -145,9 +163,9 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:dev
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.tag.outputs.tag_name }}
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.next_version.outputs.tag_name }}
             us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:dev
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:${{ steps.next_version.outputs.tag_name }}
 
       - name: Build and push Validator image
         uses: docker/build-push-action@v4
@@ -157,9 +175,9 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:dev
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:${{ steps.tag.outputs.tag_name }}
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:${{ steps.next_version.outputs.tag_name }}
             us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:dev
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:${{ steps.next_version.outputs.tag_name }}
 
       - name: Build and push Orchestrator image
         uses: docker/build-push-action@v4
@@ -169,6 +187,6 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:dev
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:${{ steps.tag.outputs.tag_name }}
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:${{ steps.next_version.outputs.tag_name }}
             us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:dev
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:${{ steps.tag.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:${{ steps.next_version.outputs.tag_name }}
