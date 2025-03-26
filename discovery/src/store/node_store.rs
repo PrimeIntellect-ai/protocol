@@ -45,7 +45,6 @@ impl NodeStore {
         let serialized_node = serde_json::to_string(&node).unwrap();
         let _: () = con.set(&key, serialized_node).unwrap();
     }
-
     pub fn get_nodes(&self) -> Vec<DiscoveryNode> {
         let mut con = self.get_connection();
         let nodes: Vec<String> = con.keys("node:*").unwrap();
@@ -55,6 +54,11 @@ impl NodeStore {
             let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node).unwrap();
             nodes_vec.push(deserialized_node);
         }
+        nodes_vec.sort_by(|a, b| {
+            let a_time = a.last_updated.or(a.created_at);
+            let b_time = b.last_updated.or(b.created_at);
+            a_time.cmp(&b_time)
+        });
         nodes_vec
     }
 
