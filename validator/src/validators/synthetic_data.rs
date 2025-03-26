@@ -188,8 +188,11 @@ impl SyntheticDataValidator {
         sha: &str,
     ) -> Result<(), Error> {
         let validate_url = format!("{}/validate/{}", self.leviticus_url, file_name);
+        info!(
+            "Triggering remote toploc validation for {} {}",
+            file_name, validate_url
+        );
 
-        debug!("Validation URL: {}", validate_url);
         let client = reqwest::Client::builder()
             .default_headers({
                 let mut headers = reqwest::header::HeaderMap::new();
@@ -228,10 +231,34 @@ impl SyntheticDataValidator {
         file_name: &str,
     ) -> Result<ValidationResult, Error> {
         let url = format!("{}/status/{}", self.leviticus_url, file_name);
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .default_headers({
+                let mut headers = reqwest::header::HeaderMap::new();
+                if let Some(token) = &self.leviticus_token {
+                    headers.insert(
+                        reqwest::header::AUTHORIZATION,
+                        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+                            .expect("Invalid token"),
+                    );
+                }
+                headers
+            })
+            .build()
+            .expect("Failed to build HTTP client");
 
         match client.get(&url).send().await {
             Ok(response) => {
+                if response.status() != reqwest::StatusCode::OK {
+                    error!(
+                        "Unexpected status code {} for {}",
+                        response.status(),
+                        file_name
+                    );
+                    return Err(Error::msg(format!(
+                        "Unexpected status code: {}",
+                        response.status()
+                    )));
+                }
                 let status_json: serde_json::Value = response.json().await.map_err(|e| {
                     error!("Failed to parse JSON response for {}: {}", file_name, e);
                     Error::msg(format!("Failed to parse JSON response: {}", e))
@@ -285,7 +312,7 @@ impl SyntheticDataValidator {
         let original_file_name = resolve_mapping_for_sha(
             self.bucket_name.clone().unwrap().as_str(),
             &self.s3_credentials.clone().unwrap(),
-            &work_key,
+            work_key,
         )
         .await
         .map_err(|e| ProcessWorkKeyError::FileNameResolutionError(e.to_string()))?;
@@ -312,7 +339,7 @@ impl SyntheticDataValidator {
 
         while attempts < MAX_ATTEMPTS {
             if let Err(e) = self
-                .trigger_remote_toploc_validation(&cleaned_file_name, &work_key)
+                .trigger_remote_toploc_validation(cleaned_file_name, work_key)
                 .await
             {
                 attempts += 1;
@@ -334,7 +361,10 @@ impl SyntheticDataValidator {
         let max_attempts = 5;
         let mut attempts = 0;
         while attempts < max_attempts {
-            let result = self.poll_remote_toploc_validation(&cleaned_file_name).await;
+            if attempts > 0 {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+            let result = self.poll_remote_toploc_validation(cleaned_file_name).await;
             if let Err(e) = result {
                 error!(
                     "Failed to poll remote toploc validation for {}: {}",
@@ -346,6 +376,7 @@ impl SyntheticDataValidator {
                         cleaned_file_name
                     )));
                 }
+                attempts += 1;
                 continue;
             }
 
@@ -357,7 +388,7 @@ impl SyntheticDataValidator {
                 }
                 ValidationResult::Reject => {
                     info!("Validation rejected for {}", cleaned_file_name);
-                    if let Err(e) = self.invalidate_work(&work_key).await {
+                    if let Err(e) = self.invalidate_work(work_key).await {
                         error!("Failed to invalidate work {}: {}", work_key, e);
                         attempts += 1;
                         if attempts == max_attempts {
@@ -371,7 +402,6 @@ impl SyntheticDataValidator {
                     return Ok(());
                 }
                 _ => {
-                    error!("Validation unknown for {}", cleaned_file_name);
                     attempts += 1;
                     continue;
                 }
@@ -384,7 +414,7 @@ impl SyntheticDataValidator {
     }
 
     pub async fn validate_work(&mut self) -> Result<(), Error> {
-        info!("Validating work for pool ID: {:?}", self.pool_id);
+        debug!("Validating work for pool ID: {:?}", self.pool_id);
 
         // Get all work keys for the pool
         let work_keys = self
@@ -393,7 +423,7 @@ impl SyntheticDataValidator {
             .await
             .context("Failed to get work keys")?;
 
-        info!("Found {} work keys to validate", work_keys.len());
+        debug!("Found {} work keys to validate", work_keys.len());
 
         let mut completed_all_validations = true;
 
@@ -402,7 +432,7 @@ impl SyntheticDataValidator {
             info!("Processing work key: {}", work_key);
             if let Err(e) = self.process_workkey(&work_key).await {
                 // TODO: We have an error now - should we actually skip this validation then?
-                println!("Error: {:?}", e);
+                error!("Work Validation error: {:?}", e);
                 completed_all_validations = false;
             }
         }
@@ -424,7 +454,6 @@ impl SyntheticDataValidator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[tokio::test]
     async fn test_process_workkey() {

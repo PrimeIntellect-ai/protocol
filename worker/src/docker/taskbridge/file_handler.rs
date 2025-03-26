@@ -108,7 +108,7 @@ pub async fn handle_file_upload(
     let json = response.json::<serde_json::Value>().await?;
 
     if let Some(signed_url) = json["signed_url"].as_str() {
-        info!("Got signed URL for upload: {}", signed_url);
+        debug!("Got signed URL for upload: {}", signed_url);
 
         // Read file contents
         let file_contents = tokio::fs::read(&file).await?;

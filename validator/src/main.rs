@@ -4,7 +4,7 @@ use alloy::primitives::utils::Unit;
 use alloy::primitives::{Address, U256};
 use anyhow::{Context, Result};
 use clap::Parser;
-use log::LevelFilter;
+use log::{debug, LevelFilter};
 use log::{error, info};
 use serde_json::json;
 use shared::models::api::ApiResponse;
@@ -183,7 +183,7 @@ fn main() {
                     .context("Failed to create signature header")?,
             );
 
-            info!("Fetching nodes from: {}{}", discovery_url, discovery_route);
+            debug!("Fetching nodes from: {}{}", discovery_url, discovery_route);
             let response = reqwest::Client::new()
                 .get(format!("{}{}", discovery_url, discovery_route))
                 .headers(headers)
@@ -218,6 +218,7 @@ fn main() {
             error!("Error validating nodes: {:#}", e);
         }
 
+        info!("Validation loop completed");
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
 }
