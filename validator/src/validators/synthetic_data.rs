@@ -168,7 +168,7 @@ impl SyntheticDataValidator {
     pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
         let data = hex::decode(work_key)
             .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
-        println!("Invalidating work: {}", work_key);
+        infinfoo!("Invalidating work: {}", work_key);
         match self
             .prime_network
             .invalidate_work(self.pool_id, self.penalty, data)
@@ -449,14 +449,5 @@ impl SyntheticDataValidator {
         self.save_state()?;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    #[tokio::test]
-    async fn test_process_workkey() {
-        // TODO: This requires a leviticus server or a mock server
     }
 }
