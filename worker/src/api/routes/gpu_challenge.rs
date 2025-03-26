@@ -296,7 +296,11 @@ async fn prover_send<T: serde::de::DeserializeOwned>(
     payload: Option<serde_json::Value>,
 ) -> anyhow::Result<T> {
     let prover_url = format!("http://{}:{}{}", "localhost", 20000, endpoint);
-    let mut builder = reqwest::Client::builder().http1_only().build().unwrap().post(&prover_url);
+    let mut builder = reqwest::Client::builder()
+        .http1_only()
+        .build()
+        .unwrap()
+        .post(&prover_url);
 
     if let Some(json) = payload {
         builder = builder.json(&json);
@@ -318,11 +322,13 @@ async fn prover_send<T: serde::de::DeserializeOwned>(
     response.json::<T>().await.map_err(anyhow::Error::from)
 }
 
-async fn prover_get<T: serde::de::DeserializeOwned>(
-    endpoint: &str,
-) -> anyhow::Result<T> {
+async fn prover_get<T: serde::de::DeserializeOwned>(endpoint: &str) -> anyhow::Result<T> {
     let prover_url = format!("http://{}:{}{}", "localhost", 20000, endpoint);
-    let builder = reqwest::Client::builder().http1_only().build().unwrap().get(&prover_url);
+    let builder = reqwest::Client::builder()
+        .http1_only()
+        .build()
+        .unwrap()
+        .get(&prover_url);
 
     info!("Sending request to prover ... (prover_get)");
     let response = match builder.send().await {
@@ -434,7 +440,11 @@ pub async fn init_container(
 // Get challenge status
 pub async fn get_status(_req: HttpRequest) -> HttpResponse {
     let state = CURRENT_CHALLENGE.lock().await;
-    info!("Current session ID, status: {:?}, {:?}", state.get_session_id(), state.get_status());
+    info!(
+        "Current session ID, status: {:?}, {:?}",
+        state.get_session_id(),
+        state.get_status()
+    );
 
     if let Some(status) = &state.get_status() {
         let response = GpuChallengeStatus {

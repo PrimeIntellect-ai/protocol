@@ -67,9 +67,9 @@ impl<'a> HardwareValidator<'a> {
     }
 
     pub async fn validate_nodes(&self, nodes: Vec<DiscoveryNode>) -> Result<()> {
-         let non_validated_nodes: Vec<DiscoveryNode> = nodes
-             .into_iter()
-             .filter(|node| !node.is_validated)
+        let non_validated_nodes: Vec<DiscoveryNode> = nodes
+            .into_iter()
+            .filter(|node| !node.is_validated)
             .collect();
 
         log::debug!("Non validated nodes: {:?}", non_validated_nodes);
