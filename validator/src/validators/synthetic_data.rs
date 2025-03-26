@@ -279,79 +279,85 @@ impl SyntheticDataValidator {
                                     Ok(response) => {
                                         match response.json::<serde_json::Value>().await {
                                             Ok(status_json) => {
-                                                println!("Status JSON: {:?}", status_json);
-                                                match status_json
-                                                    .get("status")
-                                                    .and_then(|s| s.as_str())
-                                                {
-                                                    Some(status) => {
-                                                        info!(
-                                                            "Validation status for {}: {}",
-                                                            work_key, status
-                                                        );
+                                                if status_json.get("status").is_none() {
+                                                    error!("No status found for {}", work_key);
+                                                    status_attempts += 1;
+                                                } else {
+                                                    match status_json
+                                                        .get("status")
+                                                        .and_then(|s| s.as_str())
+                                                    {
+                                                        Some(status) => {
+                                                            info!(
+                                                                "Validation status for {}: {}",
+                                                                work_key, status
+                                                            );
 
-                                                        match status {
-                                                            "accept" => {
-                                                                info!(
-                                                                    "Work {} was accepted",
-                                                                    work_key
-                                                                );
-                                                                break;
-                                                            }
-                                                            "reject" => {
-                                                                error!(
-                                                                    "Work {} was rejected",
-                                                                    work_key
-                                                                );
-                                                                if let Err(e) = self
-                                                                    .invalidate_work(&work_key)
-                                                                    .await
-                                                                {
-                                                                    error!("Failed to invalidate work {}: {}", work_key, e);
-                                                                } else {
-                                                                    info!("Successfully invalidated work {}", work_key);
-                                                                }
-                                                                break;
-                                                            }
-                                                            "crashed" => {
-                                                                error!(
-                                                                    "Validation crashed for {}",
-                                                                    work_key
-                                                                );
-                                                                break;
-                                                            }
-                                                            "pending" => {
-                                                                status_attempts += 1;
-                                                                if status_attempts
-                                                                    >= MAX_STATUS_ATTEMPTS
-                                                                {
-                                                                    error!("Max status attempts reached for {}", work_key);
+                                                            match status {
+                                                                "accept" => {
+                                                                    info!(
+                                                                        "Work {} was accepted",
+                                                                        work_key
+                                                                    );
                                                                     break;
                                                                 }
-                                                            }
-                                                            _ => {
-                                                                status_attempts += 1;
-                                                                error!(
-                                                                    "Unknown status {} for {}",
-                                                                    status, work_key
-                                                                );
-                                                                if status_attempts
-                                                                    >= MAX_STATUS_ATTEMPTS
-                                                                {
+                                                                "reject" => {
+                                                                    error!(
+                                                                        "Work {} was rejected",
+                                                                        work_key
+                                                                    );
+                                                                    if let Err(e) = self
+                                                                        .invalidate_work(&work_key)
+                                                                        .await
+                                                                    {
+                                                                        error!("Failed to invalidate work {}: {}", work_key, e);
+                                                                    } else {
+                                                                        info!("Successfully invalidated work {}", work_key);
+                                                                    }
                                                                     break;
+                                                                }
+                                                                "crashed" => {
+                                                                    error!(
+                                                                        "Validation crashed for {}",
+                                                                        work_key
+                                                                    );
+                                                                    break;
+                                                                }
+                                                                "pending" => {
+                                                                    status_attempts += 1;
+                                                                    if status_attempts
+                                                                        >= MAX_STATUS_ATTEMPTS
+                                                                    {
+                                                                        error!("Max status attempts reached for {}", work_key);
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                _ => {
+                                                                    status_attempts += 1;
+                                                                    error!(
+                                                                        "Unknown status {} for {}",
+                                                                        status, work_key
+                                                                    );
+                                                                    if status_attempts
+                                                                        >= MAX_STATUS_ATTEMPTS
+                                                                    {
+                                                                        break;
+                                                                    }
                                                                 }
                                                             }
                                                         }
-                                                    }
-                                                    None => {
-                                                        status_attempts += 1;
-                                                        error!(
+                                                        None => {
+                                                            status_attempts += 1;
+                                                            error!(
                                                             "No status field in response for {}",
                                                             work_key
                                                         );
-                                                        if status_attempts >= MAX_STATUS_ATTEMPTS {
-                                                            error!("Max status attempts reached for {}", work_key);
-                                                            break;
+                                                            if status_attempts
+                                                                >= MAX_STATUS_ATTEMPTS
+                                                            {
+                                                                error!("Max status attempts reached for {}", work_key);
+                                                                break;
+                                                            }
                                                         }
                                                     }
                                                 }
