@@ -1,8 +1,10 @@
 use alloy::primitives::Address;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shared::models::node::DiscoveryNode;
 use shared::models::task::TaskState;
 use std::fmt;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestratorNode {
     pub address: Address,
@@ -13,6 +15,7 @@ pub struct OrchestratorNode {
     pub task_id: Option<String>,
     pub task_state: Option<TaskState>,
     pub version: Option<String>,
+    pub last_status_change: Option<DateTime<Utc>>,
 }
 
 impl From<DiscoveryNode> for OrchestratorNode {
@@ -25,6 +28,7 @@ impl From<DiscoveryNode> for OrchestratorNode {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         }
     }
 }
