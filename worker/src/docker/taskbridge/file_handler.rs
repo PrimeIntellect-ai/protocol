@@ -17,6 +17,7 @@ pub struct RequestUploadRequest {
     pub file_name: String,
     pub file_size: u64,
     pub file_type: String,
+    pub sha256: String,
 }
 
 /// Handles a file upload request
@@ -72,13 +73,10 @@ pub async fn handle_file_upload(
     // Create upload request
     let client = Client::new();
     let request = RequestUploadRequest {
-        file_name: if clean_file_name.ends_with(".parquet") {
-            format!("{}.parquet", file_sha)
-        } else {
-            file_sha
-        },
+        file_name: file_name.to_string(),
         file_size,
         file_type: "application/json".to_string(), // Assume JSON
+        sha256: file_sha.clone(),
     };
 
     // Sign request
@@ -110,7 +108,7 @@ pub async fn handle_file_upload(
     let json = response.json::<serde_json::Value>().await?;
 
     if let Some(signed_url) = json["signed_url"].as_str() {
-        info!("Got signed URL for upload: {}", signed_url);
+        debug!("Got signed URL for upload: {}", signed_url);
 
         // Read file contents
         let file_contents = tokio::fs::read(&file).await?;

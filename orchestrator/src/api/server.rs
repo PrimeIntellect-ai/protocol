@@ -19,6 +19,7 @@ pub struct AppState {
     pub store_context: Arc<StoreContext>,
     pub wallet: Arc<Wallet>,
     pub s3_credentials: Option<String>,
+    pub bucket_name: Option<String>,
 }
 
 pub async fn start_server(
@@ -28,12 +29,14 @@ pub async fn start_server(
     wallet: Arc<Wallet>,
     admin_api_key: String,
     s3_credentials: Option<String>,
+    bucket_name: Option<String>,
 ) -> Result<(), Error> {
     info!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
         store_context,
         wallet,
         s3_credentials,
+        bucket_name,
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();

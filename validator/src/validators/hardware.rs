@@ -72,6 +72,7 @@ impl<'a> HardwareValidator<'a> {
              .filter(|node| !node.is_validated)
             .collect();
 
+        log::debug!("Non validated nodes: {:?}", non_validated_nodes);
         for node in non_validated_nodes {
             let node_address = match node.id.trim_start_matches("0x").parse::<Address>() {
                 Ok(addr) => addr,

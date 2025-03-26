@@ -168,17 +168,15 @@ impl ProviderOperations {
     ) -> Result<(), ProviderError> {
         Console::title("Registering Provider");
         let mut attempts = 0;
-        while attempts < max_attempts {
-            let spinner = Console::spinner("Registering provider...");
+        while attempts < max_attempts || max_attempts == 0 {
+            Console::progress("Registering provider...");
             match self.register_provider(stake).await {
                 Ok(_) => {
-                    spinner.finish_and_clear();
                     return Ok(());
                 }
-                Err(e) => {
-                    spinner.finish_and_clear();
-                    if let ProviderError::NotWhitelisted = e {
-                        Console::error("Provider not whitelisted, retrying in 10 seconds...");
+                Err(e) => match e {
+                    ProviderError::NotWhitelisted | ProviderError::InsufficientBalance => {
+                        Console::info("Info", "Retrying in 10 seconds...");
                         tokio::select! {
                             _ = tokio::time::sleep(tokio::time::Duration::from_secs(10)) => {}
                             _ = cancellation_token.cancelled() => {
@@ -187,10 +185,9 @@ impl ProviderOperations {
                         }
                         attempts += 1;
                         continue;
-                    } else {
-                        return Err(e);
                     }
-                }
+                    _ => return Err(e),
+                },
             }
         }
         Console::error(&format!(
@@ -226,7 +223,10 @@ impl ProviderOperations {
                 "ETH Balance",
                 &format!("{} ETH", eth_balance / U256::from(10u128.pow(18))),
             );
-            let spinner = Console::spinner("Approving AI Token for Stake transaction");
+            if balance < stake {
+                Console::error("Insufficient AI Token balance for stake");
+                return Err(ProviderError::InsufficientBalance);
+            }
             if !self.prompt_user_confirmation(&format!(
                 "Do you want to approve staking {} tokens?",
                 stake / U256::from(10u128.pow(18))
@@ -234,14 +234,14 @@ impl ProviderOperations {
                 Console::info("Operation cancelled by user", "Staking approval declined");
                 return Err(ProviderError::UserCancelled);
             }
+
+            Console::progress("Approving AI Token for Stake transaction");
             self.contracts
                 .ai_token
                 .approve(stake)
                 .await
                 .map_err(|_| ProviderError::Other)?;
-            spinner.finish_and_clear();
-
-            let spinner = Console::spinner("Registering Provider");
+            Console::progress("Registering Provider");
             let register_tx = match self.contracts.prime_network.register_provider(stake).await {
                 Ok(tx) => tx,
                 Err(_) => {
@@ -249,19 +249,16 @@ impl ProviderOperations {
                 }
             };
             Console::info("Registration tx", &format!("{:?}", register_tx));
-            spinner.finish_and_clear();
         }
 
         // Get provider details again  - cleanup later
-        let spinner = Console::spinner("Getting provider details");
+        Console::progress("Getting provider details");
         let provider = self
             .contracts
             .compute_registry
             .get_provider(address)
             .await
             .map_err(|_| ProviderError::Other)?;
-        spinner.finish_and_clear();
-        spinner.abandon();
 
         let provider_exists = provider.provider_address != Address::default();
         if !provider_exists {
@@ -271,6 +268,7 @@ impl ProviderOperations {
 
         Console::success("Provider registered");
         if !provider.is_whitelisted {
+            Console::error("Provider is not whitelisted yet.");
             return Err(ProviderError::NotWhitelisted);
         }
 
@@ -310,7 +308,7 @@ impl ProviderOperations {
             return Err(ProviderError::UserCancelled);
         }
 
-        let spinner = Console::spinner("Approving AI Token for additional stake");
+        Console::progress("Approving AI Token for additional stake");
         let approve_tx = self
             .contracts
             .ai_token
@@ -318,9 +316,8 @@ impl ProviderOperations {
             .await
             .map_err(|_| ProviderError::Other)?;
         Console::info("Transaction approved", &format!("{:?}", approve_tx));
-        spinner.finish_and_clear();
 
-        let spinner = Console::spinner("Increasing stake");
+        Console::progress("Increasing stake");
         let stake_tx = match self.contracts.prime_network.stake(additional_stake).await {
             Ok(tx) => tx,
             Err(e) => {
@@ -332,7 +329,6 @@ impl ProviderOperations {
             "Stake increase transaction completed: ",
             &format!("{:?}", stake_tx),
         );
-        spinner.finish_and_clear();
 
         Console::success("Provider stake increased successfully");
         Ok(())
@@ -344,6 +340,7 @@ pub enum ProviderError {
     NotWhitelisted,
     UserCancelled,
     Other,
+    InsufficientBalance,
 }
 
 impl fmt::Display for ProviderError {
@@ -352,6 +349,7 @@ impl fmt::Display for ProviderError {
             Self::NotWhitelisted => write!(f, "Provider is not whitelisted"),
             Self::UserCancelled => write!(f, "Operation cancelled by user"),
             Self::Other => write!(f, "Provider could not be registered"),
+            Self::InsufficientBalance => write!(f, "Insufficient AI Token balance for stake"),
         }
     }
 }

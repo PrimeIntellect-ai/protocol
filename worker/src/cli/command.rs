@@ -1,5 +1,6 @@
 use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
+use crate::checks::issue::IssueReport;
 use crate::checks::software::software_check;
 use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
@@ -13,6 +14,7 @@ use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
+use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
 use log::debug;
 use shared::models::node::Node;
@@ -21,6 +23,7 @@ use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
@@ -73,14 +76,59 @@ pub enum Commands {
         #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
         validator_address: Option<String>,
 
+        /// Private key for the provider (not recommended, use environment variable PRIVATE_KEY_PROVIDER instead)
+        #[arg(long)]
+        private_key_provider: Option<String>,
+
+        /// Private key for the node (not recommended, use environment variable PRIVATE_KEY_NODE instead)
+        #[arg(long)]
+        private_key_node: Option<String>,
+
         /// Auto accept transactions
         #[arg(long, default_value = "false")]
         auto_accept: bool,
+
+        /// Retry count until provider has enough balance to stake (0 for unlimited retries)
+        #[arg(long, default_value = "0")]
+        funding_retry_count: u32,
+
+        /// Ignore issues
+        #[arg(long, default_value = "false")]
+        ignore_issues: bool,
     },
     Check {},
 
     /// Generate new wallets for provider and node
     GenerateWallets {},
+
+    /// Generate new wallet for node only
+    GenerateNodeWallet {},
+
+    /// Get balance of provider and node
+    Balance {
+        /// Private key for the provider
+        #[arg(long)]
+        private_key: Option<String>,
+
+        /// RPC URL
+        #[arg(long, default_value = "http://localhost:8545")]
+        rpc_url: String,
+    },
+
+    /// Sign Message
+    SignMessage {
+        /// Message to sign
+        #[arg(long)]
+        message: String,
+
+        /// Private key for the provider
+        #[arg(long)]
+        private_key_provider: Option<String>,
+
+        /// Private key for the node
+        #[arg(long)]
+        private_key_node: Option<String>,
+    },
 }
 
 pub async fn execute_command(
@@ -100,7 +148,11 @@ pub async fn execute_command(
             disable_state_storing,
             auto_recover,
             validator_address,
+            private_key_provider,
+            private_key_node,
             auto_accept,
+            funding_retry_count,
+            ignore_issues,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -109,10 +161,19 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
-            let private_key_provider =
-                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set");
-            let private_key_node =
-                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set");
+            let private_key_provider = if let Some(key) = private_key_provider {
+                Console::warning("Using private key from command line is not recommended. Consider using PRIVATE_KEY_PROVIDER environment variable instead.");
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
+            };
+
+            let private_key_node = if let Some(key) = private_key_node {
+                Console::warning("Using private key from command line is not recommended. Consider using PRIVATE_KEY_NODE environment variable instead.");
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
+            };
 
             let mut recover_last_state = *auto_recover;
             let version = env!("CARGO_PKG_VERSION");
@@ -206,11 +267,26 @@ pub async fn execute_command(
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
             };
-            let hardware_check = HardwareChecker::new();
-            let node_config = hardware_check.enrich_node_config(node_config).unwrap();
+            let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
+            let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
+            let node_config = hardware_check.check_hardware(node_config).await.unwrap();
+            if let Err(err) = software_check::run_software_check(Some(issue_tracker.clone())).await
+            {
+                Console::error(&format!("❌ Software check failed: {}", err));
+                std::process::exit(1);
+            }
 
-            // TODO: Move to proper check
-            let _ = software_check::run_software_check();
+            let issues = issue_tracker.read().await;
+            issues.print_issues();
+            if issues.has_critical_issues() {
+                if !*ignore_issues {
+                    Console::error("❌ Critical issues found. Exiting.");
+                    std::process::exit(1);
+                } else {
+                    Console::warning("Critical issues found. Ignoring and continuing.");
+                }
+            }
+
             let has_gpu = match node_config.compute_specs {
                 Some(ref specs) => specs.gpu.is_some(),
                 None => {
@@ -330,11 +406,10 @@ pub async fn execute_command(
                     &format!("{}", required_stake / U256::from(10u128.pow(18))),
                 );
 
-                const MAX_REGISTER_PROVIDER_ATTEMPTS: u32 = 200;
                 if let Err(e) = provider_ops
                     .retry_register_provider(
                         required_stake,
-                        MAX_REGISTER_PROVIDER_ATTEMPTS,
+                        *funding_retry_count,
                         cancellation_token.clone(),
                     )
                     .await
@@ -474,10 +549,10 @@ pub async fn execute_command(
         }
         Commands::Check {} => {
             Console::section("🔍 PRIME WORKER SYSTEM CHECK");
-            Console::info("═", &"═".repeat(50));
+            let issues = Arc::new(RwLock::new(IssueReport::new()));
 
             // Run hardware checks
-            let hardware_checker = HardwareChecker::new();
+            let mut hardware_checker = HardwareChecker::new(Some(issues.clone()));
             let node_config = Node {
                 id: String::new(),
                 ip_address: String::new(),
@@ -487,16 +562,24 @@ pub async fn execute_command(
                 compute_pool_id: 0,
             };
 
-            match hardware_checker.enrich_node_config(node_config) {
-                Ok(_) => {
-                    Console::success("✅ Hardware check passed!");
-                }
-                Err(err) => {
-                    Console::error(&format!("❌ Hardware check failed: {}", err));
-                    std::process::exit(1);
-                }
+            if let Err(err) = hardware_checker.check_hardware(node_config).await {
+                Console::error(&format!("❌ Hardware check failed: {}", err));
+                std::process::exit(1);
             }
-            let _ = software_check::run_software_check();
+
+            if let Err(err) = software_check::run_software_check(Some(issues.clone())).await {
+                Console::error(&format!("❌ Software check failed: {}", err));
+                std::process::exit(1);
+            }
+
+            let issues = issues.read().await;
+            issues.print_issues();
+
+            if issues.has_critical_issues() {
+                Console::error("❌ Critical issues found. Exiting.");
+                std::process::exit(1);
+            }
+
             Ok(())
         }
         Commands::GenerateWallets {} => {
@@ -515,6 +598,92 @@ pub async fn execute_command(
                 "  Private key: {}",
                 hex::encode(node_signer.credential().to_bytes())
             );
+            Ok(())
+        }
+
+        Commands::GenerateNodeWallet {} => {
+            let node_signer = PrivateKeySigner::random();
+
+            println!("Node wallet:");
+            println!("  Address: {}", node_signer.address());
+            println!(
+                "  Private key: {}",
+                hex::encode(node_signer.credential().to_bytes())
+            );
+            Ok(())
+        }
+
+        Commands::Balance {
+            private_key,
+            rpc_url,
+        } => {
+            let private_key = if let Some(key) = private_key {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set")
+            };
+
+            let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();
+
+            let contracts = Arc::new(
+                ContractBuilder::new(&provider_wallet)
+                    .with_compute_registry()
+                    .with_ai_token()
+                    .with_prime_network()
+                    .with_compute_pool()
+                    .build()
+                    .unwrap(),
+            );
+
+            let provider_balance = contracts
+                .ai_token
+                .balance_of(provider_wallet.wallet.default_signer().address())
+                .await
+                .unwrap();
+
+            let format_balance = format!("{}", provider_balance / U256::from(10u128.pow(18)));
+
+            println!("Provider balance: {}", format_balance);
+            Ok(())
+        }
+        Commands::SignMessage {
+            message,
+            private_key_provider,
+            private_key_node,
+        } => {
+            let private_key_provider = if let Some(key) = private_key_provider {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
+            };
+
+            let private_key_node = if let Some(key) = private_key_node {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
+            };
+
+            let provider_wallet = Wallet::new(
+                &private_key_provider,
+                Url::parse("http://localhost:8545").unwrap(),
+            )
+            .unwrap();
+            let node_wallet = Wallet::new(
+                &private_key_node,
+                Url::parse("http://localhost:8545").unwrap(),
+            )
+            .unwrap();
+
+            let message_hash = provider_wallet.signer.sign_message(message.as_bytes());
+            let node_signature = node_wallet.signer.sign_message(message.as_bytes());
+
+            let provider_signature = message_hash.await?;
+            let node_signature = node_signature.await?;
+            let combined_signature =
+                [provider_signature.as_bytes(), node_signature.as_bytes()].concat();
+
+            println!("\nSignature: {}", hex::encode(combined_signature));
+
             Ok(())
         }
     }
