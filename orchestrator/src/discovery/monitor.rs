@@ -117,59 +117,66 @@ impl<'b> DiscoveryMonitor<'b> {
         Ok(nodes)
     }
 
-    pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
-        let discovery_nodes = self.fetch_nodes_from_discovery().await?;
-
-        for discovery_node in &discovery_nodes {
-            let node = OrchestratorNode::from(discovery_node.clone());
-            match self.store_context.node_store.get_node(&node.address) {
-                Some(existing_node) => {
-                    if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
+    async fn sync_single_node_with_discovery(&self, discovery_node: &DiscoveryNode) -> Result<(), Error> {
+        let node = OrchestratorNode::from(discovery_node.clone());
+        match self.store_context.node_store.get_node(&node.address) {
+            Some(existing_node) => {
+                if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
+                    self.store_context
+                        .node_store
+                        .update_node_status(&node.address, NodeStatus::Ejected);
+                }
+                // If a node is already in ejected state (and hence cannot recover) but the provider
+                // gets whitelisted, we need to mark it as dead so it can actually recover again
+                if discovery_node.is_validated
+                    && discovery_node.is_provider_whitelisted
+                    && node.status == NodeStatus::Ejected
+                {
+                    self.store_context
+                        .node_store
+                        .update_node_status(&node.address, NodeStatus::Dead);
+                }
+                if !discovery_node.is_active && existing_node.status == NodeStatus::Healthy {
+                    // Node is active False but we have it in store and it is healthy
+                    // This means that the node likely got kicked by e.g. the validator
+                    // We simply remove it from the store now and will rediscover it later?
+                    println!(
+                        "Node {} is no longer active on chain, marking as dead",
+                        node.address
+                    );
+                    if !discovery_node.is_provider_whitelisted {
                         self.store_context
                             .node_store
                             .update_node_status(&node.address, NodeStatus::Ejected);
-                    }
-                    // If a node is already in ejected state (and hence cannot recover) but the provider
-                    // gets whitelisted, we need to mark it as dead so it can actually recover again
-                    if discovery_node.is_validated
-                        && discovery_node.is_provider_whitelisted
-                        && node.status == NodeStatus::Ejected
-                    {
+                    } else {
                         self.store_context
                             .node_store
                             .update_node_status(&node.address, NodeStatus::Dead);
                     }
-                    if !discovery_node.is_active && existing_node.status == NodeStatus::Healthy {
-                        // Node is active False but we have it in store and it is healthy
-                        // This means that the node likely got kicked by e.g. the validator
-                        // We simply remove it from the store now and will rediscover it later?
-                        println!(
-                            "Node {} is no longer active on chain, marking as dead",
-                            node.address
-                        );
-                        if !discovery_node.is_provider_whitelisted {
-                            self.store_context
-                                .node_store
-                                .update_node_status(&node.address, NodeStatus::Ejected);
-                        } else {
-                            self.store_context
-                                .node_store
-                                .update_node_status(&node.address, NodeStatus::Dead);
-                        }
-                    }
-
-                    if existing_node.ip_address != node.ip_address {
-                        info!(
-                            "Node {} IP changed from {} to {}",
-                            node.address, existing_node.ip_address, node.ip_address
-                        );
-                        self.store_context.node_store.add_node(node.clone());
-                    }
                 }
-                None => {
-                    info!("Discovered new validated node: {}", node.address);
+
+                if existing_node.ip_address != node.ip_address {
+                    info!(
+                        "Node {} IP changed from {} to {}",
+                        node.address, existing_node.ip_address, node.ip_address
+                    );
                     self.store_context.node_store.add_node(node.clone());
                 }
+            }
+            None => {
+                info!("Discovered new validated node: {}", node.address);
+                self.store_context.node_store.add_node(node.clone());
+            }
+        }
+        Ok(())
+    }
+
+    async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
+        let discovery_nodes = self.fetch_nodes_from_discovery().await?;
+
+        for discovery_node in &discovery_nodes {
+            if let Err(e) = self.sync_single_node_with_discovery(discovery_node).await {
+                error!("Error syncing node with discovery: {}", e);
             }
         }
 
