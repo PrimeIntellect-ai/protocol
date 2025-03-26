@@ -1,4 +1,4 @@
-use crate::models::node::NodeStatus;
+use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::store::core::StoreContext;
 use anyhow::Ok;
 use log::{debug, error};
@@ -51,22 +51,27 @@ impl NodeStatusUpdater {
         }
     }
 
+    async fn is_node_in_pool(&self, node: &OrchestratorNode) -> bool {
+        let node_in_pool: bool = match self
+            .contracts
+            .compute_pool
+            .is_node_in_pool(self.pool_id, node.address)
+            .await
+        {
+            Result::Ok(result) => result,
+            Result::Err(e) => {
+                println!("Error checking if node is in pool: {}", e);
+                false
+            }
+        };
+        node_in_pool
+    }
+
     pub async fn sync_chain_with_nodes(&self) -> Result<(), anyhow::Error> {
         let nodes = self.store_context.node_store.get_nodes();
         for node in nodes {
             if node.status == NodeStatus::Dead {
-                let node_in_pool: bool = match self
-                    .contracts
-                    .compute_pool
-                    .is_node_in_pool(self.pool_id, node.address)
-                    .await
-                {
-                    Result::Ok(result) => result,
-                    Result::Err(e) => {
-                        println!("Error checking if node is in pool: {}", e);
-                        false
-                    }
-                };
+                let node_in_pool = self.is_node_in_pool(&node).await;
                 if node_in_pool {
                     if !self.disable_ejection {
                         let tx = self
@@ -127,12 +132,20 @@ impl NodeStatusUpdater {
                             .node_store
                             .update_node_status(&node.address, NodeStatus::Healthy);
                     } else if node.status == NodeStatus::Dead {
-                        // Node is dead, we need to update the status to discovered so it gets reinvited
-                        node.status = NodeStatus::Discovered;
+                        // Node is dead but we receive a heartbeat
+                        // Source of truth is the chain, if the node is still on chain
+                        // this might be a state issue / recovery of the orchestrator process.
+                        // Reinviting the node will fail as its already part of the pool hence we set status to Healthy
+                        let is_node_in_pool = self.is_node_in_pool(&node).await;
+                        if is_node_in_pool {
+                            node.status = NodeStatus::Healthy;
+                        } else {
+                            node.status = NodeStatus::Discovered;
+                        }
                         let _: () = self
                             .store_context
                             .node_store
-                            .update_node_status(&node.address, NodeStatus::Discovered);
+                            .update_node_status(&node.address, node.status);
                     }
                     let _: () = self
                         .store_context
@@ -202,6 +215,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -253,6 +267,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -296,6 +311,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -344,6 +360,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -392,6 +409,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            last_failed_invite_timestamp: None,
         };
         let _: () = app_state
             .store_context
@@ -453,6 +471,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            last_failed_invite_timestamp: None,
         };
         let _: () = app_state
             .store_context
@@ -469,6 +488,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node2.clone());
@@ -529,6 +549,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
