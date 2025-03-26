@@ -26,7 +26,7 @@ impl<'a> HardwareValidator<'a> {
             .filter(|node| !node.is_validated)
             .collect();
 
-        info!("Non validated nodes: {:?}", non_validated_nodes);
+        log::debug!("Non validated nodes: {:?}", non_validated_nodes);
 
         for node in non_validated_nodes {
             let node_address = match node.id.trim_start_matches("0x").parse::<Address>() {
@@ -117,7 +117,6 @@ impl<'a> HardwareValidator<'a> {
             .await?;
 
         let response_text = response.text().await?;
-        println!("Response text: {}", response_text);
         let parsed_response: ApiResponse<ChallengeResponse> = serde_json::from_str(&response_text)?;
 
         if !parsed_response.success {

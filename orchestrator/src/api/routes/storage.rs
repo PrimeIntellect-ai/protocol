@@ -1,9 +1,9 @@
 use crate::api::server::AppState;
-use crate::utils::google_cloud::generate_upload_signed_url;
 use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,
 };
+use shared::utils::google_cloud::{generate_mapping_file, generate_upload_signed_url};
 use std::time::Duration;
 
 #[derive(serde::Deserialize)]
@@ -11,6 +11,7 @@ pub struct RequestUploadRequest {
     pub file_name: String,
     pub file_size: u64,
     pub file_type: String,
+    pub sha256: String,
 }
 
 async fn request_upload(
@@ -20,7 +21,7 @@ async fn request_upload(
     let file_name = &request_upload.file_name;
     let file_size = &request_upload.file_size;
     let file_type = &request_upload.file_type;
-    println!("request_upload: {} {} {}", file_name, file_size, file_type);
+    let sha256 = &request_upload.sha256;
 
     // Get credentials from app state
     let credentials = match &app_state.s3_credentials {
@@ -32,6 +33,21 @@ async fn request_upload(
             }))
         }
     };
+
+    if let Err(e) = generate_mapping_file(
+        app_state.bucket_name.clone().unwrap().as_str(),
+        credentials,
+        sha256,
+        file_name,
+    )
+    .await
+    {
+        log::error!("Failed to generate mapping file: {}", e);
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "success": false,
+            "error": format!("Failed to generate mapping file: {}", e)
+        }));
+    }
 
     // Generate signed upload URL
     match generate_upload_signed_url(

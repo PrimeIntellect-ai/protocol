@@ -79,11 +79,11 @@ watch-check:
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --work-validation-contract $${WORK_VALIDATION_CONTRACT} --leviticus-url $${LEVITICUS_URL} --leviticus-token $${LEVITICUS_TOKEN}"
+	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --work-validation-contract $${WORK_VALIDATION_CONTRACT} --leviticus-url $${LEVITICUS_URL} --leviticus-token $${LEVITICUS_TOKEN} --s3-credentials $${S3_CREDENTIALS} --bucket-name $${BUCKET_NAME}"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID"
+	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME"
 
 build-worker:
 	cargo build --release --bin worker
