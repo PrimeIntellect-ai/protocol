@@ -1,4 +1,4 @@
-use crate::models::node::NodeStatus;
+use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::store::core::StoreContext;
 use anyhow::Ok;
 use log::{debug, error};
@@ -51,22 +51,33 @@ impl NodeStatusUpdater {
         }
     }
 
+    #[cfg(test)]
+    async fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
+        true
+    }
+
+    #[cfg(not(test))]
+    async fn is_node_in_pool(&self, node: &OrchestratorNode) -> bool {
+        let node_in_pool: bool = match self
+            .contracts
+            .compute_pool
+            .is_node_in_pool(self.pool_id, node.address)
+            .await
+        {
+            Result::Ok(result) => result,
+            Result::Err(e) => {
+                println!("Error checking if node is in pool: {}", e);
+                false
+            }
+        };
+        node_in_pool
+    }
+
     pub async fn sync_chain_with_nodes(&self) -> Result<(), anyhow::Error> {
         let nodes = self.store_context.node_store.get_nodes();
         for node in nodes {
             if node.status == NodeStatus::Dead {
-                let node_in_pool: bool = match self
-                    .contracts
-                    .compute_pool
-                    .is_node_in_pool(self.pool_id, node.address)
-                    .await
-                {
-                    Result::Ok(result) => result,
-                    Result::Err(e) => {
-                        println!("Error checking if node is in pool: {}", e);
-                        false
-                    }
-                };
+                let node_in_pool = self.is_node_in_pool(&node).await;
                 if node_in_pool {
                     if !self.disable_ejection {
                         let tx = self
@@ -108,7 +119,7 @@ impl NodeStatusUpdater {
                 .get_unhealthy_counter(&node.address);
             match heartbeat {
                 Some(beat) => {
-                    // We have a heartbeat
+                    // Update version if necessary
                     if let Some(version) = &beat.version {
                         if node.version.as_ref() != Some(version) {
                             let _: () = self
@@ -118,22 +129,40 @@ impl NodeStatusUpdater {
                         }
                     }
 
+                    // Check if the node is in the pool (needed for status transitions)
+                    let is_node_in_pool = self.is_node_in_pool(&node).await;
+
+                    // If node is Unhealthy or WaitingForHeartbeat:
                     if node.status == NodeStatus::Unhealthy
                         || node.status == NodeStatus::WaitingForHeartbeat
                     {
-                        node.status = NodeStatus::Healthy;
+                        if is_node_in_pool {
+                            node.status = NodeStatus::Healthy;
+                        } else {
+                            // Reset to discovered to init re-invite to pool
+                            node.status = NodeStatus::Discovered;
+                        }
                         let _: () = self
                             .store_context
                             .node_store
-                            .update_node_status(&node.address, NodeStatus::Healthy);
-                    } else if node.status == NodeStatus::Dead {
-                        // Node is dead, we need to update the status to discovered so it gets reinvited
-                        node.status = NodeStatus::Discovered;
-                        let _: () = self
-                            .store_context
-                            .node_store
-                            .update_node_status(&node.address, NodeStatus::Discovered);
+                            .update_node_status(&node.address, node.status);
                     }
+                    // If node is Discovered or Dead:
+                    else if node.status == NodeStatus::Discovered
+                        || node.status == NodeStatus::Dead
+                    {
+                        if is_node_in_pool {
+                            node.status = NodeStatus::Healthy;
+                        } else {
+                            node.status = NodeStatus::Discovered;
+                        }
+                        let _: () = self
+                            .store_context
+                            .node_store
+                            .update_node_status(&node.address, node.status);
+                    }
+
+                    // Clear unhealthy counter on heartbeat receipt
                     let _: () = self
                         .store_context
                         .heartbeat_store
@@ -577,6 +606,6 @@ mod tests {
             .node_store
             .get_node(&node.address)
             .unwrap();
-        assert_eq!(node.status, NodeStatus::Discovered);
+        assert_eq!(node.status, NodeStatus::Healthy);
     }
 }
