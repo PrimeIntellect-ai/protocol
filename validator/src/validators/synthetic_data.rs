@@ -168,7 +168,7 @@ impl SyntheticDataValidator {
     pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
         let data = hex::decode(work_key)
             .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
-        infinfoo!("Invalidating work: {}", work_key);
+        info!("Invalidating work: {}", work_key);
         match self
             .prime_network
             .invalidate_work(self.pool_id, self.penalty, data)
