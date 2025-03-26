@@ -215,7 +215,6 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
-            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -267,7 +266,6 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
-            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -311,7 +309,6 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
-            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -360,7 +357,6 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
-            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -409,7 +405,6 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
-            last_failed_invite_timestamp: None,
         };
         let _: () = app_state
             .store_context
@@ -471,7 +466,6 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
-            last_failed_invite_timestamp: None,
         };
         let _: () = app_state
             .store_context
@@ -488,7 +482,6 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
-            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node2.clone());
@@ -549,7 +542,6 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
-            last_failed_invite_timestamp: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
