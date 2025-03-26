@@ -51,6 +51,12 @@ impl NodeStatusUpdater {
         }
     }
 
+    #[cfg(test)]
+    async fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
+        true
+    }
+
+    #[cfg(not(test))]
     async fn is_node_in_pool(&self, node: &OrchestratorNode) -> bool {
         let node_in_pool: bool = match self
             .contracts
@@ -113,7 +119,7 @@ impl NodeStatusUpdater {
                 .get_unhealthy_counter(&node.address);
             match heartbeat {
                 Some(beat) => {
-                    // We have a heartbeat
+                    // Update version if necessary
                     if let Some(version) = &beat.version {
                         if node.version.as_ref() != Some(version) {
                             let _: () = self
@@ -123,20 +129,28 @@ impl NodeStatusUpdater {
                         }
                     }
 
+                    // Check if the node is in the pool (needed for status transitions)
+                    let is_node_in_pool = self.is_node_in_pool(&node).await;
+
+                    // If node is Unhealthy or WaitingForHeartbeat:
                     if node.status == NodeStatus::Unhealthy
                         || node.status == NodeStatus::WaitingForHeartbeat
                     {
-                        node.status = NodeStatus::Healthy;
+                        if is_node_in_pool {
+                            node.status = NodeStatus::Healthy;
+                        } else {
+                            // Reset to discovered to init re-invite to pool
+                            node.status = NodeStatus::Discovered;
+                        }
                         let _: () = self
                             .store_context
                             .node_store
-                            .update_node_status(&node.address, NodeStatus::Healthy);
-                    } else if node.status == NodeStatus::Dead {
-                        // Node is dead but we receive a heartbeat
-                        // Source of truth is the chain, if the node is still on chain
-                        // this might be a state issue / recovery of the orchestrator process.
-                        // Reinviting the node will fail as its already part of the pool hence we set status to Healthy
-                        let is_node_in_pool = self.is_node_in_pool(&node).await;
+                            .update_node_status(&node.address, node.status);
+                    }
+                    // If node is Discovered or Dead:
+                    else if node.status == NodeStatus::Discovered
+                        || node.status == NodeStatus::Dead
+                    {
                         if is_node_in_pool {
                             node.status = NodeStatus::Healthy;
                         } else {
@@ -147,6 +161,8 @@ impl NodeStatusUpdater {
                             .node_store
                             .update_node_status(&node.address, node.status);
                     }
+
+                    // Clear unhealthy counter on heartbeat receipt
                     let _: () = self
                         .store_context
                         .heartbeat_store
@@ -590,6 +606,6 @@ mod tests {
             .node_store
             .get_node(&node.address)
             .unwrap();
-        assert_eq!(node.status, NodeStatus::Discovered);
+        assert_eq!(node.status, NodeStatus::Healthy);
     }
 }
