@@ -4,7 +4,11 @@ use crate::web3::{
     contracts::{
         core::error::ContractError, // Using custom error ContractError
         implementations::{
-            ai_token_contract::AIToken, compute_pool_contract::ComputePool, compute_registry_contract::ComputeRegistryContract, domain_registry_contract::DomainRegistryContract, prime_network_contract::PrimeNetworkContract, stake_manager::StakeManagerContract, work_validators::synthetic_data_validator::SyntheticDataWorkValidator
+            ai_token_contract::AIToken, compute_pool_contract::ComputePool,
+            compute_registry_contract::ComputeRegistryContract,
+            domain_registry_contract::DomainRegistryContract,
+            prime_network_contract::PrimeNetworkContract, stake_manager::StakeManagerContract,
+            work_validators::synthetic_data_validator::SyntheticDataWorkValidator,
         },
     },
     wallet::Wallet,
@@ -80,7 +84,10 @@ impl<'a> ContractBuilder<'a> {
     }
 
     pub fn with_domain_registry(mut self) -> Self {
-        self.domain_registry = Some(DomainRegistryContract::new(self.wallet, "domain_registry.json"));
+        self.domain_registry = Some(DomainRegistryContract::new(
+            self.wallet,
+            "domain_registry.json",
+        ));
         self
     }
 

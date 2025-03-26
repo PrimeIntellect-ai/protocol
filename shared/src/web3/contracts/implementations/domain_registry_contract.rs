@@ -1,8 +1,8 @@
-use alloy::primitives::{Address, U256};
 use crate::web3::contracts::constants::addresses::DOMAIN_REGISTRY_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
+use alloy::primitives::{Address, U256};
 use anyhow::Error;
 
 pub struct Domain {
@@ -26,10 +26,10 @@ impl DomainRegistryContract {
         let result = self
             .instance
             .instance()
-            .function("get", &[U256::from(domain_id).into()])? 
+            .function("get", &[U256::from(domain_id).into()])?
             .call()
             .await?;
-        
+
         let domain_info_tuple: &[DynSolValue] = result.first().unwrap().as_tuple().unwrap();
         let domain_id: U256 = domain_info_tuple[0].as_uint().unwrap().0;
         let name: String = domain_info_tuple[1].as_str().unwrap().to_string();
@@ -43,6 +43,4 @@ impl DomainRegistryContract {
             domain_parameters_uri,
         })
     }
-
-
 }

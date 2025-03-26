@@ -48,8 +48,6 @@ async fn main() -> Result<()> {
         .build()
         .unwrap();
 
-
-
     let domain_name = args.domain_name.clone();
 
     let validation_logic = Address::from_str(&args.validation_logic).unwrap();
