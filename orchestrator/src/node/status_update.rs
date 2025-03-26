@@ -201,6 +201,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -235,6 +236,7 @@ mod tests {
             .get_node(&node.address)
             .unwrap();
         assert_eq!(node.status, NodeStatus::Healthy);
+        assert_ne!(node.last_status_change, None);
     }
 
     #[tokio::test]
@@ -250,6 +252,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -276,6 +279,7 @@ mod tests {
             .get_node(&node.address)
             .unwrap();
         assert_eq!(node.status, NodeStatus::Unhealthy);
+        assert_ne!(node.last_status_change, None);
     }
 
     #[tokio::test]
@@ -291,6 +295,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -322,6 +327,7 @@ mod tests {
             .heartbeat_store
             .get_unhealthy_counter(&node.address);
         assert_eq!(counter, 1);
+        assert_eq!(node.last_status_change, None);
     }
 
     #[tokio::test]
@@ -337,6 +343,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -368,6 +375,7 @@ mod tests {
             .get_node(&node.address)
             .unwrap();
         assert_eq!(node.status, NodeStatus::Dead);
+        assert_ne!(node.last_status_change, None);
     }
 
     #[tokio::test]
@@ -383,6 +391,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
         let _: () = app_state
             .store_context
@@ -422,7 +431,7 @@ mod tests {
             .get_node(&node.address)
             .unwrap();
         assert_eq!(node.status, NodeStatus::Healthy);
-
+        assert_ne!(node.last_status_change, None);
         let counter = app_state
             .store_context
             .heartbeat_store
@@ -443,6 +452,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
         let _: () = app_state
             .store_context
@@ -458,6 +468,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node2.clone());
@@ -517,6 +528,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
