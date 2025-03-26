@@ -122,9 +122,6 @@ impl<'b> DiscoveryMonitor<'b> {
         &self,
         discovery_node: &DiscoveryNode,
     ) -> Result<(), Error> {
-        // let node = OrchestratorNode::from(discovery_node.clone());
-        // println!("Node {:?}", node);
-
         let node_address = discovery_node.node.id.parse::<Address>().unwrap();
         match self.store_context.node_store.get_node(&node_address) {
             Some(existing_node) => {
@@ -137,9 +134,9 @@ impl<'b> DiscoveryMonitor<'b> {
                         .node_store
                         .update_node_status(&node_address, NodeStatus::Ejected);
                 }
+
                 // If a node is already in ejected state (and hence cannot recover) but the provider
                 // gets whitelisted, we need to mark it as dead so it can actually recover again
-
                 if discovery_node.is_validated
                     && discovery_node.is_provider_whitelisted
                     && existing_node.status == NodeStatus::Ejected
