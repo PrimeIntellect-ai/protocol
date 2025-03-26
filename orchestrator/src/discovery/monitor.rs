@@ -1,6 +1,7 @@
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::store::core::StoreContext;
+use alloy::primitives::Address;
 use anyhow::Error;
 use anyhow::Result;
 use log::{error, info};
@@ -71,11 +72,11 @@ impl<'b> DiscoveryMonitor<'b> {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             "x-address",
-            reqwest::header::HeaderValue::from_str(&address).unwrap(),
+            reqwest::header::HeaderValue::from_str(&address)?,
         );
         headers.insert(
             "x-signature",
-            reqwest::header::HeaderValue::from_str(&signature).unwrap(),
+            reqwest::header::HeaderValue::from_str(&signature)?,
         );
 
         let response = match reqwest::Client::new()
@@ -117,59 +118,81 @@ impl<'b> DiscoveryMonitor<'b> {
         Ok(nodes)
     }
 
-    pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
+    async fn sync_single_node_with_discovery(
+        &self,
+        discovery_node: &DiscoveryNode,
+    ) -> Result<(), Error> {
+        let node_address = discovery_node.node.id.parse::<Address>()?;
+        match self.store_context.node_store.get_node(&node_address) {
+            Some(existing_node) => {
+                if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
+                    info!(
+                        "Node {} is validated but not provider whitelisted, marking as ejected",
+                        node_address
+                    );
+                    self.store_context
+                        .node_store
+                        .update_node_status(&node_address, NodeStatus::Ejected);
+                }
+
+                // If a node is already in ejected state (and hence cannot recover) but the provider
+                // gets whitelisted, we need to mark it as dead so it can actually recover again
+                if discovery_node.is_validated
+                    && discovery_node.is_provider_whitelisted
+                    && existing_node.status == NodeStatus::Ejected
+                {
+                    info!(
+                        "Node {} is validated and provider whitelisted. Local store status was ejected, marking as dead so node can recover",
+                        node_address
+                    );
+                    self.store_context
+                        .node_store
+                        .update_node_status(&node_address, NodeStatus::Dead);
+                }
+                if !discovery_node.is_active && existing_node.status == NodeStatus::Healthy {
+                    // Node is active False but we have it in store and it is healthy
+                    // This means that the node likely got kicked by e.g. the validator
+                    // We simply remove it from the store now and will rediscover it later?
+                    println!(
+                        "Node {} is no longer active on chain, marking as dead",
+                        node_address
+                    );
+                    if !discovery_node.is_provider_whitelisted {
+                        self.store_context
+                            .node_store
+                            .update_node_status(&node_address, NodeStatus::Ejected);
+                    } else {
+                        self.store_context
+                            .node_store
+                            .update_node_status(&node_address, NodeStatus::Dead);
+                    }
+                }
+
+                if existing_node.ip_address != discovery_node.node.ip_address {
+                    info!(
+                        "Node {} IP changed from {} to {}",
+                        node_address, existing_node.ip_address, discovery_node.node.ip_address
+                    );
+                    let mut node = existing_node.clone();
+                    node.ip_address = discovery_node.node.ip_address.clone();
+                    self.store_context.node_store.add_node(node.clone());
+                }
+            }
+            None => {
+                info!("Discovered new validated node: {}", node_address);
+                let node = OrchestratorNode::from(discovery_node.clone());
+                self.store_context.node_store.add_node(node.clone());
+            }
+        }
+        Ok(())
+    }
+
+    async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
         let discovery_nodes = self.fetch_nodes_from_discovery().await?;
 
         for discovery_node in &discovery_nodes {
-            let node = OrchestratorNode::from(discovery_node.clone());
-            match self.store_context.node_store.get_node(&node.address) {
-                Some(existing_node) => {
-                    if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
-                        self.store_context
-                            .node_store
-                            .update_node_status(&node.address, NodeStatus::Ejected);
-                    }
-                    // If a node is already in ejected state (and hence cannot recover) but the provider
-                    // gets whitelisted, we need to mark it as dead so it can actually recover again
-                    if discovery_node.is_validated
-                        && discovery_node.is_provider_whitelisted
-                        && node.status == NodeStatus::Ejected
-                    {
-                        self.store_context
-                            .node_store
-                            .update_node_status(&node.address, NodeStatus::Dead);
-                    }
-                    if !discovery_node.is_active && existing_node.status == NodeStatus::Healthy {
-                        // Node is active False but we have it in store and it is healthy
-                        // This means that the node likely got kicked by e.g. the validator
-                        // We simply remove it from the store now and will rediscover it later?
-                        println!(
-                            "Node {} is no longer active on chain, marking as dead",
-                            node.address
-                        );
-                        if !discovery_node.is_provider_whitelisted {
-                            self.store_context
-                                .node_store
-                                .update_node_status(&node.address, NodeStatus::Ejected);
-                        } else {
-                            self.store_context
-                                .node_store
-                                .update_node_status(&node.address, NodeStatus::Dead);
-                        }
-                    }
-
-                    if existing_node.ip_address != node.ip_address {
-                        info!(
-                            "Node {} IP changed from {} to {}",
-                            node.address, existing_node.ip_address, node.ip_address
-                        );
-                        self.store_context.node_store.add_node(node.clone());
-                    }
-                }
-                None => {
-                    info!("Discovered new validated node: {}", node.address);
-                    self.store_context.node_store.add_node(node.clone());
-                }
+            if let Err(e) = self.sync_single_node_with_discovery(discovery_node).await {
+                error!("Error syncing node with discovery: {}", e);
             }
         }
 
@@ -177,5 +200,90 @@ impl<'b> DiscoveryMonitor<'b> {
             .into_iter()
             .map(OrchestratorNode::from)
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloy::primitives::Address;
+    use shared::models::node::Node;
+    use url::Url;
+
+    use super::*;
+    use crate::models::node::NodeStatus;
+    use crate::store::core::{RedisStore, StoreContext};
+
+    #[tokio::test]
+    async fn test_sync_single_node_with_discovery() {
+        let node_address = "0x1234567890123456789012345678901234567890";
+        let discovery_node = DiscoveryNode {
+            is_validated: true,
+            is_provider_whitelisted: true,
+            is_active: false,
+            node: Node {
+                id: node_address.to_string(),
+                provider_address: node_address.to_string(),
+                ip_address: "127.0.0.1".to_string(),
+                port: 8080,
+                compute_pool_id: 1,
+                compute_specs: None,
+            },
+            is_blacklisted: false,
+        };
+
+        let mut orchestrator_node = OrchestratorNode::from(discovery_node.clone());
+        orchestrator_node.status = NodeStatus::Ejected;
+        orchestrator_node.address = discovery_node.node.id.parse::<Address>().unwrap();
+
+        let store = Arc::new(RedisStore::new_test());
+        let mut con = store
+            .client
+            .get_connection()
+            .expect("Should connect to test Redis instance");
+
+        redis::cmd("PING")
+            .query::<String>(&mut con)
+            .expect("Redis should be responsive");
+        redis::cmd("FLUSHALL")
+            .query::<String>(&mut con)
+            .expect("Redis should be flushed");
+
+        let store_context = Arc::new(StoreContext::new(store.clone()));
+        let discovery_store_context = store_context.clone();
+
+        store_context.node_store.add_node(orchestrator_node.clone());
+
+        let fake_wallet = Wallet::new(
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .unwrap();
+
+        let discovery_monitor = DiscoveryMonitor::new(
+            &fake_wallet,
+            1,
+            10,
+            "http://localhost:8080".to_string(),
+            discovery_store_context,
+        );
+
+        let store_context_clone = store_context.clone();
+
+        let node_from_store = store_context_clone
+            .node_store
+            .get_node(&orchestrator_node.address)
+            .unwrap();
+        assert_eq!(node_from_store.status, NodeStatus::Ejected);
+
+        discovery_monitor
+            .sync_single_node_with_discovery(&discovery_node)
+            .await
+            .unwrap();
+
+        let node_after_sync = &store_context
+            .node_store
+            .get_node(&orchestrator_node.address)
+            .unwrap();
+        assert_eq!(node_after_sync.status, NodeStatus::Dead);
     }
 }
