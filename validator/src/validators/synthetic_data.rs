@@ -1,5 +1,5 @@
 use alloy::primitives::U256;
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Error};
 use directories::ProjectDirs;
 use hex;
 use log::debug;
@@ -28,6 +28,28 @@ fn state_filename(pool_id: &str) -> String {
 struct PersistedWorkState {
     pool_id: U256,
     last_validation_timestamp: U256,
+}
+
+enum ValidationResult {
+    Accept,
+    Reject,
+    Crashed,
+    Pending,
+    Unknown,
+}
+
+#[derive(Debug)]
+pub enum ProcessWorkKeyError {
+    /// Error when resolving the original file name for the work key.
+    FileNameResolutionError(String),
+    /// Error when triggering remote toploc validation.
+    ValidationTriggerError(String),
+    /// Error when polling for remote toploc validation.
+    ValidationPollingError(String),
+    /// Error when invalidating work.
+    InvalidatingWorkError(String),
+    /// Error when processing work key.
+    MaxAttemptsReached(String),
 }
 
 pub struct SyntheticDataValidator {
@@ -116,7 +138,7 @@ impl SyntheticDataValidator {
         }
     }
 
-    fn save_state(&self) -> Result<()> {
+    fn save_state(&self) -> Result<(), Error> {
         // Get values without block_on
         let state = PersistedWorkState {
             pool_id: self.pool_id,
@@ -133,7 +155,7 @@ impl SyntheticDataValidator {
         Ok(())
     }
 
-    fn load_state(state_dir: &Path, pool_id: &str) -> Result<Option<PersistedWorkState>> {
+    fn load_state(state_dir: &Path, pool_id: &str) -> Result<Option<PersistedWorkState>, Error> {
         let state_path = state_dir.join(state_filename(pool_id));
         if state_path.exists() {
             let contents = fs::read_to_string(state_path)?;
@@ -143,7 +165,7 @@ impl SyntheticDataValidator {
         Ok(None)
     }
 
-    pub async fn invalidate_work(&self, work_key: &str) -> Result<()> {
+    pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
         let data = hex::decode(work_key)
             .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
         println!("Invalidating work: {}", work_key);
@@ -160,7 +182,208 @@ impl SyntheticDataValidator {
         }
     }
 
-    pub async fn validate_work(&mut self) -> Result<()> {
+    async fn trigger_remote_toploc_validation(
+        &self,
+        file_name: &str,
+        sha: &str,
+    ) -> Result<(), Error> {
+        let validate_url = format!("{}/validate/{}", self.leviticus_url, file_name);
+
+        debug!("Validation URL: {}", validate_url);
+        let client = reqwest::Client::builder()
+            .default_headers({
+                let mut headers = reqwest::header::HeaderMap::new();
+                if let Some(token) = &self.leviticus_token {
+                    headers.insert(
+                        reqwest::header::AUTHORIZATION,
+                        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+                            .expect("Invalid token"),
+                    );
+                }
+                headers
+            })
+            .build()
+            .expect("Failed to build HTTP client");
+
+        let body = serde_json::json!({
+            "file_sha": sha
+        });
+
+        match client.post(&validate_url).json(&body).send().await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                error!(
+                    "Failed to trigger remote toploc validation for {}: {}",
+                    file_name, e
+                );
+                Err(Error::msg(format!(
+                    "Failed to trigger remote toploc validation: {}",
+                    e
+                )))
+            }
+        }
+    }
+    async fn poll_remote_toploc_validation(
+        &self,
+        file_name: &str,
+    ) -> Result<ValidationResult, Error> {
+        let url = format!("{}/status/{}", self.leviticus_url, file_name);
+        let client = reqwest::Client::new();
+
+        match client.get(&url).send().await {
+            Ok(response) => {
+                let status_json: serde_json::Value = response.json().await.map_err(|e| {
+                    error!("Failed to parse JSON response for {}: {}", file_name, e);
+                    Error::msg(format!("Failed to parse JSON response: {}", e))
+                })?;
+
+                if status_json.get("status").is_none() {
+                    error!("No status found for {}", file_name);
+                    Err(Error::msg("No status found"))
+                } else {
+                    match status_json.get("status").and_then(|s| s.as_str()) {
+                        Some(status) => {
+                            info!("Validation status for {}: {}", file_name, status);
+
+                            let validation_result = match status {
+                                "accept" => ValidationResult::Accept,
+                                "reject" => {
+                                    if let Err(e) = self.invalidate_work(file_name).await {
+                                        error!("Failed to invalidate work {}: {}", file_name, e);
+                                    } else {
+                                        info!("Successfully invalidated work {}", file_name);
+                                    }
+                                    ValidationResult::Reject
+                                }
+                                "crashed" => ValidationResult::Crashed,
+                                "pending" => ValidationResult::Pending,
+                                _ => ValidationResult::Unknown,
+                            };
+                            Ok(validation_result)
+                        }
+                        None => {
+                            error!("No status found for {}", file_name);
+                            Err(Error::msg("No status found"))
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Failed to poll remote toploc validation for {}: {}",
+                    file_name, e
+                );
+                Err(Error::msg(format!(
+                    "Failed to poll remote toploc validation: {}",
+                    e
+                )))
+            }
+        }
+    }
+
+    async fn process_workkey(&mut self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
+        let original_file_name = resolve_mapping_for_sha(
+            self.bucket_name.clone().unwrap().as_str(),
+            &self.s3_credentials.clone().unwrap(),
+            &work_key,
+        )
+        .await
+        .map_err(|e| ProcessWorkKeyError::FileNameResolutionError(e.to_string()))?;
+
+        if original_file_name.is_empty() {
+            error!(
+                "Failed to resolve original file name for work key: {}",
+                work_key
+            );
+            return Err(ProcessWorkKeyError::FileNameResolutionError(format!(
+                "Failed to resolve original file name for work key: {}",
+                work_key
+            )));
+        }
+
+        let cleaned_file_name = original_file_name
+            .strip_prefix('/')
+            .unwrap_or(original_file_name.as_str());
+
+        // Trigger remote toploc validation
+        let mut attempts = 0;
+        const MAX_ATTEMPTS: u32 = 3;
+        const BACKOFF_FACTOR: u64 = 2;
+
+        while attempts < MAX_ATTEMPTS {
+            if let Err(e) = self
+                .trigger_remote_toploc_validation(&cleaned_file_name, &work_key)
+                .await
+            {
+                attempts += 1;
+                let backoff_time = BACKOFF_FACTOR.pow(attempts) * 100; // Exponential backoff in milliseconds
+                error!("Failed to trigger remote toploc validation for {}: {}. Attempt {}/{}. Retrying in {} ms...", cleaned_file_name, e, attempts, MAX_ATTEMPTS, backoff_time);
+                tokio::time::sleep(std::time::Duration::from_millis(backoff_time)).await;
+                continue;
+            }
+            break; // Success, exit the loop
+        }
+
+        if attempts == MAX_ATTEMPTS {
+            return Err(ProcessWorkKeyError::ValidationTriggerError(format!(
+                "Failed to trigger remote toploc validation for {}",
+                cleaned_file_name
+            )));
+        }
+
+        let max_attempts = 5;
+        let mut attempts = 0;
+        while attempts < max_attempts {
+            let result = self.poll_remote_toploc_validation(&cleaned_file_name).await;
+            if let Err(e) = result {
+                error!(
+                    "Failed to poll remote toploc validation for {}: {}",
+                    cleaned_file_name, e
+                );
+                if attempts == max_attempts {
+                    return Err(ProcessWorkKeyError::ValidationPollingError(format!(
+                        "Failed to poll remote toploc validation for {}",
+                        cleaned_file_name
+                    )));
+                }
+                continue;
+            }
+
+            let validation_result = result.unwrap();
+            match validation_result {
+                ValidationResult::Accept => {
+                    info!("Validation accepted for {}", cleaned_file_name);
+                    return Ok(());
+                }
+                ValidationResult::Reject => {
+                    info!("Validation rejected for {}", cleaned_file_name);
+                    if let Err(e) = self.invalidate_work(&work_key).await {
+                        error!("Failed to invalidate work {}: {}", work_key, e);
+                        attempts += 1;
+                        if attempts == max_attempts {
+                            return Err(ProcessWorkKeyError::InvalidatingWorkError(format!(
+                                "Failed to invalidate work {}",
+                                work_key
+                            )));
+                        }
+                        continue;
+                    }
+                    return Ok(());
+                }
+                _ => {
+                    error!("Validation unknown for {}", cleaned_file_name);
+                    attempts += 1;
+                    continue;
+                }
+            }
+        }
+        Err(ProcessWorkKeyError::MaxAttemptsReached(format!(
+            "Failed to poll remote toploc validation for {}",
+            cleaned_file_name
+        )))
+    }
+
+    pub async fn validate_work(&mut self) -> Result<(), Error> {
         info!("Validating work for pool ID: {:?}", self.pool_id);
 
         // Get all work keys for the pool
@@ -172,249 +395,39 @@ impl SyntheticDataValidator {
 
         info!("Found {} work keys to validate", work_keys.len());
 
+        let mut completed_all_validations = true;
+
         // Process each work key
         for work_key in work_keys {
             info!("Processing work key: {}", work_key);
-            match self.validator.get_work_info(self.pool_id, &work_key).await {
-                Ok(work_info) => {
-                    info!(
-                        "Got work info - Provider: {:?}, Node: {:?}, Timestamp: {}",
-                        work_info.provider, work_info.node_id, work_info.timestamp
-                    );
-
-                    // This is a temporary solution to get the original file name
-                    // it will be replaced by file data loading from dht
-                    println!("Resolving original file name for work key: {}", work_key);
-
-                    let original_file_name = resolve_mapping_for_sha(
-                        self.bucket_name.clone().unwrap().as_str(),
-                        &self.s3_credentials.clone().unwrap(),
-                        &work_key,
-                    )
-                    .await
-                    .unwrap();
-
-                    if original_file_name.is_empty() {
-                        error!(
-                            "Failed to resolve original file name for work key: {}",
-                            work_key
-                        );
-                        continue;
-                    }
-                    let cleaned_file_name = original_file_name
-                        .strip_prefix('/')
-                        .unwrap_or(original_file_name.as_str());
-                    println!("Original file name: {}", cleaned_file_name);
-
-                    // Start validation by calling validation endpoint with retries
-                    let validate_url =
-                        format!("{}/validate/{}", self.leviticus_url, cleaned_file_name);
-                    println!("Validation URL: {}", validate_url);
-
-                    let mut client = reqwest::Client::builder();
-
-                    // Add auth token if provided
-                    if let Some(token) = &self.leviticus_token {
-                        client = client.default_headers({
-                            let mut headers = reqwest::header::HeaderMap::new();
-                            headers.insert(
-                                reqwest::header::AUTHORIZATION,
-                                reqwest::header::HeaderValue::from_str(&format!(
-                                    "Bearer {}",
-                                    token
-                                ))
-                                .expect("Invalid token"),
-                            );
-                            headers
-                        });
-                    }
-
-                    let client = client.build().expect("Failed to build HTTP client");
-
-                    let mut validate_attempts = 0;
-                    const MAX_VALIDATE_ATTEMPTS: u32 = 3;
-
-                    let validation_result = loop {
-                        let body = serde_json::json!({
-                            "file_sha": work_key
-                        });
-
-                        match client.post(&validate_url).json(&body).send().await {
-                            Ok(_) => {
-                                info!("Started validation for work key: {}", work_key);
-                                break Ok(());
-                            }
-                            Err(e) => {
-                                validate_attempts += 1;
-                                error!(
-                                    "Attempt {} failed to start validation for {}: {}",
-                                    validate_attempts, work_key, e
-                                );
-
-                                if validate_attempts >= MAX_VALIDATE_ATTEMPTS {
-                                    break Err(e);
-                                }
-
-                                // Exponential backoff
-                                tokio::time::sleep(tokio::time::Duration::from_secs(
-                                    2u64.pow(validate_attempts),
-                                ))
-                                .await;
-                            }
-                        }
-                    };
-
-                    match validation_result {
-                        Ok(_) => {
-                            // Poll status endpoint until we get a proper response
-                            let status_url =
-                                format!("{}/status/{}", self.leviticus_url, cleaned_file_name);
-                            let mut status_attempts = 0;
-                            const MAX_STATUS_ATTEMPTS: u32 = 5;
-
-                            loop {
-                                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-                                match client.get(&status_url).send().await {
-                                    Ok(response) => {
-                                        match response.json::<serde_json::Value>().await {
-                                            Ok(status_json) => {
-                                                if status_json.get("status").is_none() {
-                                                    error!("No status found for {}", work_key);
-                                                    status_attempts += 1;
-                                                } else {
-                                                    match status_json
-                                                        .get("status")
-                                                        .and_then(|s| s.as_str())
-                                                    {
-                                                        Some(status) => {
-                                                            info!(
-                                                                "Validation status for {}: {}",
-                                                                work_key, status
-                                                            );
-
-                                                            match status {
-                                                                "accept" => {
-                                                                    info!(
-                                                                        "Work {} was accepted",
-                                                                        work_key
-                                                                    );
-                                                                    break;
-                                                                }
-                                                                "reject" => {
-                                                                    error!(
-                                                                        "Work {} was rejected",
-                                                                        work_key
-                                                                    );
-                                                                    if let Err(e) = self
-                                                                        .invalidate_work(&work_key)
-                                                                        .await
-                                                                    {
-                                                                        error!("Failed to invalidate work {}: {}", work_key, e);
-                                                                    } else {
-                                                                        info!("Successfully invalidated work {}", work_key);
-                                                                    }
-                                                                    break;
-                                                                }
-                                                                "crashed" => {
-                                                                    error!(
-                                                                        "Validation crashed for {}",
-                                                                        work_key
-                                                                    );
-                                                                    break;
-                                                                }
-                                                                "pending" => {
-                                                                    status_attempts += 1;
-                                                                    if status_attempts
-                                                                        >= MAX_STATUS_ATTEMPTS
-                                                                    {
-                                                                        error!("Max status attempts reached for {}", work_key);
-                                                                        break;
-                                                                    }
-                                                                }
-                                                                _ => {
-                                                                    status_attempts += 1;
-                                                                    error!(
-                                                                        "Unknown status {} for {}",
-                                                                        status, work_key
-                                                                    );
-                                                                    if status_attempts
-                                                                        >= MAX_STATUS_ATTEMPTS
-                                                                    {
-                                                                        break;
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        None => {
-                                                            status_attempts += 1;
-                                                            error!(
-                                                            "No status field in response for {}",
-                                                            work_key
-                                                        );
-                                                            if status_attempts
-                                                                >= MAX_STATUS_ATTEMPTS
-                                                            {
-                                                                error!("Max status attempts reached for {}", work_key);
-                                                                break;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                status_attempts += 1;
-                                                error!("Attempt {} failed to parse status JSON for {}: {}", status_attempts, work_key, e);
-
-                                                if status_attempts >= MAX_STATUS_ATTEMPTS {
-                                                    error!(
-                                                        "Max status attempts reached for {}",
-                                                        work_key
-                                                    );
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        status_attempts += 1;
-                                        error!(
-                                            "Attempt {} failed to get status for {}: {}",
-                                            status_attempts, work_key, e
-                                        );
-
-                                        if status_attempts >= MAX_STATUS_ATTEMPTS {
-                                            error!("Max status attempts reached for {}", work_key);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            error!("Failed all validation attempts for {}", work_key);
-                            continue;
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to get work info for key {}: {}", work_key, e);
-                    continue;
-                }
+            if let Err(e) = self.process_workkey(&work_key).await {
+                // TODO: We have an error now - should we actually skip this validation then?
+                println!("Error: {:?}", e);
+                completed_all_validations = false;
             }
         }
 
-        // Update last validation timestamp to current time
-        // TODO: We should only set this once we are sure that we have validated all keys
-        self.last_validation_timestamp = U256::from(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .context("Failed to get current timestamp")?
-                .as_secs(),
-        );
+        if completed_all_validations {
+            self.last_validation_timestamp = U256::from(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .context("Failed to get current timestamp")?
+                    .as_secs(),
+            );
+        }
 
         self.save_state()?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_process_workkey() {
+        // TODO: This requires a leviticus server or a mock server
     }
 }
