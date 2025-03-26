@@ -72,11 +72,11 @@ impl<'b> DiscoveryMonitor<'b> {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             "x-address",
-            reqwest::header::HeaderValue::from_str(&address).unwrap(),
+            reqwest::header::HeaderValue::from_str(&address)?,
         );
         headers.insert(
             "x-signature",
-            reqwest::header::HeaderValue::from_str(&signature).unwrap(),
+            reqwest::header::HeaderValue::from_str(&signature)?,
         );
 
         let response = match reqwest::Client::new()
@@ -122,7 +122,7 @@ impl<'b> DiscoveryMonitor<'b> {
         &self,
         discovery_node: &DiscoveryNode,
     ) -> Result<(), Error> {
-        let node_address = discovery_node.node.id.parse::<Address>().unwrap();
+        let node_address = discovery_node.node.id.parse::<Address>()?;
         match self.store_context.node_store.get_node(&node_address) {
             Some(existing_node) => {
                 if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
@@ -252,10 +252,6 @@ mod tests {
         let discovery_store_context = store_context.clone();
 
         store_context.node_store.add_node(orchestrator_node.clone());
-        let node_from_store = discovery_store_context
-            .node_store
-            .get_node(&orchestrator_node.address)
-            .unwrap();
 
         let fake_wallet = Wallet::new(
             "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
