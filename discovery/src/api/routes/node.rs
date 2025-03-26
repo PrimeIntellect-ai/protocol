@@ -171,6 +171,8 @@ mod tests {
             is_active: true,
             is_provider_whitelisted: false,
             is_blacklisted: false,
+            last_updated: None,
+            created_at: None,
         };
 
         app_state.node_store.update_node(validated);
@@ -260,6 +262,8 @@ mod tests {
         let nodes = app_state.node_store.get_nodes();
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, node.id);
+        assert_eq!(nodes[0].last_updated, None);
+        assert_ne!(nodes[0].created_at, None);
     }
 
     #[actix_web::test]
