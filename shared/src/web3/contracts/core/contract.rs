@@ -46,6 +46,7 @@ impl Contract {
                 include_abi!("../../../../artifacts/abi/synthetic_data_work_validator.json")
             }
             "stake_manager.json" => include_abi!("../../../../artifacts/abi/stake_manager.json"),
+            "domain_registry.json" => include_abi!("../../../../artifacts/abi/domain_registry.json"),
             _ => panic!("Unknown ABI file: {}", path),
         };
 

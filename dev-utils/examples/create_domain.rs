@@ -1,4 +1,4 @@
-use alloy::primitives::Address;
+use alloy::primitives::{Address, U256};
 use clap::Parser;
 use eyre::Result;
 use shared::web3::contracts::core::builder::ContractBuilder;
@@ -44,8 +44,11 @@ async fn main() -> Result<()> {
         .with_ai_token()
         .with_prime_network()
         .with_compute_pool()
+        .with_domain_registry()
         .build()
         .unwrap();
+
+
 
     let domain_name = args.domain_name.clone();
 
@@ -61,5 +64,15 @@ async fn main() -> Result<()> {
     println!("Transaction: {:?}", tx);
 
     // TODO: Should print actual domain id here
+
+    /*let tx = contracts.prime_network.update_validation_logic(U256::from(0), Address::from_str("0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD").unwrap()).await;
+    println!("Updating validation logic: {}", args.validation_logic);
+    println!("Transaction: {:?}", tx);*/
+
+    //let domain_id = contracts.domain_registry.unwrap().get_domain(0).await;
+
+    //let keys = contracts.synthetic_data_validator.unwrap().get_work_since(U256::from(1), U256::from(0)).await;
+    //println!("Work keys: {:?}", keys);
+
     Ok(())
 }
