@@ -575,7 +575,7 @@ pub async fn compute_cr(
 
 pub async fn compute_row_proofs(
     challenge_req: web::Json<GpuChallengeWorkerComputeRowProofs>,
-    // app_state: Data<AppState>,
+    app_state: Data<AppState>,
 ) -> HttpResponse {
     let session_id = &challenge_req.session_id;
     let row_indices = challenge_req.row_idxs.clone();
@@ -591,7 +591,7 @@ pub async fn compute_row_proofs(
         }
     }
 
-    match prover_send::<GpuRowProofsResponse>(
+    let response = match prover_send::<GpuRowProofsResponse>(
         "/getRowProofs",
         Some(json!({
             "row_idxs": row_indices
@@ -607,6 +607,7 @@ pub async fn compute_row_proofs(
             if let Some(result) = state.mut_result() {
                 result.row_proofs_json = proofs_json.clone();
             }
+            state.set_status("completed");
 
             HttpResponse::Ok().json(ApiResponse::new(true, proof_data))
         }
@@ -615,7 +616,12 @@ pub async fn compute_row_proofs(
             state.set_error(e.to_string());
             HttpResponse::InternalServerError().json(ApiResponse::new(false, e.to_string()))
         }
-    }
+    };
+
+    // we are finished and no longer need the container
+    stop_task_via_manager(app_state).await.unwrap();
+
+    response
 }
 
 // Register the routes
