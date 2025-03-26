@@ -210,6 +210,7 @@ impl DockerManager {
             Some(HostConfig {
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 binds: volume_binds,
+                port_bindings,
                 ..Default::default()
             })
         };
