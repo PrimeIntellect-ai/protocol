@@ -132,6 +132,7 @@ It takes a couple of seconds until the worker is whitelisted. This is done using
 You can find more details on the APIs in the orchestrator and discovery service directory.
 
 ## Remote GPU Development
+> ⚠️ **IMPORTANT**: The video shows the whitelist process happening automatically. Currently, this must be done manually using the command `make whitelist-provider`.
 
 https://github.com/user-attachments/assets/8b25ad50-7183-4dd5-add6-f9acf3852b03
 
