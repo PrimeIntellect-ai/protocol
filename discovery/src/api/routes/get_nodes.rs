@@ -29,7 +29,8 @@ pub async fn get_nodes_for_pool(
             let pool_info = match contracts.compute_pool.get_pool_info(pool_contract_id).await {
                 Ok(info) => info,
                 Err(_) => {
-                    return HttpResponse::NotFound().json(ApiResponse::new(false, "Pool not found"));
+                    return HttpResponse::NotFound()
+                        .json(ApiResponse::new(false, "Pool not found"));
                 }
             };
             let owner = pool_info.creator;
