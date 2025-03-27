@@ -31,11 +31,27 @@ impl DomainRegistryContract {
             .call()
             .await?;
 
-        let domain_info_tuple: &[DynSolValue] = result.first().unwrap().as_tuple().unwrap();
-        let domain_id: U256 = domain_info_tuple[0].as_uint().unwrap().0;
-        let name: String = domain_info_tuple[1].as_str().unwrap().to_string();
-        let validation_logic: Address = domain_info_tuple[2].as_address().unwrap();
-        let domain_parameters_uri: String = domain_info_tuple[3].as_str().unwrap().to_string();
+        let domain_info_tuple: &[DynSolValue] = result
+            .first()
+            .ok_or_else(|| Error::msg("Failed to get domain info tuple"))?
+            .as_tuple()
+            .ok_or_else(|| Error::msg("Failed to convert to tuple"))?;
+
+        let domain_id: U256 = domain_info_tuple[0]
+            .as_uint()
+            .ok_or_else(|| Error::msg("Failed to get domain ID"))?
+            .0;
+        let name: String = domain_info_tuple[1]
+            .as_str()
+            .ok_or_else(|| Error::msg("Failed to get domain name"))?
+            .to_string();
+        let validation_logic: Address = domain_info_tuple[2]
+            .as_address()
+            .ok_or_else(|| Error::msg("Failed to get validation logic address"))?;
+        let domain_parameters_uri: String = domain_info_tuple[3]
+            .as_str()
+            .ok_or_else(|| Error::msg("Failed to get domain parameters URI"))?
+            .to_string();
 
         Ok(Domain {
             domain_id,
