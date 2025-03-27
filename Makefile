@@ -8,11 +8,11 @@ set-min-stake-amount:
 
 mint-ai-tokens-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
+	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} 
 
 mint-ai-tokens-to-federator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example mint_ai_token -- --address $${FEDERATOR_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p dev-utils --example mint_ai_token -- --address $${FEDERATOR_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
 
 transfer-eth-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
