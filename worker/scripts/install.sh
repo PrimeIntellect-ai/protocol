@@ -25,7 +25,7 @@ fi
 
 # Check if dev flag is set
 if [[ "$1" == "--dev" ]]; then
-  LATEST_DEV_TAG=$(curl -s "$RELEASE_URL" | grep -o 'dev-[0-9]\{8\}-[a-z0-9]\+' | head -1)
+  LATEST_DEV_TAG=$(curl -s "$RELEASE_URL" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+-beta\.[0-9]\+' | head -1)
   if [[ -z "$LATEST_DEV_TAG" ]]; then
     echo -e "${RED}✗ Could not find latest dev release${NC}"
     exit 1

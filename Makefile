@@ -8,7 +8,12 @@ set-min-stake-amount:
 
 mint-ai-tokens-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
+
+mint-ai-tokens-to-federator:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example mint_ai_token -- --address $${FEDERATOR_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+
 transfer-eth-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example transfer_eth -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
@@ -23,11 +28,11 @@ create-domain:
 
 create-training-domain:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-training}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-training}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --validation-logic $${WORK_VALIDATION_CONTRACT}
 
 create-synth-data-domain:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-synth_data}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-synth_data}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --validation-logic $${WORK_VALIDATION_CONTRACT}
 
 create-compute-pool:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -50,6 +55,7 @@ setup-dev-env:
 	make set-min-stake-amount
 	make create-training-domain
 	make create-synth-data-domain
+	make mint-ai-to-federator
 
 
 up:
