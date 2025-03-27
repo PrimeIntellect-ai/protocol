@@ -26,11 +26,12 @@ pub async fn get_nodes_for_pool(
 
     match data.contracts.clone() {
         Some(contracts) => {
-            let pool_info = contracts
-                .compute_pool
-                .get_pool_info(pool_contract_id)
-                .await
-                .unwrap();
+            let pool_info = match contracts.compute_pool.get_pool_info(pool_contract_id).await {
+                Ok(info) => info,
+                Err(_) => {
+                    return HttpResponse::NotFound().json(ApiResponse::new(false, "Pool not found"));
+                }
+            };
             let owner = pool_info.creator;
             let manager = pool_info.compute_manager_key;
             let address_str = match req.headers().get("x-address") {
