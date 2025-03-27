@@ -11,6 +11,7 @@ use crate::store::core::RedisStore;
 use crate::store::core::StoreContext;
 use anyhow::Result;
 use clap::Parser;
+use log::debug;
 use log::error;
 use log::LevelFilter;
 use shared::web3::contracts::core::builder::ContractBuilder;
@@ -76,15 +77,29 @@ struct Args {
     /// S3 bucket name
     #[arg(long)]
     bucket_name: Option<String>,
+
+    /// Log level
+    #[arg(short = 'l', long, default_value = "info")]
+    log_level: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args = Args::parse();
+    let log_level = match args.log_level.as_str() {
+        "error" => LevelFilter::Error,
+        "warn" => LevelFilter::Warn,
+        "info" => LevelFilter::Info,
+        "debug" => LevelFilter::Debug,
+        "trace" => LevelFilter::Trace,
+        _ => LevelFilter::Info, // Default to Info if the level is unrecognized
+    };
     env_logger::Builder::new()
-        .filter_level(LevelFilter::Info)
+        .filter_level(log_level)
         .format_timestamp(None)
         .init();
-    let args = Args::parse();
+    debug!("Log level: {}", log_level);
+
     let compute_pool_id = args.compute_pool_id;
     let domain_id = args.domain_id;
     let coordinator_key = args.coordinator_key;

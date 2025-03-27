@@ -13,6 +13,7 @@ ENV LEVITICUS_URL=""
 ENV LEVITICUS_TOKEN=""
 ENV S3_CREDENTIALS=""
 ENV BUCKET_NAME=""
+ENV LOG_LEVEL=""
 
 
 RUN echo '#!/bin/sh\n\
@@ -26,6 +27,7 @@ exec /usr/local/bin/validator \
 $([ ! -z "$LEVITICUS_TOKEN" ] && echo "--leviticus-token $LEVITICUS_TOKEN") \
 $([ ! -z "$S3_CREDENTIALS" ] && echo "--s3-credentials $S3_CREDENTIALS") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
+$([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 
