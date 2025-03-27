@@ -19,6 +19,7 @@ ENV ADMIN_API_KEY="admin"
 ENV DISABLE_EJECTION="false"
 ENV S3_CREDENTIALS=""
 ENV BUCKET_NAME=""
+ENV LOG_LEVEL=""
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/orchestrator \
@@ -36,6 +37,7 @@ $([ ! -z "$HOST" ] && echo "--host $HOST") \
 $([ "$DISABLE_EJECTION" = "true" ] && echo "--disable-ejection") \
 $([ ! -z "$S3_CREDENTIALS" ] && echo "--s3-credentials $S3_CREDENTIALS") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
+$([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 

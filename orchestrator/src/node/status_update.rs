@@ -1,7 +1,7 @@
 use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::store::core::StoreContext;
 use anyhow::Ok;
-use log::{debug, error};
+use log::{debug, error, info};
 use shared::web3::contracts::core::builder::Contracts;
 use std::result::Result;
 use std::sync::Arc;
@@ -73,28 +73,49 @@ impl NodeStatusUpdater {
         node_in_pool
     }
 
+    async fn sync_dead_node_with_chain(
+        &self,
+        node: &OrchestratorNode,
+    ) -> Result<(), anyhow::Error> {
+        let node_in_pool = self.is_node_in_pool(node).await;
+        if node_in_pool {
+            match self
+                .contracts
+                .compute_pool
+                .eject_node(self.pool_id, node.address)
+                .await
+            {
+                Result::Ok(_) => {
+                    info!("Ejected node: {:?}", node.address);
+                    return Ok(());
+                }
+                Result::Err(e) => {
+                    error!("Error ejecting node: {}", e);
+                    return Err(anyhow::anyhow!("Error ejecting node: {}", e));
+                }
+            }
+        } else {
+            debug!(
+                "Dead Node {:?} is not in pool, skipping ejection",
+                node.address
+            );
+        }
+        Ok(())
+    }
+
     pub async fn sync_chain_with_nodes(&self) -> Result<(), anyhow::Error> {
         let nodes = self.store_context.node_store.get_nodes();
         for node in nodes {
             if node.status == NodeStatus::Dead {
                 let node_in_pool = self.is_node_in_pool(&node).await;
+                debug!("Node {:?} is in pool: {}", node.address, node_in_pool);
                 if node_in_pool {
                     if !self.disable_ejection {
-                        let tx = self
-                            .contracts
-                            .compute_pool
-                            .eject_node(self.pool_id, node.address)
-                            .await;
-                        match tx {
-                            Result::Ok(_) => {
-                                println!("Ejected node: {:?}", node.address);
-                            }
-                            Result::Err(e) => {
-                                println!("Error ejecting node: {}", e);
-                            }
+                        if let Err(e) = self.sync_dead_node_with_chain(&node).await {
+                            error!("Error syncing dead node with chain: {}", e);
                         }
                     } else {
-                        println!(
+                        debug!(
                             "Ejection is disabled, skipping ejection of node: {:?}",
                             node.address
                         );
