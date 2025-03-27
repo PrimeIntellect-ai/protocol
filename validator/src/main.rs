@@ -65,15 +65,28 @@ struct Args {
     /// Temporary: S3 bucket name
     #[arg(long, default_value = None)]
     bucket_name: Option<String>,
+
+    /// Log level
+    #[arg(short = 'l', long, default_value = "info")]
+    log_level: String,
 }
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
+
+    let args = Args::parse();
+    let log_level = match args.log_level.as_str() {
+        "error" => LevelFilter::Error,
+        "warn" => LevelFilter::Warn,
+        "info" => LevelFilter::Info,
+        "debug" => LevelFilter::Debug,
+        "trace" => LevelFilter::Trace,
+        _ => LevelFilter::Info,
+    };
     env_logger::Builder::new()
-        .filter_level(LevelFilter::Info)
+        .filter_level(log_level)
         .format_timestamp(None)
         .init();
 
-    let args = Args::parse();
     let private_key_validator = args.validator_key;
     let rpc_url: Url = args.rpc_url.parse().unwrap();
     let discovery_url = args.discovery_url;

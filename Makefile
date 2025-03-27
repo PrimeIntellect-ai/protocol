@@ -89,7 +89,7 @@ watch-validator:
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME"
+	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $$LOG_LEVEL"
 
 build-worker:
 	cargo build --release --bin worker
@@ -183,3 +183,7 @@ sign-message:
 balance:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo watch -w worker/src -x "run --bin worker -- balance --private-key $$PRIVATE_KEY_PROVIDER --rpc-url $$RPC_URL"
+
+get-node-info:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example get_node_info -- --provider-address $${PROVIDER_ADDRESS} --node-address $${NODE_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
