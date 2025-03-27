@@ -105,13 +105,17 @@ fn main() {
     let contracts = contract_builder.build_partial().unwrap();
 
     if let Some(pool_id) = args.pool_id.clone() {
-        let pool = runtime
-            .block_on(
-                contracts
-                    .compute_pool
-                    .get_pool_info(U256::from_str(&pool_id).unwrap()),
-            )
-            .unwrap();
+        let pool = match runtime.block_on(
+            contracts
+                .compute_pool
+                .get_pool_info(U256::from_str(&pool_id).unwrap()),
+        ) {
+            Ok(pool_info) => pool_info,
+            Err(e) => {
+                error!("Failed to get pool info: {:?}", e);
+                std::process::exit(1);
+            }
+        };
         let domain_id: u32 = pool.domain_id.try_into().unwrap();
         let domain = runtime
             .block_on(
