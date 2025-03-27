@@ -44,6 +44,7 @@ async fn main() -> Result<()> {
         .with_ai_token()
         .with_prime_network()
         .with_compute_pool()
+        .with_domain_registry()
         .build()
         .unwrap();
 
@@ -59,7 +60,5 @@ async fn main() -> Result<()> {
     println!("Creating domain: {}", args.domain_name);
     println!("Validation logic: {}", args.validation_logic);
     println!("Transaction: {:?}", tx);
-
-    // TODO: Should print actual domain id here
     Ok(())
 }

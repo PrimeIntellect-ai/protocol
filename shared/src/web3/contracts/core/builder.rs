@@ -6,6 +6,7 @@ use crate::web3::{
         implementations::{
             ai_token_contract::AIToken, compute_pool_contract::ComputePool,
             compute_registry_contract::ComputeRegistryContract,
+            domain_registry_contract::DomainRegistryContract,
             prime_network_contract::PrimeNetworkContract, stake_manager::StakeManagerContract,
             work_validators::synthetic_data_validator::SyntheticDataWorkValidator,
         },
@@ -22,6 +23,7 @@ pub struct Contracts {
     pub compute_pool: ComputePool,
     pub stake_manager: Option<StakeManagerContract>,
     pub synthetic_data_validator: Option<SyntheticDataWorkValidator>,
+    pub domain_registry: Option<DomainRegistryContract>,
 }
 
 pub struct ContractBuilder<'a> {
@@ -32,6 +34,7 @@ pub struct ContractBuilder<'a> {
     compute_pool: Option<ComputePool>,
     stake_manager: Option<StakeManagerContract>,
     synthetic_data_validator: Option<SyntheticDataWorkValidator>,
+    domain_registry: Option<DomainRegistryContract>,
 }
 
 impl<'a> ContractBuilder<'a> {
@@ -44,6 +47,7 @@ impl<'a> ContractBuilder<'a> {
             compute_pool: None,
             stake_manager: None,
             synthetic_data_validator: None,
+            domain_registry: None,
         }
     }
 
@@ -79,6 +83,14 @@ impl<'a> ContractBuilder<'a> {
         self
     }
 
+    pub fn with_domain_registry(mut self) -> Self {
+        self.domain_registry = Some(DomainRegistryContract::new(
+            self.wallet,
+            "domain_registry.json",
+        ));
+        self
+    }
+
     pub fn with_stake_manager(mut self) -> Self {
         self.stake_manager = Some(StakeManagerContract::new(self.wallet, "stake_manager.json"));
         self
@@ -109,7 +121,51 @@ impl<'a> ContractBuilder<'a> {
                 None => return Err(ContractError::Other("PrimeNetwork not initialized".into())), // Custom error handling
             },
             synthetic_data_validator: self.synthetic_data_validator,
+            domain_registry: self.domain_registry,
             stake_manager: self.stake_manager,
+        })
+    }
+
+    pub fn build_partial(&self) -> Result<Contracts, ContractError> {
+        Ok(Contracts {
+            compute_registry: self
+                .compute_registry
+                .as_ref()
+                .ok_or_else(|| ContractError::Other("ComputeRegistry not initialized".into()))?
+                .clone(),
+
+            ai_token: self
+                .ai_token
+                .as_ref()
+                .ok_or_else(|| ContractError::Other("AIToken not initialized".into()))?
+                .clone(),
+
+            prime_network: self
+                .prime_network
+                .as_ref()
+                .ok_or_else(|| ContractError::Other("PrimeNetwork not initialized".into()))?
+                .clone(),
+
+            compute_pool: self
+                .compute_pool
+                .as_ref()
+                .ok_or_else(|| ContractError::Other("ComputePool not initialized".into()))?
+                .clone(),
+
+            domain_registry: Some(
+                self.domain_registry
+                    .as_ref()
+                    .ok_or_else(|| ContractError::Other("DomainRegistry not initialized".into()))?
+                    .clone(),
+            ),
+
+            stake_manager: Some(
+                self.stake_manager
+                    .as_ref()
+                    .ok_or_else(|| ContractError::Other("StakeManager not initialized".into()))?
+                    .clone(),
+            ),
+            synthetic_data_validator: None,
         })
     }
 }

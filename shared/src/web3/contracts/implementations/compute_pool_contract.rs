@@ -6,6 +6,7 @@ use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, FixedBytes, U256};
 
+#[derive(Clone)]
 pub struct ComputePool {
     pub instance: Contract,
 }
