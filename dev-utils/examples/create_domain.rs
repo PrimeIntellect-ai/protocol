@@ -60,17 +60,5 @@ async fn main() -> Result<()> {
     println!("Creating domain: {}", args.domain_name);
     println!("Validation logic: {}", args.validation_logic);
     println!("Transaction: {:?}", tx);
-
-    // TODO: Should print actual domain id here
-
-    /*let tx = contracts.prime_network.update_validation_logic(U256::from(0), Address::from_str("0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD").unwrap()).await;
-    println!("Updating validation logic: {}", args.validation_logic);
-    println!("Transaction: {:?}", tx);*/
-
-    //let domain_id = contracts.domain_registry.unwrap().get_domain(0).await;
-
-    //let keys = contracts.synthetic_data_validator.unwrap().get_work_since(U256::from(1), U256::from(0)).await;
-    //println!("Work keys: {:?}", keys);
-
     Ok(())
 }
