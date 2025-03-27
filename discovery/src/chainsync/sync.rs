@@ -1,6 +1,7 @@
 use crate::store::node_store::NodeStore;
 use alloy::primitives::Address;
 use anyhow::Error;
+use log::error;
 use shared::models::node::DiscoveryNode;
 use shared::web3::contracts::core::builder::Contracts;
 use std::str::FromStr;
@@ -98,7 +99,7 @@ impl ChainSync {
                         let nodes = node_store_clone.get_nodes();
                         for node in nodes {
                             if let Err(e) = ChainSync::sync_single_node(node_store_clone.clone(), contracts_clone.clone(), node).await {
-                                eprintln!("Error syncing node: {}", e);
+                                error!("Error syncing node: {}", e);
                             }
                         }
                     }
