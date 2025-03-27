@@ -68,6 +68,5 @@ async fn main() -> Result<()> {
         )
         .await;
     println!("Transaction: {:?}", tx);
-
     Ok(())
 }

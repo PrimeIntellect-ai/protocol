@@ -7,6 +7,7 @@ use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, U256};
 
+#[derive(Clone)]
 pub struct ComputeRegistryContract {
     instance: Contract,
 }

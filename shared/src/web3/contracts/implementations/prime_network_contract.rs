@@ -127,7 +127,7 @@ impl PrimeNetworkContract {
             .instance
             .instance()
             .function(
-                "updateValidationLogic",
+                "updateDomainValidationLogic",
                 &[domain_id.into(), validation_logic.into()],
             )?
             .send()

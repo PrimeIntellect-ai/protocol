@@ -346,7 +346,7 @@
     "name": "increaseStake",
     "inputs": [
       {
-        "name": "additionalStake",
+        "name": "amount",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -390,6 +390,19 @@
         "name": "data",
         "type": "bytes",
         "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "reclaimStake",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -606,6 +619,24 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "updateDomainValidationLogic",
+    "inputs": [
+      {
+        "name": "domainId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "validationLogic",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
