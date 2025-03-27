@@ -23,6 +23,11 @@ Start a local worker:
 make watch-worker
 ```
 
+Whitelist this local worker: 
+```bash
+make whitelist-provider
+```
+
 ### Verify Worker Registration
 
 Check that the worker has been registered with the orchestrator:
