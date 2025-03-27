@@ -1,7 +1,7 @@
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use alloy::primitives::utils::Unit;
-use alloy::primitives::{Address, U256};
+use alloy::primitives::U256;
 use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, LevelFilter};
@@ -12,6 +12,7 @@ use shared::models::node::DiscoveryNode;
 use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
+use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
 use validators::hardware::HardwareValidator;
@@ -34,10 +35,6 @@ struct Args {
     /// Discovery url
     #[arg(long, default_value = "http://localhost:8089")]
     discovery_url: String,
-
-    /// Optional: Work validation contract address
-    #[arg(long, default_value = None)]
-    work_validation_contract: Option<String>,
 
     /// Optional: Pool Id for work validation
     /// If not provided, the validator will not validate work
@@ -97,20 +94,40 @@ fn main() {
         }
     });
 
-    let work_validation_address: Option<Address> = args
-        .work_validation_contract
-        .map(|address| address.parse::<Address>().unwrap());
-
-    let contracts = ContractBuilder::new(&validator_wallet)
+    let mut contract_builder = ContractBuilder::new(&validator_wallet)
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
         .with_compute_pool()
-        .with_synthetic_data_validator(work_validation_address)
-        .build()
-        .unwrap();
+        .with_domain_registry()
+        .with_stake_manager();
 
-    let contracts = Arc::new(contracts);
+    let contracts = contract_builder.build_partial().unwrap();
+
+    if let Some(pool_id) = args.pool_id.clone() {
+        let pool = runtime
+            .block_on(
+                contracts
+                    .compute_pool
+                    .get_pool_info(U256::from_str(&pool_id).unwrap()),
+            )
+            .unwrap();
+        let domain_id: u32 = pool.domain_id.try_into().unwrap();
+        let domain = runtime
+            .block_on(
+                contracts
+                    .domain_registry
+                    .as_ref()
+                    .unwrap()
+                    .get_domain(domain_id),
+            )
+            .unwrap();
+        contract_builder =
+            contract_builder.with_synthetic_data_validator(Some(domain.validation_logic));
+    }
+
+    let contracts = Arc::new(contract_builder.build().unwrap());
+
     let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
 
     let mut synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {

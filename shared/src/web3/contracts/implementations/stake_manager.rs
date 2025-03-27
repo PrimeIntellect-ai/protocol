@@ -3,6 +3,7 @@ use crate::web3::contracts::core::contract::Contract;
 use crate::web3::wallet::Wallet;
 use alloy::primitives::{Address, U256};
 
+#[derive(Clone)]
 pub struct StakeManagerContract {
     instance: Contract,
 }

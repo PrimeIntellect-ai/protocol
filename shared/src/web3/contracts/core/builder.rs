@@ -125,4 +125,47 @@ impl<'a> ContractBuilder<'a> {
             stake_manager: self.stake_manager,
         })
     }
+
+    pub fn build_partial(&self) -> Result<Contracts, ContractError> {
+        Ok(Contracts {
+            compute_registry: self
+                .compute_registry
+                .as_ref()
+                .ok_or_else(|| ContractError::Other("ComputeRegistry not initialized".into()))?
+                .clone(),
+
+            ai_token: self
+                .ai_token
+                .as_ref()
+                .ok_or_else(|| ContractError::Other("AIToken not initialized".into()))?
+                .clone(),
+
+            prime_network: self
+                .prime_network
+                .as_ref()
+                .ok_or_else(|| ContractError::Other("PrimeNetwork not initialized".into()))?
+                .clone(),
+
+            compute_pool: self
+                .compute_pool
+                .as_ref()
+                .ok_or_else(|| ContractError::Other("ComputePool not initialized".into()))?
+                .clone(),
+
+            domain_registry: Some(
+                self.domain_registry
+                    .as_ref()
+                    .ok_or_else(|| ContractError::Other("DomainRegistry not initialized".into()))?
+                    .clone(),
+            ),
+
+            stake_manager: Some(
+                self.stake_manager
+                    .as_ref()
+                    .ok_or_else(|| ContractError::Other("StakeManager not initialized".into()))?
+                    .clone(),
+            ),
+            synthetic_data_validator: None,
+        })
+    }
 }

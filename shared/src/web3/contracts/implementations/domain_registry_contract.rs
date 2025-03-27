@@ -12,9 +12,11 @@ pub struct Domain {
     pub domain_parameters_uri: String,
 }
 
+#[derive(Clone)]
 pub struct DomainRegistryContract {
     instance: Contract,
 }
+
 impl DomainRegistryContract {
     pub fn new(wallet: &Wallet, abi_file_path: &str) -> Self {
         let instance = Contract::new(DOMAIN_REGISTRY_ADDRESS, wallet, abi_file_path);
@@ -22,7 +24,6 @@ impl DomainRegistryContract {
     }
 
     pub async fn get_domain(&self, domain_id: u32) -> Result<Domain, Error> {
-        println!("Getting domain: {:?}", domain_id);
         let result = self
             .instance
             .instance()
@@ -37,7 +38,7 @@ impl DomainRegistryContract {
         let domain_parameters_uri: String = domain_info_tuple[3].as_str().unwrap().to_string();
 
         Ok(Domain {
-            domain_id: domain_id,
+            domain_id,
             name,
             validation_logic,
             domain_parameters_uri,
