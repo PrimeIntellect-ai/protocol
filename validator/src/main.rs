@@ -13,9 +13,9 @@ use shared::models::node::DiscoveryNode;
 use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
-use store::redis::RedisStore;
 use std::str::FromStr;
 use std::sync::Arc;
+use store::redis::RedisStore;
 use url::Url;
 use validators::hardware::HardwareValidator;
 use validators::synthetic_data::SyntheticDataValidator;
@@ -97,7 +97,7 @@ fn main() {
     let rpc_url: Url = args.rpc_url.parse().unwrap();
     let discovery_url = args.discovery_url;
 
-    let _redis_store = RedisStore::new(&args.redis_url);
+    let redis_store = RedisStore::new(&args.redis_url);
 
     let validator_wallet = Wallet::new(&private_key_validator, rpc_url).unwrap_or_else(|err| {
         error!("Error creating wallet: {:?}", err);
@@ -170,6 +170,7 @@ fn main() {
                         penalty,
                         args.s3_credentials,
                         args.bucket_name,
+                        redis_store,
                     ))
                 } else {
                     error!("Leviticus URL is not provided");

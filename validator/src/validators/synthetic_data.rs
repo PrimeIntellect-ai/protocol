@@ -1,19 +1,20 @@
+use crate::store::redis::RedisStore;
+use crate::validators::Validator;
 use alloy::primitives::U256;
 use anyhow::{Context, Error};
 use directories::ProjectDirs;
 use hex;
 use log::debug;
 use log::{error, info};
+use redis::Commands;
 use serde::{Deserialize, Serialize};
 use shared::utils::google_cloud::resolve_mapping_for_sha;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
+use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::SyntheticDataWorkValidator;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use toml;
-
-use crate::validators::Validator;
-use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::SyntheticDataWorkValidator;
 
 fn get_default_state_dir() -> Option<String> {
     ProjectDirs::from("com", "prime", "validator")
@@ -30,6 +31,7 @@ struct PersistedWorkState {
     last_validation_timestamp: U256,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 enum ValidationResult {
     Accept,
     Reject,
@@ -37,6 +39,8 @@ enum ValidationResult {
     Pending,
     Unknown,
 }
+
+use std::fmt;
 
 #[derive(Debug)]
 pub enum ProcessWorkKeyError {
@@ -52,6 +56,28 @@ pub enum ProcessWorkKeyError {
     MaxAttemptsReached(String),
 }
 
+impl fmt::Display for ProcessWorkKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProcessWorkKeyError::FileNameResolutionError(msg) => {
+                write!(f, "File name resolution error: {}", msg)
+            }
+            ProcessWorkKeyError::ValidationTriggerError(msg) => {
+                write!(f, "Validation trigger error: {}", msg)
+            }
+            ProcessWorkKeyError::ValidationPollingError(msg) => {
+                write!(f, "Validation polling error: {}", msg)
+            }
+            ProcessWorkKeyError::InvalidatingWorkError(msg) => {
+                write!(f, "Invalidating work error: {}", msg)
+            }
+            ProcessWorkKeyError::MaxAttemptsReached(msg) => {
+                write!(f, "Max attempts reached: {}", msg)
+            }
+        }
+    }
+}
+
 pub struct SyntheticDataValidator {
     pool_id: U256,
     validator: SyntheticDataWorkValidator,
@@ -63,6 +89,7 @@ pub struct SyntheticDataValidator {
     penalty: U256,
     s3_credentials: Option<String>,
     bucket_name: Option<String>,
+    redis_store: RedisStore,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -85,6 +112,7 @@ impl SyntheticDataValidator {
         penalty: U256,
         s3_credentials: Option<String>,
         bucket_name: Option<String>,
+        redis_store: RedisStore,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
         let default_state_dir = get_default_state_dir();
@@ -135,6 +163,7 @@ impl SyntheticDataValidator {
             penalty,
             s3_credentials,
             bucket_name,
+            redis_store,
         }
     }
 
@@ -308,7 +337,50 @@ impl SyntheticDataValidator {
         }
     }
 
-    async fn process_workkey(&mut self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
+    fn get_key_for_work_key(&self, work_key: &str) -> String {
+        format!("work_validation_status:{}", work_key)
+    }
+
+    async fn update_work_validation_status(
+        &self,
+        work_key: &str,
+        status: &ValidationResult,
+    ) -> Result<(), Error> {
+        let expiry = match status {
+            // Must switch to pending within 60 seconds otherwise we resubmit it
+            ValidationResult::Unknown => 60,
+            _ => 0,
+        };
+        let mut con = self.redis_store.client.get_connection().unwrap();
+        let key = self.get_key_for_work_key(work_key);
+        let status = serde_json::to_string(&status)?;
+        let _: () = con
+            .set_options(
+                &key,
+                status,
+                redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(expiry)),
+            )
+            .unwrap();
+        Ok(())
+    }
+
+    async fn get_work_validation_status_from_redis(
+        &self,
+        work_key: &str,
+    ) -> Option<ValidationResult> {
+        let mut con = self.redis_store.client.get_connection().unwrap();
+        let key = self.get_key_for_work_key(work_key);
+        let status: Option<String> = con.get(key).unwrap();
+        match status {
+            Some(status) => Some(serde_json::from_str(&status).unwrap()),
+            None => None,
+        }
+    }
+
+    async fn get_file_name_for_work_key(
+        &self,
+        work_key: &str,
+    ) -> Result<String, ProcessWorkKeyError> {
         let original_file_name = resolve_mapping_for_sha(
             self.bucket_name.clone().unwrap().as_str(),
             &self.s3_credentials.clone().unwrap(),
@@ -327,90 +399,60 @@ impl SyntheticDataValidator {
                 work_key
             )));
         }
-
         let cleaned_file_name = original_file_name
             .strip_prefix('/')
             .unwrap_or(original_file_name.as_str());
+        Ok(cleaned_file_name.to_string())
+    }
 
-        // Trigger remote toploc validation
-        let mut attempts = 0;
-        const MAX_ATTEMPTS: u32 = 3;
-        const BACKOFF_FACTOR: u64 = 2;
+    async fn trigger_work_validation(&mut self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
+        let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
 
-        while attempts < MAX_ATTEMPTS {
-            if let Err(e) = self
-                .trigger_remote_toploc_validation(cleaned_file_name, work_key)
-                .await
-            {
-                attempts += 1;
-                let backoff_time = BACKOFF_FACTOR.pow(attempts) * 100; // Exponential backoff in milliseconds
-                error!("Failed to trigger remote toploc validation for {}: {}. Attempt {}/{}. Retrying in {} ms...", cleaned_file_name, e, attempts, MAX_ATTEMPTS, backoff_time);
-                tokio::time::sleep(std::time::Duration::from_millis(backoff_time)).await;
-                continue;
-            }
-            break; // Success, exit the loop
+        if let Err(e) = self
+            .trigger_remote_toploc_validation(&cleaned_file_name, work_key)
+            .await
+        {
+            error!(
+                "Failed to trigger remote toploc validation for {}: {}",
+                cleaned_file_name, e
+            );
+            return Err(ProcessWorkKeyError::ValidationTriggerError(e.to_string()));
         }
 
-        if attempts == MAX_ATTEMPTS {
-            return Err(ProcessWorkKeyError::ValidationTriggerError(format!(
-                "Failed to trigger remote toploc validation for {}",
-                cleaned_file_name
-            )));
+        Ok(())
+    }
+
+    async fn process_workkey_status(&mut self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
+        let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
+
+        let result = self.poll_remote_toploc_validation(&cleaned_file_name).await;
+        let validation_result = result.unwrap();
+
+        if let Err(e) = self
+            .update_work_validation_status(work_key, &validation_result)
+            .await
+        {
+            error!(
+                "Failed to update work validation status for {}: {}",
+                work_key, e
+            );
+            // TODO: Throw error?
         }
 
-        let max_attempts = 5;
-        let mut attempts = 0;
-        while attempts < max_attempts {
-            if attempts > 0 {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        match validation_result {
+            ValidationResult::Accept => {
+                info!("Validation accepted for {}", cleaned_file_name);
+                return Ok(());
             }
-            let result = self.poll_remote_toploc_validation(cleaned_file_name).await;
-            if let Err(e) = result {
-                error!(
-                    "Failed to poll remote toploc validation for {}: {}",
-                    cleaned_file_name, e
-                );
-                if attempts == max_attempts {
-                    return Err(ProcessWorkKeyError::ValidationPollingError(format!(
-                        "Failed to poll remote toploc validation for {}",
-                        cleaned_file_name
-                    )));
+            ValidationResult::Reject => {
+                info!("Validation rejected for {}", cleaned_file_name);
+                if let Err(e) = self.invalidate_work(work_key).await {
+                    error!("Failed to invalidate work {}: {}", work_key, e);
                 }
-                attempts += 1;
-                continue;
+                return Ok(());
             }
-
-            let validation_result = result.unwrap();
-            match validation_result {
-                ValidationResult::Accept => {
-                    info!("Validation accepted for {}", cleaned_file_name);
-                    return Ok(());
-                }
-                ValidationResult::Reject => {
-                    info!("Validation rejected for {}", cleaned_file_name);
-                    if let Err(e) = self.invalidate_work(work_key).await {
-                        error!("Failed to invalidate work {}: {}", work_key, e);
-                        attempts += 1;
-                        if attempts == max_attempts {
-                            return Err(ProcessWorkKeyError::InvalidatingWorkError(format!(
-                                "Failed to invalidate work {}",
-                                work_key
-                            )));
-                        }
-                        continue;
-                    }
-                    return Ok(());
-                }
-                _ => {
-                    attempts += 1;
-                    continue;
-                }
-            }
+            _ => Ok(()),
         }
-        Err(ProcessWorkKeyError::MaxAttemptsReached(format!(
-            "Failed to poll remote toploc validation for {}",
-            cleaned_file_name
-        )))
     }
 
     pub async fn validate_work(&mut self) -> Result<(), Error> {
@@ -425,29 +467,28 @@ impl SyntheticDataValidator {
 
         debug!("Found {} work keys to validate", work_keys.len());
 
-        let mut completed_all_validations = true;
-
         // Process each work key
-        for work_key in work_keys {
-            info!("Processing work key: {}", work_key);
-            if let Err(e) = self.process_workkey(&work_key).await {
-                // TODO: We have an error now - should we actually skip this validation then?
-                error!("Work Validation error: {:?}", e);
-                completed_all_validations = false;
+        for work_key in &work_keys {
+            let cache_status = self.get_work_validation_status_from_redis(&work_key).await;
+            debug!("Cache status for {}: {:?}", work_key, cache_status);
+            match cache_status {
+                Some(status) => match status {
+                    ValidationResult::Accept => {
+                        continue;
+                    }
+                    _ => {
+                        if let Err(e) = self.process_workkey_status(&work_key).await {
+                            error!("Failed to process work key {}: {}", work_key, e);
+                        }
+                    }
+                },
+                None => {
+                    if let Err(e) = self.trigger_work_validation(&work_key).await {
+                        error!("Failed to trigger work key {}: {}", work_key, e);
+                    }
+                }
             }
         }
-
-        if completed_all_validations {
-            self.last_validation_timestamp = U256::from(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .context("Failed to get current timestamp")?
-                    .as_secs(),
-            );
-        }
-
-        self.save_state()?;
-
         Ok(())
     }
 }
