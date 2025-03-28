@@ -231,6 +231,27 @@ impl<'a> HardwareValidator<'a> {
                 if let Some(session) = sessions.get_mut(&node.id) {
                     session.status = NodeChallengeStatus::Failed;
                     session.timestamp = get_time_as_secs();
+                    if let Some(session_id) = session.session_id.clone() {
+                        info!("Clearing session ID: {}", session_id);
+                        let response: GpuClearResponse = self
+                            .verifier_send(
+                                "/clear",
+                                Some(json!(GpuClearRequest {
+                                    session_id: session_id.clone(),
+                                })),
+                            )
+                            .await
+                            .unwrap_or_else(|e| {
+                                error!("Failed to clear session {}: {}", session_id, e);
+                                GpuClearResponse {
+                                    status: "error".to_string(),
+                                }
+                            });
+                        if response.status == "ok" {
+                            info!("Session {} cleared successfully", session_id);
+                        }
+                        session.session_id = None;
+                    }
                 }
                 continue;
             } else {

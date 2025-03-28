@@ -106,6 +106,16 @@ pub struct GpuRowProofsRequest {
     pub row_idxs: Vec<u64>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GpuClearRequest {
+    pub session_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GpuClearResponse {
+    pub status: String,
+}
+
 // Request to check multiple rows
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GpuMultiRowCheckRequest {
