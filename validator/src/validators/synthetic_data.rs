@@ -19,6 +19,7 @@ enum ValidationResult {
     Crashed,
     Pending,
     Unknown,
+    Invalidated,
 }
 
 #[derive(Debug)]
@@ -153,11 +154,61 @@ impl SyntheticDataValidator {
         }
     }
 
+    async fn get_file_name_for_work_key(
+        &self,
+        work_key: &str,
+    ) -> Result<String, ProcessWorkKeyError> {
+        let redis_key = format!("file_name:{}", work_key);
+        let mut con = self
+            .redis_store
+            .client
+            .get_connection()
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+
+        // Try to get the file name from Redis cache
+        let file_name: Option<String> = con
+            .get(&redis_key)
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+        if let Some(cached_file_name) = file_name {
+            return Ok(cached_file_name);
+        }
+
+        // Resolve the file name if not found in cache
+        let original_file_name = resolve_mapping_for_sha(
+            self.bucket_name.clone().unwrap().as_str(),
+            &self.s3_credentials.clone().unwrap(),
+            work_key,
+        )
+        .await
+        .map_err(|e| ProcessWorkKeyError::FileNameResolutionError(e.to_string()))?;
+
+        if original_file_name.is_empty() {
+            error!(
+                "Failed to resolve original file name for work key: {}",
+                work_key
+            );
+            return Err(ProcessWorkKeyError::FileNameResolutionError(format!(
+                "Failed to resolve original file name for work key: {}",
+                work_key
+            )));
+        }
+
+        let cleaned_file_name = original_file_name
+            .strip_prefix('/')
+            .unwrap_or(&original_file_name);
+
+        // Cache the resolved and cleaned file name in Redis
+        let _: () = con.set(&redis_key, cleaned_file_name).unwrap();
+
+        Ok(cleaned_file_name.to_string())
+    }
+
     async fn trigger_remote_toploc_validation(
         &self,
-        file_name: &str,
-        sha: &str,
-    ) -> Result<(), Error> {
+        work_key: &str,
+    ) -> Result<(), ProcessWorkKeyError> {
+        let file_name= self.get_file_name_for_work_key(work_key).await?;
+
         let validate_url = format!("{}/validate/{}", self.leviticus_url, file_name);
         info!(
             "Triggering remote toploc validation for {} {}",
@@ -165,7 +216,7 @@ impl SyntheticDataValidator {
         );
 
         let body = serde_json::json!({
-            "file_sha": sha
+            "file_sha": work_key
         });
 
         match self
@@ -175,19 +226,20 @@ impl SyntheticDataValidator {
             .send()
             .await
         {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                self.update_work_validation_status(work_key, &ValidationResult::Unknown).await?;
+                Ok(())
+            },
             Err(e) => {
                 error!(
                     "Failed to trigger remote toploc validation for {}: {}",
                     file_name, e
                 );
-                Err(Error::msg(format!(
-                    "Failed to trigger remote toploc validation: {}",
-                    e
-                )))
+                Err(ProcessWorkKeyError::ValidationTriggerError(e.to_string()))
             }
         }
     }
+
     async fn poll_remote_toploc_validation(
         &self,
         file_name: &str,
@@ -218,16 +270,11 @@ impl SyntheticDataValidator {
                 } else {
                     match status_json.get("status").and_then(|s| s.as_str()) {
                         Some(status) => {
-                            info!("Validation status for {}: {}", file_name, status);
+                            debug!("Validation status for {}: {}", file_name, status);
 
                             let validation_result = match status {
                                 "accept" => ValidationResult::Accept,
                                 "reject" => {
-                                    if let Err(e) = self.invalidate_work(file_name).await {
-                                        error!("Failed to invalidate work {}: {}", file_name, e);
-                                    } else {
-                                        info!("Successfully invalidated work {}", file_name);
-                                    }
                                     ValidationResult::Reject
                                 }
                                 "crashed" => ValidationResult::Crashed,
@@ -307,84 +354,18 @@ impl SyntheticDataValidator {
             .transpose()
     }
 
-    async fn get_file_name_for_work_key(
-        &self,
-        work_key: &str,
-    ) -> Result<String, ProcessWorkKeyError> {
-        let redis_key = format!("file_name:{}", work_key);
-        let mut con = self
-            .redis_store
-            .client
-            .get_connection()
-            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
-
-        // Try to get the file name from Redis cache
-        let file_name: Option<String> = con
-            .get(&redis_key)
-            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
-        if let Some(cached_file_name) = file_name {
-            return Ok(cached_file_name);
-        }
-
-        // Resolve the file name if not found in cache
-        let original_file_name = resolve_mapping_for_sha(
-            self.bucket_name.clone().unwrap().as_str(),
-            &self.s3_credentials.clone().unwrap(),
-            work_key,
-        )
-        .await
-        .map_err(|e| ProcessWorkKeyError::FileNameResolutionError(e.to_string()))?;
-
-        if original_file_name.is_empty() {
-            error!(
-                "Failed to resolve original file name for work key: {}",
-                work_key
-            );
-            return Err(ProcessWorkKeyError::FileNameResolutionError(format!(
-                "Failed to resolve original file name for work key: {}",
-                work_key
-            )));
-        }
-
-        let cleaned_file_name = original_file_name
-            .strip_prefix('/')
-            .unwrap_or(&original_file_name);
-
-        // Cache the resolved and cleaned file name in Redis
-        let _: () = con.set(&redis_key, cleaned_file_name).unwrap();
-
-        Ok(cleaned_file_name.to_string())
-    }
-
-    async fn trigger_work_validation(&mut self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
-        let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
-
-        if let Err(e) = self
-            .trigger_remote_toploc_validation(&cleaned_file_name, work_key)
-            .await
-        {
-            error!(
-                "Failed to trigger remote toploc validation for {}: {}",
-                cleaned_file_name, e
-            );
-            return Err(ProcessWorkKeyError::ValidationTriggerError(e.to_string()));
-        }
-
-        Ok(())
-    }
-
     async fn process_workkey_status(&mut self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
         let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
 
         let result = self.poll_remote_toploc_validation(&cleaned_file_name).await;
         let validation_result = result?;
+        info!("Validation result for {}: {:?}", work_key, validation_result);
 
         match validation_result {
             ValidationResult::Accept => {
                 info!("Validation accepted for {}", cleaned_file_name);
             }
             ValidationResult::Reject => {
-                info!("Validation rejected for {}", cleaned_file_name);
                 if let Err(e) = self.invalidate_work(work_key).await {
                     error!("Failed to invalidate work {}: {}", work_key, e);
                     return Err(ProcessWorkKeyError::InvalidatingWorkError(e.to_string()));
@@ -445,7 +426,7 @@ impl SyntheticDataValidator {
                     }
                 },
                 None => {
-                    if let Err(e) = self.trigger_work_validation(work_key).await {
+                    if let Err(e) = self.trigger_remote_toploc_validation(work_key).await {
                         error!("Failed to trigger work key {}: {}", work_key, e);
                     }
                 }
