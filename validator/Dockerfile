@@ -9,12 +9,13 @@ ENV VALIDATOR_KEY=""
 ENV DISCOVERY_URL="http://localhost:8089"
 ENV POOL_ID=""
 ENV WORK_VALIDATION_INTERVAL="30"
-ENV LEVITICUS_URL=""
-ENV LEVITICUS_TOKEN=""
+ENV TOPLOC_SERVER_URL=""
+ENV TOPLOC_AUTH_TOKEN=""
 ENV S3_CREDENTIALS=""
 ENV BUCKET_NAME=""
 ENV LOG_LEVEL=""
 ENV REDIS_URL="redis://localhost:6380"
+ENV TOPLOC_GRACE_INTERVAL="15"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/validator \
@@ -23,8 +24,8 @@ exec /usr/local/bin/validator \
 --discovery-url "$DISCOVERY_URL" \
 --pool-id "$POOL_ID" \
 --work-validation-interval "$WORK_VALIDATION_INTERVAL" \
---leviticus-url "$LEVITICUS_URL" \
-$([ ! -z "$LEVITICUS_TOKEN" ] && echo "--leviticus-token $LEVITICUS_TOKEN") \
+--toploc-server-url "$TOPLOC_SERVER_URL" \
+$([ ! -z "$TOPLOC_AUTH_TOKEN" ] && echo "--toploc-auth-token $TOPLOC_AUTH_TOKEN") \
 $([ ! -z "$S3_CREDENTIALS" ] && echo "--s3-credentials $S3_CREDENTIALS") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \

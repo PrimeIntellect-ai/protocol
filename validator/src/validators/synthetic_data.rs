@@ -73,12 +73,13 @@ pub struct SyntheticDataValidator {
     pool_id: U256,
     validator: SyntheticDataWorkValidator,
     prime_network: PrimeNetworkContract,
-    leviticus_url: String,
+    toploc_server_url: String,
     penalty: U256,
     s3_credentials: Option<String>,
     bucket_name: Option<String>,
     redis_store: RedisStore,
     http_client: reqwest::Client,
+    toploc_grace_interval: u64,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -95,12 +96,13 @@ impl SyntheticDataValidator {
         pool_id_str: String,
         validator: SyntheticDataWorkValidator,
         prime_network: PrimeNetworkContract,
-        leviticus_url: String,
-        leviticus_token: Option<String>,
+        toploc_server_url: String,
+        toploc_auth_token: Option<String>,
         penalty: U256,
         s3_credentials: Option<String>,
         bucket_name: Option<String>,
         redis_store: RedisStore,
+        toploc_grace_interval: u64,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
@@ -112,7 +114,7 @@ impl SyntheticDataValidator {
         let http_client = reqwest::Client::builder()
             .default_headers({
                 let mut headers = reqwest::header::HeaderMap::new();
-                if let Some(token) = &leviticus_token {
+                if let Some(token) = &toploc_auth_token {
                     headers.insert(
                         reqwest::header::AUTHORIZATION,
                         reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
@@ -128,12 +130,13 @@ impl SyntheticDataValidator {
             pool_id,
             validator,
             prime_network,
-            leviticus_url,
+            toploc_server_url,
             penalty,
             s3_credentials,
             bucket_name,
             redis_store,
             http_client,
+            toploc_grace_interval,
         }
     }
 
@@ -209,7 +212,7 @@ impl SyntheticDataValidator {
     ) -> Result<(), ProcessWorkKeyError> {
         let file_name = self.get_file_name_for_work_key(work_key).await?;
 
-        let validate_url = format!("{}/validate/{}", self.leviticus_url, file_name);
+        let validate_url = format!("{}/validate/{}", self.toploc_server_url, file_name);
         info!(
             "Triggering remote toploc validation for {} {}",
             file_name, validate_url
@@ -245,7 +248,7 @@ impl SyntheticDataValidator {
         &self,
         file_name: &str,
     ) -> Result<ValidationResult, Error> {
-        let url = format!("{}/status/{}", self.leviticus_url, file_name);
+        let url = format!("{}/status/{}", self.toploc_server_url, file_name);
 
         match self.http_client.get(&url).send().await {
             Ok(response) => {
@@ -313,7 +316,7 @@ impl SyntheticDataValidator {
     ) -> Result<(), Error> {
         let expiry = match status {
             // Must switch to pending within 60 seconds otherwise we resubmit it
-            ValidationResult::Unknown => 60,
+            ValidationResult::Unknown => 600,
             _ => 0,
         };
         let mut con = self.redis_store.client.get_connection()?;
@@ -406,7 +409,7 @@ impl SyntheticDataValidator {
 
         debug!("Found {} work keys to validate", work_keys.len());
 
-        // Process each work key
+        // Process each work key with rate limiting
         for work_key in &work_keys {
             let cache_status = self.get_work_validation_status_from_redis(work_key).await?;
             debug!("Cache status for {}: {:?}", work_key, cache_status);
@@ -431,6 +434,10 @@ impl SyntheticDataValidator {
                     if let Err(e) = self.trigger_remote_toploc_validation(work_key).await {
                         error!("Failed to trigger work key {}: {}", work_key, e);
                     }
+                    tokio::time::sleep(tokio::time::Duration::from_secs(
+                        self.toploc_grace_interval,
+                    ))
+                    .await;
                 }
             }
         }
@@ -492,6 +499,7 @@ mod tests {
             None,
             None,
             store,
+            15,
         );
 
         validator

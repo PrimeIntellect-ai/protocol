@@ -47,13 +47,17 @@ struct Args {
     #[arg(long, default_value = "30")]
     work_validation_interval: u64,
 
-    /// Optional: Leviticus Validator URL
+    /// Optional: Toploc Server URL for work validation
     #[arg(long, default_value = None)]
-    leviticus_url: Option<String>,
+    toploc_server_url: Option<String>,
 
-    /// Optional: Leviticus Auth Token
+    /// Optional: Toploc Auth Token
     #[arg(long, default_value = None)]
-    leviticus_token: Option<String>,
+    toploc_auth_token: Option<String>,
+
+    /// Optional: Toploc Grace Interval in seconds between work validation requests
+    #[arg(long, default_value = "15")]
+    toploc_grace_interval: u64,
 
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
@@ -159,17 +163,18 @@ fn main() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
-                if let Some(leviticus_url) = args.leviticus_url {
+                if let Some(toploc_server_url) = args.toploc_server_url {
                     Some(SyntheticDataValidator::new(
                         pool_id,
                         validator,
                         contracts.prime_network.clone(),
-                        leviticus_url,
-                        args.leviticus_token,
+                        toploc_server_url,
+                        args.toploc_auth_token,
                         penalty,
                         args.s3_credentials,
                         args.bucket_name,
                         redis_store,
+                        args.toploc_grace_interval,
                     ))
                 } else {
                     error!("Leviticus URL is not provided");
