@@ -365,10 +365,7 @@ impl SyntheticDataValidator {
         let mut con = self.redis_store.client.get_connection().unwrap();
         let key = self.get_key_for_work_key(work_key);
         let status: Option<String> = con.get(key).unwrap();
-        match status {
-            Some(status) => Some(serde_json::from_str(&status).unwrap()),
-            None => None,
-        }
+        status.map(|status| serde_json::from_str(&status).unwrap())
     }
 
     async fn get_file_name_for_work_key(
@@ -466,7 +463,7 @@ impl SyntheticDataValidator {
 
         // Process each work key
         for work_key in &work_keys {
-            let cache_status = self.get_work_validation_status_from_redis(&work_key).await;
+            let cache_status = self.get_work_validation_status_from_redis(work_key).await;
             debug!("Cache status for {}: {:?}", work_key, cache_status);
             match cache_status {
                 Some(status) => match status {
@@ -480,13 +477,13 @@ impl SyntheticDataValidator {
                         continue;
                     }
                     _ => {
-                        if let Err(e) = self.process_workkey_status(&work_key).await {
+                        if let Err(e) = self.process_workkey_status(work_key).await {
                             error!("Failed to process work key {}: {}", work_key, e);
                         }
                     }
                 },
                 None => {
-                    if let Err(e) = self.trigger_work_validation(&work_key).await {
+                    if let Err(e) = self.trigger_work_validation(work_key).await {
                         error!("Failed to trigger work key {}: {}", work_key, e);
                     }
                 }
