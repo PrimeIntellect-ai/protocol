@@ -1,3 +1,4 @@
+pub mod store;
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use alloy::primitives::utils::Unit;
@@ -12,6 +13,7 @@ use shared::models::node::DiscoveryNode;
 use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
+use store::redis::RedisStore;
 use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
@@ -69,6 +71,10 @@ struct Args {
     /// Log level
     #[arg(short = 'l', long, default_value = "info")]
     log_level: String,
+
+    /// Redis URL
+    #[arg(long, default_value = "redis://localhost:6380")]
+    redis_url: String,
 }
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -90,6 +96,8 @@ fn main() {
     let private_key_validator = args.validator_key;
     let rpc_url: Url = args.rpc_url.parse().unwrap();
     let discovery_url = args.discovery_url;
+
+    let _redis_store = RedisStore::new(&args.redis_url);
 
     let validator_wallet = Wallet::new(&private_key_validator, rpc_url).unwrap_or_else(|err| {
         error!("Error creating wallet: {:?}", err);
