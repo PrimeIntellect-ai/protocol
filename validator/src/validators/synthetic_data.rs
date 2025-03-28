@@ -12,7 +12,7 @@ use shared::web3::contracts::implementations::prime_network_contract::PrimeNetwo
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::SyntheticDataWorkValidator;
 use std::fmt;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 enum ValidationResult {
     Accept,
     Reject,
@@ -276,13 +276,17 @@ impl SyntheticDataValidator {
         let mut con = self.redis_store.client.get_connection().unwrap();
         let key = self.get_key_for_work_key(work_key);
         let status = serde_json::to_string(&status)?;
-        let _: () = con
-            .set_options(
-                &key,
-                status,
-                redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(expiry)),
-            )
-            .unwrap();
+        if expiry > 0 {
+            let _: () = con
+                .set_options(
+                    &key,
+                    status,
+                    redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(expiry)),
+                )
+                .unwrap();
+        } else {
+            let _: () = con.set(&key, status).unwrap();
+        }
         Ok(())
     }
 
@@ -435,5 +439,75 @@ impl SyntheticDataValidator {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy::primitives::Address;
+    use shared::web3::contracts::core::builder::ContractBuilder;
+    use shared::web3::wallet::Wallet;
+    use url::Url;
+
+    fn test_store() -> RedisStore {
+        let store = RedisStore::new_test();
+        let mut con = store
+            .client
+            .get_connection()
+            .expect("Should connect to test Redis instance");
+
+        redis::cmd("PING")
+            .query::<String>(&mut con)
+            .expect("Redis should be responsive");
+        redis::cmd("FLUSHALL")
+            .query::<String>(&mut con)
+            .expect("Redis should be flushed");
+        store
+    }
+
+    #[tokio::test]
+    async fn test_status_update() {
+        let store = test_store();
+        let demo_wallet = Wallet::new(
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .unwrap();
+        let contracts = ContractBuilder::new(&demo_wallet)
+            .with_compute_registry()
+            .with_ai_token()
+            .with_prime_network()
+            .with_compute_pool()
+            .with_domain_registry()
+            .with_stake_manager()
+            .with_synthetic_data_validator(Some(Address::ZERO))
+            .build()
+            .unwrap();
+
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            "http://localhost:8080".to_string(),
+            None,
+            U256::from(1000),
+            None,
+            None,
+            store,
+        );
+
+        validator
+            .update_work_validation_status(
+                "0x0000000000000000000000000000000000000000",
+                &ValidationResult::Accept,
+            )
+            .await
+            .unwrap();
+        let status = validator
+            .get_work_validation_status_from_redis("0x0000000000000000000000000000000000000000")
+            .await
+            .unwrap();
+        assert_eq!(status, ValidationResult::Accept);
     }
 }
