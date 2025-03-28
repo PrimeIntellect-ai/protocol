@@ -207,7 +207,7 @@ impl SyntheticDataValidator {
         &self,
         work_key: &str,
     ) -> Result<(), ProcessWorkKeyError> {
-        let file_name= self.get_file_name_for_work_key(work_key).await?;
+        let file_name = self.get_file_name_for_work_key(work_key).await?;
 
         let validate_url = format!("{}/validate/{}", self.leviticus_url, file_name);
         info!(
@@ -227,9 +227,10 @@ impl SyntheticDataValidator {
             .await
         {
             Ok(_) => {
-                self.update_work_validation_status(work_key, &ValidationResult::Unknown).await?;
+                self.update_work_validation_status(work_key, &ValidationResult::Unknown)
+                    .await?;
                 Ok(())
-            },
+            }
             Err(e) => {
                 error!(
                     "Failed to trigger remote toploc validation for {}: {}",
@@ -274,9 +275,7 @@ impl SyntheticDataValidator {
 
                             let validation_result = match status {
                                 "accept" => ValidationResult::Accept,
-                                "reject" => {
-                                    ValidationResult::Reject
-                                }
+                                "reject" => ValidationResult::Reject,
                                 "crashed" => ValidationResult::Crashed,
                                 "pending" => ValidationResult::Pending,
                                 _ => ValidationResult::Unknown,
@@ -359,7 +358,10 @@ impl SyntheticDataValidator {
 
         let result = self.poll_remote_toploc_validation(&cleaned_file_name).await;
         let validation_result = result?;
-        info!("Validation result for {}: {:?}", work_key, validation_result);
+        info!(
+            "Validation result for {}: {:?}",
+            work_key, validation_result
+        );
 
         match validation_result {
             ValidationResult::Accept => {
