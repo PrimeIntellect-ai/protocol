@@ -161,7 +161,6 @@ fn main() {
             Some(validator) => {
                 if let Some(leviticus_url) = args.leviticus_url {
                     Some(SyntheticDataValidator::new(
-                        None,
                         pool_id,
                         validator,
                         contracts.prime_network.clone(),
