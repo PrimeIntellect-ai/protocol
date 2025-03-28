@@ -44,10 +44,10 @@ async fn main() -> Result<()> {
     let address = Address::from_str(&args.address).unwrap();
     let amount = U256::from(args.amount) * Unit::ETHER.wei();
     let tx = contracts.ai_token.mint(address, amount).await;
-    println!("Minting to address: {}", args.address);
-    println!("Transaction: {:?}", tx);
+    log::info!("Minting to address: {}", args.address);
+    log::info!("Transaction: {:?}", tx);
 
     let balance = contracts.ai_token.balance_of(address).await;
-    println!("Balance: {:?}", balance);
+    log::info!("Balance: {:?}", balance);
     Ok(())
 }

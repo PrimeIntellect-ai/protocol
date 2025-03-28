@@ -65,7 +65,7 @@ impl InterconnectCheck {
                 Err(_) => 0.0,
             },
             Err(_) => {
-                println!("Upload speed test timed out after 30 seconds");
+                log::info!("Upload speed test timed out after 30 seconds");
                 0.0
             }
         };
@@ -81,7 +81,7 @@ mod tests {
     #[tokio::test]
     async fn test_check_speeds() {
         let result = InterconnectCheck::check_speeds().await;
-        println!("Test Result: {:?}", result);
+        log::info!("Test Result: {:?}", result);
 
         // Verify the result is Ok and contains expected tuple structure
         assert!(result.is_ok());

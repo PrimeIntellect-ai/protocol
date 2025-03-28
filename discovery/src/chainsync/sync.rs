@@ -38,12 +38,12 @@ impl ChainSync {
 
         // Safely parse provider_address and node_address
         let provider_address = Address::from_str(&node.provider_address).map_err(|e| {
-            eprintln!("Failed to parse provider address: {}", e);
+            log::error!("Failed to parse provider address: {}", e);
             anyhow::anyhow!("Invalid provider address")
         })?;
 
         let node_address = Address::from_str(&node.id).map_err(|e| {
-            eprintln!("Failed to parse node address: {}", e);
+            log::error!("Failed to parse node address: {}", e);
             anyhow::anyhow!("Invalid node address")
         })?;
 
@@ -53,7 +53,7 @@ impl ChainSync {
             .is_node_blacklisted(node.node.compute_pool_id, node_address)
             .await
             .map_err(|e| {
-                eprintln!("Error checking if node is blacklisted: {}", e);
+                log::error!("Error checking if node is blacklisted: {}", e);
                 anyhow::anyhow!("Failed to check blacklist status")
             })?;
 
@@ -62,7 +62,7 @@ impl ChainSync {
             .get_node(provider_address, node_address)
             .await
             .map_err(|e| {
-                eprintln!("Error retrieving node info: {}", e);
+                log::error!("Error retrieving node info: {}", e);
                 anyhow::anyhow!("Failed to retrieve node info")
             })?;
 
@@ -71,7 +71,7 @@ impl ChainSync {
             .get_provider(provider_address)
             .await
             .map_err(|e| {
-                eprintln!("Error retrieving provider info: {}", e);
+                log::error!("Error retrieving provider info: {}", e);
                 anyhow::anyhow!("Failed to retrieve provider info")
             })?;
 

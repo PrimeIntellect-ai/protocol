@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
         .prime_network
         .whitelist_provider(provider_address)
         .await;
-    println!("Whitelisting provider: {}", args.provider_address);
+    log::info!("Whitelisting provider: {}", args.provider_address);
 
     Ok(())
 }

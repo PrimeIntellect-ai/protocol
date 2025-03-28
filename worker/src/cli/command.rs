@@ -586,15 +586,15 @@ pub async fn execute_command(
             let provider_signer = PrivateKeySigner::random();
             let node_signer = PrivateKeySigner::random();
 
-            println!("Provider wallet:");
-            println!("  Address: {}", provider_signer.address());
-            println!(
+            log::info!("Provider wallet:");
+            log::info!("  Address: {}", provider_signer.address());
+            log::info!(
                 "  Private key: {}",
                 hex::encode(provider_signer.credential().to_bytes())
             );
-            println!("\nNode wallet:");
-            println!("  Address: {}", node_signer.address());
-            println!(
+            log::info!("\nNode wallet:");
+            log::info!("  Address: {}", node_signer.address());
+            log::info!(
                 "  Private key: {}",
                 hex::encode(node_signer.credential().to_bytes())
             );
@@ -604,9 +604,9 @@ pub async fn execute_command(
         Commands::GenerateNodeWallet {} => {
             let node_signer = PrivateKeySigner::random();
 
-            println!("Node wallet:");
-            println!("  Address: {}", node_signer.address());
-            println!(
+            log::info!("Node wallet:");
+            log::info!("  Address: {}", node_signer.address());
+            log::info!(
                 "  Private key: {}",
                 hex::encode(node_signer.credential().to_bytes())
             );
@@ -643,7 +643,7 @@ pub async fn execute_command(
 
             let format_balance = format!("{}", provider_balance / U256::from(10u128.pow(18)));
 
-            println!("Provider balance: {}", format_balance);
+            log::info!("Provider balance: {}", format_balance);
             Ok(())
         }
         Commands::SignMessage {
@@ -682,7 +682,7 @@ pub async fn execute_command(
             let combined_signature =
                 [provider_signature.as_bytes(), node_signature.as_bytes()].concat();
 
-            println!("\nSignature: {}", hex::encode(combined_signature));
+            log::info!("\nSignature: {}", hex::encode(combined_signature));
 
             Ok(())
         }

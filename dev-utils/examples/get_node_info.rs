@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
         .await
         .unwrap();
 
-    println!(
+    log::info!(
         "Node Active: {}, Validated: {}, In Pool: {}",
         active, validated, is_node_in_pool
     );

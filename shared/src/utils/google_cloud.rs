@@ -126,7 +126,7 @@ mod tests {
         let bucket_name = match std::env::var("BUCKET_NAME") {
             Ok(name) => name,
             Err(_) => {
-                println!("Skipping test: BUCKET_NAME not set");
+                log::info!("Skipping test: BUCKET_NAME not set");
                 return;
             }
         };
@@ -134,7 +134,7 @@ mod tests {
         let credentials_base64 = match std::env::var("S3_CREDENTIALS") {
             Ok(credentials) => credentials,
             Err(_) => {
-                println!("Skipping test: S3_CREDENTIALS not set");
+                log::info!("Skipping test: S3_CREDENTIALS not set");
                 return;
             }
         };
@@ -149,14 +149,14 @@ mod tests {
         )
         .await
         .unwrap();
-        println!("mapping_content: {}", mapping_content);
+        log::info!("mapping_content: {}", mapping_content);
 
         let original_file_name =
             resolve_mapping_for_sha(&bucket_name, &credentials_base64, &random_sha256)
                 .await
                 .unwrap();
 
-        println!("original_file_name: {}", original_file_name);
+        log::info!("original_file_name: {}", original_file_name);
         assert_eq!(original_file_name, "run_1/file.parquet");
     }
 }

@@ -171,7 +171,7 @@ impl PrimeNetworkContract {
             .provider()
             .get_transaction_receipt(whitelist_provider_tx)
             .await?;
-        println!("Receipt: {:?}", receipt);
+        log::info!("Receipt: {:?}", receipt);
 
         Ok(whitelist_provider_tx)
     }

@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
         .compute_pool
         .start_compute_pool(U256::from(args.pool_id))
         .await;
-    println!("Started compute pool with id: {}", args.pool_id);
-    println!("Transaction: {:?}", tx);
+    log::info!("Started compute pool with id: {}", args.pool_id);
+    log::info!("Transaction: {:?}", tx);
     Ok(())
 }

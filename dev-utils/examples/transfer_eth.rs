@@ -46,15 +46,15 @@ async fn main() -> Result<()> {
     // Send the transaction and listen for the transaction to be included.
     let tx_hash = wallet.provider.send_transaction(tx).await?.watch().await?;
 
-    println!("Sent transaction: {tx_hash}");
+    log::info!("Sent transaction: {tx_hash}");
 
-    println!(
+    log::info!(
         "Sender's ETH balance before transaction: {} ETH",
         balance_before / U256::from(10u64.pow(18))
     );
 
     let balance_after = wallet.provider.get_balance(to).await?;
-    println!(
+    log::info!(
         "Receiver's ETH balance after transaction: {} ETH",
         balance_after / U256::from(10u64.pow(18))
     );

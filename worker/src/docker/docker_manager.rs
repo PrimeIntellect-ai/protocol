@@ -108,7 +108,7 @@ impl DockerManager {
         volumes: Option<Vec<(String, String, bool)>>,
         shm_size: Option<u64>,
     ) -> Result<String, DockerError> {
-        println!("Starting to pull image: {}", image);
+        log::info!("Starting to pull image: {}", image);
 
         let mut final_volumes = Vec::new();
         if self.storage_path.is_some() {
@@ -159,7 +159,7 @@ impl DockerManager {
         self.pull_image(image).await?;
 
         let env = env_vars.map(|vars| {
-            println!("Setting environment variables: {:?}", vars);
+            log::info!("Setting environment variables: {:?}", vars);
             vars.iter()
                 .map(|(k, v)| format!("{}={}", k, v))
                 .collect::<Vec<String>>()
@@ -221,7 +221,7 @@ impl DockerManager {
             ..Default::default()
         };
 
-        println!("Creating container with name: {}", name);
+        log::info!("Creating container with name: {}", name);
         // Create and start container
         let container = self
             .docker
@@ -239,14 +239,14 @@ impl DockerManager {
             })?;
 
         info!("Container created successfully with ID: {}", container.id);
-        println!("Starting container with ID: {}", container.id);
+        log::info!("Starting container with ID: {}", container.id);
         debug!("Starting container {}", container.id);
 
         self.docker
             .start_container(&container.id, None::<StartContainerOptions<String>>)
             .await?;
         info!("Container {} started successfully", container.id);
-        println!("Container {} started successfully", container.id);
+        log::info!("Container {} started successfully", container.id);
 
         Ok(container.id)
     }

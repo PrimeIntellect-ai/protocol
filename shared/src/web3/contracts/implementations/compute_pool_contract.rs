@@ -117,10 +117,10 @@ impl ComputePool {
         provider_address: Address,
         node: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Leaving compute pool");
+        log::info!("Leaving compute pool");
 
-        println!("Provider: {:?}", provider_address);
-        println!("Node: {:?}", node);
+        log::info!("Provider: {:?}", provider_address);
+        log::info!("Node: {:?}", node);
 
         let leave_compute_pool_selector = get_selector("leaveComputePool(uint256,address,address)");
 
@@ -135,7 +135,7 @@ impl ComputePool {
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
+        log::info!("Result: {:?}", result);
         Ok(result)
     }
 
@@ -153,7 +153,7 @@ impl ComputePool {
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
+        log::info!("Result: {:?}", result);
         Ok(result)
     }
 
@@ -162,7 +162,7 @@ impl ComputePool {
         pool_id: u32,
         node: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Blacklisting node");
+        log::info!("Blacklisting node");
 
         let arg_pool_id: U256 = U256::from(pool_id);
 
@@ -174,7 +174,7 @@ impl ComputePool {
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
+        log::info!("Result: {:?}", result);
         Ok(result)
     }
 
@@ -225,7 +225,7 @@ impl ComputePool {
         pool_id: u32,
         node: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Ejecting node");
+        log::info!("Ejecting node");
 
         let arg_pool_id: U256 = U256::from(pool_id);
 
@@ -237,7 +237,7 @@ impl ComputePool {
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
+        log::info!("Result: {:?}", result);
         Ok(result)
     }
 
