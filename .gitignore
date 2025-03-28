@@ -27,3 +27,5 @@ Thumbs.db
 .env.remote
 
 *.pem
+
+dump.rdb
