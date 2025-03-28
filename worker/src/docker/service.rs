@@ -23,6 +23,8 @@ pub struct DockerService {
 }
 
 const TASK_PREFIX: &str = "prime-task";
+const INITIAL_BACKOFF_SECONDS: i64 = 5;  // Start with 5 seconds
+const MAX_BACKOFF_SECONDS: i64 = 300;    // Cap at 5 minutes
 
 impl DockerService {
     pub fn new(
@@ -72,6 +74,11 @@ impl DockerService {
         let manager_clone = manager.clone();
         let terminate_manager = manager_clone.clone();
         let task_state_clone = state.clone();
+        
+        // Track consecutive failures and last failure type
+        let mut consecutive_failures = 0;
+        let mut last_failure_type = None::<String>;
+        
         loop {
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
@@ -135,11 +142,20 @@ impl DockerService {
                                     None => DateTime::from_timestamp(0, 0).unwrap(),
                                 };
                                 let elapsed = Utc::now().signed_duration_since(last_started_time).num_seconds();
-                                // wait 15 seconds before starting a new container
-                                if elapsed < 15 {
-                                    Console::info("DockerService", "Waiting before starting new container ...");
+                                
+                                // Calculate backoff time using exponential backoff
+                                let backoff_seconds = if consecutive_failures > 0 {
+                                    let backoff = INITIAL_BACKOFF_SECONDS * (2_i64.pow(consecutive_failures as u32 - 1));
+                                    backoff.min(MAX_BACKOFF_SECONDS)
                                 } else {
-                                    Console::info("DockerService", "Starting new container ...");
+                                    INITIAL_BACKOFF_SECONDS
+                                };
+                                
+                                // wait for backoff period before starting a new container
+                                if elapsed < backoff_seconds {
+                                    Console::info("DockerService", &format!("Waiting before starting new container ({}s remaining)...", backoff_seconds - elapsed));
+                                } else {
+                                    Console::info("DockerService", &format!("Starting new container after {} failures...", consecutive_failures));
                                     let manager_clone = manager_clone.clone();
                                     let state_clone = task_state_clone.clone();
                                     let has_gpu = self.has_gpu;
@@ -220,7 +236,10 @@ impl DockerService {
                                     Console::info("DockerService", &format!("Task state changed from {:?} to {:?}", task_state_current, task_state_live));
 
                                     if task_state_live == TaskState::FAILED {
-                                        Console::info("DockerService", "Task failed, waiting for new command from manager and restarting container");
+                                        
+                                        consecutive_failures += 1;
+                                        Console::info("DockerService", &format!("Task failed (attempt {}), waiting with exponential backoff before restart", consecutive_failures));
+                                        
                                         let terminate_manager_clone = terminate_manager.clone();
                                         let handle = tokio::spawn(async move {
                                             let termination = terminate_manager_clone.remove_container(&container_status.id).await;
@@ -230,6 +249,10 @@ impl DockerService {
                                             }
                                         });
                                         terminating_container_tasks.lock().await.push(handle);
+                                    } else if task_state_live == TaskState::RUNNING {
+                                        // Reset failure counter when container runs successfully
+                                        consecutive_failures = 0;
+                                        last_failure_type = None;
                                     }
                                 }
 
