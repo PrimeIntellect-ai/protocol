@@ -19,8 +19,6 @@ const VALIDATION_TIMEOUT: u64 = 600;
 const ERROR_TIME_BUFFER: u64 = 30;
 const MATRIX_CHALLENGE_SIZE_DEFAULT: u64 = 8192;
 const MAX_CHALLENGE_ATTEMPTS: u64 = 3;
-const H100_TIME_CUTOFF: u64 = 150;
-const MINIMUM_MEMORY: u32 = 80000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeChallengeStatus {
@@ -47,23 +45,50 @@ fn get_time_as_secs() -> u64 {
         .as_secs()
 }
 
+pub struct HardwareReqs {
+    pub memory: u32,
+    pub count: u32,
+    pub benchmark: u64,
+}
+
 pub struct HardwareValidator<'a> {
     wallet: &'a Wallet,
     contracts: Arc<Contracts>,
     verifier_service_url: String,
     node_sessions: Arc<Mutex<std::collections::HashMap<String, NodeChallengeState>>>,
+    reqs: HardwareReqs,
 }
 
 impl<'a> HardwareValidator<'a> {
     pub fn new(wallet: &'a Wallet, contracts: Arc<Contracts>) -> Self {
-        let verifier_url = env::var("VERIFIER_SERVICE_URL")
+        let verifier_url = env::var("GPU_VERIFIER_SERVICE_URL")
             .unwrap_or_else(|_| "http://localhost:14141".to_string());
+
+        let benchmark: u64 = std::env::var("GPU_VALIDATOR_BENCHMARK_TARGET")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(150);
+
+        let memory: u32 = std::env::var("GPU_VALIDATOR_MIN_VRAM_MB")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(80000);
+
+        let count: u32 = std::env::var("GPU_VALIDATOR_MIN_GPUS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1);
 
         Self {
             wallet,
             contracts,
             verifier_service_url: verifier_url,
             node_sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            reqs: HardwareReqs {
+                memory,
+                count,
+                benchmark,
+            },
         }
     }
 
@@ -173,7 +198,7 @@ impl<'a> HardwareValidator<'a> {
                 .and_then(|specs| specs.gpu.as_ref())
                 .and_then(|gpu| gpu.memory_mb)
                 .and_then(|memory| {
-                    if memory >= MINIMUM_MEMORY {
+                    if memory >= self.reqs.memory {
                         Some(81920)
                     } else {
                         None
@@ -201,7 +226,7 @@ impl<'a> HardwareValidator<'a> {
             } else {
                 let mut sessions = self.node_sessions.lock().await;
                 let session = sessions.get_mut(&node.id).unwrap();
-                if session.commitment_time != 0 && session.commitment_time < H100_TIME_CUTOFF {
+                if session.commitment_time != 0 && session.commitment_time < self.reqs.benchmark {
                     info!(
                         "Node {} is validated as having H100 level performance",
                         node.id
