@@ -74,7 +74,6 @@ services:
     environment:
       - RPC_URL=http://anvil:8545
       - REDIS_URL=redis://redis:6379
-      - VALIDATOR_ADDRESS=${VALIDATOR_ADDRESS}
       - PLATFORM_API_KEY=prime
     networks:
       - prime
