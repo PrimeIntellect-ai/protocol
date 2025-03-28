@@ -103,6 +103,11 @@ impl SyntheticDataValidator {
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
+        if s3_credentials.is_none() && bucket_name.is_none() {
+            error!("S3 credentials and bucket name are not provided");
+            std::process::exit(1);
+        }
+
         let http_client = reqwest::Client::builder()
             .default_headers({
                 let mut headers = reqwest::header::HeaderMap::new();
