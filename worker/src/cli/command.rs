@@ -73,9 +73,6 @@ pub enum Commands {
         #[arg(long)]
         discovery_url: Option<String>,
 
-        #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
-        validator_address: Option<String>,
-
         /// Private key for the provider (not recommended, use environment variable PRIVATE_KEY_PROVIDER instead)
         #[arg(long)]
         private_key_provider: Option<String>,
@@ -147,7 +144,6 @@ pub async fn execute_command(
             state_dir_overwrite,
             disable_state_storing,
             auto_recover,
-            validator_address,
             private_key_provider,
             private_key_node,
             auto_accept,
@@ -539,7 +535,6 @@ pub async fn execute_command(
                     heartbeat_clone.clone(),
                     docker_service.clone(),
                     pool_info,
-                    validator_address.clone().unwrap_or_default(),
                 )
                 .await
             } {

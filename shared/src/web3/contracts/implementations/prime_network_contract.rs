@@ -2,8 +2,9 @@ use crate::web3::contracts::constants::addresses::PRIME_NETWORK_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
-use alloy::primitives::{Address, FixedBytes, U256};
+use alloy::primitives::{keccak256, Address, FixedBytes, U256};
 use alloy::providers::Provider;
+use anyhow::Error;
 
 #[derive(Clone)]
 pub struct PrimeNetworkContract {
@@ -195,5 +196,50 @@ impl PrimeNetworkContract {
             .await?;
 
         Ok(invalidate_work_tx)
+    }
+    pub async fn get_validator_role(&self) -> Result<Vec<Address>, Error> {
+        let hash = keccak256(b"VALIDATOR_ROLE");
+        let value = DynSolValue::FixedBytes(hash, 32);
+        let members = self
+            .instance
+            .instance()
+            .function("getRoleMembers", &[value])?
+            .call()
+            .await?;
+
+        let mut members_vec = Vec::new();
+        for member in members {
+            for address in member.as_array().unwrap() {
+                members_vec.push(address.as_address().unwrap());
+            }
+        }
+
+        Ok(members_vec)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::web3::wallet::Wallet;
+    use url::Url;
+
+    #[tokio::test]
+    // #[ignore = "This test requires a running blockchain with deployed contracts"]
+    async fn test_get_validator_role() {
+        // This test requires:
+        // 1. A running local blockchain (e.g. anvil or ganache) at http://localhost:8545
+        // 2. The PrimeNetwork contract deployed with known address
+        // 3. At least one validator role assigned
+
+        let wallet = Wallet::new(
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .unwrap();
+
+        let prime_network_contract = PrimeNetworkContract::new(&wallet, "prime_network.json");
+        let validators = prime_network_contract.get_validator_role().await.unwrap();
+        assert_eq!(validators.len(), 1, "Expected exactly one validator");
     }
 }
