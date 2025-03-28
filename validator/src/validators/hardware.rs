@@ -46,7 +46,7 @@ fn get_time_as_secs() -> u64 {
 }
 
 pub struct HardwareReqs {
-    pub memory: u32,
+    pub memory: u64,
     pub count: u32,
     pub benchmark: u64,
 }
@@ -69,7 +69,7 @@ impl<'a> HardwareValidator<'a> {
             .and_then(|v| v.parse().ok())
             .unwrap_or(150);
 
-        let memory: u32 = std::env::var("GPU_VALIDATOR_MIN_VRAM_MB")
+        let memory: u64 = std::env::var("GPU_VALIDATOR_MIN_VRAM_MB")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(80000);
@@ -198,7 +198,7 @@ impl<'a> HardwareValidator<'a> {
                 .and_then(|specs| specs.gpu.as_ref())
                 .and_then(|gpu| {
                     if let (Some(memory), Some(count)) = (gpu.memory_mb, gpu.count) {
-                        if memory >= self.reqs.memory && count >= self.reqs.count {
+                        if (memory as u64) >= self.reqs.memory && count >= self.reqs.count {
                             // saturate memory: fp32 square matrix, and 3 matrices required
                             let mem_per_matrix =
                                 ((self.reqs.memory * 1024 * 1024) as f64) / 3.0 / 4.0;
