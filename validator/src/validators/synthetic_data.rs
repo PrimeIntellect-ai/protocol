@@ -372,8 +372,16 @@ impl SyntheticDataValidator {
         &self,
         work_key: &str,
     ) -> Result<String, ProcessWorkKeyError> {
-        // TODO: Can we cache this?
+        let redis_key = format!("file_name:{}", work_key);
+        let mut con = self.redis_store.client.get_connection().unwrap();
 
+        // Try to get the file name from Redis cache
+        let file_name: Option<String> = con.get(&redis_key).unwrap();
+        if let Some(cached_file_name) = file_name {
+            return Ok(cached_file_name);
+        }
+
+        // Resolve the file name if not found in cache
         let original_file_name = resolve_mapping_for_sha(
             self.bucket_name.clone().unwrap().as_str(),
             &self.s3_credentials.clone().unwrap(),
@@ -392,9 +400,14 @@ impl SyntheticDataValidator {
                 work_key
             )));
         }
+
         let cleaned_file_name = original_file_name
             .strip_prefix('/')
-            .unwrap_or(original_file_name.as_str());
+            .unwrap_or(&original_file_name);
+
+        // Cache the resolved and cleaned file name in Redis
+        let _: () = con.set(&redis_key, cleaned_file_name).unwrap();
+
         Ok(cleaned_file_name.to_string())
     }
 
