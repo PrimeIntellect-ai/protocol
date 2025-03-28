@@ -577,9 +577,12 @@ pub async fn compute_row_proofs(
 
 // Register the routes
 pub fn gpu_challenge_routes(cancellation_token: CancellationToken) -> Scope {
-    // Update the cancellation token without async/await
-    let mut token = CANCEL_TOKEN.blocking_write();
-    *token = cancellation_token.clone();
+    // Update the cancellation token
+    tokio::spawn(async move {
+        let mut token = CANCEL_TOKEN.write().await;
+        *token = cancellation_token;
+    });
+
     web::scope("/gpu-challenge")
         .route("/init-container", post().to(init_container))
         .route("/status", get().to(get_status))
