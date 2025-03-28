@@ -1,3 +1,4 @@
+pub mod store;
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use alloy::primitives::utils::Unit;
@@ -14,6 +15,7 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
 use std::sync::Arc;
+use store::redis::RedisStore;
 use url::Url;
 use validators::hardware::HardwareValidator;
 use validators::synthetic_data::SyntheticDataValidator;
@@ -45,13 +47,17 @@ struct Args {
     #[arg(long, default_value = "30")]
     work_validation_interval: u64,
 
-    /// Optional: Leviticus Validator URL
+    /// Optional: Toploc Server URL for work validation
     #[arg(long, default_value = None)]
-    leviticus_url: Option<String>,
+    toploc_server_url: Option<String>,
 
-    /// Optional: Leviticus Auth Token
+    /// Optional: Toploc Auth Token
     #[arg(long, default_value = None)]
-    leviticus_token: Option<String>,
+    toploc_auth_token: Option<String>,
+
+    /// Optional: Toploc Grace Interval in seconds between work validation requests
+    #[arg(long, default_value = "15")]
+    toploc_grace_interval: u64,
 
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
@@ -69,6 +75,10 @@ struct Args {
     /// Log level
     #[arg(short = 'l', long, default_value = "info")]
     log_level: String,
+
+    /// Redis URL
+    #[arg(long, default_value = "redis://localhost:6380")]
+    redis_url: String,
 }
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -90,6 +100,8 @@ fn main() {
     let private_key_validator = args.validator_key;
     let rpc_url: Url = args.rpc_url.parse().unwrap();
     let discovery_url = args.discovery_url;
+
+    let redis_store = RedisStore::new(&args.redis_url);
 
     let validator_wallet = Wallet::new(&private_key_validator, rpc_url).unwrap_or_else(|err| {
         error!("Error creating wallet: {:?}", err);
@@ -151,17 +163,18 @@ fn main() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
-                if let Some(leviticus_url) = args.leviticus_url {
+                if let Some(toploc_server_url) = args.toploc_server_url {
                     Some(SyntheticDataValidator::new(
-                        None,
                         pool_id,
                         validator,
                         contracts.prime_network.clone(),
-                        leviticus_url,
-                        args.leviticus_token,
+                        toploc_server_url,
+                        args.toploc_auth_token,
                         penalty,
                         args.s3_credentials,
                         args.bucket_name,
+                        redis_store,
+                        args.toploc_grace_interval,
                     ))
                 } else {
                     error!("Leviticus URL is not provided");
