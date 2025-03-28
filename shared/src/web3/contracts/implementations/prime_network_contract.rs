@@ -225,7 +225,7 @@ mod tests {
     use url::Url;
 
     #[tokio::test]
-    // #[ignore = "This test requires a running blockchain with deployed contracts"]
+    #[ignore = "This test requires a running blockchain with deployed contracts"]
     async fn test_get_validator_role() {
         // This test requires:
         // 1. A running local blockchain (e.g. anvil or ganache) at http://localhost:8545
