@@ -54,6 +54,14 @@ pub enum ProcessWorkKeyError {
     InvalidatingWorkError(String),
     /// Error when processing work key.
     MaxAttemptsReached(String),
+    /// Generic error to encapsulate unexpected errors.
+    GenericError(anyhow::Error),
+}
+
+impl From<anyhow::Error> for ProcessWorkKeyError {
+    fn from(err: anyhow::Error) -> Self {
+        ProcessWorkKeyError::GenericError(err)
+    }
 }
 
 impl fmt::Display for ProcessWorkKeyError {
@@ -73,6 +81,9 @@ impl fmt::Display for ProcessWorkKeyError {
             }
             ProcessWorkKeyError::MaxAttemptsReached(msg) => {
                 write!(f, "Max attempts reached: {}", msg)
+            }
+            ProcessWorkKeyError::GenericError(err) => {
+                write!(f, "Generic error: {}", err)
             }
         }
     }
@@ -165,23 +176,6 @@ impl SyntheticDataValidator {
             bucket_name,
             redis_store,
         }
-    }
-
-    fn save_state(&self) -> Result<(), Error> {
-        // Get values without block_on
-        let state = PersistedWorkState {
-            pool_id: self.pool_id,
-            last_validation_timestamp: self.last_validation_timestamp,
-        };
-
-        if let Some(ref state_dir) = self.state_dir {
-            fs::create_dir_all(state_dir)?;
-            let state_path = state_dir.join(state_filename(&self.pool_id.to_string()));
-            let toml = toml::to_string_pretty(&state)?;
-            fs::write(&state_path, toml)?;
-            debug!("Saved state to {:?}", state_path);
-        }
-        Ok(())
     }
 
     fn load_state(state_dir: &Path, pool_id: &str) -> Result<Option<PersistedWorkState>, Error> {
@@ -381,6 +375,8 @@ impl SyntheticDataValidator {
         &self,
         work_key: &str,
     ) -> Result<String, ProcessWorkKeyError> {
+        // TODO: Can we cache this?
+
         let original_file_name = resolve_mapping_for_sha(
             self.bucket_name.clone().unwrap().as_str(),
             &self.s3_credentials.clone().unwrap(),
@@ -426,7 +422,21 @@ impl SyntheticDataValidator {
         let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
 
         let result = self.poll_remote_toploc_validation(&cleaned_file_name).await;
-        let validation_result = result.unwrap();
+        let validation_result = result?;
+
+        match validation_result {
+            ValidationResult::Accept => {
+                info!("Validation accepted for {}", cleaned_file_name);
+            }
+            ValidationResult::Reject => {
+                info!("Validation rejected for {}", cleaned_file_name);
+                if let Err(e) = self.invalidate_work(work_key).await {
+                    error!("Failed to invalidate work {}: {}", work_key, e);
+                    return Err(ProcessWorkKeyError::InvalidatingWorkError(e.to_string()));
+                }
+            }
+            _ => (),
+        }
 
         if let Err(e) = self
             .update_work_validation_status(work_key, &validation_result)
@@ -436,23 +446,10 @@ impl SyntheticDataValidator {
                 "Failed to update work validation status for {}: {}",
                 work_key, e
             );
-            // TODO: Throw error?
+            return Err(ProcessWorkKeyError::ValidationPollingError(e.to_string()));
         }
 
-        match validation_result {
-            ValidationResult::Accept => {
-                info!("Validation accepted for {}", cleaned_file_name);
-                return Ok(());
-            }
-            ValidationResult::Reject => {
-                info!("Validation rejected for {}", cleaned_file_name);
-                if let Err(e) = self.invalidate_work(work_key).await {
-                    error!("Failed to invalidate work {}: {}", work_key, e);
-                }
-                return Ok(());
-            }
-            _ => Ok(()),
-        }
+        Ok(())
     }
 
     pub async fn validate_work(&mut self) -> Result<(), Error> {
@@ -473,7 +470,13 @@ impl SyntheticDataValidator {
             debug!("Cache status for {}: {:?}", work_key, cache_status);
             match cache_status {
                 Some(status) => match status {
-                    ValidationResult::Accept => {
+                    ValidationResult::Accept
+                    | ValidationResult::Reject
+                    | ValidationResult::Crashed => {
+                        debug!(
+                            "Work key {} already processed with status: {:?}",
+                            work_key, status
+                        );
                         continue;
                     }
                     _ => {
