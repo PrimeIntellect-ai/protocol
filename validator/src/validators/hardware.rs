@@ -17,9 +17,10 @@ use tokio::sync::Mutex;
 
 const VALIDATION_TIMEOUT: u64 = 600;
 const ERROR_TIME_BUFFER: u64 = 30;
-const MATRIX_CHALLENGE_SIZE: u64 = 8192;
+const MATRIX_CHALLENGE_SIZE_DEFAULT: u64 = 8192;
 const MAX_CHALLENGE_ATTEMPTS: u64 = 3;
 const H100_TIME_CUTOFF: u64 = 150;
+const MINIMUM_MEMORY: u32 = 80000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeChallengeStatus {
@@ -156,8 +157,36 @@ impl<'a> HardwareValidator<'a> {
                 }
             }
 
+            // Check if debug mode is enabled via environment variable
+            let debug_mode = env::var("GPU_VALIDATOR_DEBUG")
+                .unwrap_or_else(|_| "false".to_string())
+                .to_lowercase()
+                == "true";
+
+            if debug_mode {
+                info!("Running GPU challenge in debug mode for node {}", node.id);
+            }
+
+            let matrix_size = node
+                .compute_specs
+                .as_ref()
+                .and_then(|specs| specs.gpu.as_ref())
+                .and_then(|gpu| gpu.memory_mb)
+                .and_then(|memory| {
+                    if memory >= MINIMUM_MEMORY {
+                        Some(81920)
+                    } else {
+                        None
+                    }
+                });
+
+            if matrix_size.is_none() && !debug_mode {
+                error!("Node {} does not meet minimum requirements", node.id);
+                return Err(anyhow::anyhow!("Node does not meet minimum requirements"));
+            }
+
             // Then perform the GPU challenge
-            let gpu_challenge_result = self.gpu_challenge_node(&node).await;
+            let gpu_challenge_result = self.gpu_challenge_node(&node, matrix_size).await;
             if gpu_challenge_result.is_err() {
                 error!(
                     "Node {} failed GPU challenge: {:?}",
@@ -370,7 +399,11 @@ impl<'a> HardwareValidator<'a> {
         }
     }
 
-    async fn gpu_challenge_node(&self, node: &DiscoveryNode) -> Result<(), Error> {
+    async fn gpu_challenge_node(
+        &self,
+        node: &DiscoveryNode,
+        matrix_size: Option<u64>,
+    ) -> Result<(), Error> {
         // check if node is already running a challenge session
         {
             // Create a separate scope for the lock
@@ -401,7 +434,7 @@ impl<'a> HardwareValidator<'a> {
 
         // STEP 1: Initialize a new challenge with the verifier service
         let init_request = GpuChallengeInitRequest {
-            n: MATRIX_CHALLENGE_SIZE, // Default matrix size
+            n: matrix_size.unwrap_or(MATRIX_CHALLENGE_SIZE_DEFAULT), // Default matrix size
         };
 
         let init_data: GpuChallengeResponse = self

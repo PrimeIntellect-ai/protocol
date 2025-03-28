@@ -11,14 +11,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{self, json};
 use shared::models::api::ApiResponse;
 use shared::models::gpu_challenge::*;
-use shared::models::task::{Task, TaskRequest};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::select;
+use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 
 const PROVER_CONTAINER_ID: &str = "prime-core-gpu-challenge";
-const TASK_NAME: &str = "gpu-challenge";
-const IMAGE_NAME: &str = "matrix-prover";
+const IMAGE_NAME: &str = "primeintellect/gpu-challenge:latest";
 
 // Store raw responses from the prover as strings
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -107,78 +107,9 @@ impl ChallengeStateStorage {
 
 // Thread-safe state storage
 lazy_static::lazy_static! {
-    static ref CURRENT_CHALLENGE: Arc<Mutex<ChallengeStateStorage>> = Arc::new(Mutex::new(ChallengeStateStorage::new()));
-}
-
-// allow unused
-#[allow(dead_code)]
-pub async fn start_task_via_service(app_state: Data<AppState>) {
-    // Set environment variables for container
-    let mut env_vars = HashMap::new();
-    env_vars.insert("PORT".to_string(), "12121".to_string());
-
-    // Launch Docker container with GPU support
-    let task: Task = TaskRequest {
-        image: IMAGE_NAME.to_string(),
-        name: TASK_NAME.to_string(),
-        env_vars: Some(env_vars),
-        command: Some("/usr/bin/python3".to_string()),
-        args: Some(vec!["prover.py".to_string()]),
-        ports: Some(vec!["12121/tcp".to_string()]),
-    }
-    .into();
-    let task_clone = task.clone();
-    let docker_service = app_state.docker_service.clone();
-
-    // sleep for 2 minutes
-    tokio::time::sleep(tokio::time::Duration::from_secs(120)).await;
-
-    while !docker_service.state.get_is_running().await {
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-        info!("Waiting for Docker service to start");
-    }
-
-    // sleep
-    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-    loop {
-        // don't run it while there's a pending task
-        if docker_service.state.get_current_task().await.is_none() {
-            break;
-        }
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-        info!("Waiting for previous task to finish");
-    }
-    docker_service
-        .state
-        .set_current_task(Some(task_clone))
-        .await;
-    // sleep for a bit
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-    // Spawn a background task to wait for the container to start
-    tokio::spawn(async move {
-        let mut retries = 0;
-        while retries < 30 {
-            if let Some(current_task) = docker_service.state.get_current_task().await {
-                if current_task.state == shared::models::task::TaskState::RUNNING
-                    && current_task.name == TASK_NAME
-                {
-                    let mut state = CURRENT_CHALLENGE.lock().await;
-                    state.set_status("ready");
-                    break;
-                }
-                info!("Current task: {:?}", current_task);
-            }
-            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            retries += 1;
-        }
-        if retries >= 30 {
-            let mut state = CURRENT_CHALLENGE.lock().await;
-            state.wipe();
-            info!("Failed to start GPU challenge container");
-            // shut down docker
-            docker_service.state.set_current_task(None).await;
-        }
-    });
+    static ref CURRENT_CHALLENGE: Arc<RwLock<ChallengeStateStorage>> =
+    Arc::new(RwLock::new(ChallengeStateStorage::new()));
+    static ref CANCEL_TOKEN: Arc<RwLock<CancellationToken>> = Arc::new(RwLock::new(CancellationToken::new()));
 }
 
 pub async fn start_task_via_manager(app_state: Data<AppState>) -> anyhow::Result<()> {
@@ -207,9 +138,10 @@ pub async fn start_task_via_manager(app_state: Data<AppState>) -> anyhow::Result
         }
     }
 
+    let has_gpu = app_state.docker_service.has_gpu;
+
     let image = IMAGE_NAME.to_string();
     let container_task_id = PROVER_CONTAINER_ID.to_string();
-    let has_gpu = false;
     let mut env_vars: HashMap<String, String> = HashMap::new();
     env_vars.insert("PORT".to_string(), "12121".to_string());
     let cmd = vec!["/usr/bin/python3".to_string(), "prover.py".to_string()];
@@ -247,15 +179,15 @@ pub async fn start_task_via_manager(app_state: Data<AppState>) -> anyhow::Result
     {
         Ok(container_id) => {
             info!("Started GPU challenge container.");
-            let mut state: tokio::sync::MutexGuard<'_, ChallengeStateStorage> =
-                CURRENT_CHALLENGE.lock().await;
+            let mut state: tokio::sync::RwLockWriteGuard<'_, ChallengeStateStorage> =
+                CURRENT_CHALLENGE.write().await;
             state.set_status("initializing");
             state.set_container_id(&container_id);
             Ok(())
         }
         Err(e) => {
             info!("Failed to start GPU challenge container: {:?}", e);
-            let mut state = CURRENT_CHALLENGE.lock().await;
+            let mut state = CURRENT_CHALLENGE.write().await;
             state.wipe();
             Err(anyhow::anyhow!("Failed to start GPU challenge container"))
         }
@@ -265,7 +197,7 @@ pub async fn start_task_via_manager(app_state: Data<AppState>) -> anyhow::Result
 pub async fn stop_task_via_manager(app_state: Data<AppState>) -> anyhow::Result<()> {
     let manager = app_state.docker_service.docker_manager.clone();
 
-    let state = CURRENT_CHALLENGE.lock().await;
+    let state = CURRENT_CHALLENGE.read().await;
     match state.get_container_id() {
         Some(container_is) => {
             info!("Stopping GPU challenge container.");
@@ -285,7 +217,7 @@ pub async fn get_container_status(
     app_state: Data<AppState>,
 ) -> Result<ContainerDetails, DockerError> {
     let manager = app_state.docker_service.docker_manager.clone();
-    let state = CURRENT_CHALLENGE.lock().await;
+    let state = CURRENT_CHALLENGE.read().await;
     return manager
         .get_container_details(&state.get_container_id().unwrap())
         .await;
@@ -360,7 +292,7 @@ pub async fn init_container(
 
     // if state is anything other than empty, skip
     {
-        let mut state = CURRENT_CHALLENGE.lock().await;
+        let mut state = CURRENT_CHALLENGE.write().await;
         info!("Challenge state: {:?}", state.state);
         if state.get_status().is_some() {
             return HttpResponse::Ok().json(ApiResponse::new(
@@ -385,37 +317,56 @@ pub async fn init_container(
     match start_task_via_manager(app_state.clone()).await {
         Ok(_) => {
             // Spawn a background task to wait for the container to start
-            tokio::spawn(async move {
-                let mut retries = 0;
-                while retries < 30 {
-                    {
-                        match get_container_status(app_state.clone()).await {
-                            Ok(container_details) => {
-                                if container_details.status.unwrap()
-                                    == ContainerStateStatusEnum::RUNNING
-                                {
-                                    info!("GPU challenge container is now running.");
-                                    // sleep for 10 seconds to allow the prover service to become ready
-                                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                                    let mut state = CURRENT_CHALLENGE.lock().await;
-                                    state.set_status("ready");
+            tokio::spawn({
+                let local_app_state = app_state.clone();
+                let local_token = CANCEL_TOKEN.read().await.clone();
+
+                async move {
+                    let mut retries = 0;
+                    loop {
+                        select! {
+                            // If we get cancelled, do cleanup and bail out:
+                            _ = local_token.cancelled() => {
+                                info!("Container startup task cancelled.");
+                                let mut state = CURRENT_CHALLENGE.write().await;
+                                // Possibly stop the container, reset state, etc.
+                                state.wipe();
+                                break;
+                            }
+
+                            // Otherwise, proceed with the status check after sleeping.
+                            _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
+                                retries += 1;
+                                match get_container_status(local_app_state.clone()).await {
+                                    Ok(container_details) => {
+                                        if container_details.status.unwrap()
+                                            == ContainerStateStatusEnum::RUNNING
+                                        {
+                                            info!("GPU challenge container is now running.");
+                                            // sleep for 10 seconds to allow the prover service to become ready
+                                            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                                            let mut state = CURRENT_CHALLENGE.write().await;
+                                            state.set_status("ready");
+                                            break;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        info!("Failed to get container status: {:?}", e);
+                                    }
+                                }
+                                if retries >= 30 {
+                                    info!("Failed to start GPU challenge container");
+                                    // remove the container
+                                    if let Err(e) = stop_task_via_manager(local_app_state.clone()).await {
+                                        info!("Failed to remove container via manager: {:?}", e);
+                                    }
+                                    let mut state = CURRENT_CHALLENGE.write().await;
+                                    state.wipe();
                                     break;
                                 }
                             }
-                            Err(e) => {
-                                info!("Failed to get container status: {:?}", e);
-                            }
                         }
                     }
-                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                    retries += 1;
-                }
-                if retries >= 30 {
-                    let mut state = CURRENT_CHALLENGE.lock().await;
-                    info!("Failed to start GPU challenge container");
-                    // shut down docker
-                    stop_task_via_manager(app_state.clone()).await.unwrap();
-                    state.wipe();
                 }
             });
         }
@@ -439,7 +390,7 @@ pub async fn init_container(
 
 // Get challenge status
 pub async fn get_status(_req: HttpRequest) -> HttpResponse {
-    let state = CURRENT_CHALLENGE.lock().await;
+    let state = CURRENT_CHALLENGE.read().await;
     info!(
         "Current session ID, status: {:?}, {:?}",
         state.get_session_id(),
@@ -467,7 +418,7 @@ pub async fn compute_commitment(
 
     {
         // check that session ID matches
-        let state = CURRENT_CHALLENGE.lock().await;
+        let state = CURRENT_CHALLENGE.read().await;
         if session_id != state.get_session_id().as_deref().unwrap_or("") {
             return HttpResponse::NotFound().json(ApiResponse::new(
                 false,
@@ -493,7 +444,7 @@ pub async fn compute_commitment(
                     let commitment_root = commitment_data.commitment_root;
 
                     // Store result
-                    let mut state = CURRENT_CHALLENGE.lock().await;
+                    let mut state = CURRENT_CHALLENGE.write().await;
                     state.set_result(GpuChallengeResult {
                         session_id: session_id.clone(),
                         commitment_root: commitment_root.clone(),
@@ -509,14 +460,14 @@ pub async fn compute_commitment(
                     ))
                 }
                 Err(e) => {
-                    let mut state = CURRENT_CHALLENGE.lock().await;
+                    let mut state = CURRENT_CHALLENGE.write().await;
                     state.set_error(e.to_string());
                     HttpResponse::InternalServerError().json(ApiResponse::new(false, e.to_string()))
                 }
             }
         }
         Err(e) => {
-            let mut state = CURRENT_CHALLENGE.lock().await;
+            let mut state = CURRENT_CHALLENGE.write().await;
             state.set_error(e.to_string());
             HttpResponse::InternalServerError().json(ApiResponse::new(false, e.to_string()))
         }
@@ -532,7 +483,7 @@ pub async fn compute_cr(
 
     {
         // check that session ID matches
-        let state = CURRENT_CHALLENGE.lock().await;
+        let state = CURRENT_CHALLENGE.read().await;
         if session_id != state.get_session_id().as_deref().unwrap_or("") {
             return HttpResponse::NotFound().json(ApiResponse::new(
                 false,
@@ -553,7 +504,7 @@ pub async fn compute_cr(
             let cr = cr_data.Cr;
 
             // Store result
-            let mut state = CURRENT_CHALLENGE.lock().await;
+            let mut state = CURRENT_CHALLENGE.write().await;
             if let Some(result) = state.mut_result() {
                 result.cr_result_json = cr.clone();
             }
@@ -566,7 +517,7 @@ pub async fn compute_cr(
             ))
         }
         Err(e) => {
-            let mut state = CURRENT_CHALLENGE.lock().await;
+            let mut state = CURRENT_CHALLENGE.write().await;
             state.set_error(e.to_string());
             HttpResponse::InternalServerError().json(ApiResponse::new(false, e.to_string()))
         }
@@ -582,7 +533,7 @@ pub async fn compute_row_proofs(
 
     {
         // check that session ID matches
-        let state = CURRENT_CHALLENGE.lock().await;
+        let state = CURRENT_CHALLENGE.read().await;
         if session_id != state.get_session_id().as_deref().unwrap_or("") {
             return HttpResponse::NotFound().json(ApiResponse::new(
                 false,
@@ -603,7 +554,7 @@ pub async fn compute_row_proofs(
             let proofs_json = serde_json::to_string(&proof_data).unwrap_or_default();
 
             // Store result
-            let mut state = CURRENT_CHALLENGE.lock().await;
+            let mut state = CURRENT_CHALLENGE.write().await;
             if let Some(result) = state.mut_result() {
                 result.row_proofs_json = proofs_json.clone();
             }
@@ -612,7 +563,7 @@ pub async fn compute_row_proofs(
             HttpResponse::Ok().json(ApiResponse::new(true, proof_data))
         }
         Err(e) => {
-            let mut state = CURRENT_CHALLENGE.lock().await;
+            let mut state = CURRENT_CHALLENGE.write().await;
             state.set_error(e.to_string());
             HttpResponse::InternalServerError().json(ApiResponse::new(false, e.to_string()))
         }
@@ -625,7 +576,10 @@ pub async fn compute_row_proofs(
 }
 
 // Register the routes
-pub fn gpu_challenge_routes() -> Scope {
+pub fn gpu_challenge_routes(cancellation_token: CancellationToken) -> Scope {
+    // Update the cancellation token without async/await
+    let mut token = CANCEL_TOKEN.blocking_write();
+    *token = cancellation_token.clone();
     web::scope("/gpu-challenge")
         .route("/init-container", post().to(init_container))
         .route("/status", get().to(get_status))

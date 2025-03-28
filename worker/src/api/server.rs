@@ -24,6 +24,7 @@ pub struct AppState {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn start_server(
+    cancellation_token: tokio_util::sync::CancellationToken,
     host: &str,
     port: u16,
     contracts: Arc<Contracts>,
@@ -55,7 +56,7 @@ pub async fn start_server(
             .service(invite_routes())
             .service(task_routes())
             .service(challenge_routes())
-            .service(gpu_challenge_routes())
+            .service(gpu_challenge_routes(cancellation_token.clone()))
     })
     .bind((host, port))?
     .run()

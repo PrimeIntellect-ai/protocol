@@ -18,7 +18,7 @@ pub struct DockerService {
     pub docker_manager: Arc<DockerManager>,
     cancellation_token: CancellationToken,
     pub state: Arc<DockerState>,
-    has_gpu: bool,
+    pub has_gpu: bool,
     system_memory_mb: Option<u32>,
     task_bridge_socket_path: String,
 }

@@ -531,6 +531,7 @@ pub async fn execute_command(
                 }
 
                 start_server(
+                    cancellation_token.clone(),
                     "0.0.0.0",
                     *port,
                     contracts.clone(),
