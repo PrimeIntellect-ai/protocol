@@ -497,10 +497,23 @@ pub async fn execute_command(
                     }
                 }
             }
-
-            if let Err(e) = discovery_service.upload_discovery_info(&node_config).await {
-                Console::error(&format!("❌ Failed to upload discovery info: {}", e));
-                std::process::exit(1);
+            let mut attempts = 0;
+            let max_attempts = 100;
+            while attempts < max_attempts {
+                match discovery_service.upload_discovery_info(&node_config).await {
+                    Ok(_) => break,
+                    Err(e) => {
+                        attempts += 1;
+                        Console::error(&format!(
+                            "Attempt {}: ❌ Failed to upload discovery info: {}",
+                            attempts, e
+                        ));
+                        if attempts >= max_attempts {
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             }
 
             Console::success("Discovery info uploaded");
