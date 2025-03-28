@@ -73,11 +73,11 @@ pub struct SyntheticDataValidator {
     validator: SyntheticDataWorkValidator,
     prime_network: PrimeNetworkContract,
     leviticus_url: String,
-    leviticus_token: Option<String>,
     penalty: U256,
     s3_credentials: Option<String>,
     bucket_name: Option<String>,
     redis_store: RedisStore,
+    http_client: reqwest::Client,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -103,16 +103,31 @@ impl SyntheticDataValidator {
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
+        let http_client = reqwest::Client::builder()
+            .default_headers({
+                let mut headers = reqwest::header::HeaderMap::new();
+                if let Some(token) = &leviticus_token {
+                    headers.insert(
+                        reqwest::header::AUTHORIZATION,
+                        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+                            .expect("Invalid token"),
+                    );
+                }
+                headers
+            })
+            .build()
+            .expect("Failed to build HTTP client");
+
         Self {
             pool_id,
             validator,
             prime_network,
             leviticus_url,
-            leviticus_token,
             penalty,
             s3_credentials,
             bucket_name,
             redis_store,
+            http_client,
         }
     }
 
@@ -144,26 +159,17 @@ impl SyntheticDataValidator {
             file_name, validate_url
         );
 
-        let client = reqwest::Client::builder()
-            .default_headers({
-                let mut headers = reqwest::header::HeaderMap::new();
-                if let Some(token) = &self.leviticus_token {
-                    headers.insert(
-                        reqwest::header::AUTHORIZATION,
-                        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
-                            .expect("Invalid token"),
-                    );
-                }
-                headers
-            })
-            .build()
-            .expect("Failed to build HTTP client");
-
         let body = serde_json::json!({
             "file_sha": sha
         });
 
-        match client.post(&validate_url).json(&body).send().await {
+        match self
+            .http_client
+            .post(&validate_url)
+            .json(&body)
+            .send()
+            .await
+        {
             Ok(_) => Ok(()),
             Err(e) => {
                 error!(
@@ -182,22 +188,8 @@ impl SyntheticDataValidator {
         file_name: &str,
     ) -> Result<ValidationResult, Error> {
         let url = format!("{}/status/{}", self.leviticus_url, file_name);
-        let client = reqwest::Client::builder()
-            .default_headers({
-                let mut headers = reqwest::header::HeaderMap::new();
-                if let Some(token) = &self.leviticus_token {
-                    headers.insert(
-                        reqwest::header::AUTHORIZATION,
-                        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
-                            .expect("Invalid token"),
-                    );
-                }
-                headers
-            })
-            .build()
-            .expect("Failed to build HTTP client");
 
-        match client.get(&url).send().await {
+        match self.http_client.get(&url).send().await {
             Ok(response) => {
                 if response.status() != reqwest::StatusCode::OK {
                     error!(
@@ -273,7 +265,7 @@ impl SyntheticDataValidator {
             ValidationResult::Unknown => 60,
             _ => 0,
         };
-        let mut con = self.redis_store.client.get_connection().unwrap();
+        let mut con = self.redis_store.client.get_connection()?;
         let key = self.get_key_for_work_key(work_key);
         let status = serde_json::to_string(&status)?;
         if expiry > 0 {
@@ -283,9 +275,11 @@ impl SyntheticDataValidator {
                     status,
                     redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(expiry)),
                 )
-                .unwrap();
+                .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
         } else {
-            let _: () = con.set(&key, status).unwrap();
+            let _: () = con
+                .set(&key, status)
+                .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
         }
         Ok(())
     }
@@ -293,11 +287,19 @@ impl SyntheticDataValidator {
     async fn get_work_validation_status_from_redis(
         &self,
         work_key: &str,
-    ) -> Option<ValidationResult> {
-        let mut con = self.redis_store.client.get_connection().unwrap();
+    ) -> Result<Option<ValidationResult>, Error> {
+        let mut con = self.redis_store.client.get_connection()?;
         let key = self.get_key_for_work_key(work_key);
-        let status: Option<String> = con.get(key).unwrap();
-        status.map(|status| serde_json::from_str(&status).unwrap())
+        let status: Option<String> = con
+            .get(key)
+            .map_err(|e| Error::msg(format!("Failed to get work validation status: {}", e)))?;
+        status
+            .map(|status| {
+                serde_json::from_str(&status).map_err(|e| {
+                    Error::msg(format!("Failed to parse work validation status: {}", e))
+                })
+            })
+            .transpose()
     }
 
     async fn get_file_name_for_work_key(
@@ -305,10 +307,16 @@ impl SyntheticDataValidator {
         work_key: &str,
     ) -> Result<String, ProcessWorkKeyError> {
         let redis_key = format!("file_name:{}", work_key);
-        let mut con = self.redis_store.client.get_connection().unwrap();
+        let mut con = self
+            .redis_store
+            .client
+            .get_connection()
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
 
         // Try to get the file name from Redis cache
-        let file_name: Option<String> = con.get(&redis_key).unwrap();
+        let file_name: Option<String> = con
+            .get(&redis_key)
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
         if let Some(cached_file_name) = file_name {
             return Ok(cached_file_name);
         }
@@ -412,7 +420,7 @@ impl SyntheticDataValidator {
 
         // Process each work key
         for work_key in &work_keys {
-            let cache_status = self.get_work_validation_status_from_redis(work_key).await;
+            let cache_status = self.get_work_validation_status_from_redis(work_key).await?;
             debug!("Cache status for {}: {:?}", work_key, cache_status);
             match cache_status {
                 Some(status) => match status {
@@ -446,6 +454,7 @@ impl SyntheticDataValidator {
 mod tests {
     use super::*;
     use alloy::primitives::Address;
+    use anyhow::Ok;
     use shared::web3::contracts::core::builder::ContractBuilder;
     use shared::web3::wallet::Wallet;
     use url::Url;
@@ -467,13 +476,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_status_update() {
+    async fn test_status_update() -> Result<(), Error> {
         let store = test_store();
         let demo_wallet = Wallet::new(
             "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
             Url::parse("http://localhost:8545").unwrap(),
         )
-        .unwrap();
+        .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
         let contracts = ContractBuilder::new(&demo_wallet)
             .with_compute_registry()
             .with_ai_token()
@@ -483,7 +492,7 @@ mod tests {
             .with_stake_manager()
             .with_synthetic_data_validator(Some(Address::ZERO))
             .build()
-            .unwrap();
+            .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
 
         let validator = SyntheticDataValidator::new(
             "0".to_string(),
@@ -503,11 +512,12 @@ mod tests {
                 &ValidationResult::Accept,
             )
             .await
-            .unwrap();
+            .map_err(|e| Error::msg(format!("Failed to update work validation status: {}", e)))?;
         let status = validator
             .get_work_validation_status_from_redis("0x0000000000000000000000000000000000000000")
             .await
-            .unwrap();
-        assert_eq!(status, ValidationResult::Accept);
+            .map_err(|e| Error::msg(format!("Failed to get work validation status: {}", e)))?;
+        assert_eq!(status, Some(ValidationResult::Accept));
+        Ok(())
     }
 }
