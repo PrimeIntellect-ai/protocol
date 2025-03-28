@@ -209,8 +209,16 @@ impl PrimeNetworkContract {
 
         let mut members_vec = Vec::new();
         for member in members {
-            for address in member.as_array().unwrap() {
-                members_vec.push(address.as_address().unwrap());
+            if let Some(array) = member.as_array() {
+                for address in array {
+                    if let Some(addr) = address.as_address() {
+                        members_vec.push(addr);
+                    } else {
+                        return Err(Error::msg("Failed to convert member to address"));
+                    }
+                }
+            } else {
+                return Err(Error::msg("Member is not an array"));
             }
         }
 
