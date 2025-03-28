@@ -196,10 +196,20 @@ impl<'a> HardwareValidator<'a> {
                 .compute_specs
                 .as_ref()
                 .and_then(|specs| specs.gpu.as_ref())
-                .and_then(|gpu| gpu.memory_mb)
-                .and_then(|memory| {
-                    if memory >= self.reqs.memory {
-                        Some(81920)
+                .and_then(|gpu| {
+                    if let (Some(memory), Some(count)) = (gpu.memory_mb, gpu.count) {
+                        if memory >= self.reqs.memory && count >= self.reqs.count {
+                            // saturate memory: fp32 square matrix, and 3 matrices required
+                            let mem_per_matrix =
+                                ((self.reqs.memory * 1024 * 1024) as f64) / 3.0 / 4.0;
+                            // multiply by 0.9 to leave some room for overhead
+                            let n = (mem_per_matrix * 0.9).sqrt();
+                            // clip to nearest multiple of 4096
+                            let matrix_size = (n / 4096.0).floor() * 4096.0;
+                            Some(matrix_size as u64)
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
