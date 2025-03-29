@@ -57,7 +57,9 @@ async fn main() -> Result<()> {
 
     log::info!(
         "Node Active: {}, Validated: {}, In Pool: {}",
-        active, validated, is_node_in_pool
+        active,
+        validated,
+        is_node_in_pool
     );
     Ok(())
 }
