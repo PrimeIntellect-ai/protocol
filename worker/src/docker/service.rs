@@ -23,8 +23,8 @@ pub struct DockerService {
 }
 
 const TASK_PREFIX: &str = "prime-task";
-const INITIAL_BACKOFF_SECONDS: i64 = 5;  // Start with 5 seconds
-const MAX_BACKOFF_SECONDS: i64 = 300;    // Cap at 5 minutes
+const INITIAL_BACKOFF_SECONDS: i64 = 5; // Start with 5 seconds
+const MAX_BACKOFF_SECONDS: i64 = 300; // Cap at 5 minutes
 
 impl DockerService {
     pub fn new(
@@ -74,11 +74,10 @@ impl DockerService {
         let manager_clone = manager.clone();
         let terminate_manager = manager_clone.clone();
         let task_state_clone = state.clone();
-        
-        // Track consecutive failures and last failure type
+
+        // Track consecutive failures
         let mut consecutive_failures = 0;
-        let mut last_failure_type = None::<String>;
-        
+
         loop {
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
@@ -106,8 +105,7 @@ impl DockerService {
                     .filter(|c| {
                         c.names.iter().any(|name| name.contains(TASK_PREFIX))
                             && task_id
-                                .as_ref()
-                                .map_or(true, |id| !c.names.iter().any(|name| name.contains(id)))
+                                .as_ref().is_none_or(|id| !c.names.iter().any(|name| name.contains(id)))
                     })
                     .cloned()
                     .collect();
@@ -142,7 +140,7 @@ impl DockerService {
                                     None => DateTime::from_timestamp(0, 0).unwrap(),
                                 };
                                 let elapsed = Utc::now().signed_duration_since(last_started_time).num_seconds();
-                                
+
                                 // Calculate backoff time using exponential backoff
                                 let backoff_seconds = if consecutive_failures > 0 {
                                     let backoff = INITIAL_BACKOFF_SECONDS * (2_i64.pow(consecutive_failures as u32 - 1));
@@ -150,7 +148,7 @@ impl DockerService {
                                 } else {
                                     INITIAL_BACKOFF_SECONDS
                                 };
-                                
+
                                 // wait for backoff period before starting a new container
                                 if elapsed < backoff_seconds {
                                     Console::info("DockerService", &format!("Waiting before starting new container ({}s remaining)...", backoff_seconds - elapsed));
@@ -236,10 +234,10 @@ impl DockerService {
                                     Console::info("DockerService", &format!("Task state changed from {:?} to {:?}", task_state_current, task_state_live));
 
                                     if task_state_live == TaskState::FAILED {
-                                        
+
                                         consecutive_failures += 1;
                                         Console::info("DockerService", &format!("Task failed (attempt {}), waiting with exponential backoff before restart", consecutive_failures));
-                                        
+
                                         let terminate_manager_clone = terminate_manager.clone();
                                         let handle = tokio::spawn(async move {
                                             let termination = terminate_manager_clone.remove_container(&container_status.id).await;
@@ -252,7 +250,6 @@ impl DockerService {
                                     } else if task_state_live == TaskState::RUNNING {
                                         // Reset failure counter when container runs successfully
                                         consecutive_failures = 0;
-                                        last_failure_type = None;
                                     }
                                 }
 
