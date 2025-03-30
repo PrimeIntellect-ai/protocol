@@ -145,7 +145,12 @@ impl HardwareChecker {
         if gpu_specs.is_empty() {
             return Ok(None);
         }
-        Ok(Some(gpu_specs[0].clone()))
+
+        let main_gpu = gpu_specs
+            .into_iter()
+            .max_by_key(|gpu| gpu.count.unwrap_or(0));
+
+        Ok(main_gpu)
     }
 
     fn collect_memory_specs(&self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
