@@ -74,7 +74,6 @@ services:
     environment:
       - RPC_URL=http://anvil:8545
       - REDIS_URL=redis://redis:6379
-      - VALIDATOR_ADDRESS=${VALIDATOR_ADDRESS}
       - PLATFORM_API_KEY=prime
     networks:
       - prime
@@ -128,8 +127,10 @@ services:
       - WORK_VALIDATION_CONTRACT=${WORK_VALIDATION_CONTRACT}
       - POOL_ID=${WORKER_COMPUTE_POOL_ID}
       - WORK_VALIDATION_INTERVAL=30
-      - LEVITICUS_URL=${LEVITICUS_URL}
-      - LEVITICUS_TOKEN=${LEVITICUS_TOKEN}
+      - TOPLOC_SERVER_URL=${TOPLOC_SERVER_URL}
+      - TOPLOC_AUTH_TOKEN=${TOPLOC_AUTH_TOKEN}
+      - TOPLOC_GRACE_INTERVAL=15
+      - REDIS_URL=redis://redis:6379
     depends_on:
       anvil:
         condition: service_healthy

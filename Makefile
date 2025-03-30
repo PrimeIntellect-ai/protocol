@@ -74,18 +74,18 @@ whitelist-provider:
 
 watch-discovery:
 	set -a; source .env; set +a; \
-	cargo watch -w discovery/src -x "run --bin discovery -- --validator-address $${VALIDATOR_ADDRESS} --rpc-url $${RPC_URL}"
+	cargo watch -w discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL}"
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS --skip-system-checks" 
+	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks" 
 
 watch-check:
 	cargo watch -w worker/src -x "run --bin worker -- check"	
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --leviticus-url $${LEVITICUS_URL} --leviticus-token $${LEVITICUS_TOKEN} --s3-credentials $${S3_CREDENTIALS} --bucket-name $${BUCKET_NAME} -l $${LOG_LEVEL:-info}"
+	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --toploc-server-url $${TOPLOC_SERVER_URL} --toploc-auth-token $${TOPLOC_AUTH_TOKEN} --s3-credentials $${S3_CREDENTIALS} --bucket-name $${BUCKET_NAME} -l $${LOG_LEVEL:-info}"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -155,7 +155,6 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 				--port $(PORT) \
 				--external-ip \$$EXTERNAL_IP \
 				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
-				--validator-address \$$VALIDATOR_ADDRESS \
 				--auto-accept \
 				2>&1 | tee worker.log\"'"
 
