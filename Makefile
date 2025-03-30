@@ -155,7 +155,6 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 				--port $(PORT) \
 				--external-ip \$$EXTERNAL_IP \
 				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
-				--validator-address \$$VALIDATOR_ADDRESS \
 				--auto-accept \
 				2>&1 | tee worker.log\"'"
 
