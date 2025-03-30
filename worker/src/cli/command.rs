@@ -89,9 +89,9 @@ pub enum Commands {
         #[arg(long, default_value = "0")]
         funding_retry_count: u32,
 
-        /// Ignore issues
+        /// Skip system requirement checks (for development/testing)
         #[arg(long, default_value = "false")]
-        ignore_issues: bool,
+        skip_system_checks: bool,
     },
     Check {},
 
@@ -148,7 +148,7 @@ pub async fn execute_command(
             private_key_node,
             auto_accept,
             funding_retry_count,
-            ignore_issues,
+            skip_system_checks,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -275,7 +275,7 @@ pub async fn execute_command(
             let issues = issue_tracker.read().await;
             issues.print_issues();
             if issues.has_critical_issues() {
-                if !*ignore_issues {
+                if !*skip_system_checks {
                     Console::error("❌ Critical issues found. Exiting.");
                     std::process::exit(1);
                 } else {
