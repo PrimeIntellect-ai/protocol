@@ -78,7 +78,7 @@ watch-discovery:
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS --ignore-issues" 
+	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --validator-address $$VALIDATOR_ADDRESS --skip-system-checks" 
 
 watch-check:
 	cargo watch -w worker/src -x "run --bin worker -- check"	
