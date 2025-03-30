@@ -11,7 +11,7 @@ async fn get_current_task(app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
     match task_store.get_task() {
         Some(task) => HttpResponse::Ok().json(json!({"success": true, "task": task})),
-        None => HttpResponse::Ok().json(json!({"success": false, "task": Option::<Task>::None})),
+        None => HttpResponse::Ok().json(json!({"success": true, "task": null})),
     }
 }
 
