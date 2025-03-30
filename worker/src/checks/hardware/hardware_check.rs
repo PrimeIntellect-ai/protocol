@@ -138,11 +138,11 @@ impl HardwareChecker {
     }
 
     fn collect_gpu_specs(&self) -> Result<Option<GpuSpecs>, Box<dyn std::error::Error>> {
-        Ok(detect_gpu().map(|gpu| GpuSpecs {
-            count: Some(gpu.count.unwrap_or(0)),
-            model: gpu.model,
-            memory_mb: gpu.memory_mb,
-        }))
+        let gpu_specs = detect_gpu();
+        if gpu_specs.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(gpu_specs[0].clone()))
     }
 
     fn collect_memory_specs(&self) -> Result<(u32, u32), Box<dyn std::error::Error>> {

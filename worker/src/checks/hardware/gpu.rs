@@ -5,53 +5,40 @@ use shared::models::node::GpuSpecs;
 use std::sync::Mutex;
 
 #[allow(dead_code)]
-const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
+const BYTES_TO_MB: u64 = 1024 * 1024;
 
 // Use lazy_static to initialize NVML once and reuse it
 lazy_static! {
     static ref NVML: Mutex<Option<Nvml>> = Mutex::new(None);
 }
 
-#[allow(dead_code)]
-enum GpuDevice {
-    Available {
-        name: String,
-        memory: u64,
-        driver_version: String,
-        device_count: usize,
-    },
-    NotAvailable(String),
+#[derive(Debug)]
+struct GpuDevice {
+    name: String,
+    memory: u64,
+    driver_version: String,
 }
 
-pub fn detect_gpu() -> Option<GpuSpecs> {
+pub fn detect_gpu() -> Vec<GpuSpecs> {
     Console::title("GPU Detection");
-    // Changed return type to GpuSpecs
-    match get_gpu_status() {
-        GpuDevice::Available {
-            name,
-            memory,
-            driver_version: _,
-            device_count,
-        } => Some(GpuSpecs {
-            // Create GpuSpecs directly
-            count: Some(device_count as u32),
-            model: Some(
-                name.to_lowercase()
-                    .split_whitespace()
-                    .collect::<Vec<&str>>()
-                    .join("_"),
-            ),
-            memory_mb: Some((memory / 1024 / 1024) as u32), // Convert bytes to MB
-        }),
-        GpuDevice::NotAvailable(_) => {
-            //println!("GPU not available: {}", err);
-            Console::error("GPU not available");
-            None
-        }
+
+    let gpu_devices = get_gpu_status();
+    if gpu_devices.is_empty() {
+        Console::error("No GPU devices detected");
+        return vec![];
     }
+
+    gpu_devices
+        .into_iter()
+        .map(|device| GpuSpecs {
+            count: Some(1),
+            model: Some(device.name.to_lowercase()),
+            memory_mb: Some((device.memory / BYTES_TO_MB) as u32),
+        })
+        .collect()
 }
 
-fn get_gpu_status() -> GpuDevice {
+fn get_gpu_status() -> Vec<GpuDevice> {
     let mut nvml_guard = NVML.lock().unwrap();
 
     // Initialize NVML if not already initialized
@@ -63,7 +50,10 @@ fn get_gpu_status() -> GpuDevice {
             .init()
         {
             Ok(nvml) => *nvml_guard = Some(nvml),
-            Err(e) => return GpuDevice::NotAvailable(format!("Failed to initialize NVML: {}", e)),
+            Err(e) => {
+                Console::error(&format!("Failed to initialize NVML: {}", e));
+                return vec![];
+            }
         }
     }
 
@@ -72,30 +62,38 @@ fn get_gpu_status() -> GpuDevice {
     // Get device count
     let device_count = match nvml.device_count() {
         Ok(count) => count as usize,
-        Err(e) => return GpuDevice::NotAvailable(format!("Failed to get device count: {}", e)),
+        Err(e) => {
+            Console::error(&format!("Failed to get device count: {}", e));
+            return vec![];
+        }
     };
 
     if device_count == 0 {
-        return GpuDevice::NotAvailable("No GPU devices detected".to_string());
+        Console::error("No GPU devices detected");
+        return vec![];
     }
 
-    // Get first device info
-    // TODO: Get all devices
-    match nvml.device_by_index(0) {
-        Ok(device) => {
-            let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
-            let memory = device.memory_info().map(|m| m.total).unwrap_or(0);
-            let driver_version = nvml
-                .sys_driver_version()
-                .unwrap_or_else(|_| "Unknown".to_string());
+    let mut devices = Vec::new();
+    for i in 0..device_count {
+        match nvml.device_by_index(i as u32) {
+            Ok(device) => {
+                let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
+                let memory = device.memory_info().map(|m| m.total).unwrap_or(0);
+                let driver_version = nvml
+                    .sys_driver_version()
+                    .unwrap_or_else(|_| "Unknown".to_string());
 
-            GpuDevice::Available {
-                name,
-                memory,
-                driver_version,
-                device_count,
+                devices.push(GpuDevice {
+                    name,
+                    memory,
+                    driver_version,
+                });
+            }
+            Err(e) => {
+                Console::error(&format!("Failed to get device {}: {}", i, e));
             }
         }
-        Err(e) => GpuDevice::NotAvailable(format!("Failed to get device: {}", e)),
     }
+
+    devices
 }
