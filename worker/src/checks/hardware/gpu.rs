@@ -13,10 +13,12 @@ lazy_static! {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct GpuDevice {
     name: String,
     memory: u64,
     driver_version: String,
+    count: u32,
 }
 
 pub fn detect_gpu() -> Vec<GpuSpecs> {
@@ -31,7 +33,7 @@ pub fn detect_gpu() -> Vec<GpuSpecs> {
     gpu_devices
         .into_iter()
         .map(|device| GpuSpecs {
-            count: Some(1),
+            count: Some(device.count),
             model: Some(device.name.to_lowercase()),
             memory_mb: Some((device.memory / BYTES_TO_MB) as u32),
         })
@@ -73,7 +75,9 @@ fn get_gpu_status() -> Vec<GpuDevice> {
         return vec![];
     }
 
-    let mut devices = Vec::new();
+    let mut device_map: std::collections::HashMap<String, GpuDevice> =
+        std::collections::HashMap::new();
+
     for i in 0..device_count {
         match nvml.device_by_index(i as u32) {
             Ok(device) => {
@@ -83,11 +87,19 @@ fn get_gpu_status() -> Vec<GpuDevice> {
                     .sys_driver_version()
                     .unwrap_or_else(|_| "Unknown".to_string());
 
-                devices.push(GpuDevice {
-                    name,
-                    memory,
-                    driver_version,
-                });
+                if let Some(existing_device) = device_map.get_mut(&name) {
+                    existing_device.count += 1;
+                } else {
+                    device_map.insert(
+                        name.clone(),
+                        GpuDevice {
+                            name,
+                            memory,
+                            driver_version,
+                            count: 1,
+                        },
+                    );
+                }
             }
             Err(e) => {
                 Console::error(&format!("Failed to get device {}: {}", i, e));
@@ -95,5 +107,5 @@ fn get_gpu_status() -> Vec<GpuDevice> {
         }
     }
 
-    devices
+    device_map.into_values().collect()
 }
