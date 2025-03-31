@@ -80,6 +80,7 @@ pub struct SyntheticDataValidator {
     redis_store: RedisStore,
     http_client: reqwest::Client,
     toploc_grace_interval: u64,
+    work_validation_interval: u64,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -103,6 +104,7 @@ impl SyntheticDataValidator {
         bucket_name: Option<String>,
         redis_store: RedisStore,
         toploc_grace_interval: u64,
+        work_validation_interval: u64,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
@@ -137,6 +139,7 @@ impl SyntheticDataValidator {
             redis_store,
             http_client,
             toploc_grace_interval,
+            work_validation_interval,
         }
     }
 
@@ -397,7 +400,7 @@ impl SyntheticDataValidator {
         debug!("Validating work for pool ID: {:?}", self.pool_id);
 
         // Get all work keys for the pool from the last 24 hours
-        let twenty_four_hours_in_seconds = 86400;
+        let twenty_four_hours_in_seconds = 60 * self.work_validation_interval;
         let current_timestamp = U256::from(chrono::Utc::now().timestamp());
         let twenty_four_hours_ago = current_timestamp - U256::from(twenty_four_hours_in_seconds);
 
@@ -407,7 +410,9 @@ impl SyntheticDataValidator {
             .await
             .context("Failed to get work keys from the last 24 hours")?;
 
-        debug!("Found {} work keys to validate", work_keys.len());
+        if !work_keys.is_empty() {
+            info!("Found {} work keys to validate", work_keys.len());
+        }
 
         // Process each work key with rate limiting
         for work_key in &work_keys {
@@ -505,6 +510,7 @@ mod tests {
             None,
             store,
             15,
+            10,
         );
 
         validator

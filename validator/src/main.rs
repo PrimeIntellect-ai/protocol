@@ -59,6 +59,10 @@ struct Args {
     #[arg(long, default_value = "15")]
     toploc_grace_interval: u64,
 
+    // Optional: interval in minutes of max age of work on chain
+    #[arg(long, default_value = "15")]
+    toploc_work_validation_interval: u64,
+
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
     #[arg(long, default_value = "1000")]
@@ -175,6 +179,7 @@ fn main() {
                         args.bucket_name,
                         redis_store,
                         args.toploc_grace_interval,
+                        args.toploc_work_validation_interval,
                     ))
                 } else {
                     error!("Leviticus URL is not provided");
