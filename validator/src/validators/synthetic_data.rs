@@ -81,7 +81,10 @@ pub struct SyntheticDataValidator {
     http_client: reqwest::Client,
     toploc_grace_interval: u64,
     work_validation_interval: u64,
+<<<<<<< HEAD
     work_validation_unknown_status_expiry_seconds: u64,
+=======
+>>>>>>> develop
 }
 
 impl Validator for SyntheticDataValidator {
@@ -106,7 +109,10 @@ impl SyntheticDataValidator {
         redis_store: RedisStore,
         toploc_grace_interval: u64,
         work_validation_interval: u64,
+<<<<<<< HEAD
         work_validation_unknown_status_expiry_seconds: u64,
+=======
+>>>>>>> develop
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
@@ -142,7 +148,10 @@ impl SyntheticDataValidator {
             http_client,
             toploc_grace_interval,
             work_validation_interval,
+<<<<<<< HEAD
             work_validation_unknown_status_expiry_seconds,
+=======
+>>>>>>> develop
         }
     }
 
