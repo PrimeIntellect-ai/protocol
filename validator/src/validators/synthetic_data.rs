@@ -217,7 +217,6 @@ impl SyntheticDataValidator {
         work_key: &str,
     ) -> Result<(), ProcessWorkKeyError> {
         let file_name = self.get_file_name_for_work_key(work_key).await?;
-
         let validate_url = format!("{}/validate/{}", self.toploc_server_url, file_name);
         info!(
             "Triggering remote toploc validation for {} {}",
@@ -228,6 +227,7 @@ impl SyntheticDataValidator {
             "file_sha": work_key
         });
 
+        let start_time = std::time::Instant::now();
         match self
             .http_client
             .post(&validate_url)
@@ -236,8 +236,21 @@ impl SyntheticDataValidator {
             .await
         {
             Ok(_) => {
+                let trigger_duration = start_time.elapsed();
+                info!(
+                    "Remote toploc validation triggered for {} in {:?}",
+                    file_name, trigger_duration
+                );
+
+                let redis_start = std::time::Instant::now();
                 self.update_work_validation_status(work_key, &ValidationResult::Unknown)
                     .await?;
+                let redis_duration = redis_start.elapsed();
+                info!(
+                    "Redis status updated for {} in {:?}",
+                    work_key, redis_duration
+                );
+
                 Ok(())
             }
             Err(e) => {
