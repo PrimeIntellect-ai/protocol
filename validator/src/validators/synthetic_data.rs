@@ -400,13 +400,13 @@ impl SyntheticDataValidator {
         debug!("Validating work for pool ID: {:?}", self.pool_id);
 
         // Get all work keys for the pool from the last 24 hours
-        let twenty_four_hours_in_seconds = 60 * self.work_validation_interval;
+        let max_age_in_seconds = 60 * self.work_validation_interval;
         let current_timestamp = U256::from(chrono::Utc::now().timestamp());
-        let twenty_four_hours_ago = current_timestamp - U256::from(twenty_four_hours_in_seconds);
+        let max_age_ago = current_timestamp - U256::from(max_age_in_seconds);
 
         let work_keys = self
             .validator
-            .get_work_since(self.pool_id, twenty_four_hours_ago)
+            .get_work_since(self.pool_id, max_age_ago)
             .await
             .context("Failed to get work keys from the last 24 hours")?;
 
