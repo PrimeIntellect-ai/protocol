@@ -426,7 +426,10 @@ impl SyntheticDataValidator {
                     }
                     _ => {
                         if let Err(e) = self.process_workkey_status(work_key).await {
-                            error!("Failed to process work key {}: {} - previous status {:?}", work_key, e, status);
+                            error!(
+                                "Failed to process work key {}: {} - previous status {:?}",
+                                work_key, e, status
+                            );
                         }
                     }
                 },
