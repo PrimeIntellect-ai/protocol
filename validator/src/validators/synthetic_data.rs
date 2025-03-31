@@ -81,6 +81,7 @@ pub struct SyntheticDataValidator {
     http_client: reqwest::Client,
     toploc_grace_interval: u64,
     work_validation_interval: u64,
+    work_validation_unknown_status_expiry_seconds: u64,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -105,6 +106,7 @@ impl SyntheticDataValidator {
         redis_store: RedisStore,
         toploc_grace_interval: u64,
         work_validation_interval: u64,
+        work_validation_unknown_status_expiry_seconds: u64,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
@@ -140,6 +142,7 @@ impl SyntheticDataValidator {
             http_client,
             toploc_grace_interval,
             work_validation_interval,
+            work_validation_unknown_status_expiry_seconds,
         }
     }
 
@@ -319,7 +322,7 @@ impl SyntheticDataValidator {
     ) -> Result<(), Error> {
         let expiry = match status {
             // Must switch to pending within 60 seconds otherwise we resubmit it
-            ValidationResult::Unknown => 60,
+            ValidationResult::Unknown => self.work_validation_unknown_status_expiry_seconds,
             _ => 0,
         };
         let mut con = self.redis_store.client.get_connection()?;
@@ -511,6 +514,7 @@ mod tests {
             store,
             15,
             10,
+            120,
         );
 
         validator

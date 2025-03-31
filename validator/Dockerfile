@@ -17,6 +17,7 @@ ENV LOG_LEVEL=""
 ENV REDIS_URL="redis://localhost:6380"
 ENV TOPLOC_GRACE_INTERVAL="15"
 ENV TOPLOC_WORK_VALIDATION_INTERVAL="15"
+ENV TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS="120"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/validator \
@@ -33,6 +34,7 @@ $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 $([ ! -z "$REDIS_URL" ] && echo "--redis-url $REDIS_URL") \
 $([ ! -z "$TOPLOC_GRACE_INTERVAL" ] && echo "--toploc-grace-interval $TOPLOC_GRACE_INTERVAL") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_INTERVAL" ] && echo "--toploc-work-validation-interval $TOPLOC_WORK_VALIDATION_INTERVAL") \
+$([ ! -z "$TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS" ] && echo "--toploc-work-validation-unknown-status-expiry-seconds $TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 
