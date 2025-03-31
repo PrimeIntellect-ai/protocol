@@ -316,7 +316,7 @@ impl SyntheticDataValidator {
     ) -> Result<(), Error> {
         let expiry = match status {
             // Must switch to pending within 60 seconds otherwise we resubmit it
-            ValidationResult::Unknown => 600,
+            ValidationResult::Unknown => 60,
             _ => 0,
         };
         let mut con = self.redis_store.client.get_connection()?;
@@ -426,7 +426,10 @@ impl SyntheticDataValidator {
                     }
                     _ => {
                         if let Err(e) = self.process_workkey_status(work_key).await {
-                            error!("Failed to process work key {}: {}", work_key, e);
+                            error!(
+                                "Failed to process work key {}: {} - previous status {:?}",
+                                work_key, e, status
+                            );
                         }
                     }
                 },
@@ -434,6 +437,8 @@ impl SyntheticDataValidator {
                     if let Err(e) = self.trigger_remote_toploc_validation(work_key).await {
                         error!("Failed to trigger work key {}: {}", work_key, e);
                     }
+
+                    debug!("Sleeping for {} seconds", self.toploc_grace_interval);
                     tokio::time::sleep(tokio::time::Duration::from_secs(
                         self.toploc_grace_interval,
                     ))
