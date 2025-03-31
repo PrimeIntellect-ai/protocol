@@ -321,7 +321,7 @@ impl ProviderOperations {
         let stake_tx = match self.contracts.prime_network.stake(additional_stake).await {
             Ok(tx) => tx,
             Err(e) => {
-                println!("Failed to increase stake: {:?}", e);
+                log::info!("Failed to increase stake: {:?}", e);
                 return Err(ProviderError::Other);
             }
         };

@@ -42,40 +42,40 @@ impl Console {
         let middle_line = format!("║{}║", centered_title);
         let bottom_border = format!("╚{}╝", "═".repeat(content_width));
 
-        println!();
-        println!("{}", style(top_border).white().bold());
-        println!("{}", style(middle_line).white().bold());
-        println!("{}", style(bottom_border).white().bold());
+        log::info!();
+        log::info!("{}", style(top_border).white().bold());
+        log::info!("{}", style(middle_line).white().bold());
+        log::info!("{}", style(bottom_border).white().bold());
     }
 
     /// Prints a sub-title.
     pub fn title(text: &str) {
-        println!();
-        println!("{}", style(text).white().bold());
+        log::info!();
+        log::info!("{}", style(text).white().bold());
     }
 
     /// Prints an informational message.
     pub fn info(label: &str, value: &str) {
-        println!("{}: {}", style(label).dim().white(), style(value).white());
+        log::info!("{}: {}", style(label).dim().white(), style(value).white());
     }
 
     /// Prints a success message.
     pub fn success(text: &str) {
-        println!("{} {}", style("✓").green().bold(), style(text).green());
+        log::info!("{} {}", style("✓").green().bold(), style(text).green());
     }
 
     /// Prints a warning message.
     pub fn warning(text: &str) {
-        println!("{} {}", style("⚠").yellow().bold(), style(text).yellow());
+        log::info!("{} {}", style("⚠").yellow().bold(), style(text).yellow());
     }
 
     /// Prints an error message.
     pub fn error(text: &str) {
-        println!("{} {}", style("✗").red().bold(), style(text).red());
+        log::info!("{} {}", style("✗").red().bold(), style(text).red());
     }
 
     /// Prints a progress message.
     pub fn progress(text: &str) {
-        println!("{} {}", style("→").cyan().bold(), style(text).cyan());
+        log::info!("{} {}", style("→").cyan().bold(), style(text).cyan());
     }
 }

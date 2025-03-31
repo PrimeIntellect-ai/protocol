@@ -1,0 +1,4 @@
+disallowed-methods = [
+    { path = "std::io::stdio::_print", reason = "use the `log` crate instead of `println!`" },
+    { path = "std::io::_eprint", reason = "use the `log` crate instead of `eprintln!`" }
+] 

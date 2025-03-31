@@ -66,7 +66,7 @@ impl NodeStatusUpdater {
         {
             Result::Ok(result) => result,
             Result::Err(e) => {
-                println!("Error checking if node is in pool: {}", e);
+                log::info!("Error checking if node is in pool: {}", e);
                 false
             }
         };

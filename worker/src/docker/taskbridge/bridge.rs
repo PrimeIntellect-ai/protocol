@@ -155,7 +155,7 @@ impl TaskBridge {
                                         let storage_path = match &storage_path_clone {
                                             Some(path) => path,
                                             None => {
-                                                println!(
+                                                log::info!(
                                                     "Storage path is not set - cannot upload file."
                                                 );
                                                 continue;

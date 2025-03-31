@@ -89,7 +89,7 @@ mod tests {
         let signature = sign_request(endpoint, &wallet, Some(&empty_data))
             .await
             .unwrap();
-        println!("Signature: {}", signature);
+        log::info!("Signature: {}", signature);
         assert!(signature.starts_with("0x"));
         assert_eq!(signature.len(), 132);
     }

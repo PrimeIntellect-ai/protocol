@@ -1,0 +1,5 @@
+[build]
+rustflags = ["-Dwarnings"]
+
+[target.'cfg(all())']
+rustflags = ["-Dclippy::disallowed_methods"] 

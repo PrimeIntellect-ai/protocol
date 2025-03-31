@@ -123,7 +123,7 @@ pub async fn handle_file_upload(
 
         info!("Successfully uploaded file to S3");
     } else {
-        println!("Error: Missing signed_url in response");
+        log::info!("Error: Missing signed_url in response");
         return Err(anyhow::anyhow!("Missing signed_url in response"));
     }
 

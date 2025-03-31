@@ -57,8 +57,8 @@ async fn main() -> Result<()> {
         .prime_network
         .create_domain(domain_name, validation_logic, domain_uri)
         .await;
-    println!("Creating domain: {}", args.domain_name);
-    println!("Validation logic: {}", args.validation_logic);
-    println!("Transaction: {:?}", tx);
+    log::info!("Creating domain: {}", args.domain_name);
+    log::info!("Validation logic: {}", args.validation_logic);
+    log::info!("Transaction: {:?}", tx);
     Ok(())
 }

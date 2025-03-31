@@ -54,11 +54,11 @@ impl Contract {
 
         let abi_json: serde_json::Value = serde_json::from_slice(artifact)
             .map_err(|err| {
-                eprintln!("Failed to parse JSON: {}", err);
+                log::error!("Failed to parse JSON: {}", err);
                 std::process::exit(1);
             })
             .unwrap_or_else(|_| {
-                eprintln!("Error parsing JSON, exiting.");
+                log::error!("Error parsing JSON, exiting.");
                 std::process::exit(1);
             });
         let abi =

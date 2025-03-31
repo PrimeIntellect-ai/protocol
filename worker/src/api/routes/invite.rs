@@ -61,7 +61,7 @@ pub async fn invite_node(
         )
     };
 
-    println!("Starting heartbeat service with endpoint: {}", endpoint);
+    log::info!("Starting heartbeat service with endpoint: {}", endpoint);
     let _ = app_state.heartbeat_service.start(endpoint).await;
 
     HttpResponse::Accepted().json(json!({

@@ -156,7 +156,7 @@ where
                 let payload_value: serde_json::Value = match serde_json::from_slice(&body) {
                     Ok(val) => val,
                     Err(e) => {
-                        println!("Error parsing payload: {:?}", e);
+                        log::info!("Error parsing payload: {:?}", e);
                         return Err(ErrorBadRequest(e));
                     }
                 };
@@ -173,7 +173,7 @@ where
                 payload_string = match serde_json::to_string(&payload_data) {
                     Ok(s) => s,
                     Err(e) => {
-                        println!("Error serializing payload: {:?}", e);
+                        log::info!("Error serializing payload: {:?}", e);
                         return Err(ErrorBadRequest(e));
                     }
                 };
@@ -202,13 +202,13 @@ where
                 };
 
                 if recovered_address != expected_address {
-                    println!("Recovered address: {:?}", recovered_address);
-                    println!("Expected address: {:?}", expected_address);
+                    log::info!("Recovered address: {:?}", recovered_address);
+                    log::info!("Expected address: {:?}", expected_address);
                     return Err(ErrorBadRequest("Invalid signature"));
                 }
 
                 if !validator_state.is_address_allowed(&recovered_address) {
-                    println!(
+                    log::info!(
                         "Request with valid signature but not authorized. Allowed addresses: {:?}",
                         validator_state.get_allowed_addresses()
                     );
@@ -351,8 +351,8 @@ mod tests {
         )
         .await;
 
-        println!("Address: {}", wallet.wallet.default_signer().address());
-        println!("Signature: {}", signature);
+        log::info!("Address: {}", wallet.wallet.default_signer().address());
+        log::info!("Signature: {}", signature);
         let req = test::TestRequest::get()
             .uri("/test")
             .insert_header((
@@ -389,8 +389,8 @@ mod tests {
         )
         .await;
 
-        println!("Address: {}", wallet.wallet.default_signer().address());
-        println!("Signature: {}", signature);
+        log::info!("Address: {}", wallet.wallet.default_signer().address());
+        log::info!("Signature: {}", signature);
         let req = test::TestRequest::post()
             .uri("/test")
             .insert_header((

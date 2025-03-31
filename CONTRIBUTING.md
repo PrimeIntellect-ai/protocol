@@ -33,6 +33,27 @@ We use a two-branch strategy for development:
 5. Make sure your code lints
 6. Submit a pull request to merge into `develop`
 
+## Code Style Guidelines
+
+### Logging
+This project uses the `log` crate for structured logging:
+
+- Always use the appropriate log level:
+  - `error!`: For errors that require attention
+  - `warn!`: For warnings that might need attention
+  - `info!`: For informational messages about normal operation
+  - `debug!`: For detailed information useful for debugging
+  - `trace!`: For very detailed tracing information
+
+- Never use `println!` or `eprintln!` for logging. The project is configured with clippy rules to prevent their usage.
+- Include contextual information in logs that would be helpful for troubleshooting.
+- Variable interpolation in log messages should use the `{}` syntax: `info!("Processing item: {}", item_id)`.
+
+### Error Handling
+- Use `anyhow::Result` for functions that can fail in multiple ways.
+- Propagate errors with the `?` operator where appropriate.
+- Add context to errors when they pass through your code: `something().context("Failed while doing X")?`
+
 ## Report bugs using Github's issue tracker
 We use GitHub issues to track public bugs. Report a bug by opening a new issue; it's that easy!
 

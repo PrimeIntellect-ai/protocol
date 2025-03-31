@@ -67,6 +67,6 @@ async fn main() -> Result<()> {
             compute_limit,
         )
         .await;
-    println!("Transaction: {:?}", tx);
+    log::info!("Transaction: {:?}", tx);
     Ok(())
 }

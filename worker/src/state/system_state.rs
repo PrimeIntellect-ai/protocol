@@ -116,7 +116,7 @@ impl SystemState {
             if endpoint.is_some() {
                 if let Err(e) = self.save_state(endpoint.clone()) {
                     // Only save the endpoint
-                    eprintln!("Failed to save heartbeat state: {}", e);
+                    log::error!("Failed to save heartbeat state: {}", e);
                 }
             }
         }
@@ -141,14 +141,14 @@ mod tests {
     #[tokio::test]
     async fn test_state_dir_overwrite() {
         let default_state_dir = get_default_state_dir();
-        println!("Default state dir: {:?}", default_state_dir);
+        log::info!("Default state dir: {:?}", default_state_dir);
         assert!(default_state_dir.is_some());
     }
 
     #[tokio::test]
     async fn test_new_state_dir() {
         let temp_dir = setup_test_dir();
-        println!("Temp dir: {:?}", temp_dir.path());
+        log::info!("Temp dir: {:?}", temp_dir.path());
 
         let state = SystemState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
         state

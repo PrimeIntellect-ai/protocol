@@ -153,7 +153,7 @@ impl<'b> DiscoveryMonitor<'b> {
                     // Node is active False but we have it in store and it is healthy
                     // This means that the node likely got kicked by e.g. the validator
                     // We simply remove it from the store now and will rediscover it later?
-                    println!(
+                    log::info!(
                         "Node {} is no longer active on chain, marking as dead",
                         node_address
                     );
