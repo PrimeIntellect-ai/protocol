@@ -441,14 +441,14 @@ impl SyntheticDataValidator {
 
         let self_arc = Arc::new(self);
         let cancellation_token = self_arc.cancellation_token.clone();
-        let valdiator_clone_trigger = self_arc.clone();
-        let valdiator_clone_status = self_arc.clone();
+        let validator_clone_trigger = self_arc.clone();
+        let validator_clone_status = self_arc.clone();
 
         let mut trigger_tasks: Vec<String> = Vec::new();
         let mut status_tasks: Vec<String> = Vec::new();
 
         for work_key in &work_keys {
-            let cache_status = valdiator_clone_status
+            let cache_status = validator_clone_status
                 .get_work_validation_status_from_redis(work_key)
                 .await?;
             debug!("Cache status for {}: {:?}", work_key, cache_status);
@@ -475,7 +475,7 @@ impl SyntheticDataValidator {
 
         let trigger_handle = tokio::spawn(async move {
             for work_key in trigger_tasks {
-                if let Err(e) = valdiator_clone_trigger
+                if let Err(e) = validator_clone_trigger
                     .trigger_remote_toploc_validation(&work_key)
                     .await
                 {
@@ -483,10 +483,10 @@ impl SyntheticDataValidator {
                 }
                 info!(
                     "waiting before next task: {}",
-                    valdiator_clone_trigger.toploc_config.grace_interval
+                    validator_clone_trigger.toploc_config.grace_interval
                 );
                 tokio::time::sleep(tokio::time::Duration::from_secs(
-                    valdiator_clone_trigger.toploc_config.grace_interval,
+                    validator_clone_trigger.toploc_config.grace_interval,
                 ))
                 .await;
             }
@@ -494,7 +494,7 @@ impl SyntheticDataValidator {
 
         let status_handle = tokio::spawn(async move {
             for work_key in status_tasks {
-                if let Err(e) = valdiator_clone_status
+                if let Err(e) = validator_clone_status
                     .process_workkey_status(&work_key)
                     .await
                 {
