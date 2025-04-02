@@ -432,7 +432,11 @@ impl SyntheticDataValidator {
             .context("Failed to get work keys from the last 24 hours")?;
 
         if !work_keys.is_empty() {
-            info!("Found {} work keys to validate", work_keys.len());
+            info!(
+                "Found {} work keys to validate in the last {} seconds creation time",
+                work_keys.len(),
+                max_age_in_seconds
+            );
         }
 
         let self_arc = Arc::new(self);
@@ -477,6 +481,10 @@ impl SyntheticDataValidator {
                 {
                     error!("Failed to trigger work key {}: {}", work_key, e);
                 }
+                info!(
+                    "waiting before next task: {}",
+                    valdiator_clone_trigger.toploc_config.grace_interval
+                );
                 tokio::time::sleep(tokio::time::Duration::from_secs(
                     valdiator_clone_trigger.toploc_config.grace_interval,
                 ))
@@ -568,18 +576,25 @@ mod tests {
             store,
             CancellationToken::new(),
         );
-
         validator
             .update_work_validation_status(
                 "0x0000000000000000000000000000000000000000",
                 &ValidationResult::Accept,
             )
             .await
-            .map_err(|e| Error::msg(format!("Failed to update work validation status: {}", e)))?;
+            .map_err(|e| {
+                error!("Failed to update work validation status: {}", e);
+                Error::msg(format!("Failed to update work validation status: {}", e))
+            })?;
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         let status = validator
             .get_work_validation_status_from_redis("0x0000000000000000000000000000000000000000")
             .await
-            .map_err(|e| Error::msg(format!("Failed to get work validation status: {}", e)))?;
+            .map_err(|e| {
+                error!("Failed to get work validation status: {}", e);
+                Error::msg(format!("Failed to get work validation status: {}", e))
+            })?;
         assert_eq!(status, Some(ValidationResult::Accept));
         Ok(())
     }

@@ -90,9 +90,9 @@ struct Args {
     #[arg(long, default_value = "redis://localhost:6380")]
     redis_url: String,
 }
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let log_level = match args.log_level.as_str() {
         "error" => LevelFilter::Error,
@@ -113,6 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sighup = signal(SignalKind::hangup())?;
     let mut sigquit = signal(SignalKind::quit())?;
     let signal_token = cancellation_token.clone();
+    let cancellation_token_clone = cancellation_token.clone();
     tokio::spawn(async move {
         tokio::select! {
             _ = sigterm.recv() => {
@@ -142,9 +143,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     });
 
-    runtime.spawn(async {
+    tokio::spawn(async {
         if let Err(e) = HttpServer::new(|| App::new().route("/health", web::get().to(health_check)))
-            .bind("0.0.0.0:8080")
+            .bind("0.0.0.0:9879")
             .expect("Failed to bind health check server")
             .run()
             .await
@@ -164,11 +165,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contracts = contract_builder.build_partial().unwrap();
 
     if let Some(pool_id) = args.pool_id.clone() {
-        let pool = match runtime.block_on(
-            contracts
-                .compute_pool
-                .get_pool_info(U256::from_str(&pool_id).unwrap()),
-        ) {
+        let pool = match contracts
+            .compute_pool
+            .get_pool_info(U256::from_str(&pool_id).unwrap())
+            .await
+        {
             Ok(pool_info) => pool_info,
             Err(e) => {
                 error!("Failed to get pool info: {:?}", e);
@@ -176,14 +177,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
         let domain_id: u32 = pool.domain_id.try_into().unwrap();
-        let domain = runtime
-            .block_on(
-                contracts
-                    .domain_registry
-                    .as_ref()
-                    .unwrap()
-                    .get_domain(domain_id),
-            )
+        let domain = contracts
+            .domain_registry
+            .as_ref()
+            .unwrap()
+            .get_domain(domain_id)
+            .await
             .unwrap();
         contract_builder =
             contract_builder.with_synthetic_data_validator(Some(domain.validation_logic));
@@ -228,12 +227,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     loop {
+        if cancellation_token_clone.is_cancelled() {
+            log::info!("Validation loop is stopping due to cancellation signal");
+            break;
+        }
+
         if let Some(validator) = synthetic_validator.clone() {
-            runtime.block_on(async {
-                if let Err(e) = validator.validate_work().await {
-                    error!("Failed to validate work: {}", e);
-                }
-            });
+            if let Err(e) = validator.validate_work().await {
+                error!("Failed to validate work: {}", e);
+            }
         }
 
         async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
@@ -243,7 +245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(signature)
         }
 
-        let nodes = match runtime.block_on(async {
+        let nodes = match async {
             let discovery_route = "/api/validator";
             let address = validator_wallet
                 .wallet
@@ -289,7 +291,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             Ok(parsed_response.data)
-        }) {
+        }
+        .await
+        {
             Ok(n) => n,
             Err(e) => {
                 error!("Error in node fetching loop: {:#}", e);
@@ -298,13 +302,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        if let Err(e) = runtime.block_on(hardware_validator.validate_nodes(nodes)) {
+        if let Err(e) = hardware_validator.validate_nodes(nodes).await {
             error!("Error validating nodes: {:#}", e);
         }
 
         info!("Validation loop completed");
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
+    Ok(())
 }
 
 #[cfg(test)]
