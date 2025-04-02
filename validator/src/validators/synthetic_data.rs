@@ -9,7 +9,9 @@ use redis::Commands;
 use serde::{Deserialize, Serialize};
 use shared::utils::google_cloud::resolve_mapping_for_sha;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
-use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::SyntheticDataWorkValidator;
+use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::{
+    SyntheticDataWorkValidator, WorkInfo,
+};
 use std::fmt;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -375,6 +377,34 @@ impl SyntheticDataValidator {
             .transpose()
     }
 
+    async fn update_work_info_in_redis(
+        &self,
+        work_key: &str,
+        work_info: &WorkInfo,
+    ) -> Result<(), Error> {
+        let mut con = self.redis_store.client.get_connection()?;
+        let key = format!("work_info:{}", work_key);
+        let work_info = serde_json::to_string(&work_info)?;
+        let _: () = con
+            .set(&key, work_info)
+            .map_err(|e| Error::msg(format!("Failed to set work info: {}", e)))?;
+        Ok(())
+    }
+
+    async fn get_work_info_from_redis(&self, work_key: &str) -> Result<Option<WorkInfo>, Error> {
+        let mut con = self.redis_store.client.get_connection()?;
+        let key = format!("work_info:{}", work_key);
+        let work_info: Option<String> = con
+            .get(&key)
+            .map_err(|e| Error::msg(format!("Failed to get work info: {}", e)))?;
+        work_info
+            .map(|work_info| {
+                serde_json::from_str(&work_info)
+                    .map_err(|e| Error::msg(format!("Failed to parse work info: {}", e)))
+            })
+            .transpose()
+    }
+
     async fn process_workkey_status(&mut self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
         let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
 
@@ -432,20 +462,36 @@ impl SyntheticDataValidator {
 
         // Process each work key with rate limiting
         for work_key in &work_keys {
-            let key_info = self.validator.get_work_info(self.pool_id, work_key).await;
-            if let Err(e) = key_info {
-                error!("Failed to get work info for {}: {}", work_key, e);
-                continue;
-            }
-            let work_units = key_info.unwrap().work_units;
-            debug!("Key {} has {} work units", work_key, work_units);
-            if work_units > U256::from(1) {
+            // Get work info from cache or fetch from validator
+            let work_info = match self.get_work_info_from_redis(work_key).await? {
+                Some(cached_info) => cached_info,
+                None => {
+                    match self.validator.get_work_info(self.pool_id, work_key).await {
+                        Ok(info) => {
+                            // Update cache with fetched work info
+                            if let Err(e) = self.update_work_info_in_redis(work_key, &info).await {
+                                error!("Failed to cache work info for {}: {}", work_key, e);
+                            }
+                            info
+                        }
+                        Err(e) => {
+                            error!("Failed to get work info for {}: {}", work_key, e);
+                            continue;
+                        }
+                    }
+                }
+            };
+            debug!("Key {} has {} work units", work_key, work_info.work_units);
+
+            // Invalidate work if work units exceed threshold
+            if work_info.work_units > U256::from(1) {
                 if let Err(e) = self.invalidate_work(work_key).await {
                     error!("Failed to invalidate work {}: {}", work_key, e);
                     continue;
                 }
                 self.update_work_validation_status(work_key, &ValidationResult::Invalidated)
                     .await?;
+                continue;
             }
 
             let cache_status = self.get_work_validation_status_from_redis(work_key).await?;

@@ -7,13 +7,14 @@ use alloy::{
 use anyhow::Error;
 use log::debug;
 use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Clone)]
 pub struct SyntheticDataWorkValidator {
     pub instance: Contract,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct WorkInfo {
     pub provider: Address,
     pub node_id: Address,

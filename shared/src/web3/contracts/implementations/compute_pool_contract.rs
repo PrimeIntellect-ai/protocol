@@ -150,7 +150,7 @@ impl ComputePool {
         submit_data.extend_from_slice(&data[0..32]); // Work key
 
         // We leave work units simple for now and only set this to 1 (1 file = 1 work unit)
-        let work_units = U256::from(2);
+        let work_units = U256::from(1);
         submit_data.extend_from_slice(&work_units.to_be_bytes::<32>());
 
         println!("Submit data: {:?}", submit_data);
