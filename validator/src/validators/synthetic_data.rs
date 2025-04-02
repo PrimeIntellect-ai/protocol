@@ -432,6 +432,22 @@ impl SyntheticDataValidator {
 
         // Process each work key with rate limiting
         for work_key in &work_keys {
+
+            let key_info = self.validator.get_work_info(self.pool_id, work_key).await;
+            if let Err(e) = key_info {
+                error!("Failed to get work info for {}: {}", work_key, e);
+                continue;
+            }
+            let work_units = key_info.unwrap().work_units;
+            debug!("Key {} has {} work units", work_key, work_units);
+            if work_units > U256::from(1) {
+                if let Err(e) = self.invalidate_work(work_key).await {
+                    error!("Failed to invalidate work {}: {}", work_key, e);
+                    continue;
+                }
+                self.update_work_validation_status(work_key, &ValidationResult::Invalidated).await?;
+            }
+
             let cache_status = self.get_work_validation_status_from_redis(work_key).await?;
             debug!("Cache status for {}: {:?}", work_key, cache_status);
             match cache_status {

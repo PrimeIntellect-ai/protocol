@@ -462,6 +462,24 @@
   },
   {
     "type": "function",
+    "name": "submitWork",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "workUnits",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
     "name": "supportsInterface",
     "inputs": [
       {
