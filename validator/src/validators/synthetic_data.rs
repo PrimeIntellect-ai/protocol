@@ -3,7 +3,7 @@ use crate::validators::Validator;
 use alloy::primitives::U256;
 use anyhow::{Context, Error};
 use hex;
-use log::debug;
+use log::{debug, warn};
 use log::{error, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
@@ -11,6 +11,8 @@ use shared::utils::google_cloud::resolve_mapping_for_sha;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::SyntheticDataWorkValidator;
 use std::fmt;
+use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 enum ValidationResult {
@@ -69,19 +71,27 @@ impl fmt::Display for ProcessWorkKeyError {
     }
 }
 
+#[derive(Clone)]
+pub struct ToplocConfig {
+    pub server_url: String,
+    pub auth_token: Option<String>,
+    pub grace_interval: u64,
+    pub work_validation_interval: u64,
+    pub unknown_status_expiry_seconds: u64,
+}
+
+#[derive(Clone)]
 pub struct SyntheticDataValidator {
     pool_id: U256,
     validator: SyntheticDataWorkValidator,
     prime_network: PrimeNetworkContract,
-    toploc_server_url: String,
+    toploc_config: ToplocConfig,
     penalty: U256,
     s3_credentials: Option<String>,
     bucket_name: Option<String>,
     redis_store: RedisStore,
+    cancellation_token: CancellationToken,
     http_client: reqwest::Client,
-    toploc_grace_interval: u64,
-    work_validation_interval: u64,
-    work_validation_unknown_status_expiry_seconds: u64,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -93,20 +103,16 @@ impl Validator for SyntheticDataValidator {
 }
 
 impl SyntheticDataValidator {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool_id_str: String,
         validator: SyntheticDataWorkValidator,
         prime_network: PrimeNetworkContract,
-        toploc_server_url: String,
-        toploc_auth_token: Option<String>,
+        toploc_config: ToplocConfig,
         penalty: U256,
         s3_credentials: Option<String>,
         bucket_name: Option<String>,
         redis_store: RedisStore,
-        toploc_grace_interval: u64,
-        work_validation_interval: u64,
-        work_validation_unknown_status_expiry_seconds: u64,
+        cancellation_token: CancellationToken,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
@@ -118,7 +124,7 @@ impl SyntheticDataValidator {
         let http_client = reqwest::Client::builder()
             .default_headers({
                 let mut headers = reqwest::header::HeaderMap::new();
-                if let Some(token) = &toploc_auth_token {
+                if let Some(token) = &toploc_config.auth_token {
                     headers.insert(
                         reqwest::header::AUTHORIZATION,
                         reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
@@ -134,15 +140,13 @@ impl SyntheticDataValidator {
             pool_id,
             validator,
             prime_network,
-            toploc_server_url,
+            toploc_config,
             penalty,
             s3_credentials,
             bucket_name,
             redis_store,
             http_client,
-            toploc_grace_interval,
-            work_validation_interval,
-            work_validation_unknown_status_expiry_seconds,
+            cancellation_token,
         }
     }
 
@@ -217,7 +221,7 @@ impl SyntheticDataValidator {
         work_key: &str,
     ) -> Result<(), ProcessWorkKeyError> {
         let file_name = self.get_file_name_for_work_key(work_key).await?;
-        let validate_url = format!("{}/validate/{}", self.toploc_server_url, file_name);
+        let validate_url = format!("{}/validate/{}", self.toploc_config.server_url, file_name);
         info!(
             "Triggering remote toploc validation for {} {}",
             file_name, validate_url
@@ -267,7 +271,7 @@ impl SyntheticDataValidator {
         &self,
         file_name: &str,
     ) -> Result<ValidationResult, Error> {
-        let url = format!("{}/status/{}", self.toploc_server_url, file_name);
+        let url = format!("{}/status/{}", self.toploc_config.server_url, file_name);
 
         match self.http_client.get(&url).send().await {
             Ok(response) => {
@@ -335,7 +339,7 @@ impl SyntheticDataValidator {
     ) -> Result<(), Error> {
         let expiry = match status {
             // Must switch to pending within 60 seconds otherwise we resubmit it
-            ValidationResult::Unknown => self.work_validation_unknown_status_expiry_seconds,
+            ValidationResult::Unknown => self.toploc_config.unknown_status_expiry_seconds,
             _ => 0,
         };
         let mut con = self.redis_store.client.get_connection()?;
@@ -375,7 +379,7 @@ impl SyntheticDataValidator {
             .transpose()
     }
 
-    async fn process_workkey_status(&mut self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
+    async fn process_workkey_status(&self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
         let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
 
         let result = self.poll_remote_toploc_validation(&cleaned_file_name).await;
@@ -412,11 +416,11 @@ impl SyntheticDataValidator {
         Ok(())
     }
 
-    pub async fn validate_work(&mut self) -> Result<(), Error> {
+    pub async fn validate_work(self) -> Result<(), Error> {
         debug!("Validating work for pool ID: {:?}", self.pool_id);
 
         // Get all work keys for the pool from the last 24 hours
-        let max_age_in_seconds = 60 * self.work_validation_interval;
+        let max_age_in_seconds = 60 * self.toploc_config.work_validation_interval;
         let current_timestamp = U256::from(chrono::Utc::now().timestamp());
         let max_age_ago = current_timestamp - U256::from(max_age_in_seconds);
 
@@ -430,9 +434,18 @@ impl SyntheticDataValidator {
             info!("Found {} work keys to validate", work_keys.len());
         }
 
-        // Process each work key with rate limiting
+        let self_arc = Arc::new(self);
+        let cancellation_token = self_arc.cancellation_token.clone();
+        let valdiator_clone_trigger = self_arc.clone();
+        let valdiator_clone_status = self_arc.clone();
+
+        let mut trigger_tasks: Vec<String> = Vec::new();
+        let mut status_tasks: Vec<String> = Vec::new();
+
         for work_key in &work_keys {
-            let cache_status = self.get_work_validation_status_from_redis(work_key).await?;
+            let cache_status = valdiator_clone_status
+                .get_work_validation_status_from_redis(work_key)
+                .await?;
             debug!("Cache status for {}: {:?}", work_key, cache_status);
             match cache_status {
                 Some(status) => match status {
@@ -446,27 +459,49 @@ impl SyntheticDataValidator {
                         continue;
                     }
                     _ => {
-                        if let Err(e) = self.process_workkey_status(work_key).await {
-                            error!(
-                                "Failed to process work key {}: {} - previous status {:?}",
-                                work_key, e, status
-                            );
-                        }
+                        status_tasks.push(work_key.clone());
                     }
                 },
                 None => {
-                    if let Err(e) = self.trigger_remote_toploc_validation(work_key).await {
-                        error!("Failed to trigger work key {}: {}", work_key, e);
-                    }
-
-                    debug!("Sleeping for {} seconds", self.toploc_grace_interval);
-                    tokio::time::sleep(tokio::time::Duration::from_secs(
-                        self.toploc_grace_interval,
-                    ))
-                    .await;
+                    trigger_tasks.push(work_key.clone());
                 }
             }
         }
+
+        let trigger_handle = tokio::spawn(async move {
+            for work_key in trigger_tasks {
+                if let Err(e) = valdiator_clone_trigger
+                    .trigger_remote_toploc_validation(&work_key)
+                    .await
+                {
+                    error!("Failed to trigger work key {}: {}", work_key, e);
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(
+                    valdiator_clone_trigger.toploc_config.grace_interval,
+                ))
+                .await;
+            }
+        });
+
+        let status_handle = tokio::spawn(async move {
+            for work_key in status_tasks {
+                if let Err(e) = valdiator_clone_status
+                    .process_workkey_status(&work_key)
+                    .await
+                {
+                    error!("Failed to process work key {}: {}", work_key, e);
+                }
+            }
+        });
+
+        tokio::select! {
+            _ = trigger_handle => (),
+            _ = status_handle => (),
+            _ = cancellation_token.cancelled() => {
+                warn!("Validation cancelled");
+            }
+        }
+
         Ok(())
     }
 }
@@ -519,15 +554,18 @@ mod tests {
             "0".to_string(),
             contracts.synthetic_data_validator.clone().unwrap(),
             contracts.prime_network.clone(),
-            "http://localhost:8080".to_string(),
-            None,
+            ToplocConfig {
+                server_url: "http://localhost:8080".to_string(),
+                auth_token: None,
+                grace_interval: 15,
+                work_validation_interval: 10,
+                unknown_status_expiry_seconds: 120,
+            },
             U256::from(1000),
             None,
             None,
             store,
-            15,
-            10,
-            120,
+            CancellationToken::new(),
         );
 
         validator

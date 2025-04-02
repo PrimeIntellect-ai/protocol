@@ -16,9 +16,11 @@ use shared::web3::wallet::Wallet;
 use std::str::FromStr;
 use std::sync::Arc;
 use store::redis::RedisStore;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio_util::sync::CancellationToken;
 use url::Url;
 use validators::hardware::HardwareValidator;
-use validators::synthetic_data::SyntheticDataValidator;
+use validators::synthetic_data::{SyntheticDataValidator, ToplocConfig};
 
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(json!({ "status": "ok" }))
@@ -88,7 +90,7 @@ struct Args {
     #[arg(long, default_value = "redis://localhost:6380")]
     redis_url: String,
 }
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
     let args = Args::parse();
@@ -104,6 +106,30 @@ fn main() {
         .filter_level(log_level)
         .format_timestamp(None)
         .init();
+
+    let cancellation_token = CancellationToken::new();
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sighup = signal(SignalKind::hangup())?;
+    let mut sigquit = signal(SignalKind::quit())?;
+    let signal_token = cancellation_token.clone();
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = sigterm.recv() => {
+                log::info!("Received termination signal");
+            }
+            _ = sigint.recv() => {
+                log::info!("Received interrupt signal");
+            }
+            _ = sighup.recv() => {
+                log::info!("Received hangup signal");
+            }
+            _ = sigquit.recv() => {
+                log::info!("Received quit signal");
+            }
+        }
+        signal_token.cancel();
+    });
 
     let private_key_validator = args.validator_key;
     let rpc_url: Url = args.rpc_url.parse().unwrap();
@@ -171,25 +197,26 @@ fn main() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
-                if let Some(toploc_server_url) = args.toploc_server_url {
-                    Some(SyntheticDataValidator::new(
-                        pool_id,
-                        validator,
-                        contracts.prime_network.clone(),
-                        toploc_server_url,
-                        args.toploc_auth_token,
-                        penalty,
-                        args.s3_credentials,
-                        args.bucket_name,
-                        redis_store,
-                        args.toploc_grace_interval,
-                        args.toploc_work_validation_interval,
-                        args.toploc_work_validation_unknown_status_expiry_seconds,
-                    ))
-                } else {
-                    error!("Leviticus URL is not provided");
-                    std::process::exit(1);
-                }
+                let toploc_config = ToplocConfig {
+                    server_url: args.toploc_server_url.unwrap(),
+                    auth_token: args.toploc_auth_token,
+                    grace_interval: args.toploc_grace_interval,
+                    work_validation_interval: args.toploc_work_validation_interval,
+                    unknown_status_expiry_seconds: args
+                        .toploc_work_validation_unknown_status_expiry_seconds,
+                };
+
+                Some(SyntheticDataValidator::new(
+                    pool_id,
+                    validator,
+                    contracts.prime_network.clone(),
+                    toploc_config,
+                    penalty,
+                    args.s3_credentials,
+                    args.bucket_name,
+                    redis_store,
+                    cancellation_token,
+                ))
             }
             None => {
                 error!("Synthetic data validator not found");
@@ -201,7 +228,7 @@ fn main() {
     };
 
     loop {
-        if let Some(validator) = &mut synthetic_validator {
+        if let Some(validator) = synthetic_validator.clone() {
             runtime.block_on(async {
                 if let Err(e) = validator.validate_work().await {
                     error!("Failed to validate work: {}", e);
