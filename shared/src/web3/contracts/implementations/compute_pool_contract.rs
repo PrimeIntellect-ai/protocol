@@ -153,8 +153,6 @@ impl ComputePool {
         let work_units = U256::from(1);
         submit_data.extend_from_slice(&work_units.to_be_bytes::<32>());
 
-        println!("Submit data: {:?}", submit_data);
-
         let result = self
             .instance
             .instance()
@@ -167,7 +165,6 @@ impl ComputePool {
             .watch()
             .await?;
 
-        println!("Result: {:?}", result);
         Ok(result)
     }
 

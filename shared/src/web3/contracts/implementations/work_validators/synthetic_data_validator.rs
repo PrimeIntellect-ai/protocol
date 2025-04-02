@@ -96,7 +96,6 @@ impl SyntheticDataWorkValidator {
         let tuple_array = tuple
             .as_tuple()
             .ok_or_else(|| Error::msg("Result is not a tuple"))?;
-        println!("Tuple array: {:?}", tuple_array);
         if tuple_array.len() != 4 {
             return Err(Error::msg("Invalid tuple length"));
         }
