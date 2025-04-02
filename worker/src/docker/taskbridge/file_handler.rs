@@ -155,13 +155,14 @@ pub async fn handle_file_validation(
             Address::from_str(node_address)?,
             decoded_sha.to_vec(),
         )
-        .await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Failed to submit work: {}", e);
-                return Err(anyhow::anyhow!("Failed to submit work: {}", e));
-            }
-        };
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Failed to submit work: {}", e);
+            return Err(anyhow::anyhow!("Failed to submit work: {}", e));
+        }
+    };
 
     debug!("Submit work result: {:?}", result);
 

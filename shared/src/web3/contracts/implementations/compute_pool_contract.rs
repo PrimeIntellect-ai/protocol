@@ -149,21 +149,24 @@ impl ComputePool {
         let mut submit_data = Vec::with_capacity(64);
         submit_data.extend_from_slice(&data[0..32]); // Work key
 
-        // We leave work units simple for now and only set this to 1 (1 file = 1 work unit) 
+        // We leave work units simple for now and only set this to 1 (1 file = 1 work unit)
         let work_units = U256::from(2);
-        submit_data.extend_from_slice(&work_units.to_be_bytes::<32>()); 
+        submit_data.extend_from_slice(&work_units.to_be_bytes::<32>());
 
         println!("Submit data: {:?}", submit_data);
 
         let result = self
             .instance
             .instance()
-            .function("submitWork", &[pool_id.into(), node.into(), submit_data.into()])?
+            .function(
+                "submitWork",
+                &[pool_id.into(), node.into(), submit_data.into()],
+            )?
             .send()
             .await?
             .watch()
             .await?;
-        
+
         println!("Result: {:?}", result);
         Ok(result)
     }

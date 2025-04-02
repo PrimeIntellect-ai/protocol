@@ -125,7 +125,7 @@ impl SyntheticDataWorkValidator {
             provider,
             node_id,
             timestamp,
-            work_units
+            work_units,
         })
     }
 
