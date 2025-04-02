@@ -103,6 +103,7 @@ impl Validator for SyntheticDataValidator {
 }
 
 impl SyntheticDataValidator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool_id_str: String,
         validator: SyntheticDataWorkValidator,

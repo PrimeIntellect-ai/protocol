@@ -193,7 +193,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
 
-    let mut synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
+    let synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
