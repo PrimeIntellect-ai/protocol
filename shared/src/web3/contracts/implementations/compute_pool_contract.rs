@@ -138,22 +138,33 @@ impl ComputePool {
         println!("Result: {:?}", result);
         Ok(result)
     }
-
     pub async fn submit_work(
         &self,
         pool_id: U256,
         node: Address,
         data: Vec<u8>,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        // Extract the work key from the first 32 bytes
+        // Create a new data vector with work key and work units (set to 1)
+        let mut submit_data = Vec::with_capacity(64);
+        submit_data.extend_from_slice(&data[0..32]); // Work key
+
+        // We leave work units simple for now and only set this to 1 (1 file = 1 work unit)
+        let work_units = U256::from(1);
+        submit_data.extend_from_slice(&work_units.to_be_bytes::<32>());
+
         let result = self
             .instance
             .instance()
-            .function("submitWork", &[pool_id.into(), node.into(), data.into()])?
+            .function(
+                "submitWork",
+                &[pool_id.into(), node.into(), submit_data.into()],
+            )?
             .send()
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
+
         Ok(result)
     }
 
