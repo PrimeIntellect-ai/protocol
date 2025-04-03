@@ -98,6 +98,11 @@
             "name": "timestamp",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "workUnits",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
       }
@@ -266,6 +271,12 @@
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
+      },
+      {
+        "name": "workUnits",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -297,6 +308,12 @@
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
+      },
+      {
+        "name": "workUnits",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false

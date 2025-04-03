@@ -7,17 +7,19 @@ use alloy::{
 use anyhow::Error;
 use log::debug;
 use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Clone)]
 pub struct SyntheticDataWorkValidator {
     pub instance: Contract,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct WorkInfo {
     pub provider: Address,
     pub node_id: Address,
     pub timestamp: u64,
+    pub work_units: U256,
 }
 
 impl SyntheticDataWorkValidator {
@@ -94,8 +96,7 @@ impl SyntheticDataWorkValidator {
         let tuple_array = tuple
             .as_tuple()
             .ok_or_else(|| Error::msg("Result is not a tuple"))?;
-
-        if tuple_array.len() != 3 {
+        if tuple_array.len() != 4 {
             return Err(Error::msg("Invalid tuple length"));
         }
 
@@ -115,10 +116,16 @@ impl SyntheticDataWorkValidator {
         )
         .map_err(|_| Error::msg("Timestamp conversion failed"))?;
 
+        let work_units = tuple_array[3]
+            .as_uint()
+            .ok_or_else(|| Error::msg("Work units is not a uint"))?
+            .0;
+
         Ok(WorkInfo {
             provider,
             node_id,
             timestamp,
+            work_units,
         })
     }
 
