@@ -1,11 +1,11 @@
-use alloy::primitives::U256; // Already present
+use alloy::primitives::U256;
 use clap::Parser;
 use eyre::Result;
+use hex;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
+use std::str::FromStr;
 use url::Url;
-use hex;
-use std::str::FromStr; // Added to bring FromStr into scope
 
 #[derive(Parser)]
 struct Args {
@@ -26,8 +26,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Parse RPC URL with proper error handling
-    let rpc_url = Url::parse(&args.rpc_url)
-        .map_err(|e| eyre::eyre!("Invalid RPC URL: {}", e))?;
+    let rpc_url = Url::parse(&args.rpc_url).map_err(|e| eyre::eyre!("Invalid RPC URL: {}", e))?;
 
     // Create wallet with error conversion
     let wallet = Wallet::new(&args.key, rpc_url)
@@ -44,8 +43,8 @@ async fn main() -> Result<()> {
 
     // Convert arguments to appropriate types
     let pool_id = U256::from(args.pool_id);
-    let penalty = U256::from_str(&args.penalty)
-        .map_err(|e| eyre::eyre!("Invalid penalty value: {}", e))?;
+    let penalty =
+        U256::from_str(&args.penalty).map_err(|e| eyre::eyre!("Invalid penalty value: {}", e))?;
     let work_key = hex::decode(args.work_key.trim_start_matches("0x"))
         .map_err(|e| eyre::eyre!("Invalid work key hex: {}", e))?;
 

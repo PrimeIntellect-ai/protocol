@@ -1,11 +1,11 @@
 use alloy::primitives::{Address, U256};
 use clap::Parser;
 use eyre::Result;
+use hex;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
 use url::Url;
-use hex; // Import the hex crate
 
 #[derive(Parser)]
 struct Args {
@@ -59,7 +59,10 @@ async fn main() -> Result<()> {
         .submit_work(pool_id, node, data)
         .await
         .map_err(|e| eyre::eyre!("Failed to submit work: {}", e))?;
-    println!("Submitted work for node {} in pool {}", args.node, args.pool_id);
+    println!(
+        "Submitted work for node {} in pool {}",
+        args.node, args.pool_id
+    );
     println!("Transaction hash: {:?}", tx);
 
     Ok(())
