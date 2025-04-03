@@ -148,14 +148,21 @@ pub async fn handle_file_validation(
         decoded_sha.len()
     );
 
-    let result = contracts
+    let result = match contracts
         .compute_pool
         .submit_work(
             U256::from(pool_id),
             Address::from_str(node_address)?,
             decoded_sha.to_vec(),
         )
-        .await;
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Failed to submit work: {}", e);
+            return Err(anyhow::anyhow!("Failed to submit work: {}", e));
+        }
+    };
 
     debug!("Submit work result: {:?}", result);
 
