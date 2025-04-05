@@ -55,7 +55,7 @@ setup-dev-env:
 	make set-min-stake-amount
 	make create-training-domain
 	make create-synth-data-domain
-	make mint-ai-to-federator
+	make mint-ai-tokens-to-federator
 
 
 up:
