@@ -22,6 +22,13 @@ pub struct AppState {
     pub contracts: Option<Arc<Contracts>>,
 }
 
+async fn health_check() -> HttpResponse {
+    HttpResponse::Ok().json(json!({
+        "status": "ok",
+        "service": "discovery"
+    }))
+}
+
 pub async fn start_server(
     host: &str,
     port: u16,
@@ -58,6 +65,7 @@ pub async fn start_server(
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(Data::new(app_state.clone()))
             .app_data(web::PayloadConfig::default().limit(2_097_152))
+            .route("/health", web::get().to(health_check))
             .service(
                 web::scope("/api/platform")
                     .wrap(api_key_middleware.clone())
