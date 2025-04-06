@@ -38,5 +38,5 @@ $([ ! -z "$TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS" ] && echo "--to
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 
-EXPOSE 8080
+EXPOSE 9879
 ENTRYPOINT ["/entrypoint.sh"]
