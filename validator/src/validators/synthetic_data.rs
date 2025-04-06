@@ -222,6 +222,7 @@ impl SyntheticDataValidator {
     async fn trigger_remote_toploc_validation(
         &self,
         work_key: &str,
+        key_address: &str,
     ) -> Result<(), ProcessWorkKeyError> {
         let file_name = self.get_file_name_for_work_key(work_key).await?;
         let validate_url = format!("{}/validate/{}", self.toploc_config.server_url, file_name);
@@ -231,7 +232,8 @@ impl SyntheticDataValidator {
         );
 
         let body = serde_json::json!({
-            "file_sha": work_key
+            "file_sha": work_key,
+            "address": key_address
         });
 
         let start_time = std::time::Instant::now();
@@ -474,7 +476,7 @@ impl SyntheticDataValidator {
         let validator_clone_trigger = self_arc.clone();
         let validator_clone_status = self_arc.clone();
 
-        let mut trigger_tasks: Vec<String> = Vec::new();
+        let mut trigger_tasks: Vec<(String, WorkInfo)> = Vec::new();
         let mut status_tasks: Vec<String> = Vec::new();
 
         for work_key in &work_keys {
@@ -537,18 +539,21 @@ impl SyntheticDataValidator {
                     }
                 },
                 None => {
-                    trigger_tasks.push(work_key.clone());
+                    trigger_tasks.push((work_key.clone(), work_info));
                 }
             }
         }
 
         let trigger_handle = tokio::spawn(async move {
-            for work_key in trigger_tasks {
+            for work_info in trigger_tasks {
                 if let Err(e) = validator_clone_trigger
-                    .trigger_remote_toploc_validation(&work_key)
+                    .trigger_remote_toploc_validation(
+                        &work_info.0,
+                        &work_info.1.node_id.to_string(),
+                    )
                     .await
                 {
-                    error!("Failed to trigger work key {}: {}", work_key, e);
+                    error!("Failed to trigger work key {}: {}", work_info.0, e);
                 }
                 info!(
                     "waiting before next task: {}",
