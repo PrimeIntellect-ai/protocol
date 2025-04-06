@@ -40,6 +40,10 @@ struct Args {
     #[arg(long, default_value = "http://localhost:8089")]
     discovery_url: String,
 
+    /// Ability to disable hardware validation
+    #[arg(long, default_value = "false")]
+    disable_hardware_validation: bool,
+
     /// Optional: Pool Id for work validation
     /// If not provided, the validator will not validate work
     #[arg(long, default_value = None)]
@@ -238,72 +242,74 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
-            let signature = sign_request(message, wallet, None)
-                .await
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
-            Ok(signature)
-        }
-
-        let nodes = match async {
-            let discovery_route = "/api/validator";
-            let address = validator_wallet
-                .wallet
-                .default_signer()
-                .address()
-                .to_string();
-
-            let signature = _generate_signature(&validator_wallet, discovery_route)
-                .await
-                .context("Failed to generate signature")?;
-
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert(
-                "x-address",
-                reqwest::header::HeaderValue::from_str(&address)
-                    .context("Failed to create address header")?,
-            );
-            headers.insert(
-                "x-signature",
-                reqwest::header::HeaderValue::from_str(&signature)
-                    .context("Failed to create signature header")?,
-            );
-
-            debug!("Fetching nodes from: {}{}", discovery_url, discovery_route);
-            let response = reqwest::Client::new()
-                .get(format!("{}{}", discovery_url, discovery_route))
-                .headers(headers)
-                .send()
-                .await
-                .context("Failed to fetch nodes")?;
-
-            let response_text = response
-                .text()
-                .await
-                .context("Failed to get response text")?;
-
-            let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
-                serde_json::from_str(&response_text).context("Failed to parse response")?;
-
-            if !parsed_response.success {
-                error!("Failed to fetch nodes: {:?}", parsed_response);
-                return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
+        if !args.disable_hardware_validation {
+            async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
+                let signature = sign_request(message, wallet, None)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                Ok(signature)
             }
 
-            Ok(parsed_response.data)
-        }
-        .await
-        {
-            Ok(n) => n,
-            Err(e) => {
-                error!("Error in node fetching loop: {:#}", e);
-                std::thread::sleep(std::time::Duration::from_secs(10));
-                continue;
-            }
-        };
+            let nodes = match async {
+                let discovery_route = "/api/validator";
+                let address = validator_wallet
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string();
 
-        if let Err(e) = hardware_validator.validate_nodes(nodes).await {
-            error!("Error validating nodes: {:#}", e);
+                let signature = _generate_signature(&validator_wallet, discovery_route)
+                    .await
+                    .context("Failed to generate signature")?;
+
+                let mut headers = reqwest::header::HeaderMap::new();
+                headers.insert(
+                    "x-address",
+                    reqwest::header::HeaderValue::from_str(&address)
+                        .context("Failed to create address header")?,
+                );
+                headers.insert(
+                    "x-signature",
+                    reqwest::header::HeaderValue::from_str(&signature)
+                        .context("Failed to create signature header")?,
+                );
+
+                debug!("Fetching nodes from: {}{}", discovery_url, discovery_route);
+                let response = reqwest::Client::new()
+                    .get(format!("{}{}", discovery_url, discovery_route))
+                    .headers(headers)
+                    .send()
+                    .await
+                    .context("Failed to fetch nodes")?;
+
+                let response_text = response
+                    .text()
+                    .await
+                    .context("Failed to get response text")?;
+
+                let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
+                    serde_json::from_str(&response_text).context("Failed to parse response")?;
+
+                if !parsed_response.success {
+                    error!("Failed to fetch nodes: {:?}", parsed_response);
+                    return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
+                }
+
+                Ok(parsed_response.data)
+            }
+            .await
+            {
+                Ok(n) => n,
+                Err(e) => {
+                    error!("Error in node fetching loop: {:#}", e);
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    continue;
+                }
+            };
+
+            if let Err(e) = hardware_validator.validate_nodes(nodes).await {
+                error!("Error validating nodes: {:#}", e);
+            }
         }
 
         info!("Validation loop completed");
