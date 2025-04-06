@@ -170,7 +170,6 @@ impl DockerService {
                                         env_vars.insert("NODE_ADDRESS".to_string(), node_address);
                                         env_vars.insert("PRIME_TASK_BRIDGE_SOCKET".to_string(), task_bridge_socket_path.to_string());
                                         env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
-                                        //env_vars.insert("NODE_ADDRESS".to_string(), .to_string());
                                         let volumes = vec![
                                             (
                                                 Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
