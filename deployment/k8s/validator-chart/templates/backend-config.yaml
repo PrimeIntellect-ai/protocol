@@ -1,0 +1,14 @@
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ include "validator.backendConfigName" . }}
+  namespace: {{ .Values.namespace }}
+spec:
+  healthCheck:
+    type: HTTP
+    requestPath: /health
+    port: 9879
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
