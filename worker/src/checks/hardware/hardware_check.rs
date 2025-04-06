@@ -180,7 +180,7 @@ impl HardwareChecker {
                 Console::info("Total Storage", &format!("{} GB", storage_gb));
             }
             if let Some(storage_path) = &compute_specs.storage_path {
-                Console::info("Storage Path for docker mounts:", storage_path);
+                Console::info("Storage Path for docker mounts", storage_path);
             }
         }
 
