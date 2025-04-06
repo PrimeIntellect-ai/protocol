@@ -1,7 +1,6 @@
 use alloy::primitives::U256;
 use clap::Parser;
 use eyre::Result;
-use hex;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
