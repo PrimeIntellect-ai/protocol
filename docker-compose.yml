@@ -83,7 +83,7 @@ services:
       redis:
         condition: service_healthy
       contract-deployer:
-        condition: service_started
+        condition: service_completed_successfully
 
   orchestrator:
     image: ghcr.io/primeintellect-ai/protocol/orchestrator:dev

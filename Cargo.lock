@@ -2250,6 +2250,7 @@ dependencies = [
  "alloy-node-bindings",
  "clap 4.5.27",
  "eyre",
+ "hex",
  "shared",
  "tokio",
  "tokio-util",
