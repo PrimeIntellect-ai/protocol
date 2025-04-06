@@ -1,0 +1,18 @@
+namespace: your-namespace 
+image: ghcr.io/primeintellect-ai/protocol/orchestrator:latest
+computePoolId: "0"
+url: "https://your-orchestrator-url.example.com"
+domainId: "0"
+
+env:
+  RPC_URL: "http://your-rpc-endpoint:8545"
+  DISCOVERY_URL: "http://your-discovery-service:8089"
+  DISCOVERY_REFRESH_INTERVAL: "60"
+  BUCKET_NAME: "your-bucket-name"
+  LOG_LEVEL: "info"
+
+secrets:
+  coordinatorKey: "your-coordinator-private-key"
+  adminApiKey: "your-admin-api-key"
+  s3Credentials: "your-base64-encoded-s3-credentials"
+
