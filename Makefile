@@ -186,3 +186,11 @@ balance:
 get-node-info:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example get_node_info -- --provider-address $${PROVIDER_ADDRESS} --node-address $${NODE_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+
+submit-work:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example submit_work -- --pool-id $${POOL_ID:-0} --node $${NODE_ADDRESS} --work-key $${WORK_KEY} --key $${PRIVATE_KEY_PROVIDER} --rpc-url $${RPC_URL}
+
+invalidate-work:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example invalidate_work -- --pool-id $${POOL_ID:-0} --penalty $${PENALTY} --work-key $${WORK_KEY} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
