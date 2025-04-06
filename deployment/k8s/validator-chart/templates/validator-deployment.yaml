@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "validator.fullname" . }}
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "validator.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "validator.fullname" . }}
+    spec:
+      containers:
+        - name: validator
+          image: {{ .Values.image }}
+          ports:
+            - containerPort: 9879
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "500m"
+            limits:
+              memory: "512Mi"
+              cpu: "2000m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9879
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9879
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          env:
+            - name: RPC_URL
+              value: {{ .Values.env.RPC_URL }}
+            - name: VALIDATOR_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "validator.secretName" . }}
+                  key: validatorKey
+            - name: DISCOVERY_URL
+              value: {{ .Values.env.DISCOVERY_URL }}
+            - name: REDIS_STORE_URL
+              value: "redis://{{ include "validator.redisName" . }}:6379"
+            - name: TOPLOC_SERVER_URL
+              value: {{ .Values.env.TOPLOC_SERVER_URL }}
+            - name: TOPLOC_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "validator.secretName" . }}
+                  key: toplocAuthToken
+            - name: LOG_LEVEL
+              value: "{{ .Values.env.LOG_LEVEL }}"
+            - name: BUCKET_NAME
+              value: "{{ .Values.env.BUCKET_NAME }}"
+            - name: TOPLOC_GRACE_INTERVAL
+              value: "{{ .Values.env.TOPLOC_GRACE_INTERVAL }}"
+            - name: TOPLOC_WORK_VALIDATION_INTERVAL
+              value: "{{ .Values.env.TOPLOC_WORK_VALIDATION_INTERVAL }}"
+            - name: DISABLE_HARDWARE_VALIDATION
+              value: "{{ .Values.env.DISABLE_HARDWARE_VALIDATION }}"
+            - name: S3_CREDENTIALS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "validator.secretName" . }}
+                  key: s3Credentials
+            - name: COMPUTE_POOL_ID
+              value: "{{ .Values.computePoolId }}"

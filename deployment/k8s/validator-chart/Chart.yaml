@@ -1,0 +1,4 @@
+apiVersion: v2
+name: validator 
+description: A Helm chart for Prime Validator
+version: 0.1.0
