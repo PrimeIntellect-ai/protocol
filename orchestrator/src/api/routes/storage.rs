@@ -51,7 +51,7 @@ async fn request_upload(
 
     // Generate signed upload URL
     match generate_upload_signed_url(
-        "protocol-development-bucket", // TODO: Make configurable
+        app_state.bucket_name.clone().unwrap().as_str(),
         file_name,
         credentials,
         Some(file_type.to_string()),
