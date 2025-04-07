@@ -11,6 +11,7 @@ env:
   TOPLOC_GRACE_INTERVAL: "1"
   TOPLOC_WORK_VALIDATION_INTERVAL: "35"
   DISABLE_HARDWARE_VALIDATION: "true"
+  VALIDATOR_PENALTY: "1"
 
 secrets:
   validatorKey: "private key"
