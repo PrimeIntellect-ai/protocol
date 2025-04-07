@@ -8,13 +8,12 @@ ENV RPC_URL="http://localhost:8545"
 ENV VALIDATOR_KEY=""
 ENV DISCOVERY_URL="http://localhost:8089"
 ENV POOL_ID=""
-ENV WORK_VALIDATION_INTERVAL="30"
-ENV TOPLOC_SERVER_URL=""
-ENV TOPLOC_AUTH_TOKEN=""
 ENV S3_CREDENTIALS=""
 ENV BUCKET_NAME=""
 ENV LOG_LEVEL=""
 ENV REDIS_URL="redis://localhost:6380"
+ENV TOPLOC_SERVER_URL=""
+ENV TOPLOC_AUTH_TOKEN=""
 ENV TOPLOC_GRACE_INTERVAL="15"
 ENV TOPLOC_WORK_VALIDATION_INTERVAL="15"
 ENV TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS="120"
@@ -26,7 +25,6 @@ exec /usr/local/bin/validator \
 --validator-key "$VALIDATOR_KEY" \
 --discovery-url "$DISCOVERY_URL" \
 $([ ! -z "$POOL_ID" ] && echo "--pool-id $POOL_ID") \
-$([ ! -z "$WORK_VALIDATION_INTERVAL" ] && echo "--work-validation-interval $WORK_VALIDATION_INTERVAL") \
 $([ ! -z "$TOPLOC_SERVER_URL" ] && echo "--toploc-server-url $TOPLOC_SERVER_URL") \
 $([ ! -z "$TOPLOC_AUTH_TOKEN" ] && echo "--toploc-auth-token $TOPLOC_AUTH_TOKEN") \
 $([ ! -z "$S3_CREDENTIALS" ] && echo "--s3-credentials $S3_CREDENTIALS") \

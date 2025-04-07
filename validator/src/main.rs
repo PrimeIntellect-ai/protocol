@@ -49,10 +49,6 @@ struct Args {
     #[arg(long, default_value = None)]
     pool_id: Option<String>,
 
-    /// Optional: Work validation interval in seconds
-    #[arg(long, default_value = "30")]
-    work_validation_interval: u64,
-
     /// Optional: Toploc Server URL for work validation
     #[arg(long, default_value = None)]
     toploc_server_url: Option<String>,
