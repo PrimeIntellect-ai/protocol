@@ -159,7 +159,6 @@ impl DockerManager {
         self.pull_image(image).await?;
 
         let env = env_vars.map(|vars| {
-            println!("Setting environment variables: {:?}", vars);
             vars.iter()
                 .map(|(k, v)| format!("{}={}", k, v))
                 .collect::<Vec<String>>()

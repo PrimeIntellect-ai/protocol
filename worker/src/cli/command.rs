@@ -325,6 +325,11 @@ pub async fn execute_command(
                 system_memory,
                 task_bridge.socket_path.clone(),
                 docker_storage_path,
+                node_wallet_instance
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string(),
             ));
 
             let bridge_cancellation_token = cancellation_token.clone();
@@ -628,7 +633,7 @@ pub async fn execute_command(
             let private_key = if let Some(key) = private_key {
                 key.clone()
             } else {
-                std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set")
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
             };
 
             let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();
