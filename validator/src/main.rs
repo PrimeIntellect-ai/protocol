@@ -71,7 +71,7 @@ struct Args {
 
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
-    #[arg(long, default_value = "1000")]
+    #[arg(long, default_value = "1")]
     validator_penalty: u64,
 
     /// Temporary: S3 credentials
@@ -204,6 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     unknown_status_expiry_seconds: args
                         .toploc_work_validation_unknown_status_expiry_seconds,
                 };
+                info!("Synthetic validator has penalty: {}", penalty);
 
                 Some(SyntheticDataValidator::new(
                     pool_id,
