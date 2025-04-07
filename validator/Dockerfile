@@ -25,9 +25,9 @@ exec /usr/local/bin/validator \
 --rpc-url "$RPC_URL" \
 --validator-key "$VALIDATOR_KEY" \
 --discovery-url "$DISCOVERY_URL" \
---pool-id "$POOL_ID" \
---work-validation-interval "$WORK_VALIDATION_INTERVAL" \
---toploc-server-url "$TOPLOC_SERVER_URL" \
+$([ ! -z "$POOL_ID" ] && echo "--pool-id $POOL_ID") \
+$([ ! -z "$WORK_VALIDATION_INTERVAL" ] && echo "--work-validation-interval $WORK_VALIDATION_INTERVAL") \
+$([ ! -z "$TOPLOC_SERVER_URL" ] && echo "--toploc-server-url $TOPLOC_SERVER_URL") \
 $([ ! -z "$TOPLOC_AUTH_TOKEN" ] && echo "--toploc-auth-token $TOPLOC_AUTH_TOKEN") \
 $([ ! -z "$S3_CREDENTIALS" ] && echo "--s3-credentials $S3_CREDENTIALS") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
