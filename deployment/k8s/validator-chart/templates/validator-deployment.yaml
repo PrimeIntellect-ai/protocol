@@ -66,6 +66,8 @@ spec:
               value: "{{ .Values.env.TOPLOC_WORK_VALIDATION_INTERVAL }}"
             - name: DISABLE_HARDWARE_VALIDATION
               value: "{{ .Values.env.DISABLE_HARDWARE_VALIDATION }}"
+            - name: VALIDATOR_PENALTY
+              value: "{{ .Values.env.VALIDATOR_PENALTY }}"
             - name: S3_CREDENTIALS
               valueFrom:
                 secretKeyRef:
