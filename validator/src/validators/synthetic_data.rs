@@ -470,7 +470,10 @@ impl SyntheticDataValidator {
                 max_age_in_seconds
             );
         } else {
-            debug!("No work keys to validate in the last {} seconds creation time", max_age_in_seconds);
+            debug!(
+                "No work keys to validate in the last {} seconds creation time",
+                max_age_in_seconds
+            );
         }
 
         let self_arc = Arc::new(self);
