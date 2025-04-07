@@ -204,7 +204,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     unknown_status_expiry_seconds: args
                         .toploc_work_validation_unknown_status_expiry_seconds,
                 };
-                info!("Synthetic validator has penalty: {}", penalty);
+                info!(
+                    "Synthetic validator has penalty: {} ({})",
+                    penalty,
+                    Unit::ETHER.wei()
+                );
 
                 Some(SyntheticDataValidator::new(
                     pool_id,
