@@ -47,7 +47,7 @@ spec:
                   key: validatorKey
             - name: DISCOVERY_URL
               value: {{ .Values.env.DISCOVERY_URL }}
-            - name: REDIS_STORE_URL
+            - name: REDIS_URL
               value: "redis://{{ include "validator.redisName" . }}:6379"
             - name: TOPLOC_SERVER_URL
               value: {{ .Values.env.TOPLOC_SERVER_URL }}
@@ -71,5 +71,5 @@ spec:
                 secretKeyRef:
                   name: {{ include "validator.secretName" . }}
                   key: s3Credentials
-            - name: COMPUTE_POOL_ID
+            - name: POOL_ID
               value: "{{ .Values.computePoolId }}"
