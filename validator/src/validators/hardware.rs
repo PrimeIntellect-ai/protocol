@@ -1,15 +1,21 @@
 use alloy::primitives::Address;
-use anyhow::{Context, Error, Result};
-use log::{error, info};
-use rand::{rng, Rng};
-use shared::models::api::ApiResponse;
-use shared::models::challenge::{calc_matrix, ChallengeRequest, ChallengeResponse, FixedF64};
-use shared::models::node::DiscoveryNode;
-use shared::security::request_signer::sign_request;
-use shared::web3::contracts::core::builder::Contracts;
-use shared::web3::wallet::Wallet;
+use anyhow::Result;
+use futures::future::join_all;
+use log::{debug, error, info};
+use shared::{
+    models::node::DiscoveryNode,
+    web3::{contracts::core::builder::Contracts, wallet::Wallet},
+};
 use std::sync::Arc;
+use tokio::sync::Semaphore;
 
+use crate::validators::hardware_challenge::HardwareChallenge;
+
+/// Hardware validator implementation
+///
+/// NOTE: This is a temporary implementation that will be replaced with a proper
+/// hardware validator in the near future. The current implementation only performs
+/// basic matrix multiplication challenges and does not verify actual hardware specs.
 pub struct HardwareValidator<'a> {
     wallet: &'a Wallet,
     contracts: Arc<Contracts>,
@@ -20,144 +26,154 @@ impl<'a> HardwareValidator<'a> {
         Self { wallet, contracts }
     }
 
-    pub async fn validate_nodes(&self, nodes: Vec<DiscoveryNode>) -> Result<()> {
-        let non_validated_nodes: Vec<DiscoveryNode> = nodes
-            .into_iter()
-            .filter(|node| !node.is_validated)
-            .collect();
-
-        log::debug!("Non validated nodes: {:?}", non_validated_nodes);
-
-        for node in non_validated_nodes {
-            let node_address = match node.id.trim_start_matches("0x").parse::<Address>() {
-                Ok(addr) => addr,
-                Err(e) => {
-                    error!("Failed to parse node address {}: {}", node.id, e);
-                    continue;
-                }
-            };
-
-            let provider_address = match node
-                .provider_address
-                .trim_start_matches("0x")
-                .parse::<Address>()
-            {
-                Ok(addr) => addr,
-                Err(e) => {
-                    error!(
-                        "Failed to parse provider address {}: {}",
-                        node.provider_address, e
-                    );
-                    continue;
-                }
-            };
-
-            let challenge_route = "/challenge/submit";
-            let challenge_result = self.challenge_node(&node, challenge_route).await;
-            if challenge_result.is_err() {
-                error!(
-                    "Failed to challenge node {}: {:?}",
-                    node.id, challenge_result
-                );
-                continue;
+    async fn validate_node(
+        wallet: &'a Wallet,
+        contracts: Arc<Contracts>,
+        node: DiscoveryNode,
+    ) -> Result<()> {
+        let node_address = match node.id.trim_start_matches("0x").parse::<Address>() {
+            Ok(addr) => addr,
+            Err(e) => {
+                return Err(anyhow::anyhow!("Failed to parse node address: {}", e));
             }
+        };
 
-            if let Err(e) = self
-                .contracts
-                .prime_network
-                .validate_node(provider_address, node_address)
-                .await
-            {
-                error!("Failed to validate node {}: {}", node.id, e);
-            } else {
-                info!("Successfully validated node: {}", node.id);
+        let provider_address = match node
+            .provider_address
+            .trim_start_matches("0x")
+            .parse::<Address>()
+        {
+            Ok(addr) => addr,
+            Err(e) => {
+                return Err(anyhow::anyhow!("Failed to parse provider address: {}", e));
             }
+        };
+
+        let challenge_route = "/challenge/submit";
+        let hardware_challenge = HardwareChallenge::new(wallet);
+        let challenge_result = hardware_challenge
+            .challenge_node(&node, challenge_route)
+            .await;
+
+        if let Err(e) = challenge_result {
+            println!("Challenge failed for node: {}, error: {}", node.id, e);
+            error!("Challenge failed for node: {}, error: {}", node.id, e);
+            return Err(anyhow::anyhow!("Failed to challenge node: {}", e));
         }
 
+        if let Err(e) = contracts
+            .prime_network
+            .validate_node(provider_address, node_address)
+            .await
+        {
+            error!("Failed to validate node: {}", e);
+            return Err(anyhow::anyhow!("Failed to validate node: {}", e));
+        }
+
+        info!("Node {} successfully validated", node.id);
         Ok(())
     }
 
-    async fn challenge_node(
-        &self,
-        node: &DiscoveryNode,
-        challenge_route: &str,
-    ) -> Result<i32, Error> {
-        let node_url = format!("http://{}:{}", node.node.ip_address, node.node.port);
+    pub async fn validate_nodes(&self, nodes: Vec<DiscoveryNode>) -> Result<()> {
+        let non_validated: Vec<_> = nodes.into_iter().filter(|n| !n.is_validated).collect();
+        debug!("Non validated nodes: {:?}", non_validated);
+        let contracts = self.contracts.clone();
+        let wallet = self.wallet;
+        let semaphore = Arc::new(Semaphore::new(10));
+        let futures = non_validated
+            .into_iter()
+            .map(|node| {
+                let node_clone = node.clone();
+                let contracts_clone = contracts.clone();
+                let permit = semaphore.clone();
 
-        let mut headers = reqwest::header::HeaderMap::new();
+                async move {
+                    let _permit = permit.acquire().await;
 
-        // create random challenge matrix
-        let challenge_matrix = self.random_challenge(3, 3, 3, 3);
-        let challenge_expected = calc_matrix(&challenge_matrix);
+                    match HardwareValidator::validate_node(wallet, contracts_clone, node_clone)
+                        .await
+                    {
+                        Ok(_) => (),
+                        Err(e) => {
+                            error!("Failed to validate node: {}", e);
+                        }
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
 
-        let post_url = format!("{}{}", node_url, challenge_route);
-
-        let address = self.wallet.wallet.default_signer().address().to_string();
-        let challenge_matrix_value = serde_json::to_value(&challenge_matrix)?;
-        let signature = sign_request(challenge_route, self.wallet, Some(&challenge_matrix_value))
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-        headers.insert(
-            "x-address",
-            reqwest::header::HeaderValue::from_str(&address)
-                .context("Failed to create address header")?,
-        );
-        headers.insert(
-            "x-signature",
-            reqwest::header::HeaderValue::from_str(&signature)
-                .context("Failed to create signature header")?,
-        );
-
-        let response = reqwest::Client::new()
-            .post(post_url)
-            .headers(headers)
-            .json(&challenge_matrix_value)
-            .send()
-            .await?;
-
-        let response_text = response.text().await?;
-        let parsed_response: ApiResponse<ChallengeResponse> = serde_json::from_str(&response_text)?;
-
-        if !parsed_response.success {
-            Err(anyhow::anyhow!("Error fetching challenge from node"))
-        } else if challenge_expected.result == parsed_response.data.result {
-            info!("Challenge successful");
-            Ok(0)
-        } else {
-            error!("Challenge failed");
-            Err(anyhow::anyhow!("Node failed challenge"))
-        }
+        join_all(futures).await;
+        Ok(())
     }
+}
 
-    fn random_challenge(
-        &self,
-        rows_a: usize,
-        cols_a: usize,
-        rows_b: usize,
-        cols_b: usize,
-    ) -> ChallengeRequest {
-        let mut rng = rng();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shared::models::node::Node;
+    use shared::web3::contracts::core::builder::ContractBuilder;
+    use shared::web3::wallet::Wallet;
+    use url::Url;
 
-        let data_a_vec: Vec<f64> = (0..(rows_a * cols_a))
-            .map(|_| rng.random_range(0.0..1.0))
-            .collect();
+    #[tokio::test]
+    async fn test_challenge_node() {
+        let coordinator_key = "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97";
+        let rpc_url: Url = Url::parse("http://localhost:8545").unwrap();
 
-        let data_b_vec: Vec<f64> = (0..(rows_b * cols_b))
-            .map(|_| rng.random_range(0.0..1.0))
-            .collect();
+        let coordinator_wallet = Arc::new(Wallet::new(coordinator_key, rpc_url).unwrap());
 
-        // convert to FixedF64
-        let data_a: Vec<FixedF64> = data_a_vec.iter().map(|x| FixedF64(*x)).collect();
-        let data_b: Vec<FixedF64> = data_b_vec.iter().map(|x| FixedF64(*x)).collect();
+        let contracts = ContractBuilder::new(&coordinator_wallet.clone())
+            .with_compute_registry()
+            .with_ai_token()
+            .with_prime_network()
+            .with_compute_pool()
+            .build()
+            .unwrap();
 
-        ChallengeRequest {
-            rows_a,
-            cols_a,
-            data_a,
-            rows_b,
-            cols_b,
-            data_b,
-        }
+        let validator = HardwareValidator::new(&coordinator_wallet, Arc::new(contracts));
+
+        let fake_discovery_node1 = DiscoveryNode {
+            is_validated: false,
+            node: Node {
+                ip_address: "192.168.1.1".to_string(),
+                port: 8080,
+                compute_pool_id: 1,
+                id: Address::ZERO.to_string(),
+                provider_address: Address::ZERO.to_string(),
+                compute_specs: None,
+            },
+            is_active: true,
+            is_provider_whitelisted: true,
+            is_blacklisted: false,
+            last_updated: None,
+            created_at: None,
+        };
+
+        let fake_discovery_node2 = DiscoveryNode {
+            is_validated: false,
+            node: Node {
+                ip_address: "192.168.1.2".to_string(),
+                port: 8080,
+                compute_pool_id: 1,
+                id: Address::ZERO.to_string(),
+                provider_address: Address::ZERO.to_string(),
+                compute_specs: None,
+            },
+            is_active: true,
+            is_provider_whitelisted: true,
+            is_blacklisted: false,
+            last_updated: None,
+            created_at: None,
+        };
+
+        let nodes = vec![fake_discovery_node1, fake_discovery_node2];
+
+        let start_time = std::time::Instant::now();
+        let result = validator.validate_nodes(nodes).await;
+        let elapsed = start_time.elapsed();
+        assert!(elapsed < std::time::Duration::from_secs(11));
+        println!("Validation took: {:?}", elapsed);
+
+        assert!(result.is_ok());
     }
 }
