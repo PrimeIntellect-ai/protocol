@@ -16,7 +16,7 @@ def send_message(metric: dict, socket_path: str = None) -> bool:
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(socket_path)
-            message = json.dumps(metric) + "\n"
+            message = json.dumps(metric)
             sock.sendall(message.encode())
         return True
     except Exception as e:
