@@ -73,9 +73,6 @@ pub enum Commands {
         #[arg(long)]
         discovery_url: Option<String>,
 
-        #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
-        validator_address: Option<String>,
-
         /// Private key for the provider (not recommended, use environment variable PRIVATE_KEY_PROVIDER instead)
         #[arg(long)]
         private_key_provider: Option<String>,
@@ -92,10 +89,10 @@ pub enum Commands {
         #[arg(long, default_value = "0")]
         funding_retry_count: u32,
 
-        /// Ignore issues
+        /// Skip system requirement checks (for development/testing)
         #[arg(long, default_value = "false")]
-        ignore_issues: bool,
-        
+        skip_system_checks: bool,
+
         /// Silence metrics logging
         #[arg(long, default_value = "false")]
         silence_metrics: bool,
@@ -151,12 +148,11 @@ pub async fn execute_command(
             state_dir_overwrite,
             disable_state_storing,
             auto_recover,
-            validator_address,
             private_key_provider,
             private_key_node,
             auto_accept,
             funding_retry_count,
-            ignore_issues,
+            skip_system_checks,
             silence_metrics,
         } => {
             if *disable_state_storing && *auto_recover {
@@ -284,7 +280,7 @@ pub async fn execute_command(
             let issues = issue_tracker.read().await;
             issues.print_issues();
             if issues.has_critical_issues() {
-                if !*ignore_issues {
+                if !*skip_system_checks {
                     Console::error("❌ Critical issues found. Exiting.");
                     std::process::exit(1);
                 } else {
@@ -335,6 +331,11 @@ pub async fn execute_command(
                 system_memory,
                 task_bridge.socket_path.clone(),
                 docker_storage_path,
+                node_wallet_instance
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string(),
             ));
 
             let bridge_cancellation_token = cancellation_token.clone();
@@ -507,10 +508,23 @@ pub async fn execute_command(
                     }
                 }
             }
-
-            if let Err(e) = discovery_service.upload_discovery_info(&node_config).await {
-                Console::error(&format!("❌ Failed to upload discovery info: {}", e));
-                std::process::exit(1);
+            let mut attempts = 0;
+            let max_attempts = 100;
+            while attempts < max_attempts {
+                match discovery_service.upload_discovery_info(&node_config).await {
+                    Ok(_) => break,
+                    Err(e) => {
+                        attempts += 1;
+                        Console::error(&format!(
+                            "Attempt {}: ❌ Failed to upload discovery info: {}",
+                            attempts, e
+                        ));
+                        if attempts >= max_attempts {
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             }
 
             Console::success("Discovery info uploaded");
@@ -545,7 +559,6 @@ pub async fn execute_command(
                     heartbeat_clone.clone(),
                     docker_service.clone(),
                     pool_info,
-                    validator_address.clone().unwrap_or_default(),
                 )
                 .await
             } {
@@ -626,7 +639,7 @@ pub async fn execute_command(
             let private_key = if let Some(key) = private_key {
                 key.clone()
             } else {
-                std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set")
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
             };
 
             let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();

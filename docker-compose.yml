@@ -74,7 +74,6 @@ services:
     environment:
       - RPC_URL=http://anvil:8545
       - REDIS_URL=redis://redis:6379
-      - VALIDATOR_ADDRESS=${VALIDATOR_ADDRESS}
       - PLATFORM_API_KEY=prime
     networks:
       - prime
@@ -84,7 +83,7 @@ services:
       redis:
         condition: service_healthy
       contract-deployer:
-        condition: service_started
+        condition: service_completed_successfully
 
   orchestrator:
     image: ghcr.io/primeintellect-ai/protocol/orchestrator:dev

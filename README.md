@@ -45,14 +45,13 @@ For complete setup instructions, refer to our [Development Setup Guide](docs/dev
 ### Install Worker CLI: 
 You can install the latest worker CLI using:
 ```
-curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/develop/worker/scripts/install.sh | bash 
+curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/main/worker/scripts/install.sh | bash 
 ```
 
 For the latest dev build use: 
 ```
 curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/develop/worker/scripts/install.sh | bash -s -- --dev
 ```
-
 
 ## Documentation
 - [Development Setup Guide](docs/development-setup.md) - Detailed installation and environment setup instructions

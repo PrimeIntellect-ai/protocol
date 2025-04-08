@@ -23,6 +23,14 @@ async fn request_upload(
     let file_type = &request_upload.file_type;
     let sha256 = &request_upload.sha256;
 
+    log::info!(
+        "Received upload request for file: {}, size: {}, type: {}, sha256: {}",
+        file_name,
+        file_size,
+        file_type,
+        sha256
+    );
+
     // Get credentials from app state
     let credentials = match &app_state.s3_credentials {
         Some(creds) => creds,
@@ -33,6 +41,13 @@ async fn request_upload(
             }))
         }
     };
+
+    log::info!(
+        "Generating mapping file for sha256: {} to file: {} in bucket: {}",
+        sha256,
+        file_name,
+        app_state.bucket_name.clone().unwrap_or_default()
+    );
 
     if let Err(e) = generate_mapping_file(
         app_state.bucket_name.clone().unwrap().as_str(),
@@ -49,9 +64,14 @@ async fn request_upload(
         }));
     }
 
+    log::info!(
+        "Successfully generated mapping file. Generating signed upload URL for file: {}",
+        file_name
+    );
+
     // Generate signed upload URL
     match generate_upload_signed_url(
-        "protocol-development-bucket", // TODO: Make configurable
+        app_state.bucket_name.clone().unwrap().as_str(),
         file_name,
         credentials,
         Some(file_type.to_string()),
@@ -60,10 +80,16 @@ async fn request_upload(
     )
     .await
     {
-        Ok(signed_url) => HttpResponse::Ok().json(serde_json::json!({
-            "success": true,
-            "signed_url": signed_url
-        })),
+        Ok(signed_url) => {
+            log::info!(
+                "Successfully generated signed upload URL for file: {}",
+                file_name
+            );
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "signed_url": signed_url
+            }))
+        }
         Err(e) => {
             log::error!("Failed to generate upload URL: {}", e);
             HttpResponse::InternalServerError().json(serde_json::json!({

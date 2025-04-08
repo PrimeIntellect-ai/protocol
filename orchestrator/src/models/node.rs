@@ -36,7 +36,7 @@ impl From<DiscoveryNode> for OrchestratorNode {
 impl OrchestratorNode {
     pub fn from_string(s: &str) -> Self {
         let mut node: Self = serde_json::from_str(s).unwrap();
-        if node.status == NodeStatus::Dead {
+        if node.status == NodeStatus::Dead || node.status == NodeStatus::Ejected {
             node.task_id = None;
             node.task_state = None;
         }

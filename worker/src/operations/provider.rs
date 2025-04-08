@@ -224,7 +224,10 @@ impl ProviderOperations {
                 &format!("{} ETH", eth_balance / U256::from(10u128.pow(18))),
             );
             if balance < stake {
-                Console::error("Insufficient AI Token balance for stake");
+                Console::error(&format!(
+                    "Insufficient AI Token balance for stake: {} tokens",
+                    stake / U256::from(10u128.pow(18))
+                ));
                 return Err(ProviderError::InsufficientBalance);
             }
             if !self.prompt_user_confirmation(&format!(

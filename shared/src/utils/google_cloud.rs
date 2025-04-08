@@ -28,6 +28,18 @@ async fn create_gcs_client(credentials_base64: &str) -> Result<Client> {
     Ok(Client::new(config))
 }
 
+fn get_bucket_name(bucket: &str) -> (String, String) {
+    if let Some(idx) = bucket.find('/') {
+        let (bucket_part, subpath_part) = bucket.split_at(idx);
+        (
+            bucket_part.to_string(),
+            subpath_part.trim_start_matches('/').to_string(),
+        )
+    } else {
+        (bucket.to_string(), "".to_string())
+    }
+}
+
 pub async fn generate_mapping_file(
     bucket: &str,
     credentials_base64: &str,
@@ -36,15 +48,24 @@ pub async fn generate_mapping_file(
 ) -> Result<String> {
     let client = create_gcs_client(credentials_base64).await?;
     let mapping_path = format!("mapping/{}", sha256); // Use sha256 as filename
-    let upload_type = UploadType::Simple(Media::new(mapping_path.clone()));
 
-    let file_name = file_name.strip_prefix('/').unwrap_or(file_name); // Adjusted to use strip_prefix
+    // Clean the file_name by removing leading slash if present
+    let file_name = file_name.strip_prefix('/').unwrap_or(file_name);
     let content = file_name.to_string().into_bytes();
+
+    let (bucket_name, subpath) = get_bucket_name(bucket);
+    let object_path = if !subpath.is_empty() {
+        format!("{}/{}", subpath, mapping_path)
+    } else {
+        mapping_path.clone()
+    };
+
+    let upload_type = UploadType::Simple(Media::new(object_path.clone()));
 
     let uploaded = client
         .upload_object(
             &UploadObjectRequest {
-                bucket: bucket.to_string(),
+                bucket: bucket_name,
                 ..Default::default()
             },
             content,
@@ -63,14 +84,22 @@ pub async fn resolve_mapping_for_sha(
     sha256: &str,
 ) -> Result<String> {
     let client = create_gcs_client(credentials_base64).await?;
+
+    let (bucket_name, subpath) = get_bucket_name(bucket);
     let mapping_path = format!("mapping/{}", sha256);
+
+    let object_path = if !subpath.is_empty() {
+        format!("{}/{}", subpath, mapping_path)
+    } else {
+        mapping_path.clone()
+    };
 
     // Download the mapping file content
     let content = client
         .download_object(
             &GetObjectRequest {
-                bucket: bucket.to_string(),
-                object: mapping_path.clone(),
+                bucket: bucket_name,
+                object: object_path.clone(),
                 ..Default::default()
             },
             &Range::default(),
@@ -94,6 +123,13 @@ pub async fn generate_upload_signed_url(
     // Ensure object_path does not start with a /
     let object_path = object_path.strip_prefix('/').unwrap_or(object_path); // Adjusted to use strip_prefix
 
+    let (bucket_name, subpath) = get_bucket_name(bucket);
+    let object_path = if !subpath.is_empty() {
+        format!("{}/{}", subpath, object_path)
+    } else {
+        object_path.to_string()
+    };
+
     let client = create_gcs_client(credentials_base64).await?;
 
     // Set options for the signed URL
@@ -111,7 +147,13 @@ pub async fn generate_upload_signed_url(
 
     // Generate the signed URL
     let signed_url = client
-        .signed_url(bucket, object_path, None, None, options)
+        .signed_url(
+            bucket_name.as_str(),
+            object_path.as_str(),
+            None,
+            None,
+            options,
+        )
         .await?;
     Ok(signed_url)
 }
@@ -150,6 +192,8 @@ mod tests {
         .await
         .unwrap();
         println!("mapping_content: {}", mapping_content);
+
+        println!("bucket_name: {}", bucket_name);
 
         let original_file_name =
             resolve_mapping_for_sha(&bucket_name, &credentials_base64, &random_sha256)

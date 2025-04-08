@@ -69,11 +69,11 @@ impl HardwareChecker {
             issue_tracker.add_issue(IssueType::InsufficientMemory, "Minimum 8GB RAM required");
         }
 
-        if storage_gb < 100 {
-            // 100GB minimum
+        if storage_gb < 1000 {
+            // 1000GB minimum
             issue_tracker.add_issue(
                 IssueType::InsufficientStorage,
-                "Minimum 100GB storage required",
+                "Minimum 1000GB storage required",
             );
         }
 
@@ -180,7 +180,7 @@ impl HardwareChecker {
                 Console::info("Total Storage", &format!("{} GB", storage_gb));
             }
             if let Some(storage_path) = &compute_specs.storage_path {
-                Console::info("Storage Path for docker mounts:", storage_path);
+                Console::info("Storage Path for docker mounts", storage_path);
             }
         }
 

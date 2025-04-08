@@ -57,6 +57,11 @@ pub async fn start_server(
             .wrap(Compress::default())
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(web::PayloadConfig::default().limit(2_097_152))
+            .service(web::resource("/health").route(web::get().to(|| async {
+                HttpResponse::Ok().json(json!({
+                    "status": "ok"
+                }))
+            })))
             .service(heartbeat_routes().wrap(ValidateSignature::new(validator_state.clone())))
             .service(storage_routes().wrap(ValidateSignature::new(validator_state.clone())))
             .service(nodes_routes().wrap(api_key_middleware.clone()))

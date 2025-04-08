@@ -16,9 +16,11 @@ use shared::web3::wallet::Wallet;
 use std::str::FromStr;
 use std::sync::Arc;
 use store::redis::RedisStore;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio_util::sync::CancellationToken;
 use url::Url;
 use validators::hardware::HardwareValidator;
-use validators::synthetic_data::SyntheticDataValidator;
+use validators::synthetic_data::{SyntheticDataValidator, ToplocConfig};
 
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(json!({ "status": "ok" }))
@@ -38,14 +40,14 @@ struct Args {
     #[arg(long, default_value = "http://localhost:8089")]
     discovery_url: String,
 
+    /// Ability to disable hardware validation
+    #[arg(long, default_value = "false")]
+    disable_hardware_validation: bool,
+
     /// Optional: Pool Id for work validation
     /// If not provided, the validator will not validate work
     #[arg(long, default_value = None)]
     pool_id: Option<String>,
-
-    /// Optional: Work validation interval in seconds
-    #[arg(long, default_value = "30")]
-    work_validation_interval: u64,
 
     /// Optional: Toploc Server URL for work validation
     #[arg(long, default_value = None)]
@@ -59,9 +61,17 @@ struct Args {
     #[arg(long, default_value = "15")]
     toploc_grace_interval: u64,
 
+    // Optional: interval in minutes of max age of work on chain
+    #[arg(long, default_value = "15")]
+    toploc_work_validation_interval: u64,
+
+    /// Optional: interval in minutes of max age of work on chain
+    #[arg(long, default_value = "120")]
+    toploc_work_validation_unknown_status_expiry_seconds: u64,
+
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
-    #[arg(long, default_value = "1000")]
+    #[arg(long, default_value = "1")]
     validator_penalty: u64,
 
     /// Temporary: S3 credentials
@@ -80,9 +90,9 @@ struct Args {
     #[arg(long, default_value = "redis://localhost:6380")]
     redis_url: String,
 }
-fn main() {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let log_level = match args.log_level.as_str() {
         "error" => LevelFilter::Error,
@@ -97,6 +107,31 @@ fn main() {
         .format_timestamp(None)
         .init();
 
+    let cancellation_token = CancellationToken::new();
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sighup = signal(SignalKind::hangup())?;
+    let mut sigquit = signal(SignalKind::quit())?;
+    let signal_token = cancellation_token.clone();
+    let cancellation_token_clone = cancellation_token.clone();
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = sigterm.recv() => {
+                log::info!("Received termination signal");
+            }
+            _ = sigint.recv() => {
+                log::info!("Received interrupt signal");
+            }
+            _ = sighup.recv() => {
+                log::info!("Received hangup signal");
+            }
+            _ = sigquit.recv() => {
+                log::info!("Received quit signal");
+            }
+        }
+        signal_token.cancel();
+    });
+
     let private_key_validator = args.validator_key;
     let rpc_url: Url = args.rpc_url.parse().unwrap();
     let discovery_url = args.discovery_url;
@@ -108,9 +143,9 @@ fn main() {
         std::process::exit(1);
     });
 
-    runtime.spawn(async {
+    tokio::spawn(async {
         if let Err(e) = HttpServer::new(|| App::new().route("/health", web::get().to(health_check)))
-            .bind("0.0.0.0:8080")
+            .bind("0.0.0.0:9879")
             .expect("Failed to bind health check server")
             .run()
             .await
@@ -130,11 +165,11 @@ fn main() {
     let contracts = contract_builder.build_partial().unwrap();
 
     if let Some(pool_id) = args.pool_id.clone() {
-        let pool = match runtime.block_on(
-            contracts
-                .compute_pool
-                .get_pool_info(U256::from_str(&pool_id).unwrap()),
-        ) {
+        let pool = match contracts
+            .compute_pool
+            .get_pool_info(U256::from_str(&pool_id).unwrap())
+            .await
+        {
             Ok(pool_info) => pool_info,
             Err(e) => {
                 error!("Failed to get pool info: {:?}", e);
@@ -142,14 +177,12 @@ fn main() {
             }
         };
         let domain_id: u32 = pool.domain_id.try_into().unwrap();
-        let domain = runtime
-            .block_on(
-                contracts
-                    .domain_registry
-                    .as_ref()
-                    .unwrap()
-                    .get_domain(domain_id),
-            )
+        let domain = contracts
+            .domain_registry
+            .as_ref()
+            .unwrap()
+            .get_domain(domain_id)
+            .await
             .unwrap();
         contract_builder =
             contract_builder.with_synthetic_data_validator(Some(domain.validation_logic));
@@ -159,27 +192,35 @@ fn main() {
 
     let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
 
-    let mut synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
+    let synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
-                if let Some(toploc_server_url) = args.toploc_server_url {
-                    Some(SyntheticDataValidator::new(
-                        pool_id,
-                        validator,
-                        contracts.prime_network.clone(),
-                        toploc_server_url,
-                        args.toploc_auth_token,
-                        penalty,
-                        args.s3_credentials,
-                        args.bucket_name,
-                        redis_store,
-                        args.toploc_grace_interval,
-                    ))
-                } else {
-                    error!("Leviticus URL is not provided");
-                    std::process::exit(1);
-                }
+                let toploc_config = ToplocConfig {
+                    server_url: args.toploc_server_url.unwrap(),
+                    auth_token: args.toploc_auth_token,
+                    grace_interval: args.toploc_grace_interval,
+                    work_validation_interval: args.toploc_work_validation_interval,
+                    unknown_status_expiry_seconds: args
+                        .toploc_work_validation_unknown_status_expiry_seconds,
+                };
+                info!(
+                    "Synthetic validator has penalty: {} ({})",
+                    penalty,
+                    Unit::ETHER.wei()
+                );
+
+                Some(SyntheticDataValidator::new(
+                    pool_id,
+                    validator,
+                    contracts.prime_network.clone(),
+                    toploc_config,
+                    penalty,
+                    args.s3_credentials,
+                    args.bucket_name,
+                    redis_store,
+                    cancellation_token,
+                ))
             }
             None => {
                 error!("Synthetic data validator not found");
@@ -191,83 +232,91 @@ fn main() {
     };
 
     loop {
-        if let Some(validator) = &mut synthetic_validator {
-            runtime.block_on(async {
-                if let Err(e) = validator.validate_work().await {
-                    error!("Failed to validate work: {}", e);
+        if cancellation_token_clone.is_cancelled() {
+            log::info!("Validation loop is stopping due to cancellation signal");
+            break;
+        }
+
+        if let Some(validator) = synthetic_validator.clone() {
+            if let Err(e) = validator.validate_work().await {
+                error!("Failed to validate work: {}", e);
+            }
+        }
+
+        if !args.disable_hardware_validation {
+            async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
+                let signature = sign_request(message, wallet, None)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                Ok(signature)
+            }
+
+            let nodes = match async {
+                let discovery_route = "/api/validator";
+                let address = validator_wallet
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string();
+
+                let signature = _generate_signature(&validator_wallet, discovery_route)
+                    .await
+                    .context("Failed to generate signature")?;
+
+                let mut headers = reqwest::header::HeaderMap::new();
+                headers.insert(
+                    "x-address",
+                    reqwest::header::HeaderValue::from_str(&address)
+                        .context("Failed to create address header")?,
+                );
+                headers.insert(
+                    "x-signature",
+                    reqwest::header::HeaderValue::from_str(&signature)
+                        .context("Failed to create signature header")?,
+                );
+
+                debug!("Fetching nodes from: {}{}", discovery_url, discovery_route);
+                let response = reqwest::Client::new()
+                    .get(format!("{}{}", discovery_url, discovery_route))
+                    .headers(headers)
+                    .send()
+                    .await
+                    .context("Failed to fetch nodes")?;
+
+                let response_text = response
+                    .text()
+                    .await
+                    .context("Failed to get response text")?;
+
+                let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
+                    serde_json::from_str(&response_text).context("Failed to parse response")?;
+
+                if !parsed_response.success {
+                    error!("Failed to fetch nodes: {:?}", parsed_response);
+                    return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
                 }
-            });
-        }
 
-        async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
-            let signature = sign_request(message, wallet, None)
-                .await
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
-            Ok(signature)
-        }
-
-        let nodes = match runtime.block_on(async {
-            let discovery_route = "/api/validator";
-            let address = validator_wallet
-                .wallet
-                .default_signer()
-                .address()
-                .to_string();
-
-            let signature = _generate_signature(&validator_wallet, discovery_route)
-                .await
-                .context("Failed to generate signature")?;
-
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert(
-                "x-address",
-                reqwest::header::HeaderValue::from_str(&address)
-                    .context("Failed to create address header")?,
-            );
-            headers.insert(
-                "x-signature",
-                reqwest::header::HeaderValue::from_str(&signature)
-                    .context("Failed to create signature header")?,
-            );
-
-            debug!("Fetching nodes from: {}{}", discovery_url, discovery_route);
-            let response = reqwest::Client::new()
-                .get(format!("{}{}", discovery_url, discovery_route))
-                .headers(headers)
-                .send()
-                .await
-                .context("Failed to fetch nodes")?;
-
-            let response_text = response
-                .text()
-                .await
-                .context("Failed to get response text")?;
-
-            let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
-                serde_json::from_str(&response_text).context("Failed to parse response")?;
-
-            if !parsed_response.success {
-                error!("Failed to fetch nodes: {:?}", parsed_response);
-                return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
+                Ok(parsed_response.data)
             }
+            .await
+            {
+                Ok(n) => n,
+                Err(e) => {
+                    error!("Error in node fetching loop: {:#}", e);
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    continue;
+                }
+            };
 
-            Ok(parsed_response.data)
-        }) {
-            Ok(n) => n,
-            Err(e) => {
-                error!("Error in node fetching loop: {:#}", e);
-                std::thread::sleep(std::time::Duration::from_secs(10));
-                continue;
+            if let Err(e) = hardware_validator.validate_nodes(nodes).await {
+                error!("Error validating nodes: {:#}", e);
             }
-        };
-
-        if let Err(e) = runtime.block_on(hardware_validator.validate_nodes(nodes)) {
-            error!("Error validating nodes: {:#}", e);
         }
 
         info!("Validation loop completed");
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
+    Ok(())
 }
 
 #[cfg(test)]
