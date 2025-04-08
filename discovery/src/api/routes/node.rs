@@ -187,7 +187,7 @@ mod tests {
         match app_state.node_store.update_node(validated) {
             Ok(_) => (),
             Err(_) => {
-                assert!(false, "Error updating node");
+                unreachable!("Error updating node");
             }
         }
 
@@ -200,7 +200,7 @@ mod tests {
                 assert!(nodes[0].is_active);
             }
             Err(_) => {
-                assert!(false, "Error getting nodes");
+                unreachable!("Error getting nodes");
             }
         }
 
