@@ -135,6 +135,7 @@ impl TaskBridge {
             let wallet = self.node_wallet.clone();
             let storage_path_clone = self.docker_storage_path.clone();
             let state_clone = self.state.clone();
+            let silence_metrics = self.silence_metrics;
 
             match listener.accept().await {
                 Ok((stream, _addr)) => {
@@ -212,7 +213,7 @@ impl TaskBridge {
                                     } else {
                                         match serde_json::from_str::<MetricInput>(json_str) {
                                             Ok(input) => {
-                                                if !store.silence_metrics {
+                                                if !silence_metrics {
                                                     info!(
                                                         "📊 Received metric - Task: {}, Label: {}, Value: {}",
                                                         input.task_id, input.label, input.value
