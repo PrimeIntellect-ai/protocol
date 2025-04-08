@@ -16,7 +16,7 @@ use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
-use log::debug;
+use log::info;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
@@ -543,8 +543,8 @@ pub async fn execute_command(
 
             if let Err(err) = {
                 let heartbeat_clone = heartbeat_service.unwrap().clone();
-                debug!("Recovering from previous state: {}", recover_last_state);
                 if recover_last_state {
+                    info!("Recovering from previous state: {}", recover_last_state);
                     heartbeat_clone
                         .activate_heartbeat_if_endpoint_exists()
                         .await;
