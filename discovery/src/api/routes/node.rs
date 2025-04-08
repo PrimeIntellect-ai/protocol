@@ -260,6 +260,12 @@ mod tests {
         assert_eq!(body.data, "Node registered successfully");
 
         let nodes = app_state.node_store.get_nodes();
+        let nodes = match nodes {
+            Ok(nodes) => nodes,
+            Err(_) => {
+                panic!("Error getting nodes");
+            }
+        };
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, node.id);
         assert_eq!(nodes[0].last_updated, None);

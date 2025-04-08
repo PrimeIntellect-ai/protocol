@@ -97,9 +97,16 @@ impl ChainSync {
                 tokio::select! {
                     _ = interval.tick() => {
                         let nodes = node_store_clone.get_nodes();
-                        for node in nodes {
-                            if let Err(e) = ChainSync::sync_single_node(node_store_clone.clone(), contracts_clone.clone(), node).await {
-                                error!("Error syncing node: {}", e);
+                        match nodes {
+                            Ok(nodes) => {
+                                for node in nodes {
+                                    if let Err(e) = ChainSync::sync_single_node(node_store_clone.clone(), contracts_clone.clone(), node).await {
+                                        error!("Error syncing node: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!("Error getting nodes: {}", e);
                             }
                         }
                     }
