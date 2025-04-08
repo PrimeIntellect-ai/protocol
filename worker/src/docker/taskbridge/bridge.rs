@@ -11,6 +11,7 @@ use shared::web3::wallet::Wallet;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use std::{fs, path::Path};
+use tokio::io::AsyncReadExt;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     net::UnixListener,
@@ -137,19 +138,25 @@ impl TaskBridge {
                 Ok((stream, _addr)) => {
                     tokio::spawn(async move {
                         let mut reader = BufReader::new(stream);
-                        let mut line = String::new();
-                        while let Ok(n) = reader.read_line(&mut line).await {
-                            if n == 0 {
-                                break; // Connection closed
-                            }
+                        let mut buffer = vec![0; 1024];
+                        let mut data = Vec::new(); // Now using Vec<u8> to hold the raw data
 
-                            let trimmed = line.trim();
+                        loop {
+                            let n = match reader.read(&mut buffer).await {
+                                Ok(0) => break, // connection closed
+                                Ok(n) => n,
+                                Err(e) => {
+                                    error!("Error reading from stream: {}", e);
+                                    break;
+                                }
+                            };
+
+                            data.extend_from_slice(&buffer[..n]); // Add the read data to 'data'
+
                             let mut current_pos = 0;
-
-                            // Keep processing JSON objects until we reach the end of the line
-                            while current_pos < trimmed.len() {
+                            while current_pos < data.len() {
                                 // Try to find a complete JSON object
-                                if let Some(json_str) = extract_next_json(&trimmed[current_pos..]) {
+                                if let Some(json_str) = extract_next_json(&data[current_pos..]) {
                                     debug!("Received metric: {:?}", json_str);
                                     if json_str.contains("file_name") {
                                         let storage_path = match &storage_path_clone {
@@ -235,28 +242,29 @@ impl TaskBridge {
                                 }
                             }
 
-                            line.clear();
+                            data = data.split_off(current_pos);
                         }
 
                         // Helper function to extract the next complete JSON object from a string
-                        fn extract_next_json(input: &str) -> Option<&str> {
+                        fn extract_next_json(input: &[u8]) -> Option<&str> {
                             let mut brace_count = 0;
                             let mut start_found = false;
                             let mut start_idx = 0;
-
-                            for (i, c) in input.chars().enumerate() {
+                        
+                            for (i, &c) in input.iter().enumerate() {
                                 match c {
-                                    '{' => {
+                                    b'{' => {
                                         if !start_found {
                                             start_found = true;
                                             start_idx = i;
                                         }
                                         brace_count += 1;
                                     }
-                                    '}' => {
+                                    b'}' => {
                                         brace_count -= 1;
                                         if brace_count == 0 && start_found {
-                                            return Some(&input[start_idx..=i]);
+                                            // Safely convert the byte slice to &str
+                                            return std::str::from_utf8(&input[start_idx..=i]).ok();
                                         }
                                     }
                                     _ => continue,
