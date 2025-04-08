@@ -162,9 +162,15 @@ mod tests {
         assert_eq!(body.data, "Node registered successfully");
 
         let nodes = app_state.node_store.get_nodes();
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node.id);
-
+        match nodes {
+            Ok(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].id, node.id);
+            }
+            Err(_) => {
+                panic!("Error getting nodes");
+            }
+        }
         let validated = DiscoveryNode {
             node,
             is_validated: true,
@@ -178,10 +184,17 @@ mod tests {
         app_state.node_store.update_node(validated);
 
         let nodes = app_state.node_store.get_nodes();
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node_clone_for_recall.id);
-        assert!(nodes[0].is_validated);
-        assert!(nodes[0].is_active);
+        match nodes {
+            Ok(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].id, node_clone_for_recall.id);
+                assert!(nodes[0].is_validated);
+                assert!(nodes[0].is_active);
+            }
+            Err(_) => {
+                panic!("Error getting nodes");
+            }
+        }
 
         let json = serde_json::to_value(node_clone_for_recall.clone()).unwrap();
         let signature = sign_request(
@@ -203,10 +216,16 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let nodes = app_state.node_store.get_nodes();
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node_clone_for_recall.id);
-        assert!(nodes[0].is_validated);
-        assert!(nodes[0].is_active);
+        match nodes {
+            Ok(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].id, node_clone_for_recall.id);
+                assert!(nodes[0].is_validated);
+                assert!(nodes[0].is_active);
+            }
+            Err(_) => {
+                panic!("Error getting nodes");
+            }
     }
 
     #[actix_web::test]
@@ -317,5 +336,6 @@ mod tests {
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
     }
 }
