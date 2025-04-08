@@ -177,6 +177,23 @@ impl<'b> DiscoveryMonitor<'b> {
                     node.ip_address = discovery_node.node.ip_address.clone();
                     self.store_context.node_store.add_node(node.clone());
                 }
+
+                if existing_node.status == NodeStatus::Dead {
+                    match (
+                        existing_node.last_status_change,
+                        discovery_node.last_updated,
+                    ) {
+                        (Some(last_change), Some(last_updated)) => {
+                            if last_change < last_updated {
+                                info!("Node {} is dead but has been updated on discovery, marking as discovered", node_address);
+                                self.store_context
+                                    .node_store
+                                    .update_node_status(&node_address, NodeStatus::Discovered);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
             None => {
                 info!("Discovered new validated node: {}", node_address);
