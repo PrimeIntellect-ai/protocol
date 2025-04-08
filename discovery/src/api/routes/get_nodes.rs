@@ -98,6 +98,8 @@ mod tests {
     use shared::models::node::DiscoveryNode;
     use shared::models::node::Node;
     use std::sync::Arc;
+    use std::thread;
+    use std::time::Duration;
 
     #[actix_web::test]
     async fn test_get_nodes() {
@@ -129,5 +131,64 @@ mod tests {
         let api_response: ApiResponse<Vec<DiscoveryNode>> = serde_json::from_slice(&body).unwrap();
         assert!(api_response.success);
         assert_eq!(api_response.data.len(), 1);
+    }
+
+    #[actix_web::test]
+    async fn test_nodes_sorted_by_newest_first() {
+        let app_state = AppState {
+            node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
+            contracts: None,
+        };
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(app_state.clone()))
+                .route("/nodes", get().to(get_nodes)),
+        )
+        .await;
+
+        // Register older node first
+        let older_node = Node {
+            id: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
+            provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
+            ip_address: "127.0.0.1".to_string(),
+            port: 8080,
+            compute_pool_id: 0,
+            compute_specs: None,
+        };
+        app_state.node_store.register_node(older_node);
+
+        // Wait a moment to ensure timestamps are different
+        thread::sleep(Duration::from_millis(100));
+
+        // Register newer node
+        let newer_node = Node {
+            id: "0x45B8dFdA26948728e5351e61d62C190510CF1C99".to_string(),
+            provider_address: "0x45B8dFdA26948728e5351e61d62C190510CF1C99".to_string(),
+            ip_address: "127.0.0.2".to_string(),
+            port: 8081,
+            compute_pool_id: 0,
+            compute_specs: None,
+        };
+        app_state.node_store.register_node(newer_node);
+
+        let req = test::TestRequest::get().uri("/nodes").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let body = test::read_body(resp).await;
+        let api_response: ApiResponse<Vec<DiscoveryNode>> = serde_json::from_slice(&body).unwrap();
+
+        assert!(api_response.success);
+        assert_eq!(api_response.data.len(), 2);
+
+        // Verify the newer node is first in the list
+        assert_eq!(
+            api_response.data[0].id,
+            "0x45B8dFdA26948728e5351e61d62C190510CF1C99"
+        );
+        assert_eq!(
+            api_response.data[1].id,
+            "0x32A8dFdA26948728e5351e61d62C190510CF1C88"
+        );
     }
 }
