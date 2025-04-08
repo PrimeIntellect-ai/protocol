@@ -23,10 +23,7 @@ pub struct HardwareValidator<'a> {
 
 impl<'a> HardwareValidator<'a> {
     pub fn new(wallet: &'a Wallet, contracts: Arc<Contracts>) -> Self {
-        Self {
-            wallet,
-            contracts,
-        }
+        Self { wallet, contracts }
     }
 
     async fn validate_node(
@@ -176,7 +173,7 @@ mod tests {
         let elapsed = start_time.elapsed();
         assert!(elapsed < std::time::Duration::from_secs(11));
         println!("Validation took: {:?}", elapsed);
-        
+
         assert!(result.is_ok());
     }
 }
