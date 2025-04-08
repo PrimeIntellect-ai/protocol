@@ -226,116 +226,116 @@ mod tests {
             Err(_) => {
                 panic!("Error getting nodes");
             }
-    }
+        }
 
-    #[actix_web::test]
-    async fn test_register_node_with_correct_signature() {
-        let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
-        let node = Node {
-            id: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf".to_string(),
-            provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
-            ip_address: "127.0.0.1".to_string(),
-            port: 8089,
-            compute_pool_id: 0,
-            compute_specs: None,
-        };
+        #[actix_web::test]
+        async fn test_register_node_with_correct_signature() {
+            let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
+            let node = Node {
+                id: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf".to_string(),
+                provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
+                ip_address: "127.0.0.1".to_string(),
+                port: 8089,
+                compute_pool_id: 0,
+                compute_specs: None,
+            };
 
-        let app_state = AppState {
-            node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
-            contracts: None,
-        };
+            let app_state = AppState {
+                node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
+                contracts: None,
+            };
 
-        let validate_signatures =
-            Arc::new(ValidatorState::new(vec![]).with_validator(move |_| true));
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(app_state.clone()))
-                .route("/nodes", put().to(register_node))
-                .wrap(ValidateSignature::new(validate_signatures.clone())),
-        )
-        .await;
+            let validate_signatures =
+                Arc::new(ValidatorState::new(vec![]).with_validator(move |_| true));
+            let app = test::init_service(
+                App::new()
+                    .app_data(Data::new(app_state.clone()))
+                    .route("/nodes", put().to(register_node))
+                    .wrap(ValidateSignature::new(validate_signatures.clone())),
+            )
+            .await;
 
-        let json = serde_json::to_value(node.clone()).unwrap();
-        let signature = sign_request(
-            "/nodes",
-            &Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap(),
-            Some(&json),
-        )
-        .await
-        .unwrap();
+            let json = serde_json::to_value(node.clone()).unwrap();
+            let signature = sign_request(
+                "/nodes",
+                &Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap(),
+                Some(&json),
+            )
+            .await
+            .unwrap();
 
-        let req = test::TestRequest::put()
-            .uri("/nodes")
-            .set_json(json)
-            .insert_header(("x-address", node.id.clone()))
-            .insert_header(("x-signature", signature))
-            .to_request();
+            let req = test::TestRequest::put()
+                .uri("/nodes")
+                .set_json(json)
+                .insert_header(("x-address", node.id.clone()))
+                .insert_header(("x-signature", signature))
+                .to_request();
 
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), StatusCode::OK);
+            let resp = test::call_service(&app, req).await;
+            assert_eq!(resp.status(), StatusCode::OK);
 
-        let body: ApiResponse<String> = test::read_body_json(resp).await;
-        assert!(body.success);
-        assert_eq!(body.data, "Node registered successfully");
+            let body: ApiResponse<String> = test::read_body_json(resp).await;
+            assert!(body.success);
+            assert_eq!(body.data, "Node registered successfully");
 
-        let nodes = app_state.node_store.get_nodes();
-        let nodes = match nodes {
-            Ok(nodes) => nodes,
-            Err(_) => {
-                panic!("Error getting nodes");
-            }
-        };
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node.id);
-        assert_eq!(nodes[0].last_updated, None);
-        assert_ne!(nodes[0].created_at, None);
-    }
+            let nodes = app_state.node_store.get_nodes();
+            let nodes = match nodes {
+                Ok(nodes) => nodes,
+                Err(_) => {
+                    panic!("Error getting nodes");
+                }
+            };
+            assert_eq!(nodes.len(), 1);
+            assert_eq!(nodes[0].id, node.id);
+            assert_eq!(nodes[0].last_updated, None);
+            assert_ne!(nodes[0].created_at, None);
+        }
 
-    #[actix_web::test]
-    async fn test_register_node_with_incorrect_signature() {
-        let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
-        let node = Node {
-            id: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdd".to_string(),
-            provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
-            ip_address: "127.0.0.1".to_string(),
-            port: 8089,
-            compute_pool_id: 0,
-            compute_specs: None,
-        };
+        #[actix_web::test]
+        async fn test_register_node_with_incorrect_signature() {
+            let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
+            let node = Node {
+                id: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdd".to_string(),
+                provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
+                ip_address: "127.0.0.1".to_string(),
+                port: 8089,
+                compute_pool_id: 0,
+                compute_specs: None,
+            };
 
-        let app_state = AppState {
-            node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
-            contracts: None,
-        };
+            let app_state = AppState {
+                node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
+                contracts: None,
+            };
 
-        let validate_signatures =
-            Arc::new(ValidatorState::new(vec![]).with_validator(move |_| true));
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(app_state.clone()))
-                .route("/nodes", put().to(register_node))
-                .wrap(ValidateSignature::new(validate_signatures.clone())),
-        )
-        .await;
+            let validate_signatures =
+                Arc::new(ValidatorState::new(vec![]).with_validator(move |_| true));
+            let app = test::init_service(
+                App::new()
+                    .app_data(Data::new(app_state.clone()))
+                    .route("/nodes", put().to(register_node))
+                    .wrap(ValidateSignature::new(validate_signatures.clone())),
+            )
+            .await;
 
-        let json = serde_json::to_value(node.clone()).unwrap();
-        let signature = sign_request(
-            "/nodes",
-            &Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap(),
-            Some(&json),
-        )
-        .await
-        .unwrap();
+            let json = serde_json::to_value(node.clone()).unwrap();
+            let signature = sign_request(
+                "/nodes",
+                &Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap(),
+                Some(&json),
+            )
+            .await
+            .unwrap();
 
-        let req = test::TestRequest::put()
-            .uri("/nodes")
-            .set_json(json)
-            .insert_header(("x-address", "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf"))
-            .insert_header(("x-signature", signature))
-            .to_request();
+            let req = test::TestRequest::put()
+                .uri("/nodes")
+                .set_json(json)
+                .insert_header(("x-address", "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf"))
+                .insert_header(("x-signature", signature))
+                .to_request();
 
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    }
+            let resp = test::call_service(&app, req).await;
+            assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        }
     }
 }
