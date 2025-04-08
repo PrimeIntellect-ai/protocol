@@ -26,6 +26,7 @@ pub struct TaskBridge {
     pub node_wallet: Option<Arc<Wallet>>,
     pub docker_storage_path: Option<String>,
     pub state: Arc<SystemState>,
+    pub silence_metrics: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -43,6 +44,7 @@ struct RequestUploadRequest {
 }
 
 impl TaskBridge {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         socket_path: Option<&str>,
         metrics_store: Arc<MetricsStore>,
@@ -51,6 +53,7 @@ impl TaskBridge {
         node_wallet: Option<Arc<Wallet>>,
         docker_storage_path: Option<String>,
         state: Arc<SystemState>,
+        silence_metrics: bool,
     ) -> Self {
         let path = match socket_path {
             Some(path) => path.to_string(),
@@ -71,6 +74,7 @@ impl TaskBridge {
             node_wallet,
             docker_storage_path,
             state,
+            silence_metrics,
         }
     }
 
@@ -130,6 +134,7 @@ impl TaskBridge {
             let wallet = self.node_wallet.clone();
             let storage_path_clone = self.docker_storage_path.clone();
             let state_clone = self.state.clone();
+            let silence_metrics = self.silence_metrics;
 
             match listener.accept().await {
                 Ok((stream, _addr)) => {
@@ -213,10 +218,12 @@ impl TaskBridge {
                                     } else {
                                         match serde_json::from_str::<MetricInput>(json_str) {
                                             Ok(input) => {
-                                                info!(
-                                                    "📊 Received metric - Task: {}, Label: {}, Value: {}",
-                                                    input.task_id, input.label, input.value
-                                                );
+                                                if !silence_metrics {
+                                                    info!(
+                                                        "📊 Received metric - Task: {}, Label: {}, Value: {}",
+                                                        input.task_id, input.label, input.value
+                                                    );
+                                                }
                                                 let _ = store
                                                     .update_metric(
                                                         input.task_id,
@@ -302,6 +309,7 @@ mod tests {
             None,
             None,
             state,
+            false,
         );
 
         // Run the bridge in background
@@ -333,6 +341,7 @@ mod tests {
             None,
             None,
             state,
+            false,
         );
 
         // Run bridge in background
@@ -366,6 +375,7 @@ mod tests {
             None,
             None,
             state,
+            false,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -413,6 +423,7 @@ mod tests {
             None,
             None,
             state,
+            false,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });

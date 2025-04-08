@@ -49,8 +49,11 @@ pub async fn register_node(
 
     let node_store = data.node_store.clone();
 
-    node_store.register_node(node.clone());
-    HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully"))
+    match node_store.register_node(node.clone()) {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully")),
+        Err(_) => HttpResponse::InternalServerError()
+            .json(ApiResponse::new(false, "Internal server error")),
+    }
 }
 
 pub fn node_routes() -> Scope {
@@ -162,9 +165,15 @@ mod tests {
         assert_eq!(body.data, "Node registered successfully");
 
         let nodes = app_state.node_store.get_nodes();
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node.id);
-
+        match nodes {
+            Ok(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].id, node.id);
+            }
+            Err(_) => {
+                unreachable!("Error getting nodes");
+            }
+        }
         let validated = DiscoveryNode {
             node,
             is_validated: true,
@@ -175,13 +184,25 @@ mod tests {
             created_at: None,
         };
 
-        app_state.node_store.update_node(validated);
+        match app_state.node_store.update_node(validated) {
+            Ok(_) => (),
+            Err(_) => {
+                unreachable!("Error updating node");
+            }
+        }
 
         let nodes = app_state.node_store.get_nodes();
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node_clone_for_recall.id);
-        assert!(nodes[0].is_validated);
-        assert!(nodes[0].is_active);
+        match nodes {
+            Ok(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].id, node_clone_for_recall.id);
+                assert!(nodes[0].is_validated);
+                assert!(nodes[0].is_active);
+            }
+            Err(_) => {
+                unreachable!("Error getting nodes");
+            }
+        }
 
         let json = serde_json::to_value(node_clone_for_recall.clone()).unwrap();
         let signature = sign_request(
@@ -203,10 +224,17 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let nodes = app_state.node_store.get_nodes();
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node_clone_for_recall.id);
-        assert!(nodes[0].is_validated);
-        assert!(nodes[0].is_active);
+        match nodes {
+            Ok(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].id, node_clone_for_recall.id);
+                assert!(nodes[0].is_validated);
+                assert!(nodes[0].is_active);
+            }
+            Err(_) => {
+                unreachable!("Error getting nodes");
+            }
+        }
     }
 
     #[actix_web::test]
@@ -260,6 +288,12 @@ mod tests {
         assert_eq!(body.data, "Node registered successfully");
 
         let nodes = app_state.node_store.get_nodes();
+        let nodes = match nodes {
+            Ok(nodes) => nodes,
+            Err(_) => {
+                panic!("Error getting nodes");
+            }
+        };
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, node.id);
         assert_eq!(nodes[0].last_updated, None);

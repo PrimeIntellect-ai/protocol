@@ -16,7 +16,7 @@ use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
-use log::debug;
+use log::info;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
@@ -92,6 +92,10 @@ pub enum Commands {
         /// Skip system requirement checks (for development/testing)
         #[arg(long, default_value = "false")]
         skip_system_checks: bool,
+
+        /// Silence metrics logging
+        #[arg(long, default_value = "false")]
+        silence_metrics: bool,
     },
     Check {},
 
@@ -149,6 +153,7 @@ pub async fn execute_command(
             auto_accept,
             funding_retry_count,
             skip_system_checks,
+            silence_metrics,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -312,6 +317,7 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
+                *silence_metrics,
             ));
 
             let system_memory = node_config
@@ -537,8 +543,8 @@ pub async fn execute_command(
 
             if let Err(err) = {
                 let heartbeat_clone = heartbeat_service.unwrap().clone();
-                debug!("Recovering from previous state: {}", recover_last_state);
                 if recover_last_state {
+                    info!("Recovering from previous state: {}", recover_last_state);
                     heartbeat_clone
                         .activate_heartbeat_if_endpoint_exists()
                         .await;
