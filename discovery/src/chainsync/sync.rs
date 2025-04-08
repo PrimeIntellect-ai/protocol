@@ -80,7 +80,12 @@ impl ChainSync {
         n.is_validated = is_validated;
         n.is_provider_whitelisted = provider_info.is_whitelisted;
         n.is_blacklisted = is_blacklisted;
-        node_store.update_node(n);
+        match node_store.update_node(n) {
+            Ok(_) => (),
+            Err(e) => {
+                error!("Error updating node: {}", e);
+            }
+        }
 
         Ok(())
     }
@@ -97,9 +102,16 @@ impl ChainSync {
                 tokio::select! {
                     _ = interval.tick() => {
                         let nodes = node_store_clone.get_nodes();
-                        for node in nodes {
-                            if let Err(e) = ChainSync::sync_single_node(node_store_clone.clone(), contracts_clone.clone(), node).await {
-                                error!("Error syncing node: {}", e);
+                        match nodes {
+                            Ok(nodes) => {
+                                for node in nodes {
+                                    if let Err(e) = ChainSync::sync_single_node(node_store_clone.clone(), contracts_clone.clone(), node).await {
+                                        error!("Error syncing node: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!("Error getting nodes: {}", e);
                             }
                         }
                     }

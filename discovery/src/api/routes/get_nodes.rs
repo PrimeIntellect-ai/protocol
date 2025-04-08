@@ -10,8 +10,14 @@ use shared::models::node::DiscoveryNode;
 
 pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
     let nodes = data.node_store.get_nodes();
-    let response = ApiResponse::new(true, nodes);
-    HttpResponse::Ok().json(response)
+    match nodes {
+        Ok(nodes) => {
+            let response = ApiResponse::new(true, nodes);
+            HttpResponse::Ok().json(response)
+        }
+        Err(_) => HttpResponse::InternalServerError()
+            .json(ApiResponse::new(false, "Internal server error")),
+    }
 }
 
 pub async fn get_nodes_for_pool(
@@ -20,70 +26,81 @@ pub async fn get_nodes_for_pool(
     req: actix_web::HttpRequest,
 ) -> HttpResponse {
     let nodes = data.node_store.get_nodes();
-    let id_clone = pool_id.clone();
-    let pool_contract_id: U256 = id_clone.parse::<U256>().unwrap();
-    let pool_id: u32 = pool_id.parse().unwrap();
+    match nodes {
+        Ok(nodes) => {
+            let id_clone = pool_id.clone();
+            let pool_contract_id: U256 = id_clone.parse::<U256>().unwrap();
+            let pool_id: u32 = pool_id.parse().unwrap();
 
-    match data.contracts.clone() {
-        Some(contracts) => {
-            let pool_info = match contracts.compute_pool.get_pool_info(pool_contract_id).await {
-                Ok(info) => info,
-                Err(_) => {
-                    return HttpResponse::NotFound()
-                        .json(ApiResponse::new(false, "Pool not found"));
-                }
-            };
-            let owner = pool_info.creator;
-            let manager = pool_info.compute_manager_key;
-            let address_str = match req.headers().get("x-address") {
-                Some(address) => match address.to_str() {
-                    Ok(addr) => addr.to_string(),
-                    Err(_) => {
+            match data.contracts.clone() {
+                Some(contracts) => {
+                    let pool_info =
+                        match contracts.compute_pool.get_pool_info(pool_contract_id).await {
+                            Ok(info) => info,
+                            Err(_) => {
+                                return HttpResponse::NotFound()
+                                    .json(ApiResponse::new(false, "Pool not found"));
+                            }
+                        };
+                    let owner = pool_info.creator;
+                    let manager = pool_info.compute_manager_key;
+                    let address_str = match req.headers().get("x-address") {
+                        Some(address) => match address.to_str() {
+                            Ok(addr) => addr.to_string(),
+                            Err(_) => {
+                                return HttpResponse::BadRequest().json(ApiResponse::new(
+                                    false,
+                                    "Invalid x-address header - parsing issue",
+                                ))
+                            }
+                        },
+                        None => {
+                            return HttpResponse::BadRequest()
+                                .json(ApiResponse::new(false, "Missing x-address header"))
+                        }
+                    };
+
+                    // Normalize the address strings for comparison
+                    let owner_str = owner.to_string().to_lowercase();
+                    let manager_str = manager.to_string().to_lowercase();
+                    let address_str_normalized = address_str.to_lowercase();
+
+                    if address_str_normalized != owner_str && address_str_normalized != manager_str
+                    {
                         return HttpResponse::BadRequest().json(ApiResponse::new(
                             false,
-                            "Invalid x-address header - parsing issue",
-                        ))
+                            "Invalid x-address header - not owner or manager",
+                        ));
                     }
-                },
+                }
                 None => {
                     return HttpResponse::BadRequest()
-                        .json(ApiResponse::new(false, "Missing x-address header"))
+                        .json(ApiResponse::new(false, "No contracts found"))
                 }
-            };
-
-            // Normalize the address strings for comparison
-            let owner_str = owner.to_string().to_lowercase();
-            let manager_str = manager.to_string().to_lowercase();
-            let address_str_normalized = address_str.to_lowercase();
-
-            if address_str_normalized != owner_str && address_str_normalized != manager_str {
-                return HttpResponse::BadRequest().json(ApiResponse::new(
-                    false,
-                    "Invalid x-address header - not owner or manager",
-                ));
             }
+
+            let nodes_for_pool: Vec<DiscoveryNode> = nodes
+                .iter()
+                .filter(|node| node.compute_pool_id == pool_id)
+                .cloned()
+                .collect();
+
+            let response = ApiResponse::new(true, nodes_for_pool);
+            HttpResponse::Ok().json(response)
         }
-        None => {
-            return HttpResponse::BadRequest().json(ApiResponse::new(false, "No contracts found"))
-        }
+        Err(_) => HttpResponse::InternalServerError()
+            .json(ApiResponse::new(false, "Internal server error")),
     }
-
-    let nodes_for_pool: Vec<DiscoveryNode> = nodes
-        .iter()
-        .filter(|node| node.compute_pool_id == pool_id)
-        .cloned()
-        .collect();
-
-    let response = ApiResponse::new(true, nodes_for_pool);
-    HttpResponse::Ok().json(response)
 }
 
 pub async fn get_node_by_subkey(node_id: web::Path<String>, data: Data<AppState>) -> HttpResponse {
-    let node = data.node_store.get_node_by_id(node_id.to_string());
+    let node = data.node_store.get_node_by_id(&node_id.to_string());
 
     match node {
-        Some(node) => HttpResponse::Ok().json(ApiResponse::new(true, node)),
-        None => HttpResponse::NotFound().json(ApiResponse::new(false, "Node not found")),
+        Ok(Some(node)) => HttpResponse::Ok().json(ApiResponse::new(true, node)),
+        Ok(None) => HttpResponse::NotFound().json(ApiResponse::new(false, "Node not found")),
+        Err(_) => HttpResponse::InternalServerError()
+            .json(ApiResponse::new(false, "Internal server error")),
     }
 }
 
@@ -122,7 +139,12 @@ mod tests {
             compute_pool_id: 0,
             compute_specs: None,
         };
-        app_state.node_store.register_node(sample_node);
+        match app_state.node_store.register_node(sample_node) {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("Error registering node");
+            }
+        }
 
         let req = test::TestRequest::get().uri("/nodes").to_request();
         let resp = test::call_service(&app, req).await;
@@ -155,7 +177,12 @@ mod tests {
             compute_pool_id: 0,
             compute_specs: None,
         };
-        app_state.node_store.register_node(older_node);
+        match app_state.node_store.register_node(older_node) {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("Error registering node");
+            }
+        }
 
         // Wait a moment to ensure timestamps are different
         thread::sleep(Duration::from_millis(100));
@@ -169,7 +196,12 @@ mod tests {
             compute_pool_id: 0,
             compute_specs: None,
         };
-        app_state.node_store.register_node(newer_node);
+        match app_state.node_store.register_node(newer_node) {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("Error registering node");
+            }
+        }
 
         let req = test::TestRequest::get().uri("/nodes").to_request();
         let resp = test::call_service(&app, req).await;
