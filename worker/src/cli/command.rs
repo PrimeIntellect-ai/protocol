@@ -529,7 +529,7 @@ pub async fn execute_command(
 
             Console::success("Discovery info uploaded");
 
-            Console::section("Starting Worker");
+            Console::section("Starting Worker with Task Bridge");
 
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
