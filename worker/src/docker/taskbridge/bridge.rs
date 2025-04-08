@@ -135,18 +135,24 @@ impl TaskBridge {
             let storage_path_clone = self.docker_storage_path.clone();
             let state_clone = self.state.clone();
             let silence_metrics = self.silence_metrics;
-
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     tokio::spawn(async move {
+                        debug!("Received connection from {:?}", _addr);
                         let mut reader = BufReader::new(stream);
                         let mut buffer = vec![0; 1024];
                         let mut data = Vec::new(); // Now using Vec<u8> to hold the raw data
 
                         loop {
                             let n = match reader.read(&mut buffer).await {
-                                Ok(0) => break, // connection closed
-                                Ok(n) => n,
+                                Ok(0) => {
+                                    debug!("Connection closed by client");
+                                    break;
+                                }
+                                Ok(n) => {
+                                    debug!("Read {} bytes from socket", n);
+                                    n
+                                }
                                 Err(e) => {
                                     error!("Error reading from stream: {}", e);
                                     break;
@@ -154,48 +160,67 @@ impl TaskBridge {
                             };
 
                             data.extend_from_slice(&buffer[..n]); // Add the read data to 'data'
+                            debug!("Current data buffer size: {} bytes", data.len());
 
                             let mut current_pos = 0;
                             while current_pos < data.len() {
                                 // Try to find a complete JSON object
-                                if let Some(json_str) = extract_next_json(&data[current_pos..]) {
-                                    debug!("Received metric: {:?}", json_str);
+                                if let Some((json_str, byte_length)) =
+                                    extract_next_json(&data[current_pos..])
+                                {
+                                    debug!("Extracted JSON object: {:?}", json_str);
                                     if json_str.contains("file_name") {
-                                        let storage_path = match &storage_path_clone {
-                                            Some(path) => path,
-                                            None => {
-                                                println!(
-                                                    "Storage path is not set - cannot upload file."
-                                                );
-                                                continue;
-                                            }
-                                        };
-
-                                        if let Ok(file_info) =
-                                            serde_json::from_str::<serde_json::Value>(json_str)
-                                        {
-                                            if let Some(file_name) = file_info["value"].as_str() {
-                                                let task_id =
-                                                    file_info["task_id"].as_str().unwrap();
-
-                                                if let Err(e) = file_handler::handle_file_upload(
-                                                    storage_path,
-                                                    task_id,
-                                                    file_name,
-                                                    wallet.as_ref().unwrap(),
-                                                    &state_clone,
-                                                )
-                                                .await
+                                        if let Some(storage_path) = storage_path_clone.clone() {
+                                            if let Ok(file_info) =
+                                                serde_json::from_str::<serde_json::Value>(json_str)
+                                            {
+                                                if let Some(file_name) = file_info["value"].as_str()
                                                 {
-                                                    error!("Failed to handle file upload: {}", e);
+                                                    let task_id = file_info["task_id"]
+                                                        .as_str()
+                                                        .unwrap_or("unknown");
+                                                    info!("Handling file upload for task_id: {}, file: {}", task_id, file_name);
+
+                                                    if let Err(e) =
+                                                        file_handler::handle_file_upload(
+                                                            &storage_path,
+                                                            task_id,
+                                                            file_name,
+                                                            wallet.as_ref().unwrap(),
+                                                            &state_clone,
+                                                        )
+                                                        .await
+                                                    {
+                                                        error!(
+                                                            "Failed to handle file upload: {}",
+                                                            e
+                                                        );
+                                                    } else {
+                                                        info!("File upload handled successfully");
+                                                    }
+                                                } else {
+                                                    error!("Missing file_name value in JSON");
                                                 }
+                                            } else {
+                                                error!(
+                                                    "Failed to parse file_name JSON: {}",
+                                                    json_str
+                                                );
                                             }
+                                        } else {
+                                            error!("No storage path set");
                                         }
                                     } else if json_str.contains("file_sha") {
+                                        debug!("Processing file_sha message");
                                         if let Ok(file_info) =
                                             serde_json::from_str::<serde_json::Value>(json_str)
                                         {
                                             if let Some(file_sha) = file_info["value"].as_str() {
+                                                let task_id = file_info["task_id"]
+                                                    .as_str()
+                                                    .unwrap_or("unknown");
+                                                info!("Handling file validation for task_id: {}, sha: {}", task_id, file_sha);
+
                                                 if let (Some(contracts_ref), Some(node_ref)) =
                                                     (contracts.clone(), node.clone())
                                                 {
@@ -211,26 +236,38 @@ impl TaskBridge {
                                                             "Failed to handle file validation: {}",
                                                             e
                                                         );
+                                                    } else {
+                                                        info!(
+                                                            "File validation handled successfully"
+                                                        );
                                                     }
+                                                } else {
+                                                    error!("Missing contracts or node configuration for file validation");
                                                 }
+                                            } else {
+                                                error!("Missing file_sha value in JSON");
                                             }
+                                        } else {
+                                            error!("Failed to parse file_sha JSON: {}", json_str);
                                         }
                                     } else {
+                                        debug!("Processing metric message");
                                         match serde_json::from_str::<MetricInput>(json_str) {
                                             Ok(input) => {
+                                                info!(
+                                                    "Received metric - Task: {}, Label: {}, Value: {}",
+                                                    input.task_id, input.label, input.value
+                                                );
                                                 if !silence_metrics {
-                                                    info!(
-                                                        "📊 Received metric - Task: {}, Label: {}, Value: {}",
-                                                        input.task_id, input.label, input.value
-                                                    );
+                                                    debug!("Updating metric store");
+                                                    let _ = store
+                                                        .update_metric(
+                                                            input.task_id,
+                                                            input.label,
+                                                            input.value,
+                                                        )
+                                                        .await;
                                                 }
-                                                let _ = store
-                                                    .update_metric(
-                                                        input.task_id,
-                                                        input.label,
-                                                        input.value,
-                                                    )
-                                                    .await;
                                             }
                                             Err(e) => {
                                                 error!(
@@ -240,17 +277,26 @@ impl TaskBridge {
                                             }
                                         }
                                     }
-                                    current_pos += json_str.len();
+                                    current_pos += byte_length;
+                                    debug!(
+                                        "Advanced position to {} after processing JSON",
+                                        current_pos
+                                    );
                                 } else {
+                                    debug!("No complete JSON object found, waiting for more data");
                                     break;
                                 }
                             }
 
                             data = data.split_off(current_pos);
+                            debug!(
+                                "Remaining data buffer size after processing: {} bytes",
+                                data.len()
+                            );
                         }
 
                         // Helper function to extract the next complete JSON object from a string
-                        fn extract_next_json(input: &[u8]) -> Option<&str> {
+                        fn extract_next_json(input: &[u8]) -> Option<(&str, usize)> {
                             let mut brace_count = 0;
                             let mut start_found = false;
                             let mut start_idx = 0;
@@ -267,8 +313,17 @@ impl TaskBridge {
                                     b'}' => {
                                         brace_count -= 1;
                                         if brace_count == 0 && start_found {
+                                            // Calculate the actual byte length
+                                            let byte_length = i - start_idx + 1;
+
                                             // Safely convert the byte slice to &str
-                                            return std::str::from_utf8(&input[start_idx..=i]).ok();
+                                            if let Ok(json_str) =
+                                                std::str::from_utf8(&input[start_idx..=i])
+                                            {
+                                                return Some((json_str, byte_length));
+                                            } else {
+                                                return None; // Invalid UTF-8
+                                            }
                                         }
                                     }
                                     _ => continue,
@@ -278,7 +333,7 @@ impl TaskBridge {
                         }
                     });
                 }
-                Err(e) => error!("Accept failed: {}", e),
+                Err(e) => error!("Accept failed on Unix socket: {}", e),
             }
         }
     }
