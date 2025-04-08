@@ -57,7 +57,7 @@ impl NodeStore {
         nodes_vec.sort_by(|a, b| {
             let a_time = a.last_updated.or(a.created_at);
             let b_time = b.last_updated.or(b.created_at);
-            a_time.cmp(&b_time)
+            b_time.cmp(&a_time)
         });
         nodes_vec
     }
