@@ -171,7 +171,7 @@ mod tests {
                 assert_eq!(nodes[0].id, node.id);
             }
             Err(_) => {
-                assert!(false, "Error getting nodes");
+                unreachable!("Error getting nodes");
             }
         }
         let validated = DiscoveryNode {
@@ -232,7 +232,7 @@ mod tests {
                 assert!(nodes[0].is_active);
             }
             Err(_) => {
-                assert!(false, "Error getting nodes");
+                unreachable!("Error getting nodes");
             }
         }
     }
