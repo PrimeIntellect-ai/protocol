@@ -46,6 +46,7 @@ struct RequestUploadRequest {
 }
 
 impl TaskBridge {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         socket_path: Option<&str>,
         metrics_store: Arc<MetricsStore>,
