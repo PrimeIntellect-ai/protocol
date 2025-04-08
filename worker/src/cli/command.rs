@@ -92,6 +92,10 @@ pub enum Commands {
         /// Skip system requirement checks (for development/testing)
         #[arg(long, default_value = "false")]
         skip_system_checks: bool,
+
+        /// Silence metrics logging
+        #[arg(long, default_value = "false")]
+        silence_metrics: bool,
     },
     Check {},
 
@@ -149,6 +153,7 @@ pub async fn execute_command(
             auto_accept,
             funding_retry_count,
             skip_system_checks,
+            silence_metrics,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -312,6 +317,7 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
+                *silence_metrics,
             ));
 
             let system_memory = node_config
