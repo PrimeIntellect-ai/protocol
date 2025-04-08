@@ -80,7 +80,12 @@ impl ChainSync {
         n.is_validated = is_validated;
         n.is_provider_whitelisted = provider_info.is_whitelisted;
         n.is_blacklisted = is_blacklisted;
-        node_store.update_node(n);
+        match node_store.update_node(n) {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("Error updating node");
+            }
+        }
 
         Ok(())
     }

@@ -139,7 +139,12 @@ mod tests {
             compute_pool_id: 0,
             compute_specs: None,
         };
-        app_state.node_store.register_node(sample_node);
+        match app_state.node_store.register_node(sample_node) {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("Error registering node");
+            }
+        }
 
         let req = test::TestRequest::get().uri("/nodes").to_request();
         let resp = test::call_service(&app, req).await;
@@ -172,7 +177,12 @@ mod tests {
             compute_pool_id: 0,
             compute_specs: None,
         };
-        app_state.node_store.register_node(older_node);
+        match app_state.node_store.register_node(older_node) {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("Error registering node");
+            }
+        }
 
         // Wait a moment to ensure timestamps are different
         thread::sleep(Duration::from_millis(100));
@@ -186,7 +196,12 @@ mod tests {
             compute_pool_id: 0,
             compute_specs: None,
         };
-        app_state.node_store.register_node(newer_node);
+        match app_state.node_store.register_node(newer_node) {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("Error registering node");
+            }
+        }
 
         let req = test::TestRequest::get().uri("/nodes").to_request();
         let resp = test::call_service(&app, req).await;
