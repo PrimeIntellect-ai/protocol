@@ -45,6 +45,7 @@ impl NodeStore {
         let serialized_node = serde_json::to_string(&node).unwrap();
         let _: () = con.set(&key, serialized_node).unwrap();
     }
+
     pub fn get_nodes(&self) -> Vec<DiscoveryNode> {
         let mut con = self.get_connection();
         let nodes: Vec<String> = con.keys("node:*").unwrap();
