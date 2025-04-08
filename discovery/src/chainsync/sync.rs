@@ -82,8 +82,8 @@ impl ChainSync {
         n.is_blacklisted = is_blacklisted;
         match node_store.update_node(n) {
             Ok(_) => (),
-            Err(_) => {
-                panic!("Error updating node");
+            Err(e) => {
+                error!("Error updating node: {}", e);
             }
         }
 

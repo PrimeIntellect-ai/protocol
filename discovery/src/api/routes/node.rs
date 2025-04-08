@@ -171,7 +171,7 @@ mod tests {
                 assert_eq!(nodes[0].id, node.id);
             }
             Err(_) => {
-                panic!("Error getting nodes");
+                assert!(false, "Error getting nodes");
             }
         }
         let validated = DiscoveryNode {
@@ -187,7 +187,7 @@ mod tests {
         match app_state.node_store.update_node(validated) {
             Ok(_) => (),
             Err(_) => {
-                panic!("Error updating node");
+                assert!(false, "Error updating node");
             }
         }
 
@@ -200,7 +200,7 @@ mod tests {
                 assert!(nodes[0].is_active);
             }
             Err(_) => {
-                panic!("Error getting nodes");
+                assert!(false, "Error getting nodes");
             }
         }
 
@@ -232,7 +232,7 @@ mod tests {
                 assert!(nodes[0].is_active);
             }
             Err(_) => {
-                panic!("Error getting nodes");
+                assert!(false, "Error getting nodes");
             }
         }
     }
