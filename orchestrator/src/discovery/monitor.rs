@@ -179,19 +179,16 @@ impl<'b> DiscoveryMonitor<'b> {
                 }
 
                 if existing_node.status == NodeStatus::Dead {
-                    match (
+                    if let (Some(last_change), Some(last_updated)) = (
                         existing_node.last_status_change,
                         discovery_node.last_updated,
                     ) {
-                        (Some(last_change), Some(last_updated)) => {
-                            if last_change < last_updated {
-                                info!("Node {} is dead but has been updated on discovery, marking as discovered", node_address);
-                                self.store_context
-                                    .node_store
-                                    .update_node_status(&node_address, NodeStatus::Discovered);
-                            }
+                        if last_change < last_updated {
+                            info!("Node {} is dead but has been updated on discovery, marking as discovered", node_address);
+                            self.store_context
+                                .node_store
+                                .update_node_status(&node_address, NodeStatus::Discovered);
                         }
-                        _ => {}
                     }
                 }
             }
