@@ -12,10 +12,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use std::{fs, path::Path};
 use tokio::io::AsyncReadExt;
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    net::UnixListener,
-};
+use tokio::{io::BufReader, net::UnixListener};
 
 pub const SOCKET_NAME: &str = "metrics.sock";
 const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.worker/";
@@ -250,7 +247,7 @@ impl TaskBridge {
                             let mut brace_count = 0;
                             let mut start_found = false;
                             let mut start_idx = 0;
-                        
+
                             for (i, &c) in input.iter().enumerate() {
                                 match c {
                                     b'{' => {
