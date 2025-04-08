@@ -37,7 +37,7 @@ impl NodeStore {
             let existing_node = self.get_node(address)?;
             if let Some(existing_node) = existing_node {
                 let updated_node = existing_node.with_updated_node(node);
-                self.update_node(updated_node);
+                self.update_node(updated_node)?;
             }
         } else {
             let discovery_node = DiscoveryNode::from(node);
