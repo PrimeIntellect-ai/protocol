@@ -1,20 +1,17 @@
 use crate::docker::taskbridge::file_handler;
 use crate::metrics::store::MetricsStore;
 use crate::state::system_state::SystemState;
-use alloy::primitives::map::HashMap;
 use anyhow::Result;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
-use std::collections::HashSet;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use std::{fs, path::Path};
 use tokio::io::AsyncReadExt;
-use tokio::sync::Mutex;
 use tokio::{io::BufReader, net::UnixListener};
 
 pub const SOCKET_NAME: &str = "metrics.sock";
