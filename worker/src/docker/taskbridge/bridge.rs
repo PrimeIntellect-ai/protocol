@@ -109,7 +109,7 @@ impl TaskBridge {
 
         let listener = match UnixListener::bind(socket_path) {
             Ok(l) => {
-                debug!("Successfully bound to Unix socket");
+                info!("Successfully bound to Unix socket");
                 l
             }
             Err(e) => {
@@ -126,7 +126,7 @@ impl TaskBridge {
                 return Err(e.into());
             }
         }
-
+        info!("TaskBridge socket created at: {}", socket_path.display());
         loop {
             let store = self.metrics_store.clone();
             let node = self.node_config.clone();
@@ -159,7 +159,7 @@ impl TaskBridge {
                                 }
                             };
 
-                            data.extend_from_slice(&buffer[..n]); // Add the read data to 'data'
+                            data.extend_from_slice(&buffer[..n]);
                             debug!("Current data buffer size: {} bytes", data.len());
 
                             let mut current_pos = 0;
@@ -170,6 +170,7 @@ impl TaskBridge {
                                 {
                                     debug!("Extracted JSON object: {:?}", json_str);
                                     if json_str.contains("file_name") {
+                                        info!("Processing file_name message");
                                         if let Some(storage_path) = storage_path_clone.clone() {
                                             if let Ok(file_info) =
                                                 serde_json::from_str::<serde_json::Value>(json_str)
@@ -313,38 +314,59 @@ impl TaskBridge {
 
                         // Helper function to extract the next complete JSON object from a string
                         fn extract_next_json(input: &[u8]) -> Option<(&str, usize)> {
-                            let mut brace_count = 0;
-                            let mut start_found = false;
-                            let mut start_idx = 0;
+                            // Skip any leading whitespace (including newlines)
+                            let mut start_pos = 0;
+                            while start_pos < input.len() && (input[start_pos] <= 32) {
+                                // ASCII space and below includes all whitespace
+                                start_pos += 1;
+                            }
 
-                            for (i, &c) in input.iter().enumerate() {
-                                match c {
-                                    b'{' => {
-                                        if !start_found {
-                                            start_found = true;
-                                            start_idx = i;
-                                        }
-                                        brace_count += 1;
-                                    }
-                                    b'}' => {
-                                        brace_count -= 1;
-                                        if brace_count == 0 && start_found {
-                                            // Calculate the actual byte length
-                                            let byte_length = i - start_idx + 1;
+                            if start_pos >= input.len() {
+                                return None; // No content left
+                            }
 
-                                            // Safely convert the byte slice to &str
-                                            if let Ok(json_str) =
-                                                std::str::from_utf8(&input[start_idx..=i])
-                                            {
-                                                return Some((json_str, byte_length));
-                                            } else {
-                                                return None; // Invalid UTF-8
-                                            }
-                                        }
+                            // If we find an opening brace, look for the matching closing brace
+                            if input[start_pos] == b'{' {
+                                let mut brace_count = 1;
+                                let mut pos = start_pos + 1;
+
+                                while pos < input.len() && brace_count > 0 {
+                                    match input[pos] {
+                                        b'{' => brace_count += 1,
+                                        b'}' => brace_count -= 1,
+                                        _ => {}
                                     }
-                                    _ => continue,
+                                    pos += 1;
+                                }
+
+                                if brace_count == 0 {
+                                    // Found a complete JSON object
+                                    if let Ok(json_str) =
+                                        std::str::from_utf8(&input[start_pos..pos])
+                                    {
+                                        return Some((json_str, pos));
+                                    }
                                 }
                             }
+
+                            // Alternatively, look for a newline-terminated JSON object
+                            if let Some(newline_pos) =
+                                input[start_pos..].iter().position(|&c| c == b'\n')
+                            {
+                                let end_pos = start_pos + newline_pos;
+                                // Check if we have a complete JSON object in this line
+                                if let Ok(line) = std::str::from_utf8(&input[start_pos..end_pos]) {
+                                    let trimmed = line.trim();
+                                    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                                        return Some((trimmed, end_pos + 1)); // +1 to consume the newline
+                                    }
+                                }
+
+                                // If not a complete JSON object, skip this line and try the next
+                                return extract_next_json(&input[end_pos + 1..])
+                                    .map(|(json, len)| (json, len + end_pos + 1));
+                            }
+
                             None
                         }
                     });
