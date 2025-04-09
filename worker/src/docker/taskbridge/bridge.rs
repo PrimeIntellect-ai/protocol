@@ -10,7 +10,6 @@ use shared::web3::wallet::Wallet;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
-use std::time::Duration;
 use std::{fs, path::Path};
 use tokio::io::AsyncReadExt;
 use tokio::{io::BufReader, net::UnixListener};
