@@ -214,7 +214,7 @@ impl NodeStatusUpdater {
                                 // We have caught a very interesting edge case here.
                                 // The node is in pool but does not send heartbeats - maybe due to a downtime of the orchestrator?
                                 // Node invites fail now since the node cannot be in pool again.
-                                // We have to eject and re-invite - we can simply do this by setting the status to unhealthy. The node will eventuall be ejected.
+                                // We have to eject and re-invite - we can simply do this by setting the status to unhealthy. The node will eventually be ejected.
                                 self.store_context
                                     .node_store
                                     .update_node_status(&node.address, NodeStatus::Unhealthy);
