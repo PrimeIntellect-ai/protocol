@@ -369,7 +369,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         LAST_LOOP_DURATION_MS.store(loop_duration_ms, Ordering::Relaxed);
 
         info!("Validation loop completed in {}ms", loop_duration_ms);
-        std::thread::sleep(std::time::Duration::from_secs(10));
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
     }
     Ok(())
 }
