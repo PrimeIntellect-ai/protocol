@@ -11,7 +11,7 @@ def get_default_socket_path():
 
 def send_message(metric, task_id=None):
     """Sends a message to the socket."""
-    socket_path = "/tmp/com.prime.worker/metrics.sock"
+    socket_path = get_default_socket_path()
     print(f"Thread {threading.current_thread().name}: Sending message to socket: {socket_path}")
     
     if task_id is None:
