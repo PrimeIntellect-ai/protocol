@@ -15,6 +15,7 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use store::redis::RedisStore;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio_util::sync::CancellationToken;
@@ -279,6 +280,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let response = reqwest::Client::new()
                     .get(format!("{}{}", discovery_url, discovery_route))
                     .headers(headers)
+                    .timeout(Duration::from_secs(10))
                     .send()
                     .await
                     .context("Failed to fetch nodes")?;
