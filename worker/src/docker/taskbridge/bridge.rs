@@ -2,7 +2,7 @@ use crate::docker::taskbridge::file_handler;
 use crate::metrics::store::MetricsStore;
 use crate::state::system_state::SystemState;
 use anyhow::Result;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::Contracts;
@@ -141,13 +141,13 @@ impl TaskBridge {
                         debug!("Received connection from {:?}", _addr);
                         let mut reader = BufReader::new(stream);
                         let mut buffer = vec![0; 1024];
-                        let mut data = Vec::new(); // Now using Vec<u8> to hold the raw data
+                        let mut data = Vec::new();
 
                         loop {
                             let n = match reader.read(&mut buffer).await {
                                 Ok(0) => {
                                     debug!("Connection closed by client");
-                                    break;
+                                    0
                                 }
                                 Ok(n) => {
                                     debug!("Read {} bytes from socket", n);
@@ -293,6 +293,22 @@ impl TaskBridge {
                                 "Remaining data buffer size after processing: {} bytes",
                                 data.len()
                             );
+                            if n == 0 {
+                                if data.is_empty() {
+                                    // No data left to process, we can break
+                                    break;
+                                } else {
+                                    // We have data but couldn't parse it as complete JSON objects
+                                    // and the connection is closed - log and discard
+                                    if let Ok(unparsed) = std::str::from_utf8(&data) {
+                                        warn!("Discarding unparseable data after connection close: {}", unparsed);
+                                    } else {
+                                        warn!("Discarding unparseable binary data after connection close ({} bytes)", data.len());
+                                    }
+                                    // Break out of the loop
+                                    break;
+                                }
+                            }
                         }
 
                         // Helper function to extract the next complete JSON object from a string
