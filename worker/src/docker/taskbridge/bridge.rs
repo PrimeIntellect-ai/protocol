@@ -141,13 +141,13 @@ impl TaskBridge {
                         debug!("Received connection from {:?}", _addr);
                         let mut reader = BufReader::new(stream);
                         let mut buffer = vec![0; 1024];
-                        let mut data = Vec::new(); // Now using Vec<u8> to hold the raw data
+                        let mut data = Vec::new(); 
 
                         loop {
                             let n = match reader.read(&mut buffer).await {
                                 Ok(0) => {
                                     debug!("Connection closed by client");
-                                    break;
+                                    0
                                 }
                                 Ok(n) => {
                                     debug!("Read {} bytes from socket", n);
@@ -293,6 +293,9 @@ impl TaskBridge {
                                 "Remaining data buffer size after processing: {} bytes",
                                 data.len()
                             );
+                            if n == 0 && data.is_empty() {
+                                break;
+                            }
                         }
 
                         // Helper function to extract the next complete JSON object from a string
