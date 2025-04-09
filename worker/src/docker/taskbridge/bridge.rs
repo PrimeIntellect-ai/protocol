@@ -159,7 +159,7 @@ impl TaskBridge {
                                 }
                             };
 
-                            data.extend_from_slice(&buffer[..n]); 
+                            data.extend_from_slice(&buffer[..n]);
                             debug!("Current data buffer size: {} bytes", data.len());
 
                             let mut current_pos = 0;
@@ -316,19 +316,20 @@ impl TaskBridge {
                         fn extract_next_json(input: &[u8]) -> Option<(&str, usize)> {
                             // Skip any leading whitespace (including newlines)
                             let mut start_pos = 0;
-                            while start_pos < input.len() && (input[start_pos] <= 32) { // ASCII space and below includes all whitespace
+                            while start_pos < input.len() && (input[start_pos] <= 32) {
+                                // ASCII space and below includes all whitespace
                                 start_pos += 1;
                             }
-                            
+
                             if start_pos >= input.len() {
                                 return None; // No content left
                             }
-                            
+
                             // If we find an opening brace, look for the matching closing brace
                             if input[start_pos] == b'{' {
                                 let mut brace_count = 1;
                                 let mut pos = start_pos + 1;
-                                
+
                                 while pos < input.len() && brace_count > 0 {
                                     match input[pos] {
                                         b'{' => brace_count += 1,
@@ -337,17 +338,21 @@ impl TaskBridge {
                                     }
                                     pos += 1;
                                 }
-                                
+
                                 if brace_count == 0 {
                                     // Found a complete JSON object
-                                    if let Ok(json_str) = std::str::from_utf8(&input[start_pos..pos]) {
+                                    if let Ok(json_str) =
+                                        std::str::from_utf8(&input[start_pos..pos])
+                                    {
                                         return Some((json_str, pos));
                                     }
                                 }
                             }
-                            
+
                             // Alternatively, look for a newline-terminated JSON object
-                            if let Some(newline_pos) = input[start_pos..].iter().position(|&c| c == b'\n') {
+                            if let Some(newline_pos) =
+                                input[start_pos..].iter().position(|&c| c == b'\n')
+                            {
                                 let end_pos = start_pos + newline_pos;
                                 // Check if we have a complete JSON object in this line
                                 if let Ok(line) = std::str::from_utf8(&input[start_pos..end_pos]) {
@@ -356,11 +361,12 @@ impl TaskBridge {
                                         return Some((trimmed, end_pos + 1)); // +1 to consume the newline
                                     }
                                 }
-                                
+
                                 // If not a complete JSON object, skip this line and try the next
-                                return extract_next_json(&input[end_pos + 1..]).map(|(json, len)| (json, len + end_pos + 1));
+                                return extract_next_json(&input[end_pos + 1..])
+                                    .map(|(json, len)| (json, len + end_pos + 1));
                             }
-                            
+
                             None
                         }
                     });
