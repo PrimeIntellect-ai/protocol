@@ -132,7 +132,7 @@ impl<'a> NodeInviter<'a> {
         {
             Ok(response) => {
                 let status = response.status();
-                
+
                 if status.is_success() {
                     let node = node_to_update.clone();
                     info!("Successfully invited node");
@@ -145,7 +145,10 @@ impl<'a> NodeInviter<'a> {
                         Ok(text) => text,
                         Err(e) => format!("Failed to get response text: {}", e),
                     };
-                    warn!("Received non-success status: {:?}. Response: {}", status, response_text);
+                    warn!(
+                        "Received non-success status: {:?}. Response: {}",
+                        status, response_text
+                    );
                     Err(anyhow::anyhow!(
                         "Received non-success status: {:?}. Response: {}",
                         status,
