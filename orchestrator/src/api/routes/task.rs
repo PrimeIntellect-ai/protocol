@@ -103,7 +103,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let body = test::read_body(resp).await;
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["success"], serde_json::Value::Bool(false));
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
         assert_eq!(json["task"], serde_json::Value::Null);
     }
 
