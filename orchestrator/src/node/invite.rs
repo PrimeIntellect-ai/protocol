@@ -2,7 +2,6 @@ use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::store::core::StoreContext;
 use alloy::primitives::utils::keccak256 as keccak;
-use alloy::primitives::Address;
 use alloy::primitives::U256;
 use alloy::signers::Signer;
 use anyhow::Result;
@@ -45,7 +44,7 @@ impl<'a> NodeInviter<'a> {
             url,
             store_context,
             client: Client::builder()
-                .timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(15))
                 .build()
                 .unwrap(),
         }
@@ -132,7 +131,9 @@ impl<'a> NodeInviter<'a> {
             .await
         {
             Ok(response) => {
-                if response.status().is_success() {
+                let status = response.status();
+
+                if status.is_success() {
                     let node = node_to_update.clone();
                     info!("Successfully invited node");
                     self.store_context
@@ -140,10 +141,18 @@ impl<'a> NodeInviter<'a> {
                         .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat);
                     Ok(())
                 } else {
-                    warn!("Received non-success status: {:?}", response.status());
+                    let response_text = match response.text().await {
+                        Ok(text) => text,
+                        Err(e) => format!("Failed to get response text: {}", e),
+                    };
+                    warn!(
+                        "Received non-success status: {:?}. Response: {}",
+                        status, response_text
+                    );
                     Err(anyhow::anyhow!(
-                        "Received non-success status: {:?}",
-                        response.status()
+                        "Received non-success status: {:?}. Response: {}",
+                        status,
+                        response_text
                     ))
                 }
             }
@@ -155,22 +164,8 @@ impl<'a> NodeInviter<'a> {
     }
 
     async fn process_uninvited_nodes(&self) -> Result<()> {
-        let mut nodes = self.store_context.node_store.get_uninvited_nodes();
+        let nodes = self.store_context.node_store.get_uninvited_nodes();
         let mut failed_nodes = Vec::new();
-
-        nodes.insert(
-            0,
-            OrchestratorNode {
-                address: Address::ZERO,
-                ip_address: "192.0.0.1".to_string(),
-                port: 30303,
-                status: NodeStatus::Discovered,
-                task_id: None,
-                task_state: None,
-                version: None,
-                last_status_change: None,
-            },
-        );
 
         for node in nodes {
             // TODO: Eventually and carefully move this to tokio
