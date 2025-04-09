@@ -162,13 +162,20 @@ impl TaskBridge {
                             data.extend_from_slice(&buffer[..n]);
                             debug!("Current data buffer size: {} bytes", data.len());
 
+                            // Log the raw data received for debugging
+                            if let Ok(data_str) = std::str::from_utf8(&data) {
+                                info!("Raw data received: {}", data_str);
+                            } else {
+                                info!("Raw data received (non-UTF8): {} bytes", data.len());
+                            }
+
                             let mut current_pos = 0;
                             while current_pos < data.len() {
                                 // Try to find a complete JSON object
                                 if let Some((json_str, byte_length)) =
                                     extract_next_json(&data[current_pos..])
                                 {
-                                    debug!("Extracted JSON object: {:?}", json_str);
+                                    info!("Extracted JSON object: {}", json_str);
                                     if json_str.contains("file_name") {
                                         info!("Processing file_name message");
                                         if let Some(storage_path) = storage_path_clone.clone() {
@@ -212,7 +219,7 @@ impl TaskBridge {
                                             error!("No storage path set");
                                         }
                                     } else if json_str.contains("file_sha") {
-                                        debug!("Processing file_sha message");
+                                        info!("Processing file_sha message: {}", json_str);
                                         if let Ok(file_info) =
                                             serde_json::from_str::<serde_json::Value>(json_str)
                                         {
@@ -252,7 +259,7 @@ impl TaskBridge {
                                             error!("Failed to parse file_sha JSON: {}", json_str);
                                         }
                                     } else {
-                                        debug!("Processing metric message");
+                                        info!("Processing metric message: {}", json_str);
                                         match serde_json::from_str::<MetricInput>(json_str) {
                                             Ok(input) => {
                                                 info!(
