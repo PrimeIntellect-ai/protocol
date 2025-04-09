@@ -7,6 +7,7 @@ use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestratorNode {
+    #[serde(serialize_with = "serialize_address")]
     pub address: Address,
     pub ip_address: String,
     pub port: u16,
@@ -16,6 +17,13 @@ pub struct OrchestratorNode {
     pub task_state: Option<TaskState>,
     pub version: Option<String>,
     pub last_status_change: Option<DateTime<Utc>>,
+}
+
+fn serialize_address<S>(address: &Address, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&address.to_string())
 }
 
 impl From<DiscoveryNode> for OrchestratorNode {

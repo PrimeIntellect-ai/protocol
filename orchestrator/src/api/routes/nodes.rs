@@ -12,6 +12,7 @@ async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
     let nodes = app_state.store_context.node_store.get_nodes();
     HttpResponse::Ok().json(json!({"success": true, "nodes": nodes}))
 }
+
 async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     println!("restart_node_task: {}", node_id);
     let node_address = Address::from_str(&node_id).unwrap();
