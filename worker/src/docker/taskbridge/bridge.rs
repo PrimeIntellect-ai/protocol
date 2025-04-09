@@ -141,7 +141,7 @@ impl TaskBridge {
                         debug!("Received connection from {:?}", _addr);
                         let mut reader = BufReader::new(stream);
                         let mut buffer = vec![0; 1024];
-                        let mut data = Vec::new(); 
+                        let mut data = Vec::new();
 
                         loop {
                             let n = match reader.read(&mut buffer).await {
