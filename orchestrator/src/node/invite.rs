@@ -2,11 +2,13 @@ use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::store::core::StoreContext;
 use alloy::primitives::utils::keccak256 as keccak;
+use alloy::primitives::Address;
 use alloy::primitives::U256;
 use alloy::signers::Signer;
 use anyhow::Result;
 use hex;
 use log::{debug, error, info, warn};
+use reqwest::Client;
 use shared::models::invite::InviteRequest;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
@@ -21,6 +23,7 @@ pub struct NodeInviter<'a> {
     port: Option<&'a u16>,
     url: Option<&'a str>,
     store_context: Arc<StoreContext>,
+    client: Client,
 }
 
 impl<'a> NodeInviter<'a> {
@@ -41,6 +44,10 @@ impl<'a> NodeInviter<'a> {
             port,
             url,
             store_context,
+            client: Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .unwrap(),
         }
     }
 
@@ -116,7 +123,8 @@ impl<'a> NodeInviter<'a> {
 
         info!("Sending invite to node: {:?}", invite_url);
 
-        match reqwest::Client::new()
+        match self
+            .client
             .post(invite_url)
             .json(&payload)
             .headers(headers)
@@ -147,10 +155,26 @@ impl<'a> NodeInviter<'a> {
     }
 
     async fn process_uninvited_nodes(&self) -> Result<()> {
-        let nodes = self.store_context.node_store.get_uninvited_nodes();
+        let mut nodes = self.store_context.node_store.get_uninvited_nodes();
         let mut failed_nodes = Vec::new();
+
+        nodes.insert(
+            0,
+            OrchestratorNode {
+                address: Address::ZERO,
+                ip_address: "192.0.0.1".to_string(),
+                port: 30303,
+                status: NodeStatus::Discovered,
+                task_id: None,
+                task_state: None,
+                version: None,
+                last_status_change: None,
+            },
+        );
+
         for node in nodes {
             // TODO: Eventually and carefully move this to tokio
+            info!("Processing node {:?}", node.address);
             match self._send_invite(node.clone()).await {
                 Ok(_) => {
                     info!("Successfully processed node {:?}", node.address);
