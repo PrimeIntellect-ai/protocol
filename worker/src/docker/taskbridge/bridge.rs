@@ -36,13 +36,6 @@ struct MetricInput {
     value: f64,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-struct RequestUploadRequest {
-    file_name: String,
-    file_size: u64,
-    file_type: String,
-}
-
 impl TaskBridge {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -189,23 +182,34 @@ impl TaskBridge {
                                                         .unwrap_or("unknown");
                                                     info!("Handling file upload for task_id: {}, file: {}", task_id, file_name);
 
-                                                    if let Err(e) =
-                                                        file_handler::handle_file_upload(
-                                                            &storage_path,
-                                                            task_id,
-                                                            file_name,
-                                                            wallet.as_ref().unwrap(),
-                                                            &state_clone,
-                                                        )
-                                                        .await
-                                                    {
-                                                        error!(
-                                                            "Failed to handle file upload: {}",
-                                                            e
-                                                        );
-                                                    } else {
-                                                        info!("File upload handled successfully");
-                                                    }
+                                                    let storage_path_inner = storage_path.clone();
+                                                    let task_id_inner = task_id.to_string();
+                                                    let file_name_inner = file_name.to_string();
+                                                    let wallet_inner =
+                                                        wallet.as_ref().unwrap().clone();
+                                                    let state_inner = state_clone.clone();
+
+                                                    tokio::spawn(async move {
+                                                        if let Err(e) =
+                                                            file_handler::handle_file_upload(
+                                                                &storage_path_inner,
+                                                                &task_id_inner,
+                                                                &file_name_inner,
+                                                                &wallet_inner,
+                                                                &state_inner,
+                                                            )
+                                                            .await
+                                                        {
+                                                            error!(
+                                                                "Failed to handle file upload: {}",
+                                                                e
+                                                            );
+                                                        } else {
+                                                            info!(
+                                                                "File upload handled successfully"
+                                                            );
+                                                        }
+                                                    });
                                                 } else {
                                                     error!("Missing file_name value in JSON");
                                                 }
@@ -232,23 +236,29 @@ impl TaskBridge {
                                                 if let (Some(contracts_ref), Some(node_ref)) =
                                                     (contracts.clone(), node.clone())
                                                 {
-                                                    if let Err(e) =
-                                                        file_handler::handle_file_validation(
-                                                            file_sha,
-                                                            &contracts_ref,
-                                                            &node_ref,
-                                                        )
-                                                        .await
-                                                    {
-                                                        error!(
-                                                            "Failed to handle file validation: {}",
-                                                            e
-                                                        );
-                                                    } else {
-                                                        info!(
-                                                            "File validation handled successfully"
-                                                        );
-                                                    }
+                                                    let file_sha_inner = file_sha.to_string();
+                                                    let contracts_inner = contracts_ref.clone();
+                                                    let node_inner = node_ref.clone();
+
+                                                    tokio::spawn(async move {
+                                                        if let Err(e) =
+                                                            file_handler::handle_file_validation(
+                                                                &file_sha_inner,
+                                                                &contracts_inner,
+                                                                &node_inner,
+                                                            )
+                                                            .await
+                                                        {
+                                                            error!(
+                                                                "Failed to handle file validation: {}",
+                                                                e
+                                                            );
+                                                        } else {
+                                                            info!(
+                                                                "File validation handled successfully"
+                                                            );
+                                                        }
+                                                    });
                                                 } else {
                                                     error!("Missing contracts or node configuration for file validation");
                                                 }
