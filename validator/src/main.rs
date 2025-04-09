@@ -22,9 +22,47 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 use validators::hardware::HardwareValidator;
 use validators::synthetic_data::{SyntheticDataValidator, ToplocConfig};
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+// Track the last time the validation loop ran
+static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
+// Maximum allowed time between validation loops (2 minutes)
+const MAX_VALIDATION_INTERVAL_SECS: i64 = 120;
+// Track the last loop duration in milliseconds
+static LAST_LOOP_DURATION_MS: AtomicI64 = AtomicI64::new(0);
 
 async fn health_check() -> impl Responder {
-    HttpResponse::Ok().json(json!({ "status": "ok" }))
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let last_validation = LAST_VALIDATION_TIMESTAMP.load(Ordering::Relaxed);
+    let last_duration_ms = LAST_LOOP_DURATION_MS.load(Ordering::Relaxed);
+    
+    if last_validation == 0 {
+        // Validation hasn't run yet, but we're still starting up
+        return HttpResponse::Ok().json(json!({ 
+            "status": "starting",
+            "message": "Validation loop hasn't started yet"
+        }));
+    }
+    
+    let elapsed = now - last_validation;
+    
+    if elapsed > MAX_VALIDATION_INTERVAL_SECS {
+        return HttpResponse::ServiceUnavailable().json(json!({
+            "status": "error",
+            "message": format!("Validation loop hasn't run in {} seconds (max allowed: {})", elapsed, MAX_VALIDATION_INTERVAL_SECS),
+            "last_loop_duration_ms": last_duration_ms
+        }));
+    }
+    
+    HttpResponse::Ok().json(json!({ 
+        "status": "ok",
+        "last_validation_seconds_ago": elapsed,
+        "last_loop_duration_ms": last_duration_ms
+    }))
 }
 
 #[derive(Parser)]
@@ -238,6 +276,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
 
+        // Start timing the loop
+        let loop_start = Instant::now();
+
+        // Update the last validation timestamp
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        LAST_VALIDATION_TIMESTAMP.store(now, Ordering::Relaxed);
+
         if let Some(validator) = synthetic_validator.clone() {
             if let Err(e) = validator.validate_work().await {
                 error!("Failed to validate work: {}", e);
@@ -315,7 +363,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        info!("Validation loop completed");
+        // Calculate and store loop duration
+        let loop_duration = loop_start.elapsed();
+        let loop_duration_ms = loop_duration.as_millis() as i64;
+        LAST_LOOP_DURATION_MS.store(loop_duration_ms, Ordering::Relaxed);
+        
+        info!("Validation loop completed in {}ms", loop_duration_ms);
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
     Ok(())
