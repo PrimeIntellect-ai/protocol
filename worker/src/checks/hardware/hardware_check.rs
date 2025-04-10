@@ -95,6 +95,13 @@ impl HardwareChecker {
             None => storage_gb,
         };
 
+        if storage_path.is_none() {
+            issue_tracker.add_issue(
+                IssueType::NoStoragePath,
+                "No storage path found",
+            );
+        }
+
         // Check network speeds
         Console::title("Network Speed Test:");
         Console::progress("Starting network speed test...");
