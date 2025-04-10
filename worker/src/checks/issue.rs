@@ -17,6 +17,7 @@ pub enum IssueType {
     InsufficientMemory,           // Minimum RAM needed
     InsufficientCpu,              // Minimum CPU cores needed
     NetworkConnectivityIssue,     // Network performance issues
+    NoStoragePath,                // No storage path found
 }
 
 impl IssueType {
