@@ -139,6 +139,9 @@ impl<'a> NodeInviter<'a> {
                     self.store_context
                         .node_store
                         .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat);
+                    self.store_context
+                        .heartbeat_store
+                        .clear_unhealthy_counter(&node.address);
                     Ok(())
                 } else {
                     let response_text = match response.text().await {
