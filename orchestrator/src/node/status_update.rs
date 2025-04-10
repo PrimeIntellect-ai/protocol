@@ -220,6 +220,15 @@ impl NodeStatusUpdater {
                                     .update_node_status(&node.address, NodeStatus::Unhealthy);
                             }
                         }
+                        NodeStatus::WaitingForHeartbeat => {
+                            if unhealthy_counter + 1 >= self.missing_heartbeat_threshold {
+                                // Unhealthy counter is reset when node is invited
+                                // usually it starts directly with heartbeat
+                                self.store_context
+                                    .node_store
+                                    .update_node_status(&node.address, NodeStatus::Unhealthy);
+                            }
+                        }
                         _ => (),
                     }
                 }
@@ -691,5 +700,58 @@ mod tests {
 
         // Node has unhealthy counter
         assert_eq!(node.status, NodeStatus::Unhealthy);
+    }
+
+    #[tokio::test]
+    async fn test_node_status_with_waiting_for_heartbeat() {
+        let app_state = create_test_app_state().await;
+        let contracts = setup_contract();
+
+        let node = OrchestratorNode {
+            address: Address::from_str("0x98dBe56Cac21e07693c558E4f27E7de4073e2aF3").unwrap(),
+            ip_address: "127.0.0.1".to_string(),
+            port: 8080,
+            status: NodeStatus::WaitingForHeartbeat,
+            task_id: None,
+            task_state: None,
+            version: None,
+            last_status_change: None,
+        };
+        let counter = app_state
+            .store_context
+            .heartbeat_store
+            .get_unhealthy_counter(&node.address);
+        assert_eq!(counter, 0);
+
+        let _: () = app_state.store_context.node_store.add_node(node.clone());
+        let updater = NodeStatusUpdater::new(
+            app_state.store_context.clone(),
+            5,
+            None,
+            Arc::new(contracts),
+            0,
+            false,
+        );
+        tokio::spawn(async move {
+            updater
+                .run()
+                .await
+                .expect("Failed to run NodeStatusUpdater");
+        });
+
+        sleep(Duration::from_secs(2)).await;
+
+        let node = app_state
+            .store_context
+            .node_store
+            .get_node(&node.address)
+            .unwrap();
+
+        let counter = app_state
+            .store_context
+            .heartbeat_store
+            .get_unhealthy_counter(&node.address);
+        assert_eq!(counter, 1);
+        assert_eq!(node.status, NodeStatus::WaitingForHeartbeat);
     }
 }
