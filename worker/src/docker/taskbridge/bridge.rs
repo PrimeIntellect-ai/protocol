@@ -162,11 +162,10 @@ impl TaskBridge {
                             data.extend_from_slice(&buffer[..n]);
                             debug!("Current data buffer size: {} bytes", data.len());
 
-                            // Log the raw data received for debugging
                             if let Ok(data_str) = std::str::from_utf8(&data) {
-                                info!("Raw data received: {}", data_str);
+                                debug!("Raw data received: {}", data_str);
                             } else {
-                                info!("Raw data received (non-UTF8): {} bytes", data.len());
+                                debug!("Raw data received (non-UTF8): {} bytes", data.len());
                             }
 
                             let mut current_pos = 0;
@@ -175,9 +174,9 @@ impl TaskBridge {
                                 if let Some((json_str, byte_length)) =
                                     extract_next_json(&data[current_pos..])
                                 {
-                                    info!("Extracted JSON object: {}", json_str);
+                                    debug!("Extracted JSON object: {}", json_str);
                                     if json_str.contains("file_name") {
-                                        info!("Processing file_name message");
+                                        debug!("Processing file_name message");
                                         if let Some(storage_path) = storage_path_clone.clone() {
                                             if let Ok(file_info) =
                                                 serde_json::from_str::<serde_json::Value>(json_str)
@@ -219,7 +218,7 @@ impl TaskBridge {
                                             error!("No storage path set");
                                         }
                                     } else if json_str.contains("file_sha") {
-                                        info!("Processing file_sha message: {}", json_str);
+                                        debug!("Processing file_sha message");
                                         if let Ok(file_info) =
                                             serde_json::from_str::<serde_json::Value>(json_str)
                                         {
@@ -259,10 +258,10 @@ impl TaskBridge {
                                             error!("Failed to parse file_sha JSON: {}", json_str);
                                         }
                                     } else {
-                                        info!("Processing metric message: {}", json_str);
+                                        debug!("Processing metric message");
                                         match serde_json::from_str::<MetricInput>(json_str) {
                                             Ok(input) => {
-                                                info!(
+                                                debug!(
                                                     "Received metric - Task: {}, Label: {}, Value: {}",
                                                     input.task_id, input.label, input.value
                                                 );
