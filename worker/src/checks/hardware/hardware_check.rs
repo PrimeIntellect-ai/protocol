@@ -96,10 +96,7 @@ impl HardwareChecker {
         };
 
         if storage_path.is_none() {
-            issue_tracker.add_issue(
-                IssueType::NoStoragePath,
-                "No storage path found",
-            );
+            issue_tracker.add_issue(IssueType::NoStoragePath, "No storage path found");
         }
 
         // Check network speeds
