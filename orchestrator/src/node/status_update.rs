@@ -1,5 +1,6 @@
 use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::store::core::StoreContext;
+use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Ok;
 use log::{debug, error, info};
 use shared::web3::contracts::core::builder::Contracts;
@@ -15,6 +16,7 @@ pub struct NodeStatusUpdater {
     contracts: Arc<Contracts>,
     pool_id: u32,
     disable_ejection: bool,
+    heartbeats: Arc<LoopHeartbeats>,
 }
 
 impl NodeStatusUpdater {
@@ -25,6 +27,7 @@ impl NodeStatusUpdater {
         contracts: Arc<Contracts>,
         pool_id: u32,
         disable_ejection: bool,
+        heartbeats: Arc<LoopHeartbeats>,
     ) -> Self {
         Self {
             store_context,
@@ -33,6 +36,7 @@ impl NodeStatusUpdater {
             contracts,
             pool_id,
             disable_ejection,
+            heartbeats,
         }
     }
 
@@ -48,6 +52,7 @@ impl NodeStatusUpdater {
             if let Err(e) = self.sync_chain_with_nodes().await {
                 error!("Error syncing chain with nodes: {}", e);
             }
+            self.heartbeats.update_status_updater();
         }
     }
 
@@ -263,6 +268,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
+            Arc::new(LoopHeartbeats::new()),
         );
         let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -334,6 +340,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
+            Arc::new(LoopHeartbeats::new()),
         );
         tokio::spawn(async move {
             updater
@@ -377,6 +384,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
+            Arc::new(LoopHeartbeats::new()),
         );
         tokio::spawn(async move {
             updater
@@ -430,6 +438,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
+            Arc::new(LoopHeartbeats::new()),
         );
         tokio::spawn(async move {
             updater
@@ -486,6 +495,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
+            Arc::new(LoopHeartbeats::new()),
         );
         tokio::spawn(async move {
             updater
@@ -551,6 +561,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
+            Arc::new(LoopHeartbeats::new()),
         );
         tokio::spawn(async move {
             updater
@@ -615,6 +626,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
+            Arc::new(LoopHeartbeats::new()),
         );
         tokio::spawn(async move {
             updater
@@ -676,6 +688,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
+            Arc::new(LoopHeartbeats::new()),
         );
         tokio::spawn(async move {
             updater
@@ -731,6 +744,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
+            Arc::new(LoopHeartbeats::new()),
         );
         tokio::spawn(async move {
             updater

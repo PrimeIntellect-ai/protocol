@@ -1,6 +1,7 @@
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::store::core::StoreContext;
+use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::utils::keccak256 as keccak;
 use alloy::primitives::U256;
 use alloy::signers::Signer;
@@ -23,6 +24,7 @@ pub struct NodeInviter<'a> {
     url: Option<&'a str>,
     store_context: Arc<StoreContext>,
     client: Client,
+    heartbeats: Arc<LoopHeartbeats>,
 }
 
 impl<'a> NodeInviter<'a> {
@@ -34,6 +36,7 @@ impl<'a> NodeInviter<'a> {
         port: Option<&'a u16>,
         url: Option<&'a str>,
         store_context: Arc<StoreContext>,
+        heartbeats: Arc<LoopHeartbeats>,
     ) -> Self {
         Self {
             wallet,
@@ -43,6 +46,7 @@ impl<'a> NodeInviter<'a> {
             port,
             url,
             store_context,
+            heartbeats,
             client: Client::builder()
                 .timeout(Duration::from_secs(15))
                 .build()
@@ -59,6 +63,7 @@ impl<'a> NodeInviter<'a> {
             if let Err(e) = self.process_uninvited_nodes().await {
                 error!("Error processing uninvited nodes: {}", e);
             }
+            self.heartbeats.update_inviter();
         }
     }
 
