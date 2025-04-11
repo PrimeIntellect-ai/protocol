@@ -18,10 +18,7 @@ use log::error;
 use log::LevelFilter;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 use tokio::task::JoinSet;
 use url::Url;
 #[derive(Parser)]
