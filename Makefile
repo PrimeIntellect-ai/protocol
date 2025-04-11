@@ -2,10 +2,6 @@ SHELL := /bin/bash
 ENV_FILE ?= .env
 .PHONY: setup pool domain fund
 
-set-min-stake-amount:
-	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example set_min_stake_amount -- --min-stake-amount $${MIN_STAKE_AMOUNT} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
-
 mint-ai-tokens-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} 
@@ -43,7 +39,6 @@ start-compute-pool:
 	cargo run -p dev-utils --example start_compute_pool -- --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL} --pool-id="$${POOL_ID:-0}"
 
 setup: 
-	make set-min-stake-amount
 	make mint-ai-tokens-to-provider
 	make transfer-eth-to-provider
 	make transfer-eth-to-pool-owner
