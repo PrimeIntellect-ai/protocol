@@ -24,6 +24,7 @@ pub struct AppState {
     pub heartbeats: Arc<LoopHeartbeats>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_server(
     host: &str,
     port: u16,

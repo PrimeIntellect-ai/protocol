@@ -28,6 +28,7 @@ pub struct NodeInviter<'a> {
 }
 
 impl<'a> NodeInviter<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         wallet: &'a Wallet,
         pool_id: u32,
