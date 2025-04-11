@@ -17,6 +17,8 @@ use url::Url;
 
 #[cfg(test)]
 pub async fn create_test_app_state() -> Data<AppState> {
+    use crate::utils::loop_heartbeats::LoopHeartbeats;
+
     let store = Arc::new(RedisStore::new_test());
     let mut con = store
         .client
@@ -42,6 +44,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
         ),
         s3_credentials: None,
         bucket_name: None,
+        heartbeats: Arc::new(LoopHeartbeats::new()),
     })
 }
 

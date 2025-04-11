@@ -4,6 +4,7 @@ use crate::api::routes::task::tasks_routes;
 use crate::api::routes::{heartbeat::heartbeat_routes, metrics::metrics_routes};
 use crate::models::node::NodeStatus;
 use crate::store::core::StoreContext;
+use crate::utils::loop_heartbeats::LoopHeartbeats;
 use actix_web::middleware::{Compress, NormalizePath, TrailingSlash};
 use actix_web::{middleware, web::Data, App, HttpServer};
 use actix_web::{web, HttpResponse};
@@ -20,8 +21,10 @@ pub struct AppState {
     pub wallet: Arc<Wallet>,
     pub s3_credentials: Option<String>,
     pub bucket_name: Option<String>,
+    pub heartbeats: Arc<LoopHeartbeats>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_server(
     host: &str,
     port: u16,
@@ -30,6 +33,7 @@ pub async fn start_server(
     admin_api_key: String,
     s3_credentials: Option<String>,
     bucket_name: Option<String>,
+    heartbeats: Arc<LoopHeartbeats>,
 ) -> Result<(), Error> {
     info!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
@@ -37,6 +41,7 @@ pub async fn start_server(
         wallet,
         s3_credentials,
         bucket_name,
+        heartbeats,
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
@@ -57,11 +62,16 @@ pub async fn start_server(
             .wrap(Compress::default())
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(web::PayloadConfig::default().limit(2_097_152))
-            .service(web::resource("/health").route(web::get().to(|| async {
-                HttpResponse::Ok().json(json!({
-                    "status": "ok"
-                }))
-            })))
+            .service(web::resource("/health").route(web::get().to(
+                |data: web::Data<AppState>| async move {
+                    let health_status = data.heartbeats.health_status();
+                    if health_status.healthy {
+                        HttpResponse::Ok().json(health_status)
+                    } else {
+                        HttpResponse::InternalServerError().json(health_status)
+                    }
+                },
+            )))
             .service(heartbeat_routes().wrap(ValidateSignature::new(validator_state.clone())))
             .service(storage_routes().wrap(ValidateSignature::new(validator_state.clone())))
             .service(nodes_routes().wrap(api_key_middleware.clone()))
