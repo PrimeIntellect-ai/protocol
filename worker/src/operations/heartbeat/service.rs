@@ -82,6 +82,7 @@ impl HeartbeatService {
         let metrics_store = self.metrics_store.clone();
         let handle = tokio::spawn(async move {
             let mut interval = interval(interval_duration);
+            let mut had_error = false;
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
@@ -91,10 +92,16 @@ impl HeartbeatService {
                         match Self::send_heartbeat(&client, state.get_heartbeat_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
-                                log::info!("Synced with orchestrator"); // Updated message to reflect sync
+                                if had_error {
+                                    log::info!("Orchestrator sync restored - connection is healthy again");
+                                    had_error = false;
+                                } else {
+                                    log::debug!("Synced with orchestrator");
+                                }
                             }
                             Err(e) => {
-                                log::error!("{}", &format!("Failed to sync with orchestrator: {:?}", e)); // Updated error message
+                                log::error!("{}", &format!("Failed to sync with orchestrator: {:?}", e));
+                                had_error = true;
                             }
                         }
                     }
