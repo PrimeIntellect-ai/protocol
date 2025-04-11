@@ -110,7 +110,7 @@ struct Args {
 
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
-    #[arg(long, default_value = "1")]
+    #[arg(long, default_value = "200")]
     validator_penalty: u64,
 
     /// Temporary: S3 credentials
