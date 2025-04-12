@@ -47,7 +47,6 @@ setup:
 	make start-compute-pool
 
 setup-dev-env:
-	make set-min-stake-amount
 	make create-training-domain
 	make create-synth-data-domain
 	make mint-ai-tokens-to-federator
