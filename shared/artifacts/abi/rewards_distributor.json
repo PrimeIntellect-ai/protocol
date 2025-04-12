@@ -22,6 +22,19 @@
   },
   {
     "type": "function",
+    "name": "BUCKET_DURATION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "COMPUTE_POOL_ROLE",
     "inputs": [],
     "outputs": [
@@ -55,6 +68,19 @@
         "name": "",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "NUM_BUCKETS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -96,6 +122,11 @@
       }
     ],
     "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
       {
         "name": "",
         "type": "uint256",
@@ -152,7 +183,7 @@
   },
   {
     "type": "function",
-    "name": "endTime",
+    "name": "getRewardRate",
     "inputs": [],
     "outputs": [
       {
@@ -246,19 +277,6 @@
   },
   {
     "type": "function",
-    "name": "globalRewardIndex",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "grantRole",
     "inputs": [
       {
@@ -314,19 +332,6 @@
   },
   {
     "type": "function",
-    "name": "lastUpdateTime",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "leavePool",
     "inputs": [
       {
@@ -350,22 +355,22 @@
     ],
     "outputs": [
       {
-        "name": "",
+        "name": "last24H",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "",
+        "name": "totalAll",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "",
+        "name": "lastClaimed_",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "",
+        "name": "isActive",
         "type": "bool",
         "internalType": "bool"
       }
@@ -423,19 +428,6 @@
   },
   {
     "type": "function",
-    "name": "rewardRatePerSecond",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "rewardToken",
     "inputs": [],
     "outputs": [
@@ -462,6 +454,37 @@
   },
   {
     "type": "function",
+    "name": "slashPendingRewards",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "submitWork",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "workUnits",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "supportsInterface",
     "inputs": [
       {
@@ -478,6 +501,31 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "PendingRewardsSlashed",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "node",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "slashedAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
   },
   {
     "type": "event",

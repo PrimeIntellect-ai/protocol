@@ -11,8 +11,6 @@ pub async fn register_node(
     data: Data<AppState>,
     req: actix_web::HttpRequest,
 ) -> HttpResponse {
-    let node_store = data.node_store.clone();
-
     // Check for the x-address header
     let address_str = match req.headers().get("x-address") {
         Some(address) => match address.to_str() {
@@ -32,9 +30,30 @@ pub async fn register_node(
         return HttpResponse::BadRequest()
             .json(ApiResponse::new(false, "Invalid x-address header"));
     }
+    if let Some(contracts) = data.contracts.clone() {
+        if (contracts
+            .compute_registry
+            .get_node(
+                node.provider_address.parse().unwrap(),
+                node.id.parse().unwrap(),
+            )
+            .await)
+            .is_err()
+        {
+            return HttpResponse::BadRequest().json(ApiResponse::new(
+                false,
+                "Node not found in compute registry",
+            ));
+        }
+    }
 
-    node_store.register_node(node.clone());
-    HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully"))
+    let node_store = data.node_store.clone();
+
+    match node_store.register_node(node.clone()) {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully")),
+        Err(_) => HttpResponse::InternalServerError()
+            .json(ApiResponse::new(false, "Internal server error")),
+    }
 }
 
 pub fn node_routes() -> Scope {
@@ -146,22 +165,44 @@ mod tests {
         assert_eq!(body.data, "Node registered successfully");
 
         let nodes = app_state.node_store.get_nodes();
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node.id);
-
+        match nodes {
+            Ok(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].id, node.id);
+            }
+            Err(_) => {
+                unreachable!("Error getting nodes");
+            }
+        }
         let validated = DiscoveryNode {
             node,
             is_validated: true,
             is_active: true,
+            is_provider_whitelisted: false,
+            is_blacklisted: false,
+            last_updated: None,
+            created_at: None,
         };
 
-        app_state.node_store.update_node(validated);
+        match app_state.node_store.update_node(validated) {
+            Ok(_) => (),
+            Err(_) => {
+                unreachable!("Error updating node");
+            }
+        }
 
         let nodes = app_state.node_store.get_nodes();
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node_clone_for_recall.id);
-        assert!(nodes[0].is_validated);
-        assert!(nodes[0].is_active);
+        match nodes {
+            Ok(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].id, node_clone_for_recall.id);
+                assert!(nodes[0].is_validated);
+                assert!(nodes[0].is_active);
+            }
+            Err(_) => {
+                unreachable!("Error getting nodes");
+            }
+        }
 
         let json = serde_json::to_value(node_clone_for_recall.clone()).unwrap();
         let signature = sign_request(
@@ -183,10 +224,17 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let nodes = app_state.node_store.get_nodes();
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, node_clone_for_recall.id);
-        assert!(nodes[0].is_validated);
-        assert!(nodes[0].is_active);
+        match nodes {
+            Ok(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].id, node_clone_for_recall.id);
+                assert!(nodes[0].is_validated);
+                assert!(nodes[0].is_active);
+            }
+            Err(_) => {
+                unreachable!("Error getting nodes");
+            }
+        }
     }
 
     #[actix_web::test]
@@ -240,8 +288,16 @@ mod tests {
         assert_eq!(body.data, "Node registered successfully");
 
         let nodes = app_state.node_store.get_nodes();
+        let nodes = match nodes {
+            Ok(nodes) => nodes,
+            Err(_) => {
+                panic!("Error getting nodes");
+            }
+        };
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, node.id);
+        assert_eq!(nodes[0].last_updated, None);
+        assert_ne!(nodes[0].created_at, None);
     }
 
     #[actix_web::test]

@@ -9,7 +9,7 @@ use actix_web::{
     web::{self, get},
     App, HttpServer,
 };
-use log::info;
+use log::{error, info};
 use serde_json::json;
 use shared::security::api_key_middleware::ApiKeyMiddleware;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
@@ -22,15 +22,29 @@ pub struct AppState {
     pub contracts: Option<Arc<Contracts>>,
 }
 
+async fn health_check() -> HttpResponse {
+    HttpResponse::Ok().json(json!({
+        "status": "ok",
+        "service": "discovery"
+    }))
+}
+
 pub async fn start_server(
     host: &str,
     port: u16,
     node_store: Arc<NodeStore>,
     contracts: Arc<Contracts>,
-    validator_address: String,
     platform_api_key: String,
 ) -> std::io::Result<()> {
     info!("Starting server at http://{}:{}", host, port);
+
+    let validators = match contracts.prime_network.get_validator_role().await {
+        Ok(validators) => validators,
+        Err(e) => {
+            error!("❌ Failed to get validator role: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     let app_state = AppState {
         node_store,
@@ -38,9 +52,7 @@ pub async fn start_server(
     };
 
     // it seems we have a validator for the validator
-    let validator_validator = Arc::new(ValidatorState::new(vec![validator_address
-        .parse()
-        .unwrap()]));
+    let validator_validator = Arc::new(ValidatorState::new(validators));
 
     // All nodes can register as long as they have a valid signature
     let validate_signatures = Arc::new(ValidatorState::new(vec![]).with_validator(move |_| true));
@@ -53,6 +65,7 @@ pub async fn start_server(
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(Data::new(app_state.clone()))
             .app_data(web::PayloadConfig::default().limit(2_097_152))
+            .route("/health", web::get().to(health_check))
             .service(
                 web::scope("/api/platform")
                     .wrap(api_key_middleware.clone())

@@ -16,12 +16,12 @@ fn get_default_state_dir() -> Option<String> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct PersistedHeartbeatState {
+struct PersistedSystemState {
     endpoint: Option<String>, // Only store the endpoint
 }
 
 #[derive(Debug, Clone)]
-pub struct HeartbeatState {
+pub struct SystemState {
     last_heartbeat: Arc<RwLock<Option<std::time::Instant>>>,
     is_running: Arc<RwLock<bool>>, // Keep is_running in the normal heartbeat state
     endpoint: Arc<RwLock<Option<String>>>,
@@ -29,7 +29,7 @@ pub struct HeartbeatState {
     disable_state_storing: bool,
 }
 
-impl HeartbeatState {
+impl SystemState {
     pub fn new(state_dir: Option<String>, disable_state_storing: bool) -> Self {
         let default_state_dir = get_default_state_dir();
         debug!("Default state dir: {:?}", default_state_dir);
@@ -47,7 +47,7 @@ impl HeartbeatState {
                     "No state file found at {:?}, will create on first state change",
                     state_file
                 );
-            } else if let Ok(Some(loaded_state)) = HeartbeatState::load_state(path) {
+            } else if let Ok(Some(loaded_state)) = SystemState::load_state(path) {
                 debug!("Loaded previous state from {:?}", state_file);
                 endpoint = loaded_state.endpoint;
             } else {
@@ -68,7 +68,7 @@ impl HeartbeatState {
         if !self.disable_state_storing {
             if let Some(state_dir) = &self.state_dir_overwrite {
                 // Get values without block_on
-                let state = PersistedHeartbeatState {
+                let state = PersistedSystemState {
                     endpoint: heartbeat_endpoint,
                 };
 
@@ -82,11 +82,11 @@ impl HeartbeatState {
         Ok(())
     }
 
-    fn load_state(state_dir: &Path) -> Result<Option<PersistedHeartbeatState>> {
+    fn load_state(state_dir: &Path) -> Result<Option<PersistedSystemState>> {
         let state_path = state_dir.join(STATE_FILENAME);
         if state_path.exists() {
             let contents = fs::read_to_string(state_path)?;
-            let state: PersistedHeartbeatState = toml::from_str(&contents)?;
+            let state: PersistedSystemState = toml::from_str(&contents)?;
             return Ok(Some(state));
         }
         Ok(None)
@@ -101,10 +101,14 @@ impl HeartbeatState {
         *self.is_running.read().await
     }
 
-    pub async fn set_running(&self, running: bool, heartbeat_endpoint: Option<String>) {
+    pub async fn set_running(
+        &self,
+        running: bool,
+        heartbeat_endpoint: Option<String>,
+    ) -> Result<()> {
         // Read current values
         let current_running = self.is_running().await;
-        let current_endpoint = self.get_endpoint().await;
+        let current_endpoint = self.get_heartbeat_endpoint().await;
 
         // Only update and save if values changed
         if running != current_running || heartbeat_endpoint != current_endpoint {
@@ -117,12 +121,14 @@ impl HeartbeatState {
                 if let Err(e) = self.save_state(endpoint.clone()) {
                     // Only save the endpoint
                     eprintln!("Failed to save heartbeat state: {}", e);
+                    return Err(e);
                 }
             }
         }
+        Ok(())
     }
 
-    pub async fn get_endpoint(&self) -> Option<String> {
+    pub async fn get_heartbeat_endpoint(&self) -> Option<String> {
         let endpoint = self.endpoint.read().await;
         endpoint.clone()
     }
@@ -150,8 +156,8 @@ mod tests {
         let temp_dir = setup_test_dir();
         println!("Temp dir: {:?}", temp_dir.path());
 
-        let state = HeartbeatState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
-        state
+        let state = SystemState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
+        let _ = state
             .set_running(true, Some("http://localhost:8080/heartbeat".to_string()))
             .await;
 
@@ -159,7 +165,7 @@ mod tests {
         assert!(state_file.exists());
 
         let contents = fs::read_to_string(state_file).expect("Failed to read state file");
-        let state: PersistedHeartbeatState =
+        let state: PersistedSystemState =
             toml::from_str(&contents).expect("Failed to parse state file");
         assert_eq!(
             state.endpoint,
@@ -173,9 +179,9 @@ mod tests {
         let state_file = temp_dir.path().join(STATE_FILENAME);
         fs::write(&state_file, "invalid_toml_content").expect("Failed to write to state file");
 
-        let state = HeartbeatState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
+        let state = SystemState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
         assert!(!(state.is_running().await));
-        assert_eq!(state.get_endpoint().await, None);
+        assert_eq!(state.get_heartbeat_endpoint().await, None);
     }
 
     #[tokio::test]
@@ -188,9 +194,9 @@ mod tests {
         )
         .expect("Failed to write to state file");
 
-        let state = HeartbeatState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
+        let state = SystemState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
         assert_eq!(
-            state.get_endpoint().await,
+            state.get_heartbeat_endpoint().await,
             Some("http://localhost:8080/heartbeat".to_string())
         );
     }

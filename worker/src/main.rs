@@ -6,6 +6,7 @@ mod docker;
 mod metrics;
 mod operations;
 mod services;
+mod state;
 use clap::Parser;
 use cli::{execute_command, Cli};
 use log::{debug, LevelFilter};
@@ -85,7 +86,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => debug!("All tasks cleaned up successfully"),
         Err(_) => log::warn!("Timeout waiting for tasks to cleanup"),
     }
-
-    log::info!("Shutdown complete");
     Ok(())
 }

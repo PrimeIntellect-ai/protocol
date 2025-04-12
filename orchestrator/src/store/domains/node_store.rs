@@ -85,6 +85,7 @@ impl NodeStore {
         let node_string: String = con.get(&node_key).unwrap();
         let mut node: OrchestratorNode = serde_json::from_str(&node_string).unwrap();
         node.status = status;
+        node.last_status_change = Some(chrono::Utc::now());
         let node_string = node.to_string();
         let _: () = con.set(&node_key, node_string).unwrap();
     }
@@ -110,6 +111,7 @@ impl NodeStore {
         let node_value: Value = con
             .get(format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address))
             .unwrap();
+
         match node_value {
             Value::BulkString(node_string) => {
                 // TODO: Use from redis value
@@ -166,6 +168,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
 
         let healthy_node = OrchestratorNode {
@@ -176,6 +179,7 @@ mod tests {
             task_id: None,
             task_state: None,
             version: None,
+            last_status_change: None,
         };
 
         node_store.add_node(uninvited_node.clone());
@@ -200,6 +204,7 @@ mod tests {
                 task_id: None,
                 task_state: None,
                 version: None,
+                last_status_change: None,
             },
             OrchestratorNode {
                 address: Address::from_str("0x0000000000000000000000000000000000000002").unwrap(),
@@ -209,6 +214,7 @@ mod tests {
                 task_id: None,
                 task_state: None,
                 version: None,
+                last_status_change: None,
             },
             OrchestratorNode {
                 address: Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
@@ -218,6 +224,7 @@ mod tests {
                 task_id: None,
                 task_state: None,
                 version: None,
+                last_status_change: None,
             },
         ];
         for node in nodes {

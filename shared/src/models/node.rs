@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
@@ -44,6 +45,14 @@ pub struct DiscoveryNode {
     pub node: Node,
     pub is_validated: bool,
     pub is_active: bool,
+    #[serde(default)]
+    pub is_provider_whitelisted: bool,
+    #[serde(default)]
+    pub is_blacklisted: bool,
+    #[serde(default)]
+    pub last_updated: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub created_at: Option<DateTime<Utc>>,
 }
 
 impl DiscoveryNode {
@@ -52,6 +61,10 @@ impl DiscoveryNode {
             node: new_node,
             is_validated: self.is_validated,
             is_active: self.is_active,
+            is_provider_whitelisted: self.is_provider_whitelisted,
+            is_blacklisted: self.is_blacklisted,
+            last_updated: Some(Utc::now()),
+            created_at: self.created_at,
         }
     }
 }
@@ -70,6 +83,10 @@ impl From<Node> for DiscoveryNode {
             node,
             is_validated: false, // Default values for new discovery nodes
             is_active: false,
+            is_provider_whitelisted: false,
+            is_blacklisted: false,
+            last_updated: None,
+            created_at: Some(Utc::now()),
         }
     }
 }

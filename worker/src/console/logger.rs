@@ -1,69 +1,81 @@
-use console::style;
-use std::time::Duration;
+use console::{style, Term};
+use std::cmp;
+use unicode_width::UnicodeWidthStr;
 
 pub struct Console;
 
 impl Console {
-    const fn get_width() -> usize {
-        40 // Base width for horizontal lines
+    /// Maximum content width for the box.
+    const MAX_WIDTH: usize = 80;
+
+    /// Calculates the content width for boxes.
+    /// It uses the available terminal width (minus a margin) and caps it at MAX_WIDTH.
+    fn get_content_width() -> usize {
+        let term_width = Term::stdout().size().1 as usize;
+        // Leave a margin of 10 columns.
+        let available = if term_width > 10 {
+            term_width - 10
+        } else {
+            term_width
+        };
+        cmp::min(available, Self::MAX_WIDTH)
     }
 
-    fn horizontal_border() -> String {
-        "═".repeat(Self::get_width())
+    /// Centers a given text within a given width based on its display width.
+    fn center_text(text: &str, width: usize) -> String {
+        let text_width = UnicodeWidthStr::width(text);
+        if width > text_width {
+            let total_padding = width - text_width;
+            let left = total_padding / 2;
+            let right = total_padding - left;
+            format!("{}{}{}", " ".repeat(left), text, " ".repeat(right))
+        } else {
+            text.to_string()
+        }
     }
 
+    /// Prints a section header as an aligned box.
     pub fn section(title: &str) {
-        println!();
-        let width = Self::get_width();
-        let formatted_title = format!("{:^width$}", title, width = width);
-        let border = Self::horizontal_border();
+        let content_width = Self::get_content_width();
+        let top_border = format!("╔{}╗", "═".repeat(content_width));
+        let centered_title = Self::center_text(title, content_width);
+        let middle_line = format!("║{}║", centered_title);
+        let bottom_border = format!("╚{}╝", "═".repeat(content_width));
 
-        println!("{}", style(format!("╔{}╗", border)).magenta().bold());
-        println!("{}", style(formatted_title).magenta().bold());
-        println!("{}", style(format!("╚{}╝", border)).magenta().bold());
+        println!();
+        println!("{}", style(top_border).white().bold());
+        println!("{}", style(middle_line).white().bold());
+        println!("{}", style(bottom_border).white().bold());
     }
 
+    /// Prints a sub-title.
     pub fn title(text: &str) {
         println!();
-        let width = Self::get_width();
-        let formatted_text = format!("{:^width$}", text, width = width);
-        let border = Self::horizontal_border();
-
-        println!("{}", style(format!("╔{}╗", border)).magenta().bold());
-        println!("{}", style(formatted_text).magenta().bold());
-        println!("{}", style(format!("╚{}╝", border)).magenta().bold());
+        println!("{}", style(text).white().bold());
     }
 
+    /// Prints an informational message.
     pub fn info(label: &str, value: &str) {
-        println!("{}: {}", style(label).dim().magenta(), style(value).white());
+        println!("{}: {}", style(label).dim().white(), style(value).white());
     }
 
+    /// Prints a success message.
     pub fn success(text: &str) {
         println!("{} {}", style("✓").green().bold(), style(text).green());
     }
 
+    /// Prints a warning message.
     pub fn warning(text: &str) {
         println!("{} {}", style("⚠").yellow().bold(), style(text).yellow());
     }
 
+    /// Prints an error message.
     pub fn error(text: &str) {
         println!("{} {}", style("✗").red().bold(), style(text).red());
     }
 
+    /// Prints a progress message.
     pub fn progress(text: &str) {
         println!("{} {}", style("→").cyan().bold(), style(text).cyan());
-    }
-
-    pub fn spinner(text: &str) -> indicatif::ProgressBar {
-        let pb = indicatif::ProgressBar::new_spinner();
-        pb.set_style(
-            indicatif::ProgressStyle::default_spinner()
-                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-                .template("{spinner:.magenta} {msg}")
-                .unwrap(),
-        );
-        pb.set_message(text.to_string());
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb
     }
 }

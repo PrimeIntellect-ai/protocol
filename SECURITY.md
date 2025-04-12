@@ -4,7 +4,7 @@
 
 We take security vulnerabilities very seriously and appreciate efforts to responsibly disclose findings.
 
-Please report security vulnerabilities by emailing contact@primeintellect.ai.
+Please report security vulnerabilities by emailing security@primeintellect.ai.
 
 **Please do not report security vulnerabilities through public GitHub issues, discussions, or pull requests.**
 

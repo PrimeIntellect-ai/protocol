@@ -1,12 +1,14 @@
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::store::core::StoreContext;
+use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::utils::keccak256 as keccak;
 use alloy::primitives::U256;
 use alloy::signers::Signer;
 use anyhow::Result;
 use hex;
 use log::{debug, error, info, warn};
+use reqwest::Client;
 use shared::models::invite::InviteRequest;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
@@ -21,9 +23,12 @@ pub struct NodeInviter<'a> {
     port: Option<&'a u16>,
     url: Option<&'a str>,
     store_context: Arc<StoreContext>,
+    client: Client,
+    heartbeats: Arc<LoopHeartbeats>,
 }
 
 impl<'a> NodeInviter<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         wallet: &'a Wallet,
         pool_id: u32,
@@ -32,6 +37,7 @@ impl<'a> NodeInviter<'a> {
         port: Option<&'a u16>,
         url: Option<&'a str>,
         store_context: Arc<StoreContext>,
+        heartbeats: Arc<LoopHeartbeats>,
     ) -> Self {
         Self {
             wallet,
@@ -41,6 +47,11 @@ impl<'a> NodeInviter<'a> {
             port,
             url,
             store_context,
+            heartbeats,
+            client: Client::builder()
+                .timeout(Duration::from_secs(15))
+                .build()
+                .unwrap(),
         }
     }
 
@@ -53,6 +64,7 @@ impl<'a> NodeInviter<'a> {
             if let Err(e) = self.process_uninvited_nodes().await {
                 error!("Error processing uninvited nodes: {}", e);
             }
+            self.heartbeats.update_inviter();
         }
     }
 
@@ -116,7 +128,8 @@ impl<'a> NodeInviter<'a> {
 
         info!("Sending invite to node: {:?}", invite_url);
 
-        match reqwest::Client::new()
+        match self
+            .client
             .post(invite_url)
             .json(&payload)
             .headers(headers)
@@ -124,18 +137,31 @@ impl<'a> NodeInviter<'a> {
             .await
         {
             Ok(response) => {
-                if response.status().is_success() {
+                let status = response.status();
+
+                if status.is_success() {
                     let node = node_to_update.clone();
                     info!("Successfully invited node");
                     self.store_context
                         .node_store
                         .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat);
+                    self.store_context
+                        .heartbeat_store
+                        .clear_unhealthy_counter(&node.address);
                     Ok(())
                 } else {
-                    warn!("Received non-success status: {:?}", response.status());
+                    let response_text = match response.text().await {
+                        Ok(text) => text,
+                        Err(e) => format!("Failed to get response text: {}", e),
+                    };
+                    warn!(
+                        "Received non-success status: {:?}. Response: {}",
+                        status, response_text
+                    );
                     Err(anyhow::anyhow!(
-                        "Received non-success status: {:?}",
-                        response.status()
+                        "Received non-success status: {:?}. Response: {}",
+                        status,
+                        response_text
                     ))
                 }
             }
@@ -149,8 +175,10 @@ impl<'a> NodeInviter<'a> {
     async fn process_uninvited_nodes(&self) -> Result<()> {
         let nodes = self.store_context.node_store.get_uninvited_nodes();
         let mut failed_nodes = Vec::new();
+
         for node in nodes {
             // TODO: Eventually and carefully move this to tokio
+            info!("Processing node {:?}", node.address);
             match self._send_invite(node.clone()).await {
                 Ok(_) => {
                     info!("Successfully processed node {:?}", node.address);

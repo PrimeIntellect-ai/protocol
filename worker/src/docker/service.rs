@@ -20,6 +20,7 @@ pub struct DockerService {
     has_gpu: bool,
     system_memory_mb: Option<u32>,
     task_bridge_socket_path: String,
+    node_address: String,
 }
 
 const TASK_PREFIX: &str = "prime-task";
@@ -31,6 +32,7 @@ impl DockerService {
         system_memory_mb: Option<u32>,
         task_bridge_socket_path: String,
         storage_path: Option<String>,
+        node_address: String,
     ) -> Self {
         let docker_manager = Arc::new(DockerManager::new(storage_path).unwrap());
         Self {
@@ -40,6 +42,7 @@ impl DockerService {
             has_gpu,
             system_memory_mb,
             task_bridge_socket_path,
+            node_address,
         }
     }
 
@@ -71,6 +74,7 @@ impl DockerService {
 
         let manager_clone = manager.clone();
         let terminate_manager = manager_clone.clone();
+        let task_state_clone = state.clone();
         loop {
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
@@ -88,9 +92,8 @@ impl DockerService {
                         tasks.retain(|handle| !handle.is_finished());
                     }
 
-                    let current_task = state.get_current_task().await;
+                    let current_task = task_state_clone.get_current_task().await;
                     let task_id = generate_task_id(&current_task);
-                    let task_clone = current_task.clone();
 
                     let all_containers = manager.list_containers(true).await.unwrap();
 
@@ -104,7 +107,6 @@ impl DockerService {
                     })
                     .cloned()
                     .collect();
-                    Console::info("DockerService", &format!("Old tasks: {:?}", old_tasks));
 
                     if !old_tasks.is_empty() {
                         for task in old_tasks {
@@ -131,7 +133,7 @@ impl DockerService {
                             if has_running_tasks {
                                 Console::info("DockerService", "Container is still starting ...");
                             } else {
-                                let last_started_time = match state.get_last_started().await {
+                                let last_started_time = match task_state_clone.get_last_started().await {
                                     Some(time) => time,
                                     None => DateTime::from_timestamp(0, 0).unwrap(),
                                 };
@@ -141,14 +143,14 @@ impl DockerService {
                                     Console::info("DockerService", "Waiting before starting new container ...");
                                 } else {
                                     Console::info("DockerService", "Starting new container ...");
-                                    let task_clone = task_clone.clone();
                                     let manager_clone = manager_clone.clone();
-                                    let state_clone = state.clone();
+                                    let state_clone = task_state_clone.clone();
                                     let has_gpu = self.has_gpu;
                                     let system_memory_mb = self.system_memory_mb;
                                     let task_bridge_socket_path = self.task_bridge_socket_path.clone();
+                                    let node_address = self.node_address.clone();
                                     let handle = tokio::spawn(async move {
-                                        let payload = task_clone.unwrap();
+                                        let payload = state_clone.get_current_task().await.unwrap();
                                         let cmd_full = (payload.command, payload.args);
                                         let cmd = match cmd_full {
                                             (Some(c), Some(a)) => {
@@ -165,6 +167,7 @@ impl DockerService {
                                             env_vars.extend(env.clone());
                                         }
 
+                                        env_vars.insert("NODE_ADDRESS".to_string(), node_address);
                                         env_vars.insert("PRIME_TASK_BRIDGE_SOCKET".to_string(), task_bridge_socket_path.to_string());
                                         env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
                                         let volumes = vec![
@@ -201,12 +204,12 @@ impl DockerService {
                             let container_status = container_match.unwrap().clone();
                             let status = manager.get_container_details(&container_status.id).await.unwrap();
 
-                            let task_state_current = task_clone.clone().unwrap().state;
+                            let task_state_current = task_state_clone.get_current_task().await.unwrap().state;
                             // handle edge case where container instantly dies due to invalid command
                             if status.status == Some(ContainerStateStatusEnum::CREATED) && task_state_current == TaskState::FAILED {
                                 Console::info("DockerService", "Task failed, waiting for new command from manager ...");
                             } else {
-                                let task_state = match status.status {
+                                let task_state_live = match status.status {
                                     Some(ContainerStateStatusEnum::RUNNING) => TaskState::RUNNING,
                                     Some(ContainerStateStatusEnum::CREATED) => TaskState::PENDING,
                                     Some(ContainerStateStatusEnum::EXITED) => TaskState::COMPLETED,
@@ -216,9 +219,14 @@ impl DockerService {
                                     Some(ContainerStateStatusEnum::REMOVING) => TaskState::UNKNOWN,
                                     _ => TaskState::UNKNOWN,
                                 };
-                                if task_state == TaskState::FAILED {
-                                    Console::info("DockerService", "Task failed, waiting for new command from manager and restarting container");
-                                     let terminate_manager_clone = terminate_manager.clone();
+
+                                // Only log if state changed
+                                if task_state_live != task_state_current {
+                                    Console::info("DockerService", &format!("Task state changed from {:?} to {:?}", task_state_current, task_state_live));
+
+                                    if task_state_live == TaskState::FAILED {
+                                        Console::info("DockerService", "Task failed, waiting for new command from manager and restarting container");
+                                        let terminate_manager_clone = terminate_manager.clone();
                                         let handle = tokio::spawn(async move {
                                             let termination = terminate_manager_clone.remove_container(&container_status.id).await;
                                             match termination {
@@ -227,9 +235,12 @@ impl DockerService {
                                             }
                                         });
                                         terminating_container_tasks.lock().await.push(handle);
+                                    }
                                 }
-                                Console::info("DockerService", &format!("Task state of task {}: {:?}", &task_id.unwrap(), task_state));
-                                state.update_task_state(task_clone.unwrap().id, task_state).await;
+
+                                if let Some(task) = task_state_clone.get_current_task().await {
+                                    task_state_clone.update_task_state(task.id, task_state_live).await;
+                                }
                             }
                         }
                     }
@@ -275,6 +286,7 @@ impl DockerService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy::primitives::Address;
     use shared::models::task::Task;
     use shared::models::task::TaskState;
     use uuid::Uuid;
@@ -289,6 +301,7 @@ mod tests {
             Some(1024),
             "/tmp/com.prime.worker/metrics.sock".to_string(),
             None,
+            Address::ZERO.to_string(),
         );
         let task = Task {
             image: "ubuntu:latest".to_string(),
@@ -333,6 +346,7 @@ mod tests {
             Some(1024),
             "/tmp/com.prime.worker/metrics.sock".to_string(),
             None,
+            Address::ZERO.to_string(),
         );
         let state = docker_service.state.clone();
 

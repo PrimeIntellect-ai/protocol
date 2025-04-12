@@ -20,10 +20,6 @@ struct Args {
     #[arg(short = 'r', long, default_value = "http://localhost:8545")]
     rpc_url: String,
 
-    /// Validator address
-    #[arg(short = 'v', long)]
-    validator_address: String,
-
     /// Platform API key
     #[arg(short = 'p', long, default_value = "prime")]
     platform_api_key: String,
@@ -62,6 +58,7 @@ async fn main() -> Result<()> {
             .with_ai_token()
             .with_prime_network()
             .with_compute_pool()
+            .with_stake_manager()
             .build()
             .unwrap(),
     );
@@ -82,7 +79,6 @@ async fn main() -> Result<()> {
         args.port,
         node_store,
         contracts_clone,
-        args.validator_address,
         args.platform_api_key,
     )
     .await

@@ -1,7 +1,7 @@
-use super::state::HeartbeatState;
 use crate::console::Console;
 use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
+use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use log;
 use log::info;
@@ -15,7 +15,7 @@ use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 #[derive(Clone)]
 pub struct HeartbeatService {
-    state: HeartbeatState,
+    state: Arc<SystemState>,
     interval: Duration,
     client: Client,
     cancellation_token: CancellationToken,
@@ -36,16 +36,13 @@ impl HeartbeatService {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         interval: Duration,
-        state_dir_overwrite: Option<String>,
-        disable_state_storing: bool,
         cancellation_token: CancellationToken,
         task_handles: TaskHandles,
         node_wallet: Arc<Wallet>,
         docker_service: Arc<DockerService>,
         metrics_store: Arc<MetricsStore>,
+        state: Arc<SystemState>,
     ) -> Result<Arc<Self>, HeartbeatError> {
-        let state = HeartbeatState::new(state_dir_overwrite.or(None), disable_state_storing);
-
         let client = Client::builder()
             .timeout(Duration::from_secs(5)) // 5 second timeout
             .build()
@@ -64,7 +61,7 @@ impl HeartbeatService {
     }
 
     pub async fn activate_heartbeat_if_endpoint_exists(&self) {
-        if let Some(endpoint) = self.state.get_endpoint().await {
+        if let Some(endpoint) = self.state.get_heartbeat_endpoint().await {
             info!("Starting heartbeat from recovered state");
             self.start(endpoint).await.unwrap();
         }
@@ -75,7 +72,9 @@ impl HeartbeatService {
             return Ok(());
         }
 
-        self.state.set_running(true, Some(endpoint)).await;
+        if let Err(e) = self.state.set_running(true, Some(endpoint)).await {
+            log::error!("Failed to set running to true: {:?}", e);
+        }
         let state = self.state.clone();
         let client = self.client.clone();
         let interval_duration = self.interval;
@@ -85,25 +84,38 @@ impl HeartbeatService {
         let metrics_store = self.metrics_store.clone();
         let handle = tokio::spawn(async move {
             let mut interval = interval(interval_duration);
+            let mut had_error = false;
+            let mut first_start = true;
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
                         if !state.is_running().await {
                             break;
                         }
-                        match Self::send_heartbeat(&client, state.get_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone()).await {
+                        match Self::send_heartbeat(&client, state.get_heartbeat_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
-                                log::info!("Heartbeat sent successfully");
+                                if had_error {
+                                    log::info!("Orchestrator sync restored - connection is healthy again");
+                                    had_error = false;
+                                } else if first_start {
+                                    log::info!("Successfully connected to orchestrator");
+                                    first_start = false;
+                                } else {
+                                    log::debug!("Synced with orchestrator");
+                                }
                             }
                             Err(e) => {
-                                log::error!("Heartbeat failed: {:?}", e);
+                                log::error!("{}", &format!("Failed to sync with orchestrator: {:?}", e));
+                                had_error = true;
                             }
                         }
                     }
                     _ = cancellation_token.cancelled() => {
-                        log::info!("Heartbeat service received cancellation signal");
-                        state.set_running(false, None).await;
+                        log::info!("Sync service received cancellation signal"); // Updated log message
+                        if let Err(e) = state.set_running(false, None).await {
+                            log::error!("Failed to set running to false: {:?}", e);
+                        }
                         break;
                     }
                 }
@@ -119,7 +131,9 @@ impl HeartbeatService {
 
     #[allow(dead_code)]
     pub async fn stop(&self) {
-        self.state.set_running(false, None).await;
+        if let Err(e) = self.state.set_running(false, None).await {
+            log::error!("Failed to set running to false: {:?}", e);
+        }
     }
 
     async fn send_heartbeat(
@@ -190,9 +204,20 @@ impl HeartbeatService {
 
         let heartbeat_response = response.data.clone();
         log::debug!("Heartbeat response: {:?}", heartbeat_response);
+
+        // Get current task before updating
+        let current_task = docker_service.state.get_current_task().await;
+
         let task = match heartbeat_response.current_task {
             Some(task) => {
-                log::info!("Current task is to run image: {:?}", task.image);
+                // Only log if task image changed or there was no previous task
+                if current_task
+                    .as_ref()
+                    .map(|t| t.image != task.image)
+                    .unwrap_or(true)
+                {
+                    log::info!("Current task is to run image: {:?}", task.image);
+                }
                 Some(task)
             }
             None => None,

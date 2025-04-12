@@ -41,7 +41,6 @@ pub async fn invite_node(
     {
         Ok(result) => {
             Console::success(&format!("Successfully joined compute pool: {:?}", result));
-            Console::info("Starting to send heartbeats now.", "");
         }
         Err(err) => {
             Console::error(&format!("Error joining compute pool: {:?}", err));
@@ -61,7 +60,6 @@ pub async fn invite_node(
         )
     };
 
-    println!("Starting heartbeat service with endpoint: {}", endpoint);
     let _ = app_state.heartbeat_service.start(endpoint).await;
 
     HttpResponse::Accepted().json(json!({

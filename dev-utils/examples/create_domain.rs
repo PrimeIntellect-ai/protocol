@@ -44,10 +44,12 @@ async fn main() -> Result<()> {
         .with_ai_token()
         .with_prime_network()
         .with_compute_pool()
+        .with_domain_registry()
         .build()
         .unwrap();
 
     let domain_name = args.domain_name.clone();
+
     let validation_logic = Address::from_str(&args.validation_logic).unwrap();
     let domain_uri = args.domain_uri.clone();
 
@@ -56,8 +58,7 @@ async fn main() -> Result<()> {
         .create_domain(domain_name, validation_logic, domain_uri)
         .await;
     println!("Creating domain: {}", args.domain_name);
+    println!("Validation logic: {}", args.validation_logic);
     println!("Transaction: {:?}", tx);
-
-    // TODO: Should print actual domain id here
     Ok(())
 }
