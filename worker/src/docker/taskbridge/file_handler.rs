@@ -388,7 +388,7 @@ pub async fn handle_file_validation(
                 .submit_work(pool_id_u256, node_addr, decoded_sha.to_vec());
 
         // Set a timeout for the blockchain transaction
-        info!(
+        debug!(
             "Waiting up to {} seconds for blockchain transaction",
             TRANSACTION_TIMEOUT_SECS
         );
