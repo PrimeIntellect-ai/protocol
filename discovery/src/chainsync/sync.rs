@@ -29,6 +29,7 @@ impl ChainSync {
             contracts,
         }
     }
+
     async fn sync_single_node(
         node_store: Arc<NodeStore>,
         contracts: Arc<Contracts>,
@@ -46,16 +47,6 @@ impl ChainSync {
             eprintln!("Failed to parse node address: {}", e);
             anyhow::anyhow!("Invalid node address")
         })?;
-
-        // Handle potential errors from async calls
-        let is_blacklisted = contracts
-            .compute_pool
-            .is_node_blacklisted(node.node.compute_pool_id, node_address)
-            .await
-            .map_err(|e| {
-                eprintln!("Error checking if node is blacklisted: {}", e);
-                anyhow::anyhow!("Failed to check blacklist status")
-            })?;
 
         let node_info = contracts
             .compute_registry
@@ -79,6 +70,16 @@ impl ChainSync {
         n.is_active = is_active;
         n.is_validated = is_validated;
         n.is_provider_whitelisted = provider_info.is_whitelisted;
+
+        // Handle potential errors from async calls
+        let is_blacklisted = contracts
+            .compute_pool
+            .is_node_blacklisted(node.node.compute_pool_id, node_address)
+            .await
+            .map_err(|e| {
+                eprintln!("Error checking if node is blacklisted: {}", e);
+                anyhow::anyhow!("Failed to check blacklist status")
+            })?;
         n.is_blacklisted = is_blacklisted;
         match node_store.update_node(n) {
             Ok(_) => (),

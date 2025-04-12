@@ -58,6 +58,7 @@ async fn main() -> Result<()> {
             .with_ai_token()
             .with_prime_network()
             .with_compute_pool()
+            .with_stake_manager()
             .build()
             .unwrap(),
     );

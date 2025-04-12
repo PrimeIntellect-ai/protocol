@@ -2,7 +2,7 @@ pub mod store;
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use alloy::primitives::utils::Unit;
-use alloy::primitives::U256;
+use alloy::primitives::{Address, U256};
 use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, LevelFilter};
@@ -245,8 +245,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 info!(
                     "Synthetic validator has penalty: {} ({})",
-                    penalty,
-                    Unit::ETHER.wei()
+                    penalty, args.validator_penalty
                 );
 
                 Some(SyntheticDataValidator::new(
@@ -358,7 +357,70 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            if let Err(e) = hardware_validator.validate_nodes(nodes).await {
+            // Ensure nodes have enough stake
+            let mut nodes_with_enough_stake = Vec::new();
+            let stake_manager = match contracts.stake_manager.as_ref() {
+                Some(manager) => manager,
+                None => {
+                    error!("Stake manager contract not initialized");
+                    continue;
+                }
+            };
+
+            let mut provider_stake_cache: std::collections::HashMap<String, (U256, U256)> =
+                std::collections::HashMap::new();
+            for node in nodes {
+                let provider_address_str = &node.node.provider_address;
+                let provider_address = match Address::from_str(provider_address_str) {
+                    Ok(address) => address,
+                    Err(e) => {
+                        error!(
+                            "Failed to parse provider address {}: {}",
+                            provider_address_str, e
+                        );
+                        continue;
+                    }
+                };
+
+                let (stake, required_stake) =
+                    if let Some(&cached_info) = provider_stake_cache.get(provider_address_str) {
+                        cached_info
+                    } else {
+                        let stake = stake_manager
+                            .get_stake(provider_address)
+                            .await
+                            .unwrap_or_default();
+                        let total_compute = contracts
+                            .compute_registry
+                            .get_provider_total_compute(provider_address)
+                            .await
+                            .unwrap_or_default();
+                        let required_stake = stake_manager
+                            .calculate_stake(U256::from(0), total_compute)
+                            .await
+                            .unwrap_or_default();
+
+                        provider_stake_cache
+                            .insert(provider_address_str.clone(), (stake, required_stake));
+                        (stake, required_stake)
+                    };
+
+                if stake >= required_stake {
+                    nodes_with_enough_stake.push(node);
+                } else {
+                    info!(
+                        "Node {} has insufficient stake: {} (required: {})",
+                        node.node.id,
+                        stake / Unit::ETHER.wei(),
+                        required_stake / Unit::ETHER.wei()
+                    );
+                }
+            }
+
+            if let Err(e) = hardware_validator
+                .validate_nodes(nodes_with_enough_stake)
+                .await
+            {
                 error!("Error validating nodes: {:#}", e);
             }
         }

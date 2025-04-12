@@ -6,6 +6,7 @@ use crate::web3::contracts::helpers::utils::get_selector;
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, U256};
+use anyhow::Result;
 
 #[derive(Clone)]
 pub struct ComputeRegistryContract {
@@ -57,12 +58,11 @@ impl ComputeRegistryContract {
             provider_response.first().unwrap().as_uint().unwrap().0,
         ))
     }
-
     pub async fn get_node(
         &self,
         provider_address: Address,
         node_address: Address,
-    ) -> Result<(bool, bool), Box<dyn std::error::Error>> {
+    ) -> anyhow::Result<(bool, bool)> {
         let get_node_selector = get_selector("getNode(address,address)");
 
         let node_response = self
@@ -83,14 +83,14 @@ impl ComputeRegistryContract {
             let node_subkey = node_tuple[1].as_address().unwrap();
 
             if node_provider != provider_address || node_subkey != node_address {
-                return Err("Node does not match provider or subkey".into());
+                return Err(anyhow::anyhow!("Node does not match provider or subkey"));
             }
 
             let active = node_tuple[5].as_bool().unwrap();
             let validated = node_tuple[6].as_bool().unwrap();
             Ok((active, validated))
         } else {
-            Err("Node is not registered".into())
+            Err(anyhow::anyhow!("Node is not registered"))
         }
     }
 }
