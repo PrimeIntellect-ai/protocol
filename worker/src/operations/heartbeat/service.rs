@@ -83,6 +83,7 @@ impl HeartbeatService {
         let handle = tokio::spawn(async move {
             let mut interval = interval(interval_duration);
             let mut had_error = false;
+            let mut first_start = true;
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
@@ -95,6 +96,9 @@ impl HeartbeatService {
                                 if had_error {
                                     log::info!("Orchestrator sync restored - connection is healthy again");
                                     had_error = false;
+                                } else if first_start {
+                                    log::info!("Successfully connected to orchestrator");
+                                    first_start = false;
                                 } else {
                                     log::debug!("Synced with orchestrator");
                                 }
@@ -107,7 +111,9 @@ impl HeartbeatService {
                     }
                     _ = cancellation_token.cancelled() => {
                         log::info!("Sync service received cancellation signal"); // Updated log message
-                        state.set_running(false, None).await.unwrap();
+                        if let Err(e) = state.set_running(false, None).await {
+                            log::error!("Failed to set running to false: {:?}", e);
+                        }
                         break;
                     }
                 }
@@ -123,7 +129,9 @@ impl HeartbeatService {
 
     #[allow(dead_code)]
     pub async fn stop(&self) {
-        self.state.set_running(false, None).await.unwrap();
+        if let Err(e) = self.state.set_running(false, None).await {
+            log::error!("Failed to set running to false: {:?}", e);
+        }
     }
 
     async fn send_heartbeat(

@@ -428,7 +428,6 @@ impl SyntheticDataValidator {
                 info!("Validation accepted for {}", cleaned_file_name);
             }
             ValidationResult::Reject => {
-                tokio::time::sleep(tokio::time::Duration::from_secs(8)).await;
                 if let Err(e) = self.invalidate_work(work_key).await {
                     error!("Failed to invalidate work {}: {}", work_key, e);
                     return Err(ProcessWorkKeyError::InvalidatingWorkError(e.to_string()));

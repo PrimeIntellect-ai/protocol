@@ -59,8 +59,10 @@ impl<'c> ComputeNodeOperations<'c> {
                                 }
                                 let is_running = system_state.is_running().await;
                                 if !active && is_running {
-                                    Console::error("🔄 Chain Sync - Node is not longer in pool, shutting down heartbeat...");
-                                    system_state.set_running(false, None).await.unwrap();
+                                    Console::warning("Node is not longer in pool, shutting down heartbeat...");
+                                    if let Err(e) = system_state.set_running(false, None).await {
+                                        Console::error(&format!("Failed to set running to false: {:?}", e));
+                                    }
                                 }
 
                                 if first_check || validated != last_validated {

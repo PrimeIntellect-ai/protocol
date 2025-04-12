@@ -56,7 +56,6 @@ impl ChainSync {
                 eprintln!("Error retrieving node info: {}", e);
                 anyhow::anyhow!("Failed to retrieve node info")
             })?;
-        println!("Node info: {:?}", node_info);
 
         let provider_info = contracts
             .compute_registry
