@@ -71,10 +71,20 @@ impl ProviderOperations {
                                 if first_check || stake != last_stake {
                                     Console::info("🔄 Chain Sync - Provider stake", &format!("{} tokens", stake / U256::from(10u128.pow(18))));
                                     if !first_check {
-                                        Console::info("🔄 Chain Sync - Stake changed", &format!("From {} to {} tokens",
-                                            last_stake / U256::from(10u128.pow(18)),
-                                            stake / U256::from(10u128.pow(18))
-                                        ));
+                                        if stake < last_stake {
+                                            Console::warning(&format!("Stake decreased - possible slashing detected: From {} to {} tokens",
+                                                last_stake / U256::from(10u128.pow(18)),
+                                                stake / U256::from(10u128.pow(18))
+                                            ));
+                                            if stake == U256::ZERO {
+                                                Console::warning("Stake is 0 - you might have to restart the node to increase your stake (if you still have tokens left)");
+                                            }
+                                        } else {
+                                            Console::info("🔄 Chain Sync - Stake changed", &format!("From {} to {} tokens",
+                                                last_stake / U256::from(10u128.pow(18)),
+                                                stake / U256::from(10u128.pow(18))
+                                            ));
+                                        }
                                     }
                                     last_stake = stake;
                                 }
