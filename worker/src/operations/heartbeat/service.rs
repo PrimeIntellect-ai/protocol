@@ -72,7 +72,9 @@ impl HeartbeatService {
             return Ok(());
         }
 
-        self.state.set_running(true, Some(endpoint)).await.unwrap();
+        if let Err(e) = self.state.set_running(true, Some(endpoint)).await {
+            log::error!("Failed to set running to true: {:?}", e);
+        }
         let state = self.state.clone();
         let client = self.client.clone();
         let interval_duration = self.interval;
