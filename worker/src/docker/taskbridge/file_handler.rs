@@ -172,10 +172,10 @@ pub async fn handle_file_upload(
 
         // Create upload URL
         let upload_url = format!("{}/storage/request-upload", endpoint);
-        info!("Requesting signed URL from: {}", upload_url);
+        debug!("Requesting signed URL from: {}", upload_url);
 
         // Send request
-        info!(
+        debug!(
             "Sending request for signed URL (attempt {}/{})",
             retry_count + 1,
             MAX_RETRIES
@@ -188,7 +188,7 @@ pub async fn handle_file_upload(
             .await
         {
             Ok(resp) => {
-                info!("Received response with status: {}", resp.status());
+                debug!("Received response with status: {}", resp.status());
                 resp
             }
             Err(e) => {
@@ -215,7 +215,7 @@ pub async fn handle_file_upload(
 
         if let Some(url) = json["signed_url"].as_str() {
             signed_url = Some(url.to_string());
-            info!("Got signed URL for upload (length: {})", url.len());
+            debug!("Got signed URL for upload (length: {})", url.len());
             debug!("Signed URL: {}", url);
             break;
         } else {
@@ -253,7 +253,7 @@ pub async fn handle_file_upload(
         }
     };
 
-    info!("Starting S3 upload with max {} retries", MAX_RETRIES);
+    debug!("Starting S3 upload with max {} retries", MAX_RETRIES);
     while retry_count < MAX_RETRIES {
         if retry_count > 0 {
             let delay = INITIAL_RETRY_DELAY_MS * (1 << retry_count); // Exponential backoff
@@ -281,7 +281,7 @@ pub async fn handle_file_upload(
         {
             Ok(resp) => {
                 let status = resp.status();
-                info!("S3 upload response status: {}", status);
+                debug!("S3 upload response status: {}", status);
 
                 if status.is_success() {
                     info!("Successfully uploaded file to S3");
@@ -357,7 +357,6 @@ pub async fn handle_file_validation(
 
         let decoded_sha = match hex::decode(file_sha) {
             Ok(sha) => {
-                info!("Decoded file SHA: {} bytes", sha.len());
                 debug!("Decoded SHA bytes: {:?}", sha);
                 sha
             }
