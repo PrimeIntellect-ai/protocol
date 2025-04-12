@@ -1,5 +1,6 @@
-use crate::console::Console;
+use crate::{console::Console, state::system_state::SystemState};
 use alloy::{primitives::utils::keccak256 as keccak, primitives::U256, signers::Signer};
+use anyhow::Result;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
@@ -10,6 +11,7 @@ pub struct ComputeNodeOperations<'c> {
     provider_wallet: &'c Wallet,
     node_wallet: &'c Wallet,
     contracts: Arc<Contracts>,
+    system_state: Arc<SystemState>,
 }
 
 impl<'c> ComputeNodeOperations<'c> {
@@ -17,17 +19,20 @@ impl<'c> ComputeNodeOperations<'c> {
         provider_wallet: &'c Wallet,
         node_wallet: &'c Wallet,
         contracts: Arc<Contracts>,
+        system_state: Arc<SystemState>,
     ) -> Self {
         Self {
             provider_wallet,
             node_wallet,
             contracts,
+            system_state,
         }
     }
-    pub fn start_monitoring(&self, cancellation_token: CancellationToken) {
+    pub fn start_monitoring(&self, cancellation_token: CancellationToken) -> Result<()> {
         let provider_address = self.provider_wallet.wallet.default_signer().address();
         let node_address = self.node_wallet.wallet.default_signer().address();
         let contracts = self.contracts.clone();
+        let system_state = self.system_state.clone();
         let mut last_active = false;
         let mut last_validated = false;
         let mut first_check = true;
@@ -42,23 +47,30 @@ impl<'c> ComputeNodeOperations<'c> {
                         match contracts.compute_registry.get_node(provider_address, node_address).await {
                             Ok((active, validated)) => {
                                 if first_check || active != last_active {
-                                    Console::info("🔄 Chain Sync - Node pool membership", &format!("{}", active));
                                     if !first_check {
                                         Console::info("🔄 Chain Sync - Pool membership changed", &format!("From {} to {}",
                                             last_active,
                                             active
                                         ));
+                                    } else {
+                                        Console::info("🔄 Chain Sync - Node pool membership", &format!("{}", active));
                                     }
                                     last_active = active;
                                 }
+                                let is_running = system_state.is_running().await;
+                                if !active && is_running {
+                                    Console::error("🔄 Chain Sync - Node is not longer in pool, shutting down heartbeat...");
+                                    system_state.set_running(false, None).await.unwrap();
+                                }
 
                                 if first_check || validated != last_validated {
-                                    Console::info("🔄 Chain Sync - Node validation", &format!("{}", validated));
                                     if !first_check {
                                         Console::info("🔄 Chain Sync - Validation changed", &format!("From {} to {}",
                                             last_validated,
                                             validated
                                         ));
+                                    } else {
+                                        Console::info("🔄 Chain Sync - Node validation", &format!("{}", validated));
                                     }
                                     last_validated = validated;
                                 }
@@ -73,6 +85,7 @@ impl<'c> ComputeNodeOperations<'c> {
                 }
             }
         });
+        Ok(())
     }
 
     pub async fn check_compute_node_exists(&self) -> Result<bool, Box<dyn std::error::Error>> {

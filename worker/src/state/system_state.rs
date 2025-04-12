@@ -101,7 +101,11 @@ impl SystemState {
         *self.is_running.read().await
     }
 
-    pub async fn set_running(&self, running: bool, heartbeat_endpoint: Option<String>) {
+    pub async fn set_running(
+        &self,
+        running: bool,
+        heartbeat_endpoint: Option<String>,
+    ) -> Result<()> {
         // Read current values
         let current_running = self.is_running().await;
         let current_endpoint = self.get_heartbeat_endpoint().await;
@@ -117,9 +121,11 @@ impl SystemState {
                 if let Err(e) = self.save_state(endpoint.clone()) {
                     // Only save the endpoint
                     eprintln!("Failed to save heartbeat state: {}", e);
+                    return Err(e);
                 }
             }
         }
+        Ok(())
     }
 
     pub async fn get_heartbeat_endpoint(&self) -> Option<String> {
@@ -151,7 +157,7 @@ mod tests {
         println!("Temp dir: {:?}", temp_dir.path());
 
         let state = SystemState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
-        state
+        let _ = state
             .set_running(true, Some("http://localhost:8080/heartbeat".to_string()))
             .await;
 

@@ -72,7 +72,7 @@ impl HeartbeatService {
             return Ok(());
         }
 
-        self.state.set_running(true, Some(endpoint)).await;
+        self.state.set_running(true, Some(endpoint)).await.unwrap();
         let state = self.state.clone();
         let client = self.client.clone();
         let interval_duration = self.interval;
@@ -107,7 +107,7 @@ impl HeartbeatService {
                     }
                     _ = cancellation_token.cancelled() => {
                         log::info!("Sync service received cancellation signal"); // Updated log message
-                        state.set_running(false, None).await;
+                        state.set_running(false, None).await.unwrap();
                         break;
                     }
                 }
@@ -123,7 +123,7 @@ impl HeartbeatService {
 
     #[allow(dead_code)]
     pub async fn stop(&self) {
-        self.state.set_running(false, None).await;
+        self.state.set_running(false, None).await.unwrap();
     }
 
     async fn send_heartbeat(

@@ -30,6 +30,7 @@ impl StakeManagerContract {
             .0;
         Ok(minimum)
     }
+
     pub async fn get_stake(&self, staker: Address) -> Result<U256, Box<dyn std::error::Error>> {
         let result = self
             .instance

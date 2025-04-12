@@ -161,6 +161,10 @@ pub async fn execute_command(
                 );
                 std::process::exit(1);
             }
+            let state = Arc::new(SystemState::new(
+                state_dir_overwrite.clone(),
+                *disable_state_storing,
+            ));
 
             let private_key_provider = if let Some(key) = private_key_provider {
                 Console::warning("Using private key from command line is not recommended. Consider using PRIVATE_KEY_PROVIDER environment variable instead.");
@@ -229,6 +233,7 @@ pub async fn execute_command(
                 &provider_wallet_instance,
                 &node_wallet_instance,
                 contracts.clone(),
+                state.clone(),
             );
 
             let discovery_service =
@@ -296,10 +301,6 @@ pub async fn execute_command(
                 }
             };
 
-            let state = Arc::new(SystemState::new(
-                state_dir_overwrite.clone(),
-                *disable_state_storing,
-            ));
             let metrics_store = Arc::new(MetricsStore::new());
             let heartbeat_metrics_clone = metrics_store.clone();
             let bridge_contracts = contracts.clone();
@@ -434,66 +435,72 @@ pub async fn execute_command(
                 }
             };
 
+            let provider_total_compute = match contracts
+                .compute_registry
+                .get_provider_total_compute(
+                    provider_wallet_instance.wallet.default_signer().address(),
+                )
+                .await
+            {
+                Ok(compute) => compute,
+                Err(e) => {
+                    Console::error(&format!("❌ Failed to get provider total compute: {}", e));
+                    std::process::exit(1);
+                }
+            };
+
+            let provider_stake = stake_manager
+                .get_stake(provider_wallet_instance.wallet.default_signer().address())
+                .await
+                .unwrap_or_default();
+
+            // If we are already registered we do not need additionally compute units
+            let compute_units = match compute_node_exists {
+                true => U256::from(0),
+                false => compute_units,
+            };
+
+            let required_stake = match stake_manager
+                .calculate_stake(compute_units, provider_total_compute)
+                .await
+            {
+                Ok(stake) => stake,
+                Err(e) => {
+                    Console::error(&format!("❌ Failed to calculate required stake: {}", e));
+                    std::process::exit(1);
+                }
+            };
+
+            if required_stake > provider_stake {
+                Console::info(
+                    "Provider stake is less than required stake",
+                    &format!(
+                        "Required: {} tokens, Current: {} tokens",
+                        required_stake / U256::from(10u128.pow(18)),
+                        provider_stake / U256::from(10u128.pow(18))
+                    ),
+                );
+
+                match provider_ops
+                    .increase_stake(required_stake - provider_stake)
+                    .await
+                {
+                    Ok(_) => {
+                        Console::success("Successfully increased stake");
+                    }
+                    Err(e) => {
+                        Console::error(&format!("❌ Failed to increase stake: {}", e));
+                        std::process::exit(1);
+                    }
+                }
+            }
+
             Console::title("Compute Node Status");
             if compute_node_exists {
                 // TODO: What if we have two nodes?
                 Console::success("Compute node is registered");
                 recover_last_state = true;
             } else {
-                let provider_total_compute = match contracts
-                    .compute_registry
-                    .get_provider_total_compute(
-                        provider_wallet_instance.wallet.default_signer().address(),
-                    )
-                    .await
-                {
-                    Ok(compute) => compute,
-                    Err(e) => {
-                        Console::error(&format!("❌ Failed to get provider total compute: {}", e));
-                        std::process::exit(1);
-                    }
-                };
-
-                let provider_stake = stake_manager
-                    .get_stake(provider_wallet_instance.wallet.default_signer().address())
-                    .await
-                    .unwrap_or_default();
-
-                let required_stake = match stake_manager
-                    .calculate_stake(compute_units, provider_total_compute)
-                    .await
-                {
-                    Ok(stake) => stake,
-                    Err(e) => {
-                        Console::error(&format!("❌ Failed to calculate required stake: {}", e));
-                        std::process::exit(1);
-                    }
-                };
-
-                if required_stake > provider_stake {
-                    Console::info(
-                        "Provider stake is less than required stake",
-                        &format!(
-                            "Required: {} tokens, Current: {} tokens",
-                            required_stake / U256::from(10u128.pow(18)),
-                            provider_stake / U256::from(10u128.pow(18))
-                        ),
-                    );
-
-                    match provider_ops
-                        .increase_stake(required_stake - provider_stake)
-                        .await
-                    {
-                        Ok(_) => {
-                            Console::success("Successfully increased stake");
-                        }
-                        Err(e) => {
-                            Console::error(&format!("❌ Failed to increase stake: {}", e));
-                            std::process::exit(1);
-                        }
-                    }
-                }
-
                 match compute_node_ops.add_compute_node(compute_units).await {
                     Ok(added_node) => {
                         if added_node {
@@ -508,6 +515,7 @@ pub async fn execute_command(
                     }
                 }
             }
+
             let mut attempts = 0;
             let max_attempts = 100;
             while attempts < max_attempts {
@@ -533,7 +541,10 @@ pub async fn execute_command(
 
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
-            compute_node_ops.start_monitoring(cancellation_token.clone());
+            if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone()) {
+                Console::error(&format!("❌ Failed to start node monitoring: {}", err));
+                std::process::exit(1);
+            }
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             Console::info(

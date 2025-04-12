@@ -197,6 +197,7 @@ impl PrimeNetworkContract {
 
         Ok(invalidate_work_tx)
     }
+
     pub async fn get_validator_role(&self) -> Result<Vec<Address>, Error> {
         let hash = keccak256(b"VALIDATOR_ROLE");
         let value = DynSolValue::FixedBytes(hash, 32);

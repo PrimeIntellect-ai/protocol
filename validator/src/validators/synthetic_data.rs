@@ -157,6 +157,7 @@ impl SyntheticDataValidator {
         let data = hex::decode(work_key)
             .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
         info!("Invalidating work: {}", work_key);
+
         match self
             .prime_network
             .invalidate_work(self.pool_id, self.penalty, data)
@@ -427,6 +428,7 @@ impl SyntheticDataValidator {
                 info!("Validation accepted for {}", cleaned_file_name);
             }
             ValidationResult::Reject => {
+                tokio::time::sleep(tokio::time::Duration::from_secs(8)).await;
                 if let Err(e) = self.invalidate_work(work_key).await {
                     error!("Failed to invalidate work {}: {}", work_key, e);
                     return Err(ProcessWorkKeyError::InvalidatingWorkError(e.to_string()));
