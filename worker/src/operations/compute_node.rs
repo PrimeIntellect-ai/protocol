@@ -139,9 +139,7 @@ impl<'c> ComputeNodeOperations<'c> {
         Ok(true)
     }
 
-    pub async fn remove_compute_node(
-        &self,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    pub async fn remove_compute_node(&self) -> Result<bool, Box<dyn std::error::Error>> {
         Console::title("🔄 Removing compute node");
 
         if !self.check_compute_node_exists().await? {
@@ -151,7 +149,6 @@ impl<'c> ComputeNodeOperations<'c> {
         Console::progress("Removing compute node");
         let provider_address = self.provider_wallet.wallet.default_signer().address();
         let node_address = self.node_wallet.wallet.default_signer().address();
-        // Create the signature bytes
         let remove_node_tx = self
             .contracts
             .prime_network

@@ -143,7 +143,7 @@ pub enum Commands {
 
     /// Deregister worker from compute pool
     Deregister {
-          /// Private key for the provider
+        /// Private key for the provider
         #[arg(long)]
         private_key_provider: Option<String>,
 
@@ -809,7 +809,7 @@ pub async fn execute_command(
             private_key_node,
             rpc_url,
             compute_pool_id,
-            auto_accept
+            auto_accept,
         } => {
             let private_key_provider = if let Some(key) = private_key_provider {
                 key.clone()
@@ -850,7 +850,6 @@ pub async fn execute_command(
              Initialize dependencies - services, contracts, operations
             */
 
-            
             let contracts = Arc::new(
                 ContractBuilder::new(&provider_wallet_instance)
                     .with_compute_registry()
@@ -861,15 +860,6 @@ pub async fn execute_command(
                     .build()
                     .unwrap(),
             );
-
-            let stake_manager = match contracts.stake_manager.as_ref() {
-                Some(stake_manager) => stake_manager,
-                None => {
-                    Console::error("❌ Stake manager not initialized");
-                    std::process::exit(1);
-                }
-            };
-
 
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,
@@ -894,7 +884,6 @@ pub async fn execute_command(
 
             let pool_id = U256::from(*compute_pool_id as u32);
 
-
             if compute_node_exists {
                 // TODO: What if we have two nodes?
                 Console::success("Compute node is registered");
@@ -902,15 +891,10 @@ pub async fn execute_command(
                 // remove node from pool
                 match contracts
                     .compute_pool
-                    .leave_compute_pool(pool_id,
-                        provider_wallet_instance
-                        .wallet
-                        .default_signer()
-                        .address(),
-                        node_wallet_instance
-                        .wallet
-                        .default_signer()
-                        .address(),
+                    .leave_compute_pool(
+                        pool_id,
+                        provider_wallet_instance.wallet.default_signer().address(),
+                        node_wallet_instance.wallet.default_signer().address(),
                     )
                     .await
                 {
@@ -925,11 +909,7 @@ pub async fn execute_command(
                 match compute_node_ops.remove_compute_node().await {
                     Ok(_removed_node) => {
                         Console::success("Compute node removed");
-        
-                        match provider_ops
-                            .reclaim_stake(U256::from(0))
-                            .await
-                        {
+                        match provider_ops.reclaim_stake(U256::from(0)).await {
                             Ok(_) => {
                                 Console::success("Successfully reclaimed stake");
                             }
