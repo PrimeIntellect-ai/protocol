@@ -363,7 +363,6 @@ impl ProviderOperations {
         Console::success("Provider stake reclaimed successfully");
         Ok(())
     }
-
 }
 
 #[derive(Debug)]
