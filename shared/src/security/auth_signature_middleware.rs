@@ -13,7 +13,7 @@ use futures_util::future::LocalBoxFuture;
 use futures_util::future::{self};
 use futures_util::Stream;
 use futures_util::StreamExt;
-use log::{debug, error, warn, info};
+use log::{debug, error, warn};
 use std::future::{ready, Ready};
 use std::pin::Pin;
 use std::rc::Rc;
@@ -380,8 +380,8 @@ mod tests {
         )
         .await;
 
-        info!("Address: {}", wallet.wallet.default_signer().address());
-        info!("Signature: {}", signature);
+        log::info!("Address: {}", wallet.wallet.default_signer().address());
+        log::info!("Signature: {}", signature);
         let req = test::TestRequest::get()
             .uri("/test")
             .insert_header((
@@ -418,8 +418,8 @@ mod tests {
         )
         .await;
 
-        info!("Address: {}", wallet.wallet.default_signer().address());
-        info!("Signature: {}", signature);
+        log::info!("Address: {}", wallet.wallet.default_signer().address());
+        log::info!("Signature: {}", signature);
         let req = test::TestRequest::post()
             .uri("/test")
             .insert_header((
