@@ -115,7 +115,7 @@ impl DockerService {
                                 let termination = terminate_manager_clone.remove_container(&task.id).await;
                                 match termination {
                                     Ok(_) => Console::info("DockerService", "Container terminated successfully"),
-                                    Err(e) => Console::error(&format!("Error terminating container: {}", e)),
+                                    Err(e) => log::error!("Error terminating container: {}", e),
                                 }
                             });
                             terminating_container_tasks.lock().await.push(handle);
@@ -189,7 +189,7 @@ impl DockerService {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
                                             Err(e) => {
-                                                Console::error(&format!("Error starting container: {}", e));
+                                                log::error!("Error starting container: {}", e);
                                                 state_clone.update_task_state(payload.id, TaskState::FAILED).await;
                                             }
                                         }
@@ -231,7 +231,7 @@ impl DockerService {
                                             let termination = terminate_manager_clone.remove_container(&container_status.id).await;
                                             match termination {
                                                 Ok(_) => Console::info("DockerService", "Container terminated successfully"),
-                                                Err(e) => Console::error(&format!("Error terminating container: {}", e)),
+                                                Err(e) => log::error!("Error terminating container: {}", e)
                                             }
                                         });
                                         terminating_container_tasks.lock().await.push(handle);

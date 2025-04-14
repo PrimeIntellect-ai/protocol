@@ -69,9 +69,13 @@ impl Console {
         println!("{} {}", style("⚠").yellow().bold(), style(text).yellow());
     }
 
-    /// Prints an error message.
-    pub fn error(text: &str) {
-        log::error!("{}", text);
+    /// Prints a user error message.
+    /// This is a special case where the error is user-facing (e.g., missing GPU, configuration issues)
+    /// rather than a system error. These errors are not logged to central logging systems
+    /// and are only displayed to the user to help them resolve the issue.
+    /// For actual system errors that should be tracked, use proper error logging instead.
+    pub fn user_error(text: &str) {
+        println!("{} {}", style("✗").red().bold(), style(text).red());
     }
 
     /// Prints a progress message.
