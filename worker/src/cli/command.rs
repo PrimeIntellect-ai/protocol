@@ -17,10 +17,12 @@ use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
 use log::{error, info};
+use shared::models::node::ComputeRequirements;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -283,6 +285,7 @@ pub async fn execute_command(
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
             };
+
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
             let node_config = hardware_check.check_hardware(node_config).await.unwrap();
@@ -300,6 +303,45 @@ pub async fn execute_command(
                     std::process::exit(1);
                 } else {
                     Console::warning("Critical issues found. Ignoring and continuing.");
+                }
+            }
+            let required_specs = match ComputeRequirements::from_str(&pool_info.pool_data_uri) {
+                Ok(specs) => Some(specs),
+                Err(e) => {
+                    log::debug!("❌ Could not parse pool compute specs: {}", e);
+                    None
+                }
+            };
+
+            // Check if node meets the pool's compute requirements
+            if let Some(ref compute_specs) = node_config.compute_specs {
+                if let Some(ref required_specs) = required_specs {
+                    if !compute_specs.meets(required_specs) {
+                        Console::user_error(
+                            "❌ Your node does not meet the compute requirements for this pool.",
+                        );
+                        info!("Required compute requirements:\n{}", required_specs);
+                        if !*skip_system_checks {
+                            std::process::exit(1);
+                        } else {
+                            Console::warning(
+                                "Ignoring compute requirements mismatch and continuing.",
+                            );
+                        }
+                    } else {
+                        Console::success(
+                            "✅ Your node meets the compute requirements for this pool.",
+                        );
+                    }
+                } else {
+                    Console::success("✅ No specific compute requirements for this pool.");
+                }
+            } else {
+                Console::warning("Cannot verify compute requirements: node specs not available.");
+                if !*skip_system_checks {
+                    std::process::exit(1);
+                } else {
+                    Console::warning("Ignoring missing compute specs and continuing.");
                 }
             }
 
