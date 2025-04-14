@@ -185,14 +185,13 @@ where
                     timestamp = obj.get("timestamp").and_then(|v| v.as_u64());
                 }
             } else {
-                timestamp = req.uri()
-                    .query()
-                    .and_then(|query| {
-                        query.split('&')
-                            .find(|param| param.starts_with("timestamp="))
-                            .and_then(|param| param.split('=').nth(1))
-                            .and_then(|value| value.parse::<u64>().ok())
-                    });
+                timestamp = req.uri().query().and_then(|query| {
+                    query
+                        .split('&')
+                        .find(|param| param.starts_with("timestamp="))
+                        .and_then(|param| param.split('=').nth(1))
+                        .and_then(|value| value.parse::<u64>().ok())
+                });
             }
 
             // Combine path and payload

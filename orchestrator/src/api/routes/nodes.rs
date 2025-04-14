@@ -91,10 +91,15 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
 
             let node_url = format!("http://{}:{}", node_ip, node_port);
             let logs_path = "/task/logs".to_string();
-            let logs_url = format!("{}{}?timestamp={}", node_url, logs_path, std::time::SystemTime::now()
+            let logs_url = format!(
+                "{}{}?timestamp={}",
+                node_url,
+                logs_path,
+                std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_secs());
+                    .as_secs()
+            );
 
             let message_signature = sign_request(&logs_path, &app_state.wallet, None)
                 .await
