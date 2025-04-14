@@ -1,5 +1,6 @@
 use crate::console::Console;
 use alloy::primitives::{Address, U256};
+use log::error;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 use std::io::Write;
@@ -60,7 +61,7 @@ impl ProviderOperations {
                         let stake_manager = match contracts.stake_manager.as_ref() {
                             Some(sm) => sm,
                             None => {
-                                Console::error("Cannot start monitoring - stake manager not initialized");
+                                Console::user_error("Cannot start monitoring - stake manager not initialized");
                                 return;
                             }
                         };
@@ -91,7 +92,7 @@ impl ProviderOperations {
                                 Some(stake)
                             },
                             Err(e) => {
-                                Console::error(&format!("Failed to get stake: {}", e));
+                                error!("Failed to get stake: {}", e);
                                 None
                             }
                         };
@@ -112,7 +113,7 @@ impl ProviderOperations {
                                 Some(balance)
                             },
                             Err(e) => {
-                                Console::error(&format!("Failed to get AI token balance: {}", e));
+                                error!("Failed to get AI token balance: {}", e);
                                 None
                             }
                         };
@@ -132,7 +133,7 @@ impl ProviderOperations {
                                 }
                             },
                             Err(e) => {
-                                Console::error(&format!("Failed to get provider whitelist status: {}", e));
+                                error!("Failed to get provider whitelist status: {}", e);
                             }
                         };
 
@@ -200,10 +201,7 @@ impl ProviderOperations {
                 },
             }
         }
-        Console::error(&format!(
-            "❌ Failed to register provider after {} attempts",
-            attempts
-        ));
+        log::error!("❌ Failed to register provider after {} attempts", attempts);
         Err(ProviderError::Other)
     }
 
@@ -234,7 +232,7 @@ impl ProviderOperations {
                 &format!("{} ETH", eth_balance / U256::from(10u128.pow(18))),
             );
             if balance < stake {
-                Console::error(&format!(
+                Console::user_error(&format!(
                     "Insufficient AI Token balance for stake: {} tokens",
                     stake / U256::from(10u128.pow(18))
                 ));
@@ -275,13 +273,13 @@ impl ProviderOperations {
 
         let provider_exists = provider.provider_address != Address::default();
         if !provider_exists {
-            Console::error("Provider could not be registered. Please ensure your token balance is high enough.");
+            Console::user_error("Provider could not be registered. Please ensure your token balance is high enough.");
             return Err(ProviderError::Other);
         }
 
         Console::success("Provider registered");
         if !provider.is_whitelisted {
-            Console::error("Provider is not whitelisted yet.");
+            Console::user_error("Provider is not whitelisted yet.");
             return Err(ProviderError::NotWhitelisted);
         }
 
@@ -309,7 +307,7 @@ impl ProviderOperations {
         );
 
         if balance < additional_stake {
-            Console::error("Insufficient token balance for stake increase");
+            Console::user_error("Insufficient token balance for stake increase");
             return Err(ProviderError::Other);
         }
 

@@ -135,7 +135,7 @@ pub fn print_storage_info() {
             Console::info("Total Storage", &format!("{:.1} GB", total));
             Console::info("Free Storage", &format!("{:.1} GB", free));
         }
-        Err(e) => Console::error(&format!("Storage Error: {}", e)),
+        Err(e) => log::error!("Storage Error: {}", e),
     }
 }
 

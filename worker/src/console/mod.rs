@@ -1,2 +1,2 @@
-pub use logger::*;
-mod logger;
+pub use console_logger::*;
+mod console_logger;
