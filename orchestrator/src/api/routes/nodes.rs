@@ -25,7 +25,12 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
             let node_url = format!("http://{}:{}", node_ip, node_port);
             let restart_path = "/task/restart".to_string();
             let restart_url = format!("{}{}", node_url, restart_path);
-            let payload = json!({});
+            let payload = json!({
+                "timestamp": std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            });
 
             let message_signature = sign_request(&restart_path, &app_state.wallet, Some(&payload))
                 .await
@@ -77,7 +82,6 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
 }
 
 async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    println!("get_node_logs: {}", node_id);
     let node_address = Address::from_str(&node_id).unwrap();
     let node = app_state.store_context.node_store.get_node(&node_address);
     match node {
@@ -87,7 +91,10 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
 
             let node_url = format!("http://{}:{}", node_ip, node_port);
             let logs_path = "/task/logs".to_string();
-            let logs_url = format!("{}{}", node_url, logs_path);
+            let logs_url = format!("{}{}?timestamp={}", node_url, logs_path, std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs());
 
             let message_signature = sign_request(&logs_path, &app_state.wallet, None)
                 .await

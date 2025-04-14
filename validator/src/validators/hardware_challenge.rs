@@ -38,10 +38,18 @@ impl<'a> HardwareChallenge<'a> {
         let challenge_matrix = self.random_challenge(3, 3, 3, 3);
         let challenge_expected = calc_matrix(&challenge_matrix);
 
+        // Add timestamp to the challenge
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut challenge_with_timestamp = challenge_matrix.clone();
+        challenge_with_timestamp.timestamp = Some(current_time);
+
         let post_url = format!("{}{}", node_url, challenge_route);
 
         let address = self.wallet.wallet.default_signer().address().to_string();
-        let challenge_matrix_value = serde_json::to_value(&challenge_matrix)?;
+        let challenge_matrix_value = serde_json::to_value(&challenge_with_timestamp)?;
         let signature = sign_request(challenge_route, self.wallet, Some(&challenge_matrix_value))
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -107,6 +115,7 @@ impl<'a> HardwareChallenge<'a> {
             rows_b,
             cols_b,
             data_b,
+            timestamp: None,
         }
     }
 }
