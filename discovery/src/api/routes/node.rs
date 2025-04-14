@@ -3,8 +3,10 @@ use actix_web::{
     web::{self, put, Data},
     HttpResponse, Scope,
 };
+use alloy::primitives::U256;
 use shared::models::api::ApiResponse;
-use shared::models::node::Node;
+use shared::models::node::{ComputeRequirements, Node};
+use std::str::FromStr;
 
 pub async fn register_node(
     node: web::Json<Node>,
@@ -45,6 +47,52 @@ pub async fn register_node(
                 "Node not found in compute registry",
             ));
         }
+
+        // Check if node meets the pool's compute requirements
+        match contracts
+            .compute_pool
+            .get_pool_info(U256::from(node.compute_pool_id))
+            .await
+        {
+            Ok(pool_info) => {
+                if let Ok(required_specs) = ComputeRequirements::from_str(&pool_info.pool_data_uri)
+                {
+                    if let Some(ref compute_specs) = node.compute_specs {
+                        if !compute_specs.meets(&required_specs) {
+                            log::info!(
+                                "Node {} does not meet compute requirements for pool {}",
+                                node.id,
+                                node.compute_pool_id
+                            );
+                            return HttpResponse::BadRequest().json(ApiResponse::new(
+                                false,
+                                "Node does not meet the compute requirements for this pool",
+                            ));
+                        }
+                    } else {
+                        log::info!("Node specs not provided for node {}", node.id);
+                        return HttpResponse::BadRequest().json(ApiResponse::new(
+                            false,
+                            "Cannot verify compute requirements: node specs not provided",
+                        ));
+                    }
+                } else {
+                    log::info!(
+                        "Could not parse compute requirements from pool data URI: {}",
+                        &pool_info.pool_data_uri
+                    );
+                }
+            }
+            Err(e) => {
+                log::info!(
+                    "Failed to get pool information for pool ID {}: {:?}",
+                    node.compute_pool_id,
+                    e
+                );
+                return HttpResponse::BadRequest()
+                    .json(ApiResponse::new(false, "Failed to get pool information"));
+            }
+        }
     }
 
     let node_store = data.node_store.clone();
@@ -68,7 +116,7 @@ mod tests {
     use actix_web::http::StatusCode;
     use actix_web::test;
     use actix_web::App;
-    use shared::models::node::DiscoveryNode;
+    use shared::models::node::{ComputeSpecs, CpuSpecs, DiscoveryNode, GpuSpecs};
     use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
     use shared::security::request_signer::sign_request;
     use shared::web3::wallet::Wallet;
@@ -121,7 +169,20 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8089,
             compute_pool_id: 0,
-            compute_specs: None,
+            compute_specs: Some(ComputeSpecs {
+                gpu: Some(GpuSpecs {
+                    count: Some(4),
+                    model: Some("A100".to_string()),
+                    memory_mb: Some(40000),
+                }),
+                cpu: Some(CpuSpecs {
+                    cores: Some(16),
+                    model: None,
+                }),
+                ram_mb: Some(64000),
+                storage_gb: Some(500),
+                storage_path: None,
+            }),
         };
 
         let node_clone_for_recall = node.clone();
