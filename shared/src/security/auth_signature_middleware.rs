@@ -13,11 +13,13 @@ use futures_util::future::LocalBoxFuture;
 use futures_util::future::{self};
 use futures_util::Stream;
 use futures_util::StreamExt;
+use log::{debug, error, warn};
 use std::future::{ready, Ready};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 type SyncAddressValidator = Arc<dyn Fn(&Address) -> bool + Send + Sync>;
 
@@ -151,12 +153,13 @@ where
 
             // Handle GET requests which do not have a payload
             let mut payload_string = String::new();
+            let mut timestamp = None;
             if req.method() != actix_web::http::Method::GET {
                 // Parse and sort the payload
                 let payload_value: serde_json::Value = match serde_json::from_slice(&body) {
                     Ok(val) => val,
                     Err(e) => {
-                        println!("Error parsing payload: {:?}", e);
+                        error!("Error parsing payload: {:?}", e);
                         return Err(ErrorBadRequest(e));
                     }
                 };
@@ -173,14 +176,33 @@ where
                 payload_string = match serde_json::to_string(&payload_data) {
                     Ok(s) => s,
                     Err(e) => {
-                        println!("Error serializing payload: {:?}", e);
+                        error!("Error serializing payload: {:?}", e);
                         return Err(ErrorBadRequest(e));
                     }
                 };
+
+                if let Some(obj) = payload_data.as_object_mut() {
+                    timestamp = obj.get("timestamp").and_then(|v| v.as_u64());
+                }
+            }
+            if timestamp.is_none() {
+                timestamp = req.uri().query().and_then(|query| {
+                    query
+                        .split('&')
+                        .find(|param| param.starts_with("timestamp="))
+                        .and_then(|param| param.split('=').nth(1))
+                        .and_then(|value| match value.parse::<u64>() {
+                            Ok(ts) => Some(ts),
+                            Err(e) => {
+                                debug!("Failed to parse timestamp from query: {:?}", e);
+                                None
+                            }
+                        })
+                });
             }
 
             // Combine path and payload
-            let msg = format!("{}{}", path, payload_string);
+            let msg: String = format!("{}{}", path, payload_string);
             // Validate signature
             if let (Some(address), Some(signature)) = (x_address, x_signature) {
                 let signature = signature.trim_start_matches("0x");
@@ -202,17 +224,27 @@ where
                 };
 
                 if recovered_address != expected_address {
-                    println!("Recovered address: {:?}", recovered_address);
-                    println!("Expected address: {:?}", expected_address);
+                    debug!("Recovered address: {:?}", recovered_address);
+                    debug!("Expected address: {:?}", expected_address);
                     return Err(ErrorBadRequest("Invalid signature"));
                 }
 
                 if !validator_state.is_address_allowed(&recovered_address) {
-                    println!(
+                    warn!(
                         "Request with valid signature but not authorized. Allowed addresses: {:?}",
                         validator_state.get_allowed_addresses()
                     );
                     return Err(ErrorBadRequest("Address not authorized"));
+                }
+
+                if let Some(timestamp) = timestamp {
+                    let current_time = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    if current_time - timestamp > 10 {
+                        return Err(ErrorBadRequest("Request expired"));
+                    }
                 }
 
                 // Reconstruct request with the original body
@@ -351,8 +383,8 @@ mod tests {
         )
         .await;
 
-        println!("Address: {}", wallet.wallet.default_signer().address());
-        println!("Signature: {}", signature);
+        log::info!("Address: {}", wallet.wallet.default_signer().address());
+        log::info!("Signature: {}", signature);
         let req = test::TestRequest::get()
             .uri("/test")
             .insert_header((
@@ -389,8 +421,8 @@ mod tests {
         )
         .await;
 
-        println!("Address: {}", wallet.wallet.default_signer().address());
-        println!("Signature: {}", signature);
+        log::info!("Address: {}", wallet.wallet.default_signer().address());
+        log::info!("Signature: {}", signature);
         let req = test::TestRequest::post()
             .uri("/test")
             .insert_header((
