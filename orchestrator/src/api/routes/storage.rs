@@ -7,6 +7,8 @@ use redis::{Commands, RedisResult};
 use shared::utils::google_cloud::{generate_mapping_file, generate_upload_signed_url};
 use std::time::Duration;
 
+const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+
 #[derive(serde::Deserialize)]
 pub struct RequestUploadRequest {
     pub file_name: String,
@@ -20,6 +22,14 @@ async fn request_upload(
     request_upload: web::Json<RequestUploadRequest>,
     app_state: Data<AppState>,
 ) -> HttpResponse {
+    // Check file size limit first
+    if request_upload.file_size > MAX_FILE_SIZE {
+        return HttpResponse::PayloadTooLarge().json(serde_json::json!({
+            "success": false,
+            "error": format!("File size exceeds maximum allowed size of 100MB")
+        }));
+    }
+
     let mut redis_con = match app_state.redis_store.client.get_connection() {
         Ok(con) => con,
         Err(e) => {
@@ -147,7 +157,12 @@ async fn request_upload(
                             let _: RedisResult<()> =
                                 redis_con.expire(&rate_limit_key, expiry_seconds);
                         }
-                        log::info!("Rate limit count for {}: {}/12 per hour", address, count);
+                        log::info!(
+                            "Rate limit count for {}: {}/{} per hour",
+                            address,
+                            count,
+                            app_state.hourly_upload_limit
+                        );
                     }
                     Err(e) => {
                         log::error!("Failed to update rate limit counter: {}", e);
