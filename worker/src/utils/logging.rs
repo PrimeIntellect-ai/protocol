@@ -52,7 +52,6 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
             ..
         } = &cli.command
         {
-            // TODO: level parsing
             compute_pool = Some(*cmd_compute_pool_id);
             external_ip = Some(cmd_external_ip.clone());
             port = Some(*cmd_port);
