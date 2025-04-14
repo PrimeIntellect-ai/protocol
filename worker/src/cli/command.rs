@@ -626,30 +626,61 @@ pub async fn execute_command(
             let provider_signer = PrivateKeySigner::random();
             let node_signer = PrivateKeySigner::random();
 
+            let provider_key = hex::encode(provider_signer.credential().to_bytes());
+            let node_key = hex::encode(node_signer.credential().to_bytes());
+
             println!("Provider wallet:");
             println!("  Address: {}", provider_signer.address());
-            println!(
-                "  Private key: {}",
-                hex::encode(provider_signer.credential().to_bytes())
-            );
+            println!("  Private key: {}", provider_key);
             println!("\nNode wallet:");
             println!("  Address: {}", node_signer.address());
-            println!(
-                "  Private key: {}",
-                hex::encode(node_signer.credential().to_bytes())
-            );
+            println!("  Private key: {}", node_key);
+            println!("\nTo set environment variables in your current shell session:");
+            println!("export PRIVATE_KEY_PROVIDER={}", provider_key);
+            println!("export PRIVATE_KEY_NODE={}", node_key);
+
+            // Ask user if they want to set environment variables for this process
+            println!("\nWould you like to set these environment variables for the current process? (y/n)");
+            let mut input = String::new();
+            std::io::stdin()
+                .read_line(&mut input)
+                .expect("Failed to read input");
+
+            if input.trim().to_lowercase() == "y" {
+                std::env::set_var("PRIVATE_KEY_PROVIDER", &provider_key);
+                std::env::set_var("PRIVATE_KEY_NODE", &node_key);
+                println!("Environment variables have been set for this process, but they won't persist to your shell.");
+                println!("To make them permanent, add them to your shell configuration file (.bashrc, .zshrc, etc.)");
+            }
+
             Ok(())
         }
 
         Commands::GenerateNodeWallet {} => {
             let node_signer = PrivateKeySigner::random();
+            let node_key = hex::encode(node_signer.credential().to_bytes());
 
             println!("Node wallet:");
             println!("  Address: {}", node_signer.address());
+            println!("  Private key: {}", node_key);
+            println!("\nTo set environment variable in your current shell session:");
+            println!("export PRIVATE_KEY_NODE={}", node_key);
+
+            // Ask user if they want to set environment variable for this process
             println!(
-                "  Private key: {}",
-                hex::encode(node_signer.credential().to_bytes())
+                "\nWould you like to set this environment variable for the current process? (y/n)"
             );
+            let mut input = String::new();
+            std::io::stdin()
+                .read_line(&mut input)
+                .expect("Failed to read input");
+
+            if input.trim().to_lowercase() == "y" {
+                std::env::set_var("PRIVATE_KEY_NODE", &node_key);
+                println!("Environment variable has been set for this process, but it won't persist to your shell.");
+                println!("To make it permanent, add it to your shell configuration file (.bashrc, .zshrc, etc.)");
+            }
+
             Ok(())
         }
 
