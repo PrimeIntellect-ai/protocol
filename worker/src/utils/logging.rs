@@ -1,5 +1,4 @@
 use log::{debug, LevelFilter};
-use time::UtcOffset;
 use tracing_subscriber::filter::EnvFilter as TracingEnvFilter;
 use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
@@ -8,7 +7,6 @@ use url::Url;
 use crate::cli::command::Commands;
 use crate::cli::Cli;
 use anyhow::Result;
-use std::io;
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::macros::format_description;
 use tracing_subscriber::fmt::time::FormatTime;
@@ -23,7 +21,7 @@ impl FormatTime for SimpleTimeFormatter {
 
         // Convert to time::OffsetDateTime
         let datetime = time::OffsetDateTime::from_unix_timestamp(timestamp as i64)
-            .unwrap_or_else(|_| time::OffsetDateTime::UNIX_EPOCH);
+            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
 
         // Format as hh:mm:ss
         let format = format_description!("[hour]:[minute]:[second]");
