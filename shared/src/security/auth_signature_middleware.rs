@@ -200,7 +200,6 @@ where
                         })
                 });
             }
-            println!("Timestamp: {:?}", timestamp);
 
             // Combine path and payload
             let msg: String = format!("{}{}", path, payload_string);
