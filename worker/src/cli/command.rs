@@ -96,6 +96,10 @@ pub enum Commands {
         /// Silence metrics logging
         #[arg(long, default_value = "false")]
         silence_metrics: bool,
+
+        /// Loki URL
+        #[arg(long)]
+        loki_url: Option<String>,
     },
     Check {},
 
@@ -154,6 +158,7 @@ pub async fn execute_command(
             funding_retry_count,
             skip_system_checks,
             silence_metrics,
+            loki_url,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
@@ -207,6 +212,31 @@ pub async fn execute_command(
                 },
             );
 
+            if let Some(loki_url) = loki_url {
+                let (layer, task) = tracing_loki::builder()
+                    .label(
+                        "provider",
+                        provider_wallet_instance
+                            .wallet
+                            .default_signer()
+                            .address()
+                            .to_string(),
+                    )?
+                    .label(
+                        "node",
+                        node_wallet_instance
+                            .wallet
+                            .default_signer()
+                            .address()
+                            .to_string(),
+                    )?
+                    .label("version", env!("CARGO_PKG_VERSION"))?
+                    .label("pool", compute_pool_id.to_string())?
+                    .build_url(Url::parse(loki_url).unwrap())?;
+                // TODO: Add tracing
+
+                tokio::spawn(task);
+            }
             /*
              Initialize dependencies - services, contracts, operations
             */

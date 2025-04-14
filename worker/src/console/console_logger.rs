@@ -71,7 +71,7 @@ impl Console {
 
     /// Prints an error message.
     pub fn error(text: &str) {
-        println!("{} {}", style("✗").red().bold(), style(text).red());
+        log::error!("{}", text);
     }
 
     /// Prints a progress message.
