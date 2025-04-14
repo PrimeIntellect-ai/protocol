@@ -45,6 +45,8 @@ pub async fn create_test_app_state() -> Data<AppState> {
         s3_credentials: None,
         bucket_name: None,
         heartbeats: Arc::new(LoopHeartbeats::new()),
+        hourly_upload_limit: 12,
+        redis_store: store.clone(),
     })
 }
 
