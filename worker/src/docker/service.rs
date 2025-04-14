@@ -98,7 +98,7 @@ impl DockerService {
                     let all_containers = match manager.list_containers(true).await {
                         Ok(containers) => containers,
                         Err(e) => {
-                            Console::error(&format!("Failed to list containers: {}", e));
+                            log::error!("Failed to list containers: {}", e);
                             continue;
                         }
                     };
