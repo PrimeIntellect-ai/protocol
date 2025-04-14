@@ -107,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await;
 
     match cleanup {
-        Ok(_) => log::info!("All tasks cleaned up successfully"),
+        Ok(_) => (),
         Err(_) => log::warn!("Timeout waiting for tasks to cleanup"),
     }
     Ok(())
