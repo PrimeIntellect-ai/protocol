@@ -1,7 +1,6 @@
 use crate::api::routes::challenge::challenge_routes;
 use crate::api::routes::invite::invite_routes;
 use crate::api::routes::task::task_routes;
-use crate::console::Console;
 use crate::docker::DockerService;
 use crate::operations::heartbeat::service::HeartbeatService;
 use actix_web::{middleware, web::Data, App, HttpServer};
