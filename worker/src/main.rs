@@ -10,7 +10,6 @@ mod state;
 mod utils;
 use clap::Parser;
 use cli::{execute_command, Cli};
-use log::error;
 use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Mutex;

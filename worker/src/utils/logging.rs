@@ -1,4 +1,4 @@
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug, LevelFilter};
 use tracing_subscriber::filter::EnvFilter as TracingEnvFilter;
 use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
@@ -9,7 +9,7 @@ use crate::cli::Cli;
 
 pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Default log level
-    let mut log_level = LevelFilter::Info;
+    let log_level = LevelFilter::Info;
     let mut loki_url: Option<String> = None;
     let mut external_ip = None;
     let mut compute_pool = None;
@@ -26,9 +26,9 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
         } = &cli.command
         {
             // TODO: level parsing
-            compute_pool = Some(cmd_compute_pool_id.clone());
+            compute_pool = Some(*cmd_compute_pool_id);
             external_ip = Some(cmd_external_ip.clone());
-            port = Some(cmd_port.clone());
+            port = Some(*cmd_port);
             match cmd_loki_url {
                 Some(url) => loki_url = Some(url.clone()),
                 None => loki_url = None,
