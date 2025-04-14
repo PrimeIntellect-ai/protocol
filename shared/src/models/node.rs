@@ -239,6 +239,7 @@ impl FromStr for ComputeRequirements {
         Ok(requirements)
     }
 }
+use log::info;
 
 impl ComputeSpecs {
     /// Checks if the current compute specs meet the given requirements.
@@ -250,6 +251,10 @@ impl ComputeSpecs {
                 .as_ref()
                 .map_or(false, |spec_cpu| spec_cpu.meets(req_cpu))
             {
+                info!(
+                    "CPU requirements not met: required {:?}, have {:?}",
+                    req_cpu, self.cpu
+                );
                 return false;
             }
         }
@@ -257,6 +262,10 @@ impl ComputeSpecs {
         // Check RAM (if required)
         if let Some(req_ram) = requirements.ram_mb {
             if !(self.ram_mb.map_or(false, |spec_ram| spec_ram >= req_ram)) {
+                info!(
+                    "RAM requirements not met: required {} MB, have {:?} MB",
+                    req_ram, self.ram_mb
+                );
                 return false;
             }
         }
@@ -267,6 +276,10 @@ impl ComputeSpecs {
                 .storage_gb
                 .map_or(false, |spec_storage| spec_storage >= req_storage))
             {
+                info!(
+                    "Storage requirements not met: required {} GB, have {:?} GB",
+                    req_storage, self.storage_gb
+                );
                 return false;
             }
         }
@@ -275,6 +288,7 @@ impl ComputeSpecs {
         if !requirements.gpu.is_empty() {
             // Requirements specify GPUs, so the node must have a GPU spec...
             let Some(spec_gpu) = &self.gpu else {
+                info!("GPU requirements not met: GPU required but none available");
                 return false;
             };
             // ...and that GPU spec must meet *at least one* of the requirement options.
@@ -283,6 +297,7 @@ impl ComputeSpecs {
                 .iter()
                 .any(|req_gpu| spec_gpu.meets(req_gpu))
             {
+                info!("GPU requirements not met");
                 return false;
             }
         }
@@ -314,9 +329,16 @@ impl GpuSpecs {
 
         if let Some(req_model) = &requirement.model {
             if !(self.model.as_ref().map_or(false, |spec_model| {
-                spec_model
-                    .to_lowercase()
-                    .contains(&req_model.to_lowercase())
+                let normalized_spec = spec_model.to_lowercase().replace(' ', "_");
+
+                // Split the requirement model string by commas and check if any match
+                req_model
+                    .split(',')
+                    .map(|m| m.trim().to_lowercase().replace(' ', "_"))
+                    .any(|normalized_req| {
+                        normalized_spec.contains(&normalized_req)
+                            || normalized_req.contains(&normalized_spec)
+                    })
             })) {
                 return false;
             }
@@ -526,13 +548,27 @@ mod tests {
     fn test_meets_exact_match() {
         let specs = create_compute_specs(
             Some(4),
-            Some("A100"),
+            Some("nvidia_a100_80gb_pcie"),
             Some(40000),
             Some(16),
             Some(64000),
             Some(500),
         );
         let req_str = "gpu:count=4;gpu:model=A100;gpu:memory_mb=40000;cpu:cores=16;ram_mb=64000;storage_gb=500";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+        assert!(specs.meets(&requirements));
+    }
+    #[test]
+    fn test_a100_range_case() {
+        let specs = create_compute_specs(
+            Some(1),
+            Some("nvidia_a100_80gb_pcie"),
+            Some(40000),
+            Some(16),
+            Some(64000),
+            Some(700),
+        );
+        let req_str = "gpu:count=4;gpu:model=a100,h100,h200;gpu:count=1;gpu:model=a100,h100,h200;storage_gb=700";
         let requirements = ComputeRequirements::from_str(req_str).unwrap();
         assert!(specs.meets(&requirements));
     }
