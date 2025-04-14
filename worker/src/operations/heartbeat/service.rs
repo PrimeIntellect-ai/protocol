@@ -1,4 +1,3 @@
-use crate::console::Console;
 use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
 use crate::state::system_state::SystemState;
@@ -228,7 +227,7 @@ impl HeartbeatService {
         if !is_running {
             tokio::spawn(async move {
                 if let Err(e) = docker_service.run().await {
-                    Console::error(&format!("❌ Docker service failed: {}", e));
+                    log::error!("❌ Docker service failed: {}", e);
                 }
             });
         }
