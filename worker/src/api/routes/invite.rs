@@ -5,7 +5,7 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use alloy::primitives::U256;
-use alloy::{primitives::FixedBytes, rpc::types::error};
+use alloy::primitives::FixedBytes;
 use hex;
 use log::error;
 use serde_json::json;

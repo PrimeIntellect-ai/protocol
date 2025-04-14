@@ -10,6 +10,7 @@ mod state;
 mod utils;
 use clap::Parser;
 use cli::{execute_command, Cli};
+use std::panic;
 use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Mutex;
@@ -30,6 +31,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             e
         );
     }
+
+    // Set up panic hook to log panics
+    panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info.location().unwrap_or_else(|| panic::Location::caller());
+        let message = match panic_info.payload().downcast_ref::<&str>() {
+            Some(s) => *s,
+            None => match panic_info.payload().downcast_ref::<String>() {
+                Some(s) => s.as_str(),
+                None => "Unknown panic payload",
+            },
+        };
+        
+        log::error!(
+            "PANIC: '{}' at {}:{}",
+            message,
+            location.file(),
+            location.line()
+        );
+    }));
 
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;

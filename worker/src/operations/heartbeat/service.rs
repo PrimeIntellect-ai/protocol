@@ -1,4 +1,3 @@
-use crate::console::Console;
 use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
 use crate::state::system_state::SystemState;
