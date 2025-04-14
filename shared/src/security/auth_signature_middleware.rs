@@ -230,15 +230,11 @@ where
                     return Err(ErrorBadRequest("Address not authorized"));
                 }
 
-                println!("Timestamp: {:?}", timestamp);
                 if let Some(timestamp) = timestamp {
                     let current_time = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap()
                         .as_secs();
-                    println!("Current time: {:?}", current_time);
-                    println!("Timestamp: {:?}", timestamp);
-                    println!("Difference: {:?}", current_time - timestamp);
                     if current_time - timestamp > 10 {
                         return Err(ErrorBadRequest("Request expired"));
                     }
