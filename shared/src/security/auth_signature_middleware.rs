@@ -184,15 +184,25 @@ where
                 if let Some(obj) = payload_data.as_object_mut() {
                     timestamp = obj.get("timestamp").and_then(|v| v.as_u64());
                 }
-            } else {
+            }
+            if timestamp.is_none() {
                 timestamp = req.uri().query().and_then(|query| {
                     query
                         .split('&')
                         .find(|param| param.starts_with("timestamp="))
                         .and_then(|param| param.split('=').nth(1))
-                        .and_then(|value| value.parse::<u64>().ok())
+                        .and_then(|value| {
+                            match value.parse::<u64>() {
+                                Ok(ts) => Some(ts),
+                                Err(e) => {
+                                    debug!("Failed to parse timestamp from query: {:?}", e);
+                                    None
+                                }
+                            }
+                        })
                 });
             }
+            println!("Timestamp: {:?}", timestamp);
 
             // Combine path and payload
             let msg: String = format!("{}{}", path, payload_string);

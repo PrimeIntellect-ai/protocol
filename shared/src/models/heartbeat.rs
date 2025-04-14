@@ -28,4 +28,5 @@ pub struct HeartbeatRequest {
     pub metrics: Option<Vec<MetricEntry>>,
     #[serde(default)]
     pub version: Option<String>,
+    pub timestamp: Option<u64>,
 }
