@@ -42,9 +42,9 @@ impl<'b> DiscoveryService<'b> {
                 .unwrap(),
         );
         headers.insert("x-signature", signature_string.parse().unwrap());
-        let request_url = format!("{}{}{}", self.base_url, &self.endpoint );
+        let request_url = format!("{}{}", self.base_url, &self.endpoint);
 
-        let response: ! = reqwest::Client::new()
+        let response = reqwest::Client::new()
             .put(&request_url)
             .headers(headers)
             .json(&request_data)

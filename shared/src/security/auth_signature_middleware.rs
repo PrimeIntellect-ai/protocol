@@ -191,13 +191,11 @@ where
                         .split('&')
                         .find(|param| param.starts_with("timestamp="))
                         .and_then(|param| param.split('=').nth(1))
-                        .and_then(|value| {
-                            match value.parse::<u64>() {
-                                Ok(ts) => Some(ts),
-                                Err(e) => {
-                                    debug!("Failed to parse timestamp from query: {:?}", e);
-                                    None
-                                }
+                        .and_then(|value| match value.parse::<u64>() {
+                            Ok(ts) => Some(ts),
+                            Err(e) => {
+                                debug!("Failed to parse timestamp from query: {:?}", e);
+                                None
                             }
                         })
                 });
