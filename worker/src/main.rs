@@ -34,7 +34,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Set up panic hook to log panics
     panic::set_hook(Box::new(|panic_info| {
-        let location = panic_info.location().unwrap_or_else(|| panic::Location::caller());
+        let location = panic_info
+            .location()
+            .unwrap_or_else(|| panic::Location::caller());
         let message = match panic_info.payload().downcast_ref::<&str>() {
             Some(s) => *s,
             None => match panic_info.payload().downcast_ref::<String>() {
@@ -42,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None => "Unknown panic payload",
             },
         };
-        
+
         log::error!(
             "PANIC: '{}' at {}:{}",
             message,

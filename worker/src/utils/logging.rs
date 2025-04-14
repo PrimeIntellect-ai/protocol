@@ -7,11 +7,11 @@ use url::Url;
 
 use crate::cli::command::Commands;
 use crate::cli::Cli;
+use anyhow::Result;
 use std::io;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing_subscriber::fmt::time::FormatTime;
 use time::macros::format_description;
-use anyhow::Result;
+use tracing_subscriber::fmt::time::FormatTime;
 
 struct SimpleTimeFormatter;
 
@@ -20,15 +20,17 @@ impl FormatTime for SimpleTimeFormatter {
         // Get current time
         let now = SystemTime::now();
         let timestamp = now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-        
+
         // Convert to time::OffsetDateTime
         let datetime = time::OffsetDateTime::from_unix_timestamp(timestamp as i64)
             .unwrap_or_else(|_| time::OffsetDateTime::UNIX_EPOCH);
-        
+
         // Format as hh:mm:ss
         let format = format_description!("[hour]:[minute]:[second]");
-        let formatted = datetime.format(format).unwrap_or_else(|_| String::from("??:??:??"));
-        
+        let formatted = datetime
+            .format(format)
+            .unwrap_or_else(|_| String::from("??:??:??"));
+
         write!(w, "{}", formatted)
     }
 }
@@ -77,7 +79,6 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
         .add_directive("bollard=warn".parse()?)
         .add_directive("alloy=warn".parse()?);
 
-     
     let fmt_layer = fmt::layer()
         .with_target(false)
         .with_level(true)

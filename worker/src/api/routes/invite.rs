@@ -4,8 +4,8 @@ use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,
 };
-use alloy::primitives::U256;
 use alloy::primitives::FixedBytes;
+use alloy::primitives::U256;
 use hex;
 use log::error;
 use serde_json::json;
