@@ -29,12 +29,6 @@ impl ChainSync {
             contracts,
         }
     }
-    async fn sync_single_node(
-        node_store: Arc<NodeStore>,
-        contracts: Arc<Contracts>,
-        node: DiscoveryNode,
-    ) -> Result<(), Error> {
-        let mut n = node.clone();
 
     async fn sync_single_node(
         node_store: Arc<NodeStore>,
