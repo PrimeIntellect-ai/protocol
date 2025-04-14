@@ -13,7 +13,7 @@ use futures_util::future::LocalBoxFuture;
 use futures_util::future::{self};
 use futures_util::Stream;
 use futures_util::StreamExt;
-use log::{debug, error, info, warn};
+use log::{debug, error, warn, info};
 use std::future::{ready, Ready};
 use std::pin::Pin;
 use std::rc::Rc;
