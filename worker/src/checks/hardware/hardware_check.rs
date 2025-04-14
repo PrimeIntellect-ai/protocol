@@ -69,14 +69,6 @@ impl HardwareChecker {
             issue_tracker.add_issue(IssueType::InsufficientMemory, "Minimum 8GB RAM required");
         }
 
-        if storage_gb < 1000 {
-            // 1000GB minimum
-            issue_tracker.add_issue(
-                IssueType::InsufficientStorage,
-                "Minimum 1000GB storage required",
-            );
-        }
-
         if gpu_specs.is_none() {
             issue_tracker.add_issue(IssueType::NoGpu, "No GPU detected");
         }
@@ -90,10 +82,21 @@ impl HardwareChecker {
             (None, None)
         };
 
+        if available_space.is_some() && available_space.unwrap() < 1000 {
+            issue_tracker.add_issue(
+                IssueType::InsufficientStorage,
+                "Minimum 1000GB storage required",
+            );
+        }
+
         let storage_gb_value = match available_space {
             Some(space) => (space as f64 / BYTES_TO_GB) as u32,
             None => storage_gb,
         };
+
+        if storage_path.is_none() {
+            issue_tracker.add_issue(IssueType::NoStoragePath, "No storage mount found");
+        }
 
         // Check network speeds
         Console::title("Network Speed Test:");

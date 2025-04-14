@@ -252,10 +252,6 @@ impl TaskBridge {
                                                                 "Failed to handle file validation: {}",
                                                                 e
                                                             );
-                                                        } else {
-                                                            info!(
-                                                                "File validation handled successfully"
-                                                            );
                                                         }
                                                     });
                                                 } else {

@@ -17,6 +17,7 @@ pub enum IssueType {
     InsufficientMemory,           // Minimum RAM needed
     InsufficientCpu,              // Minimum CPU cores needed
     NetworkConnectivityIssue,     // Network performance issues
+    NoStoragePath,                // No storage path found
 }
 
 impl IssueType {
@@ -51,7 +52,7 @@ impl Issue {
 
     pub fn print(&self) {
         match self.severity() {
-            Severity::Error => Console::error(&format!("{}", self)),
+            Severity::Error => Console::user_error(&format!("{}", self)),
             Severity::Warning => Console::warning(&format!("{}", self)),
         }
     }

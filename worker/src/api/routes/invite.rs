@@ -7,6 +7,7 @@ use actix_web::{
 use alloy::primitives::FixedBytes;
 use alloy::primitives::U256;
 use hex;
+use log::error;
 use serde_json::json;
 use shared::models::invite::InviteRequest;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
@@ -28,7 +29,7 @@ pub async fn invite_node(
 
     let pool_info = contracts.compute_pool.get_pool_info(pool_id).await.unwrap();
     if let PoolStatus::PENDING = pool_info.status {
-        Console::error("Pool is pending - Invite is invalid");
+        Console::user_error("Pool is pending - Invite is invalid");
         return HttpResponse::BadRequest().json(json!({
             "error": "Pool is pending - Invite is invalid"
         }));
@@ -41,10 +42,9 @@ pub async fn invite_node(
     {
         Ok(result) => {
             Console::success(&format!("Successfully joined compute pool: {:?}", result));
-            Console::info("Starting to send heartbeats now.", "");
         }
         Err(err) => {
-            Console::error(&format!("Error joining compute pool: {:?}", err));
+            error!("Failed to join compute pool: {:?}", err);
             return HttpResponse::InternalServerError().json(json!({
                 "error": "Failed to join compute pool"
             }));
@@ -61,7 +61,6 @@ pub async fn invite_node(
         )
     };
 
-    println!("Starting heartbeat service with endpoint: {}", endpoint);
     let _ = app_state.heartbeat_service.start(endpoint).await;
 
     HttpResponse::Accepted().json(json!({

@@ -2,10 +2,6 @@ SHELL := /bin/bash
 ENV_FILE ?= .env
 .PHONY: setup pool domain fund
 
-set-min-stake-amount:
-	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example set_min_stake_amount -- --min-stake-amount $${MIN_STAKE_AMOUNT} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
-
 mint-ai-tokens-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} 
@@ -43,7 +39,6 @@ start-compute-pool:
 	cargo run -p dev-utils --example start_compute_pool -- --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL} --pool-id="$${POOL_ID:-0}"
 
 setup: 
-	make set-min-stake-amount
 	make mint-ai-tokens-to-provider
 	make transfer-eth-to-provider
 	make transfer-eth-to-pool-owner
@@ -52,7 +47,6 @@ setup:
 	make start-compute-pool
 
 setup-dev-env:
-	make set-min-stake-amount
 	make create-training-domain
 	make create-synth-data-domain
 	make mint-ai-tokens-to-federator
@@ -78,7 +72,7 @@ watch-discovery:
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks" 
+	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
 
 watch-check:
 	cargo watch -w worker/src -x "run --bin worker -- check"	
