@@ -71,3 +71,5 @@ spec:
               value: "{{ .Values.env.BUCKET_NAME }}"
             - name: LOG_LEVEL
               value: "{{ .Values.env.LOG_LEVEL }}"
+            - name: HOURLY_S3_UPLOAD_LIMIT
+              value: "{{ .Values.env.HOURLY_S3_UPLOAD_LIMIT }}"
