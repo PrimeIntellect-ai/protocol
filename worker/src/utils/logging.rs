@@ -9,7 +9,7 @@ use crate::cli::Cli;
 
 pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Default log level
-    let log_level = LevelFilter::Info;
+    let mut log_level = LevelFilter::Info;
     let mut loki_url: Option<String> = None;
     let mut external_ip = None;
     let mut compute_pool = None;
@@ -22,6 +22,7 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
             port: cmd_port,
             compute_pool_id: cmd_compute_pool_id,
             loki_url: cmd_loki_url,
+            log_level: cmd_log_level,
             ..
         } = &cli.command
         {
@@ -32,6 +33,12 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
             match cmd_loki_url {
                 Some(url) => loki_url = Some(url.clone()),
                 None => loki_url = None,
+            }
+            match cmd_log_level {
+                Some(level) => {
+                    log_level = level.parse()?;
+                }
+                None => log_level = LevelFilter::Info,
             }
         }
     }

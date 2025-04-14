@@ -100,6 +100,10 @@ pub enum Commands {
         /// Loki URL
         #[arg(long)]
         loki_url: Option<String>,
+
+        /// Log level
+        #[arg(long)]
+        log_level: Option<String>,
     },
     Check {},
 
@@ -159,6 +163,7 @@ pub async fn execute_command(
             skip_system_checks,
             silence_metrics,
             loki_url: _,
+            log_level: _,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::error(
