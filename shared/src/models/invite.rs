@@ -9,6 +9,7 @@ pub struct InviteRequest {
     pub master_url: Option<String>,
     pub master_ip: Option<String>,
     pub master_port: Option<u16>,
+    pub timestamp: u64,
 }
 
 #[derive(Deserialize, Serialize)]

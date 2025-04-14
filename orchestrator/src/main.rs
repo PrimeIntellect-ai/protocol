@@ -75,6 +75,10 @@ struct Args {
     #[arg(long)]
     s3_credentials: Option<String>,
 
+    /// Hourly s3 upload limit
+    #[arg(long, default_value = "2")]
+    hourly_s3_upload_limit: i64,
+
     /// S3 bucket name
     #[arg(long)]
     bucket_name: Option<String>,
@@ -184,7 +188,7 @@ async fn main() -> Result<()> {
 
     let server_store_context = store_context.clone();
     tokio::select! {
-        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key, args.s3_credentials, args.bucket_name, heartbeats.clone()) => {
+        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key, args.s3_credentials, args.bucket_name, heartbeats.clone(), store.clone(), args.hourly_s3_upload_limit) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
             }

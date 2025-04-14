@@ -84,6 +84,16 @@ if command -v "$BINARY_NAME" &> /dev/null || [ -x "$INSTALL_DIR/$BINARY_NAME" ];
   else
     echo -e "${BLUE}→ Run '$BINARY_NAME --help' to get started${NC}"
   fi
+  
+  # Check if user is in docker group
+  if groups | grep -q '\bdocker\b'; then
+    echo -e "${GREEN}✓ User is in the docker group - Docker access is available${NC}"
+  else
+    echo -e "${RED}⚠ User is not in the docker group${NC}"
+    echo -e "${BLUE}→ To add your user to the docker group, run:${NC}"
+    echo -e "${GREEN}   sudo usermod -aG docker $USER${NC}"
+    echo -e "${BLUE}→ Then log out and log back in to apply the changes${NC}"
+  fi
 else
   echo -e "${RED}✗ Installation verification failed.${NC}"
 fi

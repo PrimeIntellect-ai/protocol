@@ -61,6 +61,7 @@ pub struct ChallengeRequest {
     pub rows_b: usize,
     pub cols_b: usize,
     pub data_b: Vec<FixedF64>,
+    pub timestamp: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

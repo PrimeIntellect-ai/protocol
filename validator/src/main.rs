@@ -475,6 +475,7 @@ mod tests {
             rows_b: 3,
             cols_b: 3,
             data_b,
+            timestamp: None,
         };
 
         let req = test::TestRequest::post()
