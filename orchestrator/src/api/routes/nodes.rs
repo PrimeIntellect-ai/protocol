@@ -7,6 +7,10 @@ use alloy::primitives::Address;
 use serde_json::json;
 use shared::security::request_signer::sign_request;
 use std::str::FromStr;
+use std::time::Duration;
+
+// Timeout for node operations in seconds
+const NODE_REQUEST_TIMEOUT: u64 = 30;
 
 async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
     let nodes = app_state.store_context.node_store.get_nodes();
@@ -52,6 +56,7 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
 
             match reqwest::Client::new()
                 .post(restart_url)
+                .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
                 .headers(headers)
                 .body(payload.to_string())
                 .send()
@@ -121,6 +126,7 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
 
             match reqwest::Client::new()
                 .get(logs_url)
+                .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
                 .headers(headers)
                 .send()
                 .await

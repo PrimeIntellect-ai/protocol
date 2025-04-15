@@ -1,7 +1,6 @@
 use actix_web::dev::Payload;
 use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::error::ErrorBadRequest;
-use actix_web::error::PayloadError;
+use actix_web::error::{ErrorBadRequest, PayloadError};
 use actix_web::web::Bytes;
 use actix_web::web::BytesMut;
 use actix_web::HttpMessage;
@@ -19,7 +18,12 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::time::timeout; // If you're using tokio
+
+// Maximum request body size in bytes
+const MAX_BODY_SIZE: usize = 1024 * 1024 * 10; // 10MB
+const BODY_TIMEOUT_SECS: u64 = 20; // 20 seconds
 
 type SyncAddressValidator = Arc<dyn Fn(&Address) -> bool + Send + Sync>;
 
@@ -144,12 +148,40 @@ where
             .map(|s| s.to_string());
 
         Box::pin(async move {
-            // Collect the full body
+            // Collect the full body with size limit and timeout
             let mut body = BytesMut::new();
             let mut payload = req.take_payload();
-            while let Some(chunk) = payload.next().await {
-                body.extend_from_slice(chunk?.as_ref());
-            }
+            let start_time = Instant::now();
+
+            // Create a timeout for the entire body reading process
+            let body_read_future = async {
+                while let Some(chunk) = payload.next().await {
+                    let chunk = chunk?;
+
+                    // Check if adding this chunk would exceed the size limit
+                    if body.len() + chunk.len() > MAX_BODY_SIZE {
+                        return Err(ErrorBadRequest("Request body too large"));
+                    }
+
+                    // Check if we've exceeded the time limit for reading the body
+                    if start_time.elapsed() > Duration::from_secs(BODY_TIMEOUT_SECS) {
+                        return Err(ErrorBadRequest("Request body read timeout"));
+                    }
+
+                    body.extend_from_slice(chunk.as_ref());
+                }
+                Ok::<_, Error>(body)
+            };
+
+            // Apply timeout to the entire body reading process as a fallback
+            let body_result =
+                match timeout(Duration::from_secs(BODY_TIMEOUT_SECS), body_read_future).await {
+                    Ok(result) => result,
+                    Err(_) => return Err(ErrorBadRequest("Request body read timeout")),
+                };
+
+            // If there was an error reading the body, return it
+            let body = body_result?;
 
             // Handle GET requests which do not have a payload
             let mut payload_string = String::new();
