@@ -114,11 +114,11 @@ mod tests {
     use actix_web::App;
     use shared::models::node::DiscoveryNode;
     use shared::models::node::Node;
-    use tokio::sync::Mutex;
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
     use std::time::SystemTime;
+    use tokio::sync::Mutex;
 
     #[actix_web::test]
     async fn test_get_nodes() {
