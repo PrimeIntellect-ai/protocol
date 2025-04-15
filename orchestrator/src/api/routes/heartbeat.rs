@@ -1,9 +1,10 @@
-use crate::api::server::AppState;
+use crate::{api::server::AppState, models::node::NodeStatus};
 use actix_web::{
     web::{self, post, Data},
     HttpResponse, Scope,
 };
 use alloy::primitives::Address;
+use serde_json::json;
 use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
 use std::str::FromStr;
 
@@ -13,6 +14,15 @@ async fn heartbeat(
 ) -> HttpResponse {
     let task_info = heartbeat.clone();
     let node_address = Address::from_str(&heartbeat.address).unwrap();
+    let node = app_state.store_context.node_store.get_node(&node_address);
+    if let Some(node) = node {
+        if node.status == NodeStatus::Banned {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "error": "Node is banned"
+            }));
+        }
+    }
 
     app_state.store_context.node_store.update_node_task(
         node_address,

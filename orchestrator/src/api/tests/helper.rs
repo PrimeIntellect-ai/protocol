@@ -35,6 +35,8 @@ pub async fn create_test_app_state() -> Data<AppState> {
     let store_context = Arc::new(StoreContext::new(store.clone()));
     Data::new(AppState {
         store_context: store_context.clone(),
+        contracts: None,
+        pool_id: 1,
         wallet: Arc::new(
             Wallet::new(
                 "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
