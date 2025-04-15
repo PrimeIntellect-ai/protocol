@@ -10,7 +10,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 // Timeout for node operations in seconds
-const NODE_REQUEST_TIMEOUT: u64 = 10;
+const NODE_REQUEST_TIMEOUT: u64 = 30;
 
 async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
     let nodes = app_state.store_context.node_store.get_nodes();

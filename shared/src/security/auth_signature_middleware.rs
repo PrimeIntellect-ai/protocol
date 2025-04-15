@@ -22,8 +22,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::time::timeout; // If you're using tokio
 
 // Maximum request body size in bytes
-const MAX_BODY_SIZE: usize = 1024 * 1024 * 50; // 50MB
-const BODY_TIMEOUT_SECS: u64 = 5; // 5 seconds
+const MAX_BODY_SIZE: usize = 1024 * 1024 * 10; // 10MB
+const BODY_TIMEOUT_SECS: u64 = 20; // 20 seconds
 
 type SyncAddressValidator = Arc<dyn Fn(&Address) -> bool + Send + Sync>;
 
