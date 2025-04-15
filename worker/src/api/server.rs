@@ -1,10 +1,10 @@
 use crate::api::routes::challenge::challenge_routes;
 use crate::api::routes::invite::invite_routes;
 use crate::api::routes::task::task_routes;
-use crate::console::Console;
 use crate::docker::DockerService;
 use crate::operations::heartbeat::service::HeartbeatService;
 use actix_web::{middleware, web::Data, App, HttpServer};
+use log::error;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::structs::compute_pool::PoolInfo;
@@ -42,7 +42,7 @@ pub async fn start_server(
     let validators = match contracts.prime_network.get_validator_role().await {
         Ok(validators) => validators,
         Err(e) => {
-            Console::error(&format!("❌ Failed to get validator role: {}", e));
+            error!("Failed to get validator role: {}", e);
             std::process::exit(1);
         }
     };

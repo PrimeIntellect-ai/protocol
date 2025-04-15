@@ -13,6 +13,8 @@ use shared::models::invite::InviteRequest;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 use tokio::time::{interval, Duration};
 
 pub struct NodeInviter<'a> {
@@ -106,6 +108,10 @@ impl<'a> NodeInviter<'a> {
             } else {
                 None
             },
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         };
         let payload_json = serde_json::to_value(&payload).unwrap();
 

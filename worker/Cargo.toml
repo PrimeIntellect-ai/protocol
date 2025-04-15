@@ -46,3 +46,8 @@ sha2 = "0.10.8"
 unicode-width = "0.2.0"
 rand = "0.9.0"
 tempfile = "3.14.0"
+tracing-loki = "0.2.6"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-log = "0.2.0"
+time = "0.3.41"

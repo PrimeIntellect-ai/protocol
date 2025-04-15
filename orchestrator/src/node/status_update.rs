@@ -288,6 +288,7 @@ mod tests {
             task_state: None,
             metrics: None,
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            timestamp: None,
         };
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
 
@@ -484,6 +485,7 @@ mod tests {
             task_state: None,
             metrics: None,
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            timestamp: None,
         };
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -650,6 +652,7 @@ mod tests {
             task_state: None,
             metrics: None,
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            timestamp: None,
         };
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
 

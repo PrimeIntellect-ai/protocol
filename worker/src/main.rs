@@ -7,27 +7,51 @@ mod metrics;
 mod operations;
 mod services;
 mod state;
+mod utils;
 use clap::Parser;
 use cli::{execute_command, Cli};
-use log::{debug, LevelFilter};
+use std::panic;
 use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use utils::logging::setup_logging;
 pub type TaskHandles = Arc<Mutex<Vec<JoinHandle<()>>>>;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let task_handles: TaskHandles = Arc::new(Mutex::new(Vec::<JoinHandle<()>>::new()));
-    env_logger::Builder::new()
-        .filter_level(LevelFilter::Info)
-        .format_timestamp(None)
-        .init();
 
-    debug!("Parsing CLI arguments");
     let cli = Cli::parse();
-    debug!("Executing command");
+
+    if let Err(e) = setup_logging(Some(&cli)) {
+        eprintln!(
+            "Warning: Failed to initialize logging: {}. Using default logging.",
+            e
+        );
+    }
+
+    // Set up panic hook to log panics
+    panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info
+            .location()
+            .unwrap_or_else(|| panic::Location::caller());
+        let message = match panic_info.payload().downcast_ref::<&str>() {
+            Some(s) => *s,
+            None => match panic_info.payload().downcast_ref::<String>() {
+                Some(s) => s.as_str(),
+                None => "Unknown panic payload",
+            },
+        };
+
+        log::error!(
+            "PANIC: '{}' at {}:{}",
+            message,
+            location.file(),
+            location.line()
+        );
+    }));
 
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
@@ -83,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await;
 
     match cleanup {
-        Ok(_) => debug!("All tasks cleaned up successfully"),
+        Ok(_) => (),
         Err(_) => log::warn!("Timeout waiting for tasks to cleanup"),
     }
     Ok(())

@@ -61,7 +61,7 @@ impl<'c> ComputeNodeOperations<'c> {
                                 if !active && is_running {
                                     Console::warning("Node is not longer in pool, shutting down heartbeat...");
                                     if let Err(e) = system_state.set_running(false, None).await {
-                                        Console::error(&format!("Failed to set running to false: {:?}", e));
+                                        log::error!("Failed to set running to false: {:?}", e);
                                     }
                                 }
 
@@ -79,7 +79,7 @@ impl<'c> ComputeNodeOperations<'c> {
                                 first_check = false;
                             }
                             Err(e) => {
-                                Console::error(&format!("Failed to get node status: {}", e));
+                                log::error!("Failed to get node status: {}", e);
                             }
                         }
                         sleep(Duration::from_secs(5)).await;

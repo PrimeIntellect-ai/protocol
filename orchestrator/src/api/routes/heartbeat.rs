@@ -81,7 +81,8 @@ mod tests {
                 task_id: None,
                 task_state: None,
                 metrics: None,
-                version: None
+                version: None,
+                timestamp: None,
             })
         );
     }
@@ -137,6 +138,7 @@ mod tests {
             task_state: None,
             metrics: None,
             version: None,
+            timestamp: None,
         };
         assert_eq!(value, heartbeat);
     }

@@ -1,4 +1,3 @@
-use crate::console::Console;
 use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
 use crate::state::system_state::SystemState;
@@ -11,6 +10,7 @@ use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 #[derive(Clone)]
@@ -148,6 +148,10 @@ impl HeartbeatService {
         }
 
         let current_task_state = docker_service.state.get_current_task().await;
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let request = if let Some(task) = current_task_state {
             let metrics_for_task = metrics_store
                 .get_metrics_for_task(task.id.to_string())
@@ -158,6 +162,7 @@ impl HeartbeatService {
                 task_state: Some(task.state.to_string()),
                 metrics: Some(metrics_for_task),
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                timestamp: Some(ts),
             }
         } else {
             HeartbeatRequest {
@@ -166,6 +171,7 @@ impl HeartbeatService {
                 task_state: None,
                 metrics: None,
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                timestamp: Some(ts),
             }
         };
 
@@ -228,7 +234,7 @@ impl HeartbeatService {
         if !is_running {
             tokio::spawn(async move {
                 if let Err(e) = docker_service.run().await {
-                    Console::error(&format!("❌ Docker service failed: {}", e));
+                    log::error!("❌ Docker service failed: {}", e);
                 }
             });
         }

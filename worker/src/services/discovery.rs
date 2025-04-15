@@ -44,7 +44,8 @@ impl<'b> DiscoveryService<'b> {
         headers.insert("x-signature", signature_string.parse().unwrap());
         let request_url = format!("{}{}", self.base_url, &self.endpoint);
 
-        let response = reqwest::Client::new()
+        let client = reqwest::Client::new();
+        let response = client
             .put(&request_url)
             .headers(headers)
             .json(&request_data)
@@ -52,9 +53,14 @@ impl<'b> DiscoveryService<'b> {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "No error message".to_string());
             return Err(format!(
-                "Error: Received response with status code {}",
-                response.status()
+                "Error: Received response with status code {}: {}",
+                status, error_text
             )
             .into());
         }

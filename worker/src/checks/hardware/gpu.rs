@@ -44,8 +44,7 @@ pub fn detect_gpu() -> Option<GpuSpecs> {
             memory_mb: Some((memory / 1024 / 1024) as u32), // Convert bytes to MB
         }),
         GpuDevice::NotAvailable(_) => {
-            //println!("GPU not available: {}", err);
-            Console::error("GPU not available");
+            Console::user_error("GPU not available");
             None
         }
     }

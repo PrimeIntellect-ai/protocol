@@ -3,7 +3,7 @@ use crate::api::routes::storage::storage_routes;
 use crate::api::routes::task::tasks_routes;
 use crate::api::routes::{heartbeat::heartbeat_routes, metrics::metrics_routes};
 use crate::models::node::NodeStatus;
-use crate::store::core::StoreContext;
+use crate::store::core::{RedisStore, StoreContext};
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use actix_web::middleware::{Compress, NormalizePath, TrailingSlash};
 use actix_web::{middleware, web::Data, App, HttpServer};
@@ -22,6 +22,8 @@ pub struct AppState {
     pub s3_credentials: Option<String>,
     pub bucket_name: Option<String>,
     pub heartbeats: Arc<LoopHeartbeats>,
+    pub redis_store: Arc<RedisStore>,
+    pub hourly_upload_limit: i64,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -34,6 +36,8 @@ pub async fn start_server(
     s3_credentials: Option<String>,
     bucket_name: Option<String>,
     heartbeats: Arc<LoopHeartbeats>,
+    redis_store: Arc<RedisStore>,
+    hourly_upload_limit: i64,
 ) -> Result<(), Error> {
     info!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
@@ -42,6 +46,8 @@ pub async fn start_server(
         s3_credentials,
         bucket_name,
         heartbeats,
+        redis_store,
+        hourly_upload_limit,
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
