@@ -246,42 +246,40 @@ mod tests {
     #[actix_web::test]
     async fn test_filter_nodes_for_pool() {
         // Create test nodes for different pools
-        let mut nodes = Vec::new();
-
-        // Pool 1 nodes
-        nodes.push(DiscoveryNode {
-            node: Node {
-                id: "0x1111".to_string(),
-                provider_address: "0x1111".to_string(),
-                ip_address: "192.168.1.1".to_string(),
-                port: 8080,
-                compute_pool_id: 1,
-                compute_specs: None,
+        let mut nodes = vec![
+            DiscoveryNode {
+                node: Node {
+                    id: "0x1111".to_string(),
+                    provider_address: "0x1111".to_string(),
+                    ip_address: "192.168.1.1".to_string(),
+                    port: 8080,
+                    compute_pool_id: 1,
+                    compute_specs: None,
+                },
+                is_validated: true,
+                is_provider_whitelisted: true,
+                is_active: true,
+                last_updated: None,
+                created_at: None,
+                is_blacklisted: false,
             },
-            is_validated: true,
-            is_provider_whitelisted: true,
-            is_active: true,
-            last_updated: None,
-            created_at: None,
-            is_blacklisted: false,
-        });
-
-        nodes.push(DiscoveryNode {
-            node: Node {
-                id: "0x2222".to_string(),
-                provider_address: "0x2222".to_string(),
-                ip_address: "192.168.1.2".to_string(),
-                port: 8080,
-                compute_pool_id: 1,
-                compute_specs: None,
+            DiscoveryNode {
+                node: Node {
+                    id: "0x2222".to_string(),
+                    provider_address: "0x2222".to_string(),
+                    ip_address: "192.168.1.2".to_string(),
+                    port: 8080,
+                    compute_pool_id: 1,
+                    compute_specs: None,
+                },
+                is_validated: true,
+                is_provider_whitelisted: true,
+                is_active: false,
+                last_updated: None,
+                created_at: None,
+                is_blacklisted: false,
             },
-            is_validated: true,
-            is_provider_whitelisted: true,
-            is_active: false,
-            last_updated: None,
-            created_at: None,
-            is_blacklisted: false,
-        });
+        ];
 
         // Pool 2 nodes
         nodes.push(DiscoveryNode {
@@ -363,43 +361,42 @@ mod tests {
 
     #[actix_web::test]
     async fn test_filter_nodes_for_pool_with_inactive_nodes() {
-        let mut nodes = Vec::new();
-
-        // Active node in pool 1
-        nodes.push(DiscoveryNode {
-            node: Node {
-                id: "0x1111".to_string(),
-                provider_address: "0x1111".to_string(),
-                ip_address: "192.168.1.1".to_string(),
-                port: 8080,
-                compute_pool_id: 1,
-                compute_specs: None,
+        let nodes = vec![
+            // Inactive node in pool 1
+            DiscoveryNode {
+                node: Node {
+                    id: "0x1111".to_string(),
+                    provider_address: "0x1111".to_string(),
+                    ip_address: "192.168.1.1".to_string(),
+                    port: 8080,
+                    compute_pool_id: 1,
+                    compute_specs: None,
+                },
+                is_validated: true,
+                is_provider_whitelisted: true,
+                is_active: false,
+                last_updated: None,
+                created_at: None,
+                is_blacklisted: false,
             },
-            is_validated: true,
-            is_provider_whitelisted: true,
-            is_active: false,
-            last_updated: None,
-            created_at: None,
-            is_blacklisted: false,
-        });
-
-        // Inactive node in pool 2 with same IP
-        nodes.push(DiscoveryNode {
-            node: Node {
-                id: "0x2222".to_string(),
-                provider_address: "0x2222".to_string(),
-                ip_address: "192.168.1.1".to_string(),
-                port: 8080,
-                compute_pool_id: 2,
-                compute_specs: None,
+            // Inactive node in pool 2 with same IP
+            DiscoveryNode {
+                node: Node {
+                    id: "0x2222".to_string(),
+                    provider_address: "0x2222".to_string(),
+                    ip_address: "192.168.1.1".to_string(),
+                    port: 8080,
+                    compute_pool_id: 2,
+                    compute_specs: None,
+                },
+                is_validated: true,
+                is_provider_whitelisted: true,
+                is_active: false,
+                last_updated: None,
+                created_at: None,
+                is_blacklisted: false,
             },
-            is_validated: true,
-            is_provider_whitelisted: true,
-            is_active: false,
-            last_updated: None,
-            created_at: None,
-            is_blacklisted: false,
-        });
+        ];
 
         // This should be included in pool 2 results since the conflicting node in pool 1
         // doesn't affect it (the filter only excludes nodes when there's an active node
