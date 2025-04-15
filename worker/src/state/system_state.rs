@@ -27,10 +27,15 @@ pub struct SystemState {
     endpoint: Arc<RwLock<Option<String>>>,
     state_dir_overwrite: Option<PathBuf>,
     disable_state_storing: bool,
+    pub compute_pool_id: Option<String>,
 }
 
 impl SystemState {
-    pub fn new(state_dir: Option<String>, disable_state_storing: bool) -> Self {
+    pub fn new(
+        state_dir: Option<String>,
+        disable_state_storing: bool,
+        compute_pool_id: Option<String>,
+    ) -> Self {
         let default_state_dir = get_default_state_dir();
         debug!("Default state dir: {:?}", default_state_dir);
         let state_path = state_dir
@@ -61,6 +66,7 @@ impl SystemState {
             endpoint: Arc::new(RwLock::new(endpoint)),
             state_dir_overwrite: state_path.clone(),
             disable_state_storing,
+            compute_pool_id,
         }
     }
 
@@ -156,7 +162,11 @@ mod tests {
         let temp_dir = setup_test_dir();
         println!("Temp dir: {:?}", temp_dir.path());
 
-        let state = SystemState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
+        let state = SystemState::new(
+            Some(temp_dir.path().to_string_lossy().to_string()),
+            false,
+            None,
+        );
         let _ = state
             .set_running(true, Some("http://localhost:8080/heartbeat".to_string()))
             .await;
@@ -179,7 +189,11 @@ mod tests {
         let state_file = temp_dir.path().join(STATE_FILENAME);
         fs::write(&state_file, "invalid_toml_content").expect("Failed to write to state file");
 
-        let state = SystemState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
+        let state = SystemState::new(
+            Some(temp_dir.path().to_string_lossy().to_string()),
+            false,
+            None,
+        );
         assert!(!(state.is_running().await));
         assert_eq!(state.get_heartbeat_endpoint().await, None);
     }
@@ -194,7 +208,11 @@ mod tests {
         )
         .expect("Failed to write to state file");
 
-        let state = SystemState::new(Some(temp_dir.path().to_string_lossy().to_string()), false);
+        let state = SystemState::new(
+            Some(temp_dir.path().to_string_lossy().to_string()),
+            false,
+            None,
+        );
         assert_eq!(
             state.get_heartbeat_endpoint().await,
             Some("http://localhost:8080/heartbeat".to_string())

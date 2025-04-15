@@ -405,7 +405,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let state = Arc::new(SystemState::new(None, false));
+        let state = Arc::new(SystemState::new(None, false, None));
         let bridge = TaskBridge::new(
             Some(socket_path.to_str().unwrap()),
             metrics_store.clone(),
@@ -437,7 +437,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let state = Arc::new(SystemState::new(None, false));
+        let state = Arc::new(SystemState::new(None, false, None));
         let bridge = TaskBridge::new(
             Some(socket_path.to_str().unwrap()),
             metrics_store.clone(),
@@ -471,7 +471,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let state = Arc::new(SystemState::new(None, false));
+        let state = Arc::new(SystemState::new(None, false, None));
         let bridge = TaskBridge::new(
             Some(socket_path.to_str().unwrap()),
             metrics_store.clone(),
@@ -519,7 +519,7 @@ mod tests {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
         let metrics_store = Arc::new(MetricsStore::new());
-        let state = Arc::new(SystemState::new(None, false));
+        let state = Arc::new(SystemState::new(None, false, None));
         let bridge = TaskBridge::new(
             Some(socket_path.to_str().unwrap()),
             metrics_store.clone(),

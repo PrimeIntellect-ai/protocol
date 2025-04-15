@@ -20,6 +20,29 @@ pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
     }
 }
 
+fn filter_nodes_for_pool(nodes: Vec<DiscoveryNode>, pool_id: u32) -> Vec<DiscoveryNode> {
+    let nodes_for_pool: Vec<DiscoveryNode> = nodes
+        .iter()
+        .filter(|node| node.compute_pool_id == pool_id)
+        .cloned()
+        .collect();
+
+    // Filter out nodes with IPs that are currently active in another pool
+    let filtered: Vec<DiscoveryNode> = nodes_for_pool
+        .iter()
+        .filter(|node| {
+            // Check if there's any other node with the same IP address in a different pool that is active
+            !nodes.iter().any(|other| {
+                other.ip_address == node.ip_address
+                    && other.compute_pool_id != node.compute_pool_id
+                    && other.is_active
+            })
+        })
+        .cloned()
+        .collect();
+    filtered
+}
+
 pub async fn get_nodes_for_pool(
     data: Data<AppState>,
     pool_id: web::Path<String>,
@@ -79,12 +102,7 @@ pub async fn get_nodes_for_pool(
                 }
             }
 
-            let nodes_for_pool: Vec<DiscoveryNode> = nodes
-                .iter()
-                .filter(|node| node.compute_pool_id == pool_id)
-                .cloned()
-                .collect();
-
+            let nodes_for_pool: Vec<DiscoveryNode> = filter_nodes_for_pool(nodes, pool_id);
             let response = ApiResponse::new(true, nodes_for_pool);
             HttpResponse::Ok().json(response)
         }
@@ -222,5 +240,173 @@ mod tests {
             api_response.data[1].id,
             "0x32A8dFdA26948728e5351e61d62C190510CF1C88"
         );
+    }
+
+    #[actix_web::test]
+    async fn test_filter_nodes_for_pool() {
+        // Create test nodes for different pools
+        let mut nodes = vec![
+            DiscoveryNode {
+                node: Node {
+                    id: "0x1111".to_string(),
+                    provider_address: "0x1111".to_string(),
+                    ip_address: "192.168.1.1".to_string(),
+                    port: 8080,
+                    compute_pool_id: 1,
+                    compute_specs: None,
+                },
+                is_validated: true,
+                is_provider_whitelisted: true,
+                is_active: true,
+                last_updated: None,
+                created_at: None,
+                is_blacklisted: false,
+            },
+            DiscoveryNode {
+                node: Node {
+                    id: "0x2222".to_string(),
+                    provider_address: "0x2222".to_string(),
+                    ip_address: "192.168.1.2".to_string(),
+                    port: 8080,
+                    compute_pool_id: 1,
+                    compute_specs: None,
+                },
+                is_validated: true,
+                is_provider_whitelisted: true,
+                is_active: false,
+                last_updated: None,
+                created_at: None,
+                is_blacklisted: false,
+            },
+        ];
+
+        // Pool 2 nodes
+        nodes.push(DiscoveryNode {
+            node: Node {
+                id: "0x3333".to_string(),
+                provider_address: "0x3333".to_string(),
+                ip_address: "192.168.1.3".to_string(),
+                port: 8080,
+                compute_pool_id: 2,
+                compute_specs: None,
+            },
+            is_validated: true,
+            is_provider_whitelisted: true,
+            is_active: true,
+            last_updated: None,
+            created_at: None,
+            is_blacklisted: false,
+        });
+
+        // Node with same IP in different pools (active in pool 3)
+        nodes.push(DiscoveryNode {
+            node: Node {
+                id: "0x4444".to_string(),
+                provider_address: "0x4444".to_string(),
+                ip_address: "192.168.1.4".to_string(),
+                port: 8080,
+                compute_pool_id: 3,
+                compute_specs: None,
+            },
+            is_validated: true,
+            is_provider_whitelisted: true,
+            is_active: true,
+            last_updated: None,
+            created_at: None,
+            is_blacklisted: false,
+        });
+
+        // This node should be filtered out because it shares IP with an active node in pool 3
+        nodes.push(DiscoveryNode {
+            node: Node {
+                id: "0x5555".to_string(),
+                provider_address: "0x5555".to_string(),
+                ip_address: "192.168.1.4".to_string(),
+                port: 8081,
+                compute_pool_id: 1,
+                compute_specs: None,
+            },
+            is_validated: true,
+            is_provider_whitelisted: true,
+            is_active: false,
+            last_updated: None,
+            created_at: None,
+            is_blacklisted: false,
+        });
+
+        // Test filtering for pool 1
+        let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 1);
+
+        // Should have 2 nodes from pool 1, but one is filtered out due to IP conflict
+        assert_eq!(filtered_nodes.len(), 2);
+        assert!(filtered_nodes.iter().any(|n| n.id == "0x1111"));
+        assert!(filtered_nodes.iter().any(|n| n.id == "0x2222"));
+        assert!(!filtered_nodes.iter().any(|n| n.id == "0x5555"));
+
+        // Test filtering for pool 2
+        let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 2);
+        assert_eq!(filtered_nodes.len(), 1);
+        assert!(filtered_nodes.iter().any(|n| n.id == "0x3333"));
+
+        // Test filtering for pool 3
+        let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 3);
+        assert_eq!(filtered_nodes.len(), 1);
+        assert!(filtered_nodes.iter().any(|n| n.id == "0x4444"));
+
+        // Test filtering for non-existent pool
+        let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 99);
+        assert_eq!(filtered_nodes.len(), 0);
+    }
+
+    #[actix_web::test]
+    async fn test_filter_nodes_for_pool_with_inactive_nodes() {
+        let nodes = vec![
+            // Inactive node in pool 1
+            DiscoveryNode {
+                node: Node {
+                    id: "0x1111".to_string(),
+                    provider_address: "0x1111".to_string(),
+                    ip_address: "192.168.1.1".to_string(),
+                    port: 8080,
+                    compute_pool_id: 1,
+                    compute_specs: None,
+                },
+                is_validated: true,
+                is_provider_whitelisted: true,
+                is_active: false,
+                last_updated: None,
+                created_at: None,
+                is_blacklisted: false,
+            },
+            // Inactive node in pool 2 with same IP
+            DiscoveryNode {
+                node: Node {
+                    id: "0x2222".to_string(),
+                    provider_address: "0x2222".to_string(),
+                    ip_address: "192.168.1.1".to_string(),
+                    port: 8080,
+                    compute_pool_id: 2,
+                    compute_specs: None,
+                },
+                is_validated: true,
+                is_provider_whitelisted: true,
+                is_active: false,
+                last_updated: None,
+                created_at: None,
+                is_blacklisted: false,
+            },
+        ];
+
+        // This should be included in pool 2 results since the conflicting node in pool 1
+        // doesn't affect it (the filter only excludes nodes when there's an active node
+        // with the same IP in a different pool)
+        let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 2);
+        assert_eq!(filtered_nodes.len(), 1);
+        assert!(filtered_nodes.iter().any(|n| n.id == "0x2222"));
+
+        // The pool 1 node should be included in pool 1 results
+        let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 1);
+        assert_eq!(filtered_nodes.len(), 1);
+        assert!(filtered_nodes.iter().any(|n| n.id == "0x1111"));
     }
 }

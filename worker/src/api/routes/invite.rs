@@ -16,6 +16,19 @@ pub async fn invite_node(
     invite: web::Json<InviteRequest>,
     app_state: Data<AppState>,
 ) -> HttpResponse {
+    if app_state.system_state.is_running().await {
+        return HttpResponse::BadRequest().json(json!({
+            "error": "Heartbeat is currently running and in a compute pool"
+        }));
+    }
+    if let Some(pool_id) = app_state.system_state.compute_pool_id.clone() {
+        if invite.pool_id.to_string() != pool_id {
+            return HttpResponse::BadRequest().json(json!({
+                "error": "Invalid pool ID"
+            }));
+        }
+    }
+
     let invite_bytes = match hex::decode(&invite.invite) {
         Ok(bytes) => bytes,
         Err(err) => {
