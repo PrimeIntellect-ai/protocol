@@ -247,7 +247,7 @@ mod tests {
     async fn test_filter_nodes_for_pool() {
         // Create test nodes for different pools
         let mut nodes = Vec::new();
-        
+
         // Pool 1 nodes
         nodes.push(DiscoveryNode {
             node: Node {
@@ -265,7 +265,7 @@ mod tests {
             created_at: None,
             is_blacklisted: false,
         });
-        
+
         nodes.push(DiscoveryNode {
             node: Node {
                 id: "0x2222".to_string(),
@@ -282,7 +282,7 @@ mod tests {
             created_at: None,
             is_blacklisted: false,
         });
-        
+
         // Pool 2 nodes
         nodes.push(DiscoveryNode {
             node: Node {
@@ -300,7 +300,7 @@ mod tests {
             created_at: None,
             is_blacklisted: false,
         });
-        
+
         // Node with same IP in different pools (active in pool 3)
         nodes.push(DiscoveryNode {
             node: Node {
@@ -318,7 +318,7 @@ mod tests {
             created_at: None,
             is_blacklisted: false,
         });
-        
+
         // This node should be filtered out because it shares IP with an active node in pool 3
         nodes.push(DiscoveryNode {
             node: Node {
@@ -336,35 +336,35 @@ mod tests {
             created_at: None,
             is_blacklisted: false,
         });
-        
+
         // Test filtering for pool 1
         let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 1);
-        
+
         // Should have 2 nodes from pool 1, but one is filtered out due to IP conflict
         assert_eq!(filtered_nodes.len(), 2);
         assert!(filtered_nodes.iter().any(|n| n.id == "0x1111"));
         assert!(filtered_nodes.iter().any(|n| n.id == "0x2222"));
         assert!(!filtered_nodes.iter().any(|n| n.id == "0x5555"));
-        
+
         // Test filtering for pool 2
         let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 2);
         assert_eq!(filtered_nodes.len(), 1);
         assert!(filtered_nodes.iter().any(|n| n.id == "0x3333"));
-        
+
         // Test filtering for pool 3
         let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 3);
         assert_eq!(filtered_nodes.len(), 1);
         assert!(filtered_nodes.iter().any(|n| n.id == "0x4444"));
-        
+
         // Test filtering for non-existent pool
         let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 99);
         assert_eq!(filtered_nodes.len(), 0);
     }
-    
+
     #[actix_web::test]
     async fn test_filter_nodes_for_pool_with_inactive_nodes() {
         let mut nodes = Vec::new();
-        
+
         // Active node in pool 1
         nodes.push(DiscoveryNode {
             node: Node {
@@ -382,7 +382,7 @@ mod tests {
             created_at: None,
             is_blacklisted: false,
         });
-        
+
         // Inactive node in pool 2 with same IP
         nodes.push(DiscoveryNode {
             node: Node {
@@ -400,14 +400,14 @@ mod tests {
             created_at: None,
             is_blacklisted: false,
         });
-        
+
         // This should be included in pool 2 results since the conflicting node in pool 1
         // doesn't affect it (the filter only excludes nodes when there's an active node
         // with the same IP in a different pool)
         let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 2);
         assert_eq!(filtered_nodes.len(), 1);
         assert!(filtered_nodes.iter().any(|n| n.id == "0x2222"));
-        
+
         // The pool 1 node should be included in pool 1 results
         let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 1);
         assert_eq!(filtered_nodes.len(), 1);
