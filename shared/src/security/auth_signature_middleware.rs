@@ -149,15 +149,15 @@ where
             // Collect the full body with size limit
             let mut body = BytesMut::new();
             let mut payload = req.take_payload();
-            
+
             while let Some(chunk) = payload.next().await {
                 let chunk = chunk?;
-                
+
                 // Check if adding this chunk would exceed the size limit
                 if body.len() + chunk.len() > MAX_BODY_SIZE {
                     return Err(ErrorBadRequest("Request body too large"));
                 }
-                
+
                 body.extend_from_slice(chunk.as_ref());
             }
 
