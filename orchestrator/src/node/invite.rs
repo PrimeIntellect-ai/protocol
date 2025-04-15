@@ -17,6 +17,10 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tokio::time::{interval, Duration};
 
+// Timeout constants
+const REQUEST_TIMEOUT: u64 = 15; // 15 seconds for HTTP requests
+const CONNECTION_TIMEOUT: u64 = 10; // 10 seconds for establishing connections
+
 pub struct NodeInviter<'a> {
     wallet: &'a Wallet,
     pool_id: u32,
@@ -51,7 +55,8 @@ impl<'a> NodeInviter<'a> {
             store_context,
             heartbeats,
             client: Client::builder()
-                .timeout(Duration::from_secs(15))
+                .timeout(Duration::from_secs(REQUEST_TIMEOUT))
+                .connect_timeout(Duration::from_secs(CONNECTION_TIMEOUT))
                 .build()
                 .unwrap(),
         }
