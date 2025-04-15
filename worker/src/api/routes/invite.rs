@@ -22,7 +22,7 @@ pub async fn invite_node(
         }));
     }
     if let Some(pool_id) = app_state.system_state.compute_pool_id.clone() {
-        if invite.pool_id.to_string() != pool_id.to_string() {
+        if invite.pool_id.to_string() != pool_id {
             return HttpResponse::BadRequest().json(json!({
                 "error": "Invalid pool ID"
             }));

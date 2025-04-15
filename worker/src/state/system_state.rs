@@ -66,7 +66,7 @@ impl SystemState {
             endpoint: Arc::new(RwLock::new(endpoint)),
             state_dir_overwrite: state_path.clone(),
             disable_state_storing,
-            compute_pool_id: compute_pool_id,
+            compute_pool_id,
         }
     }
 
