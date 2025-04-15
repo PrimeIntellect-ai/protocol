@@ -163,8 +163,8 @@ async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>)
     HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
 
-async fn eject_node(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    info!("ejecting node: {}", node_id);
+async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
+    info!("banning node: {}", node_id);
     let node_address = match Address::from_str(&node_id) {
         Ok(address) => address,
         Err(_) => {
@@ -219,7 +219,7 @@ pub fn nodes_routes() -> Scope {
         .route("/{node_id}/restart", post().to(restart_node_task))
         .route("/{node_id}/logs", get().to(get_node_logs))
         .route("/{node_id}/metrics", get().to(get_node_metrics))
-        .route("/{node_id}/eject", post().to(eject_node))
+        .route("/{node_id}/ban", post().to(ban_node))
 }
 
 #[cfg(test)]
