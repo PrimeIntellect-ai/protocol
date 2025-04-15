@@ -49,7 +49,6 @@ pub async fn get_nodes_for_pool(
     req: actix_web::HttpRequest,
 ) -> HttpResponse {
     let nodes = data.node_store.get_nodes();
-    // TODO: Ensure nodes are unique
     match nodes {
         Ok(nodes) => {
             let id_clone = pool_id.clone();
