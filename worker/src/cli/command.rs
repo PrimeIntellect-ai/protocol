@@ -176,6 +176,7 @@ pub async fn execute_command(
             let state = Arc::new(SystemState::new(
                 state_dir_overwrite.clone(),
                 *disable_state_storing,
+                Some(compute_pool_id.to_string()),
             ));
 
             let private_key_provider = if let Some(key) = private_key_provider {
@@ -241,11 +242,12 @@ pub async fn execute_command(
 
             let provider_ops_cancellation = cancellation_token.clone();
 
+            let compute_node_state = state.clone();
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,
                 &node_wallet_instance,
                 contracts.clone(),
-                state.clone(),
+                compute_node_state,
             );
 
             let discovery_service =
@@ -400,6 +402,7 @@ pub async fn execute_command(
                     }
                 }
             });
+            let heartbeat_state = state.clone();
             let heartbeat_service = HeartbeatService::new(
                 Duration::from_secs(10),
                 cancellation_token.clone(),
@@ -407,7 +410,7 @@ pub async fn execute_command(
                 node_wallet_instance.clone(),
                 docker_service.clone(),
                 heartbeat_metrics_clone.clone(),
-                state,
+                heartbeat_state,
             );
 
             let gpu_count: u32 = match &node_config.compute_specs {
@@ -613,6 +616,7 @@ pub async fn execute_command(
                         .await;
                 }
 
+                let server_state = state.clone();
                 start_server(
                     "0.0.0.0",
                     *port,
@@ -622,6 +626,7 @@ pub async fn execute_command(
                     heartbeat_clone.clone(),
                     docker_service.clone(),
                     pool_info,
+                    server_state,
                 )
                 .await
             } {
