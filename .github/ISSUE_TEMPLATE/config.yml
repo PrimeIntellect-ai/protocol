@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Community Discord
+    url: https://discord.gg/primeintellect
+    about: For quick questions and community support, join our Discord
+  - name: Documentation
+    url: https://docs.primeintellect.ai
+    about: Check our documentation for setup guides and FAQs
