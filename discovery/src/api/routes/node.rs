@@ -164,6 +164,8 @@ mod tests {
     use shared::security::request_signer::sign_request;
     use shared::web3::wallet::Wallet;
     use std::sync::Arc;
+    use std::time::SystemTime;
+    use tokio::sync::Mutex;
     use url::Url;
 
     #[actix_web::test]
@@ -180,6 +182,7 @@ mod tests {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
 
         let app = test::init_service(
@@ -233,6 +236,7 @@ mod tests {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
 
         let validate_signatures =
@@ -356,6 +360,7 @@ mod tests {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
 
         let validate_signatures =
@@ -419,6 +424,7 @@ mod tests {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
 
         let validate_signatures =

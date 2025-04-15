@@ -135,12 +135,15 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
+    use std::time::SystemTime;
+    use tokio::sync::Mutex;
 
     #[actix_web::test]
     async fn test_get_nodes() {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
         let app = test::init_service(
             App::new()
@@ -178,6 +181,7 @@ mod tests {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
         let app = test::init_service(
             App::new()
