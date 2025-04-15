@@ -32,7 +32,6 @@ async fn health_check(app_state: web::Data<AppState>) -> HttpResponse {
         match *last_sync_guard {
             Some(last_sync) => {
                 if let Ok(elapsed) = last_sync.elapsed() {
-                    println!("elapsed: {}", elapsed.as_secs());
                     if elapsed > Duration::from_secs(60) {
                         warn!(
                             "Health check: Chain sync is delayed. Last sync was {} seconds ago",
