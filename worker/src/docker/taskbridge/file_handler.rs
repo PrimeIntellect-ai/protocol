@@ -315,7 +315,6 @@ pub async fn handle_file_upload(
         anyhow::anyhow!("Failed to upload file to S3 after {} attempts", MAX_RETRIES)
     }))
 }
-
 /// Handles a file validation request
 pub async fn handle_file_validation(
     file_sha: &str,
@@ -338,7 +337,6 @@ pub async fn handle_file_validation(
 
     let mut retry_count = 0;
     let mut last_error = None;
-
     info!(
         "Starting blockchain work submission with max {} retries",
         MAX_RETRIES
@@ -397,23 +395,36 @@ pub async fn handle_file_validation(
         )
         .await
         {
-            Ok(inner_result) => match inner_result {
-                Ok(r) => {
-                    info!("Successfully submitted work to blockchain: {:?}", r);
-                    return Ok(());
+            Ok(inner_result) => {
+                match inner_result {
+                    Ok(r) => {
+                        info!("Successfully submitted work to blockchain: {:?}", r);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        let error_msg = e.to_string();
+                        error!("Failed to submit work: {}", error_msg);
+
+                        // Check if the error is because work was already submitted
+                        // Currently a workaround as this is not reproducible
+                        if error_msg.contains("Work already submitted") {
+                            info!("Work was already submitted successfully, considering this a success");
+                            info!("This can happen when multiple nodes process the same file or if this node retried a successful submission");
+                            return Ok(());
+                        }
+
+                        last_error = Some(anyhow::anyhow!("Failed to submit work: {}", e));
+                        retry_count += 1;
+                        continue;
+                    }
                 }
-                Err(e) => {
-                    error!("Failed to submit work: {}", e);
-                    last_error = Some(anyhow::anyhow!("Failed to submit work: {}", e));
-                    retry_count += 1;
-                    continue;
-                }
-            },
+            }
             Err(_) => {
                 error!(
                     "Timeout while submitting work to blockchain (after {} seconds)",
                     TRANSACTION_TIMEOUT_SECS
                 );
+
                 last_error = Some(anyhow::anyhow!(
                     "Blockchain transaction timeout after {} seconds",
                     TRANSACTION_TIMEOUT_SECS

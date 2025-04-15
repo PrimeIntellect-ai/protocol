@@ -4,6 +4,7 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use alloy::primitives::U256;
+use log::warn;
 use shared::models::api::ApiResponse;
 use shared::models::node::{ComputeRequirements, Node};
 use std::str::FromStr;
@@ -32,6 +33,48 @@ pub async fn register_node(
         return HttpResponse::BadRequest()
             .json(ApiResponse::new(false, "Invalid x-address header"));
     }
+
+    let update_node = node.clone();
+    let existing_node = data.node_store.get_node(update_node.id.clone());
+    if let Ok(Some(existing_node)) = existing_node {
+        // Node already exists - check if it's active in a pool
+        if existing_node.is_active {
+            if existing_node.node == update_node {
+                log::info!("Node {} is already active in a pool", update_node.id);
+                return HttpResponse::Ok()
+                    .json(ApiResponse::new(true, "Node registered successfully"));
+            }
+
+            warn!(
+                "Node {} tried to change discovery but is already active in a pool",
+                update_node.id
+            );
+            // Node is currently active in pool - cannot be updated
+            // Did the user actually change node information?
+            return HttpResponse::BadRequest().json(ApiResponse::new(
+                false,
+                "Node is currently active in pool - cannot be updated",
+            ));
+        }
+    }
+
+    // Check if any other node is on this same IP with different address
+    let existing_node_by_ip = data
+        .node_store
+        .get_active_node_by_ip(update_node.ip_address.clone());
+    if let Ok(Some(existing_node)) = existing_node_by_ip {
+        if existing_node.id != update_node.id {
+            warn!(
+                "Node {} tried to change discovery but another active node is already registered to this IP address",
+                update_node.id
+            );
+            return HttpResponse::BadRequest().json(ApiResponse::new(
+                false,
+                "Another active Node is already registered to this IP address",
+            ));
+        }
+    }
+
     if let Some(contracts) = data.contracts.clone() {
         if (contracts
             .compute_registry
@@ -121,6 +164,8 @@ mod tests {
     use shared::security::request_signer::sign_request;
     use shared::web3::wallet::Wallet;
     use std::sync::Arc;
+    use std::time::SystemTime;
+    use tokio::sync::Mutex;
     use url::Url;
 
     #[actix_web::test]
@@ -137,6 +182,7 @@ mod tests {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
 
         let app = test::init_service(
@@ -190,6 +236,7 @@ mod tests {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
 
         let validate_signatures =
@@ -313,6 +360,7 @@ mod tests {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
 
         let validate_signatures =
@@ -376,6 +424,7 @@ mod tests {
         let app_state = AppState {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
         };
 
         let validate_signatures =

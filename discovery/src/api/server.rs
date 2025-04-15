@@ -9,20 +9,60 @@ use actix_web::{
     web::{self, get},
     App, HttpServer,
 };
-use log::{error, info};
+use log::{error, info, warn};
 use serde_json::json;
 use shared::security::api_key_middleware::ApiKeyMiddleware;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::web3::contracts::core::builder::Contracts;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
+use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct AppState {
     pub node_store: Arc<NodeStore>,
     pub contracts: Option<Arc<Contracts>>,
+    pub last_chain_sync: Arc<Mutex<Option<SystemTime>>>,
 }
 
-async fn health_check() -> HttpResponse {
+async fn health_check(app_state: web::Data<AppState>) -> HttpResponse {
+    // Check if chain sync has happened in the last minute
+    let sync_status = {
+        let last_sync_guard = app_state.last_chain_sync.lock().await;
+        match *last_sync_guard {
+            Some(last_sync) => {
+                if let Ok(elapsed) = last_sync.elapsed() {
+                    if elapsed > Duration::from_secs(60) {
+                        warn!(
+                            "Health check: Chain sync is delayed. Last sync was {} seconds ago",
+                            elapsed.as_secs()
+                        );
+                        Some(elapsed)
+                    } else {
+                        None
+                    }
+                } else {
+                    warn!("Health check: Unable to determine elapsed time since last sync");
+                    Some(Duration::from_secs(u64::MAX))
+                }
+            }
+            None => {
+                warn!("Health check: Chain sync has not occurred yet");
+                Some(Duration::from_secs(u64::MAX))
+            }
+        }
+    };
+
+    if let Some(elapsed) = sync_status {
+        // Return error response if sync is delayed
+        return HttpResponse::ServiceUnavailable().json(json!({
+            "status": "error",
+            "service": "discovery",
+            "message": format!("Chain sync is delayed. Last sync was {} seconds ago", elapsed.as_secs())
+        }));
+    }
+
+    // Return OK response if sync is recent
     HttpResponse::Ok().json(json!({
         "status": "ok",
         "service": "discovery"
@@ -35,6 +75,7 @@ pub async fn start_server(
     node_store: Arc<NodeStore>,
     contracts: Arc<Contracts>,
     platform_api_key: String,
+    last_chain_sync: Arc<Mutex<Option<SystemTime>>>,
 ) -> std::io::Result<()> {
     info!("Starting server at http://{}:{}", host, port);
 
@@ -49,6 +90,7 @@ pub async fn start_server(
     let app_state = AppState {
         node_store,
         contracts: Some(contracts),
+        last_chain_sync,
     };
 
     // it seems we have a validator for the validator
