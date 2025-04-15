@@ -27,6 +27,19 @@ impl NodeStore {
         Ok(node)
     }
 
+    pub fn get_active_node_by_ip(&self, ip: String) -> Result<Option<DiscoveryNode>, Error> {
+        let mut con = self.get_connection()?;
+        let nodes: Vec<String> = con.keys("node:*")?;
+        for node in nodes {
+            let serialized_node: String = con.get(node)?;
+            let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node)?;
+            if deserialized_node.ip_address == ip && deserialized_node.is_active {
+                return Ok(Some(deserialized_node));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn register_node(&self, node: Node) -> Result<(), Error> {
         let address = node.id.clone();
         let key = format!("node:{}", address);

@@ -26,6 +26,7 @@ pub async fn get_nodes_for_pool(
     req: actix_web::HttpRequest,
 ) -> HttpResponse {
     let nodes = data.node_store.get_nodes();
+    // TODO: Ensure nodes are unique
     match nodes {
         Ok(nodes) => {
             let id_clone = pool_id.clone();
@@ -85,7 +86,23 @@ pub async fn get_nodes_for_pool(
                 .cloned()
                 .collect();
 
-            let response = ApiResponse::new(true, nodes_for_pool);
+            // Filter out nodes with IPs that are currently active in another pool
+            let filtered: Vec<DiscoveryNode> = nodes_for_pool
+                .iter()
+                .filter(|node| {
+                    // Check if there's any other node with the same IP address in a different pool that is active
+                    !nodes.iter().any(|other| {
+                        other.ip_address == node.ip_address
+                            && other.compute_pool_id != node.compute_pool_id
+                            && other.is_active
+                    })
+                })
+                .cloned()
+                .collect();
+            // TODO: Write tests
+            println!("Filtered nodes: {:?}", filtered);
+
+            let response = ApiResponse::new(true, filtered);
             HttpResponse::Ok().json(response)
         }
         Err(_) => HttpResponse::InternalServerError()
