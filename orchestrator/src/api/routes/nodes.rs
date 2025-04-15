@@ -178,7 +178,6 @@ async fn eject_node(node_id: web::Path<String>, app_state: Data<AppState>) -> Ht
     let node = app_state.store_context.node_store.get_node(&node_address);
     match node {
         Some(node) => {
-            // Update node status to Dead
             app_state
                 .store_context
                 .node_store
