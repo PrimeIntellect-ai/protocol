@@ -173,12 +173,13 @@ async fn main() -> Result<()> {
     // It also ejects nodes when they are dead.
     let status_update_store_context = store_context.clone();
     let status_update_heartbeats = heartbeats.clone();
+    let status_update_contracts = contracts.clone();
     tasks.spawn(async move {
         let status_updater = NodeStatusUpdater::new(
             status_update_store_context.clone(),
             15,
             None,
-            contracts.clone(),
+            status_update_contracts.clone(),
             compute_pool_id,
             args.disable_ejection,
             status_update_heartbeats.clone(),
@@ -188,7 +189,7 @@ async fn main() -> Result<()> {
 
     let server_store_context = store_context.clone();
     tokio::select! {
-        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key, args.s3_credentials, args.bucket_name, heartbeats.clone(), store.clone(), args.hourly_s3_upload_limit) => {
+        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key, args.s3_credentials, args.bucket_name, heartbeats.clone(), store.clone(), args.hourly_s3_upload_limit, Some(contracts.clone()), compute_pool_id) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
             }

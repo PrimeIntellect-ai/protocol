@@ -13,6 +13,7 @@ use log::info;
 use serde_json::json;
 use shared::security::api_key_middleware::ApiKeyMiddleware;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
+use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 
@@ -24,6 +25,8 @@ pub struct AppState {
     pub heartbeats: Arc<LoopHeartbeats>,
     pub redis_store: Arc<RedisStore>,
     pub hourly_upload_limit: i64,
+    pub contracts: Option<Arc<Contracts>>,
+    pub pool_id: u32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -38,6 +41,8 @@ pub async fn start_server(
     heartbeats: Arc<LoopHeartbeats>,
     redis_store: Arc<RedisStore>,
     hourly_upload_limit: i64,
+    contracts: Option<Arc<Contracts>>,
+    pool_id: u32,
 ) -> Result<(), Error> {
     info!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
@@ -48,6 +53,8 @@ pub async fn start_server(
         heartbeats,
         redis_store,
         hourly_upload_limit,
+        contracts,
+        pool_id,
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
