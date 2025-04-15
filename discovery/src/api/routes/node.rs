@@ -4,7 +4,7 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use alloy::primitives::U256;
-use log::{info, warn};
+use log::warn;
 use shared::models::api::ApiResponse;
 use shared::models::node::{ComputeRequirements, Node};
 use std::str::FromStr;
