@@ -35,40 +35,34 @@ pub async fn register_node(
 
     let update_node = node.clone();
     let existing_node = data.node_store.get_node(update_node.id.clone());
-    match existing_node {
-        Ok(Some(existing_node)) => {
-            // Node already exists - check if it's active in a pool
-            if existing_node.is_active {
-                if existing_node.node == update_node {
-                    println!("Node is currently active in pool - data has not changed");
-                    return HttpResponse::Ok()
-                        .json(ApiResponse::new(true, "Node registered successfully"));
-                }
-                // Node is currently active in pool - cannot be updated
-                // Did the user actually change node information?
-                return HttpResponse::BadRequest().json(ApiResponse::new(
-                    false,
-                    "Node is currently active in pool - cannot be updated",
-                ));
+    if let Ok(Some(existing_node)) = existing_node {
+        // Node already exists - check if it's active in a pool
+        if existing_node.is_active {
+            if existing_node.node == update_node {
+                println!("Node is currently active in pool - data has not changed");
+                return HttpResponse::Ok()
+                    .json(ApiResponse::new(true, "Node registered successfully"));
             }
+            // Node is currently active in pool - cannot be updated
+            // Did the user actually change node information?
+            return HttpResponse::BadRequest().json(ApiResponse::new(
+                false,
+                "Node is currently active in pool - cannot be updated",
+            ));
         }
-        _ => (),
     }
 
     // Check if any other node is on this same IP with different address
     let existing_node_by_ip = data
         .node_store
         .get_active_node_by_ip(update_node.ip_address.clone());
-    match existing_node_by_ip {
-        Ok(Some(existing_node)) => {
-            if existing_node.id != update_node.id {
-                return HttpResponse::BadRequest().json(ApiResponse::new(
-                    false,
-                    "Another active Node is already registered to this IP address",
-                ));
-            }
+    if let Ok(Some(existing_node)) = existing_node_by_ip {
+        if existing_node.id != update_node.id {
+            return HttpResponse::BadRequest().json(ApiResponse::new(
+                false,
+                "Another active Node is already registered to this IP address",
+            ));
         }
-        _ => (),
     }
 
     if let Some(contracts) = data.contracts.clone() {
