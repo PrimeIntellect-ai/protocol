@@ -1,7 +1,6 @@
 use actix_web::dev::Payload;
 use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::error::ErrorBadRequest;
-use actix_web::error::PayloadError;
+use actix_web::error::{ErrorBadRequest, PayloadError};
 use actix_web::web::Bytes;
 use actix_web::web::BytesMut;
 use actix_web::HttpMessage;
@@ -20,6 +19,9 @@ use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+// Maximum request body size in bytes
+const MAX_BODY_SIZE: usize = 1024 * 1024 * 50; // 50MB
 
 type SyncAddressValidator = Arc<dyn Fn(&Address) -> bool + Send + Sync>;
 
@@ -144,11 +146,19 @@ where
             .map(|s| s.to_string());
 
         Box::pin(async move {
-            // Collect the full body
+            // Collect the full body with size limit
             let mut body = BytesMut::new();
             let mut payload = req.take_payload();
+            
             while let Some(chunk) = payload.next().await {
-                body.extend_from_slice(chunk?.as_ref());
+                let chunk = chunk?;
+                
+                // Check if adding this chunk would exceed the size limit
+                if body.len() + chunk.len() > MAX_BODY_SIZE {
+                    return Err(ErrorBadRequest("Request body too large"));
+                }
+                
+                body.extend_from_slice(chunk.as_ref());
             }
 
             // Handle GET requests which do not have a payload
