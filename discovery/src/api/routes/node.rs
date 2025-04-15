@@ -4,6 +4,7 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use alloy::primitives::U256;
+use log::{info, warn};
 use shared::models::api::ApiResponse;
 use shared::models::node::{ComputeRequirements, Node};
 use std::str::FromStr;
@@ -39,10 +40,15 @@ pub async fn register_node(
         // Node already exists - check if it's active in a pool
         if existing_node.is_active {
             if existing_node.node == update_node {
-                println!("Node is currently active in pool - data has not changed");
+                log::info!("Node {} is already active in a pool", update_node.id);
                 return HttpResponse::Ok()
                     .json(ApiResponse::new(true, "Node registered successfully"));
             }
+
+            warn!(
+                "Node {} tried to change discovery but is already active in a pool",
+                update_node.id
+            );
             // Node is currently active in pool - cannot be updated
             // Did the user actually change node information?
             return HttpResponse::BadRequest().json(ApiResponse::new(
@@ -58,6 +64,10 @@ pub async fn register_node(
         .get_active_node_by_ip(update_node.ip_address.clone());
     if let Ok(Some(existing_node)) = existing_node_by_ip {
         if existing_node.id != update_node.id {
+            warn!(
+                "Node {} tried to change discovery but another active node is already registered to this IP address",
+                update_node.id
+            );
             return HttpResponse::BadRequest().json(ApiResponse::new(
                 false,
                 "Another active Node is already registered to this IP address",
