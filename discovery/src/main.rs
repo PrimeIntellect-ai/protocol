@@ -13,6 +13,8 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 #[derive(Parser)]
 struct Args {
@@ -66,11 +68,15 @@ async fn main() -> Result<()> {
     let cancellation_token = CancellationToken::new();
     let node_store_clone = node_store.clone();
     let contracts_clone = contracts.clone();
+    let last_chain_sync = Arc::new(Mutex::new(None::<std::time::SystemTime>));
+    let heartbeat_server_clone = last_chain_sync.clone();
+
     let chain_sync = ChainSync::new(
         node_store_clone,
         cancellation_token.clone(),
         Duration::from_secs(10),
         contracts,
+        last_chain_sync,
     );
     chain_sync.run().await?;
 
@@ -80,6 +86,7 @@ async fn main() -> Result<()> {
         node_store,
         contracts_clone,
         args.platform_api_key,
+        heartbeat_server_clone,
     )
     .await
     {
