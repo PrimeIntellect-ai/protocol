@@ -66,4 +66,5 @@ pub enum NodeStatus {
     Unhealthy,
     Dead,
     Ejected,
+    Banned,
 }

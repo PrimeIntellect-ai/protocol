@@ -229,7 +229,7 @@ impl ProviderOperations {
             );
             Console::info(
                 "ETH Balance",
-                &format!("{} ETH", eth_balance / U256::from(10u128.pow(18))),
+                &format!("{:.6} ETH", { f64::from(eth_balance) / 10f64.powf(18.0) }),
             );
             if balance < stake {
                 Console::user_error(&format!(
