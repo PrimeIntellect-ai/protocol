@@ -12,7 +12,7 @@ mint-ai-tokens-to-federator:
 
 transfer-eth-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example transfer_eth -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
+	cargo run -p dev-utils --example transfer_eth -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 10000000000000000
 
 transfer-eth-to-pool-owner:
 	set -a; source ${ENV_FILE}; set +a; \
