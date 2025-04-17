@@ -4,14 +4,20 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use alloy::primitives::Address;
+use log::info;
 use serde_json::json;
 use shared::security::request_signer::sign_request;
 use std::str::FromStr;
+use std::time::Duration;
+
+// Timeout for node operations in seconds
+const NODE_REQUEST_TIMEOUT: u64 = 30;
 
 async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
     let nodes = app_state.store_context.node_store.get_nodes();
     HttpResponse::Ok().json(json!({"success": true, "nodes": nodes}))
 }
+
 async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     println!("restart_node_task: {}", node_id);
     let node_address = Address::from_str(&node_id).unwrap();
@@ -24,7 +30,12 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
             let node_url = format!("http://{}:{}", node_ip, node_port);
             let restart_path = "/task/restart".to_string();
             let restart_url = format!("{}{}", node_url, restart_path);
-            let payload = json!({});
+            let payload = json!({
+                "timestamp": std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            });
 
             let message_signature = sign_request(&restart_path, &app_state.wallet, Some(&payload))
                 .await
@@ -46,6 +57,7 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
 
             match reqwest::Client::new()
                 .post(restart_url)
+                .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
                 .headers(headers)
                 .body(payload.to_string())
                 .send()
@@ -76,7 +88,6 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
 }
 
 async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    println!("get_node_logs: {}", node_id);
     let node_address = Address::from_str(&node_id).unwrap();
     let node = app_state.store_context.node_store.get_node(&node_address);
     match node {
@@ -86,7 +97,15 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
 
             let node_url = format!("http://{}:{}", node_ip, node_port);
             let logs_path = "/task/logs".to_string();
-            let logs_url = format!("{}{}", node_url, logs_path);
+            let logs_url = format!(
+                "{}{}?timestamp={}",
+                node_url,
+                logs_path,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            );
 
             let message_signature = sign_request(&logs_path, &app_state.wallet, None)
                 .await
@@ -108,6 +127,7 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
 
             match reqwest::Client::new()
                 .get(logs_url)
+                .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
                 .headers(headers)
                 .send()
                 .await
@@ -143,12 +163,63 @@ async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>)
     HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
 
+async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
+    info!("banning node: {}", node_id);
+    let node_address = match Address::from_str(&node_id) {
+        Ok(address) => address,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "error": format!("Invalid node address: {}", node_id)
+            }));
+        }
+    };
+
+    let node = app_state.store_context.node_store.get_node(&node_address);
+    match node {
+        Some(node) => {
+            app_state
+                .store_context
+                .node_store
+                .update_node_status(&node.address, crate::models::node::NodeStatus::Banned);
+
+            // Attempt to eject from pool
+            if let Some(contracts) = &app_state.contracts {
+                match contracts
+                    .compute_pool
+                    .eject_node(app_state.pool_id, node.address)
+                    .await
+                {
+                    Ok(_) => HttpResponse::Ok().json(json!({
+                        "success": true,
+                        "message": format!("Node {} successfully ejected", node_id)
+                    })),
+                    Err(e) => HttpResponse::InternalServerError().json(json!({
+                        "success": false,
+                        "error": format!("Failed to eject node from pool: {}", e)
+                    })),
+                }
+            } else {
+                HttpResponse::InternalServerError().json(json!({
+                    "success": false,
+                    "error": "Contracts not found"
+                }))
+            }
+        }
+        None => HttpResponse::NotFound().json(json!({
+            "success": false,
+            "error": format!("Node not found: {}", node_id)
+        })),
+    }
+}
+
 pub fn nodes_routes() -> Scope {
     web::scope("/nodes")
         .route("", get().to(get_nodes))
         .route("/{node_id}/restart", post().to(restart_node_task))
         .route("/{node_id}/logs", get().to(get_node_logs))
         .route("/{node_id}/metrics", get().to(get_node_metrics))
+        .route("/{node_id}/ban", post().to(ban_node))
 }
 
 #[cfg(test)]

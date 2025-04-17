@@ -16,11 +16,13 @@ use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
-use log::debug;
+use log::{error, info};
+use shared::models::node::ComputeRequirements;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -89,9 +91,21 @@ pub enum Commands {
         #[arg(long, default_value = "0")]
         funding_retry_count: u32,
 
-        /// Ignore issues
+        /// Skip system requirement checks (for development/testing)
         #[arg(long, default_value = "false")]
-        ignore_issues: bool,
+        skip_system_checks: bool,
+
+        /// Silence metrics logging
+        #[arg(long, default_value = "false")]
+        silence_metrics: bool,
+
+        /// Loki URL
+        #[arg(long)]
+        loki_url: Option<String>,
+
+        /// Log level
+        #[arg(long)]
+        log_level: Option<String>,
     },
     Check {},
 
@@ -148,14 +162,22 @@ pub async fn execute_command(
             private_key_node,
             auto_accept,
             funding_retry_count,
-            ignore_issues,
+            skip_system_checks,
+            silence_metrics,
+            loki_url: _,
+            log_level: _,
         } => {
             if *disable_state_storing && *auto_recover {
-                Console::error(
+                Console::user_error(
                     "Cannot disable state storing and enable auto recover at the same time.",
                 );
                 std::process::exit(1);
             }
+            let state = Arc::new(SystemState::new(
+                state_dir_overwrite.clone(),
+                *disable_state_storing,
+                Some(compute_pool_id.to_string()),
+            ));
 
             let private_key_provider = if let Some(key) = private_key_provider {
                 Console::warning("Using private key from command line is not recommended. Consider using PRIVATE_KEY_PROVIDER environment variable instead.");
@@ -173,7 +195,7 @@ pub async fn execute_command(
 
             let mut recover_last_state = *auto_recover;
             let version = env!("CARGO_PKG_VERSION");
-            Console::section("🚀 PRIME WORKER INITIALIZATION");
+            Console::section("🚀 PRIME WORKER INITIALIZATION - beta");
             Console::info("Version", version);
             /*
              Initialize Wallet instances
@@ -182,7 +204,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        Console::error(&format!("Failed to create wallet: {}", err));
+                        error!("Failed to create wallet: {}", err);
                         std::process::exit(1);
                     }
                 },
@@ -192,7 +214,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        Console::error(&format!("❌ Failed to create wallet: {}", err));
+                        error!("❌ Failed to create wallet: {}", err);
                         std::process::exit(1);
                     }
                 },
@@ -220,10 +242,12 @@ pub async fn execute_command(
 
             let provider_ops_cancellation = cancellation_token.clone();
 
+            let compute_node_state = state.clone();
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,
                 &node_wallet_instance,
                 contracts.clone(),
+                compute_node_state,
             );
 
             let discovery_service =
@@ -241,7 +265,7 @@ pub async fn execute_command(
                         }
                     }
                     Err(e) => {
-                        Console::error(&format!("Failed to get pool info: {}", e));
+                        error!("Failed to get pool info: {}", e);
                         return Ok(());
                     }
                 }
@@ -263,23 +287,63 @@ pub async fn execute_command(
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
             };
+
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
             let node_config = hardware_check.check_hardware(node_config).await.unwrap();
             if let Err(err) = software_check::run_software_check(Some(issue_tracker.clone())).await
             {
-                Console::error(&format!("❌ Software check failed: {}", err));
+                Console::user_error(&format!("❌ Software check failed: {}", err));
                 std::process::exit(1);
             }
 
             let issues = issue_tracker.read().await;
             issues.print_issues();
             if issues.has_critical_issues() {
-                if !*ignore_issues {
-                    Console::error("❌ Critical issues found. Exiting.");
+                if !*skip_system_checks {
+                    Console::user_error("❌ Critical issues found. Exiting.");
                     std::process::exit(1);
                 } else {
                     Console::warning("Critical issues found. Ignoring and continuing.");
+                }
+            }
+            let required_specs = match ComputeRequirements::from_str(&pool_info.pool_data_uri) {
+                Ok(specs) => Some(specs),
+                Err(e) => {
+                    log::debug!("❌ Could not parse pool compute specs: {}", e);
+                    None
+                }
+            };
+
+            // Check if node meets the pool's compute requirements
+            if let Some(ref compute_specs) = node_config.compute_specs {
+                if let Some(ref required_specs) = required_specs {
+                    if !compute_specs.meets(required_specs) {
+                        Console::user_error(
+                            "❌ Your node does not meet the compute requirements for this pool.",
+                        );
+                        info!("Required compute requirements:\n{}", required_specs);
+                        if !*skip_system_checks {
+                            std::process::exit(1);
+                        } else {
+                            Console::warning(
+                                "Ignoring compute requirements mismatch and continuing.",
+                            );
+                        }
+                    } else {
+                        Console::success(
+                            "✅ Your node meets the compute requirements for this pool.",
+                        );
+                    }
+                } else {
+                    Console::success("✅ No specific compute requirements for this pool.");
+                }
+            } else {
+                Console::warning("Cannot verify compute requirements: node specs not available.");
+                if !*skip_system_checks {
+                    std::process::exit(1);
+                } else {
+                    Console::warning("Ignoring missing compute specs and continuing.");
                 }
             }
 
@@ -291,10 +355,6 @@ pub async fn execute_command(
                 }
             };
 
-            let state = Arc::new(SystemState::new(
-                state_dir_overwrite.clone(),
-                *disable_state_storing,
-            ));
             let metrics_store = Arc::new(MetricsStore::new());
             let heartbeat_metrics_clone = metrics_store.clone();
             let bridge_contracts = contracts.clone();
@@ -312,6 +372,7 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
+                *silence_metrics,
             ));
 
             let system_memory = node_config
@@ -325,6 +386,11 @@ pub async fn execute_command(
                 system_memory,
                 task_bridge.socket_path.clone(),
                 docker_storage_path,
+                node_wallet_instance
+                    .wallet
+                    .default_signer()
+                    .address()
+                    .to_string(),
             ));
 
             let bridge_cancellation_token = cancellation_token.clone();
@@ -336,6 +402,7 @@ pub async fn execute_command(
                     }
                 }
             });
+            let heartbeat_state = state.clone();
             let heartbeat_service = HeartbeatService::new(
                 Duration::from_secs(10),
                 cancellation_token.clone(),
@@ -343,7 +410,7 @@ pub async fn execute_command(
                 node_wallet_instance.clone(),
                 docker_service.clone(),
                 heartbeat_metrics_clone.clone(),
-                state,
+                heartbeat_state,
             );
 
             let gpu_count: u32 = match &node_config.compute_specs {
@@ -362,7 +429,7 @@ pub async fn execute_command(
             let provider_exists = match provider_ops.check_provider_exists().await {
                 Ok(exists) => exists,
                 Err(e) => {
-                    Console::error(&format!("❌ Failed to check if provider exists: {}", e));
+                    error!("❌ Failed to check if provider exists: {}", e);
                     std::process::exit(1);
                 }
             };
@@ -370,7 +437,7 @@ pub async fn execute_command(
             let stake_manager = match contracts.stake_manager.as_ref() {
                 Some(stake_manager) => stake_manager,
                 None => {
-                    Console::error("❌ Stake manager not initialized");
+                    error!("❌ Stake manager not initialized");
                     std::process::exit(1);
                 }
             };
@@ -379,7 +446,7 @@ pub async fn execute_command(
             let is_whitelisted = match provider_ops.check_provider_whitelisted().await {
                 Ok(is_whitelisted) => is_whitelisted,
                 Err(e) => {
-                    Console::error(&format!("Failed to check provider whitelist status: {}", e));
+                    error!("Failed to check provider whitelist status: {}", e);
                     std::process::exit(1);
                 }
             };
@@ -393,7 +460,7 @@ pub async fn execute_command(
                 {
                     Ok(stake) => stake,
                     Err(e) => {
-                        Console::error(&format!("❌ Failed to calculate required stake: {}", e));
+                        error!("❌ Failed to calculate required stake: {}", e);
                         std::process::exit(1);
                     }
                 };
@@ -410,7 +477,7 @@ pub async fn execute_command(
                     )
                     .await
                 {
-                    Console::error(&format!("❌ Failed to register provider: {}", e));
+                    error!("❌ Failed to register provider: {}", e);
                     std::process::exit(1);
                 }
             }
@@ -418,10 +485,70 @@ pub async fn execute_command(
             let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
                 Ok(exists) => exists,
                 Err(e) => {
-                    Console::error(&format!("❌ Failed to check if compute node exists: {}", e));
+                    error!("❌ Failed to check if compute node exists: {}", e);
                     std::process::exit(1);
                 }
             };
+
+            let provider_total_compute = match contracts
+                .compute_registry
+                .get_provider_total_compute(
+                    provider_wallet_instance.wallet.default_signer().address(),
+                )
+                .await
+            {
+                Ok(compute) => compute,
+                Err(e) => {
+                    error!("❌ Failed to get provider total compute: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            let provider_stake = stake_manager
+                .get_stake(provider_wallet_instance.wallet.default_signer().address())
+                .await
+                .unwrap_or_default();
+
+            // If we are already registered we do not need additionally compute units
+            let compute_units = match compute_node_exists {
+                true => U256::from(0),
+                false => compute_units,
+            };
+
+            let required_stake = match stake_manager
+                .calculate_stake(compute_units, provider_total_compute)
+                .await
+            {
+                Ok(stake) => stake,
+                Err(e) => {
+                    error!("❌ Failed to calculate required stake: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            if required_stake > provider_stake {
+                Console::info(
+                    "Provider stake is less than required stake",
+                    &format!(
+                        "Required: {} tokens, Current: {} tokens",
+                        required_stake / U256::from(10u128.pow(18)),
+                        provider_stake / U256::from(10u128.pow(18))
+                    ),
+                );
+
+                match provider_ops
+                    .increase_stake(required_stake - provider_stake)
+                    .await
+                {
+                    Ok(_) => {
+                        Console::success("Successfully increased stake");
+                    }
+                    Err(e) => {
+                        error!("❌ Failed to increase stake: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
 
             Console::title("Compute Node Status");
             if compute_node_exists {
@@ -429,60 +556,6 @@ pub async fn execute_command(
                 Console::success("Compute node is registered");
                 recover_last_state = true;
             } else {
-                let provider_total_compute = match contracts
-                    .compute_registry
-                    .get_provider_total_compute(
-                        provider_wallet_instance.wallet.default_signer().address(),
-                    )
-                    .await
-                {
-                    Ok(compute) => compute,
-                    Err(e) => {
-                        Console::error(&format!("❌ Failed to get provider total compute: {}", e));
-                        std::process::exit(1);
-                    }
-                };
-
-                let provider_stake = stake_manager
-                    .get_stake(provider_wallet_instance.wallet.default_signer().address())
-                    .await
-                    .unwrap_or_default();
-
-                let required_stake = match stake_manager
-                    .calculate_stake(compute_units, provider_total_compute)
-                    .await
-                {
-                    Ok(stake) => stake,
-                    Err(e) => {
-                        Console::error(&format!("❌ Failed to calculate required stake: {}", e));
-                        std::process::exit(1);
-                    }
-                };
-
-                if required_stake > provider_stake {
-                    Console::info(
-                        "Provider stake is less than required stake",
-                        &format!(
-                            "Required: {} tokens, Current: {} tokens",
-                            required_stake / U256::from(10u128.pow(18)),
-                            provider_stake / U256::from(10u128.pow(18))
-                        ),
-                    );
-
-                    match provider_ops
-                        .increase_stake(required_stake - provider_stake)
-                        .await
-                    {
-                        Ok(_) => {
-                            Console::success("Successfully increased stake");
-                        }
-                        Err(e) => {
-                            Console::error(&format!("❌ Failed to increase stake: {}", e));
-                            std::process::exit(1);
-                        }
-                    }
-                }
-
                 match compute_node_ops.add_compute_node(compute_units).await {
                     Ok(added_node) => {
                         if added_node {
@@ -492,11 +565,12 @@ pub async fn execute_command(
                         }
                     }
                     Err(e) => {
-                        Console::error(&format!("❌ Failed to add compute node: {}", e));
+                        error!("❌ Failed to add compute node: {}", e);
                         std::process::exit(1);
                     }
                 }
             }
+
             let mut attempts = 0;
             let max_attempts = 100;
             while attempts < max_attempts {
@@ -504,10 +578,10 @@ pub async fn execute_command(
                     Ok(_) => break,
                     Err(e) => {
                         attempts += 1;
-                        Console::error(&format!(
+                        error!(
                             "Attempt {}: ❌ Failed to upload discovery info: {}",
                             attempts, e
-                        ));
+                        );
                         if attempts >= max_attempts {
                             std::process::exit(1);
                         }
@@ -518,11 +592,14 @@ pub async fn execute_command(
 
             Console::success("Discovery info uploaded");
 
-            Console::section("Starting Worker");
+            Console::section("Starting Worker with Task Bridge");
 
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
-            compute_node_ops.start_monitoring(cancellation_token.clone());
+            if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone()) {
+                error!("❌ Failed to start node monitoring: {}", err);
+                std::process::exit(1);
+            }
 
             // 6. Start HTTP Server to receive challenges and invites to join cluster
             Console::info(
@@ -532,13 +609,14 @@ pub async fn execute_command(
 
             if let Err(err) = {
                 let heartbeat_clone = heartbeat_service.unwrap().clone();
-                debug!("Recovering from previous state: {}", recover_last_state);
                 if recover_last_state {
+                    info!("Recovering from previous state: {}", recover_last_state);
                     heartbeat_clone
                         .activate_heartbeat_if_endpoint_exists()
                         .await;
                 }
 
+                let server_state = state.clone();
                 start_server(
                     "0.0.0.0",
                     *port,
@@ -548,10 +626,11 @@ pub async fn execute_command(
                     heartbeat_clone.clone(),
                     docker_service.clone(),
                     pool_info,
+                    server_state,
                 )
                 .await
             } {
-                Console::error(&format!("❌ Failed to start server: {}", err));
+                error!("❌ Failed to start server: {}", err);
             }
             Ok(())
         }
@@ -571,12 +650,12 @@ pub async fn execute_command(
             };
 
             if let Err(err) = hardware_checker.check_hardware(node_config).await {
-                Console::error(&format!("❌ Hardware check failed: {}", err));
+                Console::user_error(&format!("❌ Hardware check failed: {}", err));
                 std::process::exit(1);
             }
 
             if let Err(err) = software_check::run_software_check(Some(issues.clone())).await {
-                Console::error(&format!("❌ Software check failed: {}", err));
+                Console::user_error(&format!("❌ Software check failed: {}", err));
                 std::process::exit(1);
             }
 
@@ -584,7 +663,7 @@ pub async fn execute_command(
             issues.print_issues();
 
             if issues.has_critical_issues() {
-                Console::error("❌ Critical issues found. Exiting.");
+                Console::user_error("❌ Critical issues found. Exiting.");
                 std::process::exit(1);
             }
 
@@ -594,30 +673,32 @@ pub async fn execute_command(
             let provider_signer = PrivateKeySigner::random();
             let node_signer = PrivateKeySigner::random();
 
+            let provider_key = hex::encode(provider_signer.credential().to_bytes());
+            let node_key = hex::encode(node_signer.credential().to_bytes());
+
             println!("Provider wallet:");
             println!("  Address: {}", provider_signer.address());
-            println!(
-                "  Private key: {}",
-                hex::encode(provider_signer.credential().to_bytes())
-            );
+            println!("  Private key: {}", provider_key);
             println!("\nNode wallet:");
             println!("  Address: {}", node_signer.address());
-            println!(
-                "  Private key: {}",
-                hex::encode(node_signer.credential().to_bytes())
-            );
+            println!("  Private key: {}", node_key);
+            println!("\nTo set environment variables in your current shell session:");
+            println!("export PRIVATE_KEY_PROVIDER={}", provider_key);
+            println!("export PRIVATE_KEY_NODE={}", node_key);
+
             Ok(())
         }
 
         Commands::GenerateNodeWallet {} => {
             let node_signer = PrivateKeySigner::random();
+            let node_key = hex::encode(node_signer.credential().to_bytes());
 
             println!("Node wallet:");
             println!("  Address: {}", node_signer.address());
-            println!(
-                "  Private key: {}",
-                hex::encode(node_signer.credential().to_bytes())
-            );
+            println!("  Private key: {}", node_key);
+            println!("\nTo set environment variable in your current shell session:");
+            println!("export PRIVATE_KEY_NODE={}", node_key);
+
             Ok(())
         }
 
@@ -628,7 +709,7 @@ pub async fn execute_command(
             let private_key = if let Some(key) = private_key {
                 key.clone()
             } else {
-                std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set")
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
             };
 
             let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orchestrator.redisName" . }}
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "orchestrator.redisName" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "orchestrator.redisName" . }}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2"
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: {{ include "orchestrator.redisPVCName" . }}

@@ -1,7 +1,7 @@
-use bollard::container::LogOutput;
 use bollard::container::{
     Config, CreateContainerOptions, ListContainersOptions, LogsOptions, StartContainerOptions,
 };
+use bollard::container::{InspectContainerOptions, LogOutput};
 use bollard::errors::Error as DockerError;
 use bollard::image::CreateImageOptions;
 use bollard::models::ContainerStateStatusEnum;
@@ -12,6 +12,7 @@ use bollard::Docker;
 use futures_util::StreamExt;
 use log::{debug, error, info};
 use std::collections::HashMap;
+use std::time::Duration;
 use strip_ansi_escapes::strip;
 
 #[derive(Debug, Clone)]
@@ -108,7 +109,7 @@ impl DockerManager {
         volumes: Option<Vec<(String, String, bool)>>,
         shm_size: Option<u64>,
     ) -> Result<String, DockerError> {
-        println!("Starting to pull image: {}", image);
+        info!("Starting to pull image: {}", image);
 
         let mut final_volumes = Vec::new();
         if self.storage_path.is_some() {
@@ -159,7 +160,6 @@ impl DockerManager {
         self.pull_image(image).await?;
 
         let env = env_vars.map(|vars| {
-            println!("Setting environment variables: {:?}", vars);
             vars.iter()
                 .map(|(k, v)| format!("{}={}", k, v))
                 .collect::<Vec<String>>()
@@ -221,7 +221,7 @@ impl DockerManager {
             ..Default::default()
         };
 
-        println!("Creating container with name: {}", name);
+        info!("Creating container with name: {}", name);
         // Create and start container
         let container = self
             .docker
@@ -239,56 +239,176 @@ impl DockerManager {
             })?;
 
         info!("Container created successfully with ID: {}", container.id);
-        println!("Starting container with ID: {}", container.id);
         debug!("Starting container {}", container.id);
 
         self.docker
             .start_container(&container.id, None::<StartContainerOptions<String>>)
             .await?;
         info!("Container {} started successfully", container.id);
-        println!("Container {} started successfully", container.id);
 
         Ok(container.id)
     }
 
-    /// Stop and remove a container
     pub async fn remove_container(&self, container_id: &str) -> Result<(), DockerError> {
         let container = match self.get_container_details(container_id).await {
-            Ok(c) => c,
-            Err(e) => return Err(e),
+            Ok(c) => Some(c),
+            Err(_) => None,
         };
 
-        // 1. Stop container first
-        if let Err(e) = self.docker.stop_container(container_id, None).await {
-            error!("Failed to stop container: {}", e);
+        if container.is_some() {
+            if let Err(e) = self.docker.stop_container(container_id, None).await {
+                error!("Failed to stop container: {}", e);
+            }
         }
 
-        // 2. Remove container
-        if let Err(e) = self.docker.remove_container(container_id, None).await {
-            error!("Failed to remove container: {}", e);
+        let max_retries = 10;
+
+        // --- Step 1: Remove container with retries ---
+        for attempt in 0..max_retries {
+            match self.docker.remove_container(container_id, None).await {
+                Ok(_) => {
+                    info!("Container {} removed successfully", container_id);
+                    break;
+                }
+                Err(DockerError::DockerResponseServerError {
+                    status_code: 409, ..
+                }) => {
+                    debug!(
+                        "Container removal in progress, retrying ({}/{})",
+                        attempt + 1,
+                        max_retries
+                    );
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                Err(DockerError::DockerResponseServerError {
+                    status_code: 404, ..
+                }) => {
+                    break;
+                }
+                Err(e) => {
+                    info!("Failed to remove container {}: {}", container_id, e);
+                    return Err(e);
+                }
+            }
         }
 
-        // 3. Remove volume if it exists
-        if let Some(name) = container.names.first() {
-            let volume_name = format!("{}_data", name.trim_start_matches('/'));
-            match self.docker.remove_volume(&volume_name, None).await {
-                Ok(_) => info!("Volume {} removed successfully", volume_name),
-                Err(e) => match e {
-                    DockerError::DockerResponseServerError {
-                        status_code: 404, ..
-                    } => {
-                        debug!("Volume {} already removed", volume_name)
+        // --- Step 2: Ensure container is actually gone ---
+        let mut gone = false;
+        for _ in 0..5 {
+            match self
+                .docker
+                .inspect_container(container_id, None::<InspectContainerOptions>)
+                .await
+            {
+                Ok(_) => {
+                    debug!("Container {} still exists, waiting...", container_id);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                Err(DockerError::DockerResponseServerError {
+                    status_code: 404, ..
+                }) => {
+                    gone = true;
+                    break;
+                }
+                Err(e) => {
+                    error!("Failed to inspect container {}: {}", container_id, e);
+                    break;
+                }
+            }
+        }
+
+        if !gone {
+            error!("Container {} still exists after waiting", container_id);
+        }
+
+        // --- Step 3: Remove volume with retries ---
+        if let Some(container) = container {
+            let trimmed_name = container.names.first().unwrap().trim_start_matches('/');
+            let volume_name = format!("{}_data", trimmed_name);
+
+            for attempt in 0..max_retries {
+                match self.docker.remove_volume(&volume_name, None).await {
+                    Ok(_) => {
+                        info!("Volume {} removed successfully", volume_name);
+                        break;
                     }
-                    _ => error!("Failed to remove volume {}: {}", volume_name, e),
-                },
+                    Err(DockerError::DockerResponseServerError {
+                        status_code: 404, ..
+                    }) => {
+                        debug!("Volume {} already removed", volume_name);
+                        break;
+                    }
+                    Err(DockerError::DockerResponseServerError {
+                        status_code: 409, ..
+                    }) => {
+                        debug!(
+                            "Volume {} is still in use, retrying ({}/{})",
+                            volume_name,
+                            attempt + 1,
+                            max_retries
+                        );
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                    Err(e) => {
+                        error!("Failed to remove volume {}: {}", volume_name, e);
+                        break;
+                    }
+                }
             }
 
-            // 4. Clean up the directory
+            // --- Step 4: Remove directory with retries ---
             if let Some(path) = &self.storage_path {
-                let dir_path = format!("{}/{}", path, name.trim_start_matches('/'));
-                match std::fs::remove_dir_all(&dir_path) {
-                    Ok(_) => info!("Directory {} removed successfully", dir_path),
-                    Err(e) => error!("Failed to remove directory {}: {}", dir_path, e),
+                let dir_path = format!("{}/{}", path, trimmed_name);
+
+                // Check if directory exists before attempting to remove it
+                if std::path::Path::new(&dir_path).exists() {
+                    let mut success = false;
+
+                    for attempt in 0..max_retries {
+                        match std::fs::remove_dir_all(&dir_path) {
+                            Ok(_) => {
+                                info!("Directory {} removed successfully", dir_path);
+                                success = true;
+                                break;
+                            }
+                            Err(e) => {
+                                debug!(
+                                    "Attempt {}/{} failed to remove dir {}: {}",
+                                    attempt + 1,
+                                    max_retries,
+                                    dir_path,
+                                    e
+                                );
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                            }
+                        }
+                    }
+
+                    if !success {
+                        error!(
+                            "Failed to remove directory {} after {} attempts — trying fallback",
+                            dir_path, max_retries
+                        );
+
+                        // Try `rm -rf` as fallback
+                        match std::process::Command::new("rm")
+                            .arg("-rf")
+                            .arg(&dir_path)
+                            .status()
+                        {
+                            Ok(status) if status.success() => {
+                                info!("Fallback removal of {} succeeded", dir_path);
+                            }
+                            Ok(status) => {
+                                error!("Fallback rm -rf failed with status {}", status);
+                            }
+                            Err(e) => {
+                                error!("Failed to execute fallback rm -rf: {}", e);
+                            }
+                        }
+                    }
+                } else {
+                    debug!("Directory {} does not exist, skipping removal", dir_path);
                 }
             }
         }

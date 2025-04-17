@@ -1,4 +1,5 @@
 use crate::store::redis::RedisStore;
+use anyhow::Error;
 use redis::Commands;
 use shared::models::node::{DiscoveryNode, Node};
 
@@ -11,63 +12,91 @@ impl NodeStore {
         Self { redis_store }
     }
 
-    fn get_connection(&self) -> redis::Connection {
-        self.redis_store.client.get_connection().unwrap()
+    fn get_connection(&self) -> Result<redis::Connection, redis::RedisError> {
+        self.redis_store.client.get_connection()
     }
 
-    pub fn get_node(&self, address: String) -> Option<DiscoveryNode> {
+    pub fn get_node(&self, address: String) -> Result<Option<DiscoveryNode>, Error> {
         let key = format!("node:{}", address);
-        let mut con = self.get_connection();
-        let node: Option<String> = con.get(&key).unwrap();
-        node.map(|node| serde_json::from_str(&node).unwrap())
+        let mut con = self.get_connection()?;
+        let node: Option<String> = con.get(&key)?;
+        let node = match node {
+            Some(node) => serde_json::from_str(&node),
+            None => Ok(None),
+        }?;
+        Ok(node)
     }
 
-    pub fn register_node(&self, node: Node) {
+    pub fn get_active_node_by_ip(&self, ip: String) -> Result<Option<DiscoveryNode>, Error> {
+        let mut con = self.get_connection()?;
+        let nodes: Vec<String> = con.keys("node:*")?;
+        for node in nodes {
+            let serialized_node: String = con.get(node)?;
+            let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node)?;
+            if deserialized_node.ip_address == ip && deserialized_node.is_active {
+                return Ok(Some(deserialized_node));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn register_node(&self, node: Node) -> Result<(), Error> {
         let address = node.id.clone();
         let key = format!("node:{}", address);
 
-        let mut con = self.get_connection();
-        if con.exists(&key).unwrap() {
-            let existing_node = self.get_node(address).unwrap();
-            let updated_node = existing_node.with_updated_node(node);
-            self.update_node(updated_node);
+        let mut con = self.get_connection()?;
+
+        if con.exists(&key)? {
+            let existing_node = self.get_node(address)?;
+            if let Some(existing_node) = existing_node {
+                let updated_node = existing_node.with_updated_node(node);
+                self.update_node(updated_node)?;
+            }
         } else {
             let discovery_node = DiscoveryNode::from(node);
-            let serialized_node = serde_json::to_string(&discovery_node).unwrap();
-            let _: () = con.set(&key, serialized_node).unwrap();
+            let serialized_node = serde_json::to_string(&discovery_node)?;
+            let _: () = con.set(&key, serialized_node)?;
         }
+        Ok(())
     }
 
-    pub fn update_node(&self, node: DiscoveryNode) {
-        let mut con = self.get_connection();
+    pub fn update_node(&self, node: DiscoveryNode) -> Result<(), Error> {
+        let mut con = self.get_connection()?;
         let address = node.id.clone();
         let key = format!("node:{}", address);
-        let serialized_node = serde_json::to_string(&node).unwrap();
-        let _: () = con.set(&key, serialized_node).unwrap();
+        let serialized_node = serde_json::to_string(&node)?;
+        let _: () = con.set(&key, serialized_node)?;
+        Ok(())
     }
-    pub fn get_nodes(&self) -> Vec<DiscoveryNode> {
-        let mut con = self.get_connection();
-        let nodes: Vec<String> = con.keys("node:*").unwrap();
+
+    pub fn get_nodes(&self) -> Result<Vec<DiscoveryNode>, Error> {
+        let mut con = self.get_connection()?;
+        let nodes: Vec<String> = con.keys("node:*")?;
         let mut nodes_vec = Vec::new();
         for node in nodes {
-            let serialized_node: String = con.get(node).unwrap();
-            let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node).unwrap();
+            let serialized_node: String = con.get(node)?;
+            let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node)?;
             nodes_vec.push(deserialized_node);
         }
         nodes_vec.sort_by(|a, b| {
             let a_time = a.last_updated.or(a.created_at);
             let b_time = b.last_updated.or(b.created_at);
-            a_time.cmp(&b_time)
+            b_time.cmp(&a_time)
         });
-        nodes_vec
+        Ok(nodes_vec)
     }
 
-    pub fn get_node_by_id(&self, node_id: String) -> Option<DiscoveryNode> {
-        let mut con = self.get_connection();
+    pub fn get_node_by_id(&self, node_id: &str) -> Result<Option<DiscoveryNode>, Error> {
+        let mut con = self.get_connection()?;
         let key = format!("node:{}", node_id);
 
-        let serialized_node: Option<String> = con.get(&key).unwrap();
+        let serialized_node: Option<String> = con.get(&key)?;
 
-        serialized_node.map(|node_str| serde_json::from_str(&node_str).unwrap())
+        let serialized_node = match serialized_node {
+            Some(node_str) => serde_json::from_str(&node_str),
+            None => Ok(None),
+        }?;
+
+        Ok(serialized_node)
     }
 }

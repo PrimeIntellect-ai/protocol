@@ -3,12 +3,14 @@ mod discovery;
 mod models;
 mod node;
 mod store;
+mod utils;
 use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
 use crate::node::status_update::NodeStatusUpdater;
 use crate::store::core::RedisStore;
 use crate::store::core::StoreContext;
+use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Result;
 use clap::Parser;
 use log::debug;
@@ -19,7 +21,6 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
-
 #[derive(Parser)]
 struct Args {
     /// RPC URL
@@ -74,6 +75,10 @@ struct Args {
     #[arg(long)]
     s3_credentials: Option<String>,
 
+    /// Hourly s3 upload limit
+    #[arg(long, default_value = "2")]
+    hourly_s3_upload_limit: i64,
+
     /// S3 bucket name
     #[arg(long)]
     bucket_name: Option<String>,
@@ -99,6 +104,8 @@ async fn main() -> Result<()> {
         .format_timestamp(None)
         .init();
     debug!("Log level: {}", log_level);
+
+    let heartbeats = Arc::new(LoopHeartbeats::new());
 
     let compute_pool_id = args.compute_pool_id;
     let domain_id = args.domain_id;
@@ -130,6 +137,7 @@ async fn main() -> Result<()> {
     );
 
     let discovery_store_context = store_context.clone();
+    let discovery_heartbeats = heartbeats.clone();
     tasks.spawn(async move {
         let monitor = DiscoveryMonitor::new(
             wallet_clone.as_ref(),
@@ -137,6 +145,7 @@ async fn main() -> Result<()> {
             args.discovery_refresh_interval,
             args.discovery_url,
             discovery_store_context.clone(),
+            discovery_heartbeats.clone(),
         );
         monitor.run().await
     });
@@ -144,6 +153,7 @@ async fn main() -> Result<()> {
     let port = args.port;
 
     let inviter_store_context = store_context.clone();
+    let inviter_heartbeats = heartbeats.clone();
     tasks.spawn(async move {
         let inviter = NodeInviter::new(
             coordinator_wallet.as_ref(),
@@ -153,6 +163,7 @@ async fn main() -> Result<()> {
             Some(&args.port),
             args.url.as_deref(),
             inviter_store_context.clone(),
+            inviter_heartbeats.clone(),
         );
         inviter.run().await
     });
@@ -161,21 +172,24 @@ async fn main() -> Result<()> {
     // and calculating the status of the node.
     // It also ejects nodes when they are dead.
     let status_update_store_context = store_context.clone();
+    let status_update_heartbeats = heartbeats.clone();
+    let status_update_contracts = contracts.clone();
     tasks.spawn(async move {
         let status_updater = NodeStatusUpdater::new(
             status_update_store_context.clone(),
             15,
             None,
-            contracts.clone(),
+            status_update_contracts.clone(),
             compute_pool_id,
             args.disable_ejection,
+            status_update_heartbeats.clone(),
         );
         status_updater.run().await
     });
 
     let server_store_context = store_context.clone();
     tokio::select! {
-        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key, args.s3_credentials, args.bucket_name) => {
+        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key, args.s3_credentials, args.bucket_name, heartbeats.clone(), store.clone(), args.hourly_s3_upload_limit, Some(contracts.clone()), compute_pool_id) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
             }

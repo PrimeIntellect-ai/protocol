@@ -2,10 +2,6 @@ SHELL := /bin/bash
 ENV_FILE ?= .env
 .PHONY: setup pool domain fund
 
-set-min-stake-amount:
-	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example set_min_stake_amount -- --min-stake-amount $${MIN_STAKE_AMOUNT} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
-
 mint-ai-tokens-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} 
@@ -16,7 +12,7 @@ mint-ai-tokens-to-federator:
 
 transfer-eth-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example transfer_eth -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
+	cargo run -p dev-utils --example transfer_eth -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 10000000000000000
 
 transfer-eth-to-pool-owner:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -43,7 +39,6 @@ start-compute-pool:
 	cargo run -p dev-utils --example start_compute_pool -- --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL} --pool-id="$${POOL_ID:-0}"
 
 setup: 
-	make set-min-stake-amount
 	make mint-ai-tokens-to-provider
 	make transfer-eth-to-provider
 	make transfer-eth-to-pool-owner
@@ -52,10 +47,9 @@ setup:
 	make start-compute-pool
 
 setup-dev-env:
-	make set-min-stake-amount
 	make create-training-domain
 	make create-synth-data-domain
-	make mint-ai-to-federator
+	make mint-ai-tokens-to-federator
 
 
 up:
@@ -78,18 +72,18 @@ watch-discovery:
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --ignore-issues" 
+	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
 
 watch-check:
 	cargo watch -w worker/src -x "run --bin worker -- check"	
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --toploc-server-url $${TOPLOC_SERVER_URL} --toploc-auth-token $${TOPLOC_AUTH_TOKEN} --s3-credentials $${S3_CREDENTIALS} --bucket-name $${BUCKET_NAME} -l $${LOG_LEVEL:-info}"
+	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --toploc-server-url $${TOPLOC_SERVER_URL} --toploc-auth-token $${TOPLOC_AUTH_TOKEN} --s3-credentials $${S3_CREDENTIALS} --bucket-name $${BUCKET_NAME} -l $${LOG_LEVEL:-info} --toploc-grace-interval $${TOPLOC_GRACE_INTERVAL:-30}"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $${LOG_LEVEL:-info}"
+	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3}"
 
 build-worker:
 	cargo build --release --bin worker
@@ -155,7 +149,6 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 				--port $(PORT) \
 				--external-ip \$$EXTERNAL_IP \
 				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
-				--validator-address \$$VALIDATOR_ADDRESS \
 				--auto-accept \
 				2>&1 | tee worker.log\"'"
 
@@ -187,3 +180,11 @@ balance:
 get-node-info:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example get_node_info -- --provider-address $${PROVIDER_ADDRESS} --node-address $${NODE_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+
+submit-work:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example submit_work -- --pool-id $${POOL_ID:-0} --node $${NODE_ADDRESS} --work-key $${WORK_KEY} --key $${PRIVATE_KEY_PROVIDER} --rpc-url $${RPC_URL}
+
+invalidate-work:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example invalidate_work -- --pool-id $${POOL_ID:-0} --penalty $${PENALTY} --work-key $${WORK_KEY} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}

@@ -1,5 +1,7 @@
 use crate::checks::issue::{IssueReport, IssueType};
 use crate::console::Console;
+use bollard::container::ListContainersOptions;
+use bollard::Docker;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -40,6 +42,34 @@ pub async fn check_docker_installed(
             "Docker daemon is not running",
         );
         return Ok(());
+    }
+
+    // Check if Docker API is accessible with proper permissions
+    match Docker::connect_with_unix_defaults() {
+        Ok(docker) => {
+            // Try to list containers to verify permissions
+            match docker
+                .list_containers::<String>(Some(ListContainersOptions {
+                    all: true,
+                    ..Default::default()
+                }))
+                .await
+            {
+                Ok(_) => Console::success("Docker API accessible"),
+                Err(e) => {
+                    issue_tracker.add_issue(
+                        IssueType::DockerNotInstalled,
+                        format!("Docker API permission denied: {}. You may need to add your user to the docker group. To fix this, run: 'sudo usermod -aG docker $USER' and then log out and back in.", e),
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            issue_tracker.add_issue(
+                IssueType::DockerNotInstalled,
+                format!("Failed to connect to Docker API: {}. You may need to add your user to the docker group.", e),
+            );
+        }
     }
 
     Console::success("Docker ready");

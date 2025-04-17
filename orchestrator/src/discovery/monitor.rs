@@ -1,6 +1,7 @@
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::store::core::StoreContext;
+use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::Address;
 use anyhow::Error;
 use anyhow::Result;
@@ -20,6 +21,7 @@ pub struct DiscoveryMonitor<'b> {
     interval_s: u64,
     discovery_url: String,
     store_context: Arc<StoreContext>,
+    heartbeats: Arc<LoopHeartbeats>,
 }
 
 impl<'b> DiscoveryMonitor<'b> {
@@ -29,6 +31,7 @@ impl<'b> DiscoveryMonitor<'b> {
         interval_s: u64,
         discovery_url: String,
         store_context: Arc<StoreContext>,
+        heartbeats: Arc<LoopHeartbeats>,
     ) -> Self {
         Self {
             coordinator_wallet,
@@ -36,6 +39,7 @@ impl<'b> DiscoveryMonitor<'b> {
             interval_s,
             discovery_url,
             store_context,
+            heartbeats,
         }
     }
 
@@ -55,6 +59,7 @@ impl<'b> DiscoveryMonitor<'b> {
                     error!("Error syncing nodes from discovery service: {}", e);
                 }
             }
+            self.heartbeats.update_monitor();
         }
     }
     pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<DiscoveryNode>, Error> {
@@ -177,6 +182,36 @@ impl<'b> DiscoveryMonitor<'b> {
                     node.ip_address = discovery_node.node.ip_address.clone();
                     self.store_context.node_store.add_node(node.clone());
                 }
+
+                if existing_node.status == NodeStatus::Dead {
+                    if let (Some(last_change), Some(last_updated)) = (
+                        existing_node.last_status_change,
+                        discovery_node.last_updated,
+                    ) {
+                        if last_change < last_updated {
+                            info!("Node {} is dead but has been updated on discovery, marking as discovered", node_address);
+                            self.store_context
+                                .node_store
+                                .update_node_status(&node_address, NodeStatus::Discovered);
+                        }
+                    }
+                }
+            }
+            None => {
+                info!("Discovered new validated node: {}", node_address);
+                let node = OrchestratorNode::from(discovery_node.clone());
+                self.store_context.node_store.add_node(node.clone());
+            }
+        }
+        Ok(())
+    }
+
+    async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
+        let discovery_nodes = self.fetch_nodes_from_discovery().await?;
+
+        for discovery_node in &discovery_nodes {
+            if let Err(e) = self.sync_single_node_with_discovery(discovery_node).await {
+                error!("Error syncing node with discovery: {}", e);
             }
             None => {
                 info!("Discovered new validated node: {}", node_address);
@@ -267,6 +302,7 @@ mod tests {
             10,
             "http://localhost:8080".to_string(),
             discovery_store_context,
+            Arc::new(LoopHeartbeats::new()),
         );
 
         let store_context_clone = store_context.clone();

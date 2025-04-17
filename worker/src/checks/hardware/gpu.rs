@@ -5,42 +5,52 @@ use shared::models::node::GpuSpecs;
 use std::sync::Mutex;
 
 #[allow(dead_code)]
-const BYTES_TO_MB: u64 = 1024 * 1024;
+const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 // Use lazy_static to initialize NVML once and reuse it
 lazy_static! {
     static ref NVML: Mutex<Option<Nvml>> = Mutex::new(None);
 }
 
-#[derive(Debug)]
 #[allow(dead_code)]
-struct GpuDevice {
-    name: String,
-    memory: u64,
-    driver_version: String,
-    count: u32,
+enum GpuDevice {
+    Available {
+        name: String,
+        memory: u64,
+        driver_version: String,
+        device_count: usize,
+    },
+    NotAvailable(String),
 }
 
-pub fn detect_gpu() -> Vec<GpuSpecs> {
+pub fn detect_gpu() -> Option<GpuSpecs> {
     Console::title("GPU Detection");
-
-    let gpu_devices = get_gpu_status();
-    if gpu_devices.is_empty() {
-        Console::error("No GPU devices detected");
-        return vec![];
+    // Changed return type to GpuSpecs
+    match get_gpu_status() {
+        GpuDevice::Available {
+            name,
+            memory,
+            driver_version: _,
+            device_count,
+        } => Some(GpuSpecs {
+            // Create GpuSpecs directly
+            count: Some(device_count as u32),
+            model: Some(
+                name.to_lowercase()
+                    .split_whitespace()
+                    .collect::<Vec<&str>>()
+                    .join("_"),
+            ),
+            memory_mb: Some((memory / 1024 / 1024) as u32), // Convert bytes to MB
+        }),
+        GpuDevice::NotAvailable(_) => {
+            Console::user_error("GPU not available");
+            None
+        }
     }
-
-    gpu_devices
-        .into_iter()
-        .map(|device| GpuSpecs {
-            count: Some(device.count),
-            model: Some(device.name.to_lowercase()),
-            memory_mb: Some((device.memory / BYTES_TO_MB) as u32),
-        })
-        .collect()
 }
 
-fn get_gpu_status() -> Vec<GpuDevice> {
+fn get_gpu_status() -> GpuDevice {
     let mut nvml_guard = NVML.lock().unwrap();
 
     // Initialize NVML if not already initialized
@@ -52,10 +62,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
             .init()
         {
             Ok(nvml) => *nvml_guard = Some(nvml),
-            Err(e) => {
-                Console::error(&format!("Failed to initialize NVML: {}", e));
-                return vec![];
-            }
+            Err(e) => return GpuDevice::NotAvailable(format!("Failed to initialize NVML: {}", e)),
         }
     }
 
@@ -64,48 +71,30 @@ fn get_gpu_status() -> Vec<GpuDevice> {
     // Get device count
     let device_count = match nvml.device_count() {
         Ok(count) => count as usize,
-        Err(e) => {
-            Console::error(&format!("Failed to get device count: {}", e));
-            return vec![];
-        }
+        Err(e) => return GpuDevice::NotAvailable(format!("Failed to get device count: {}", e)),
     };
 
     if device_count == 0 {
-        Console::error("No GPU devices detected");
-        return vec![];
+        return GpuDevice::NotAvailable("No GPU devices detected".to_string());
     }
 
-    let mut device_map: std::collections::HashMap<String, GpuDevice> =
-        std::collections::HashMap::new();
+    // Get first device info
+    // TODO: Get all devices
+    match nvml.device_by_index(0) {
+        Ok(device) => {
+            let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
+            let memory = device.memory_info().map(|m| m.total).unwrap_or(0);
+            let driver_version = nvml
+                .sys_driver_version()
+                .unwrap_or_else(|_| "Unknown".to_string());
 
-    for i in 0..device_count {
-        match nvml.device_by_index(i as u32) {
-            Ok(device) => {
-                let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
-                let memory = device.memory_info().map(|m| m.total).unwrap_or(0);
-                let driver_version = nvml
-                    .sys_driver_version()
-                    .unwrap_or_else(|_| "Unknown".to_string());
-
-                if let Some(existing_device) = device_map.get_mut(&name) {
-                    existing_device.count += 1;
-                } else {
-                    device_map.insert(
-                        name.clone(),
-                        GpuDevice {
-                            name,
-                            memory,
-                            driver_version,
-                            count: 1,
-                        },
-                    );
-                }
-            }
-            Err(e) => {
-                Console::error(&format!("Failed to get device {}: {}", i, e));
+            GpuDevice::Available {
+                name,
+                memory,
+                driver_version,
+                device_count,
             }
         }
+        Err(e) => GpuDevice::NotAvailable(format!("Failed to get device: {}", e)),
     }
-
-    device_map.into_values().collect()
 }

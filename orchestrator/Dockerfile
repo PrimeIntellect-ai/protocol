@@ -20,6 +20,7 @@ ENV DISABLE_EJECTION="false"
 ENV S3_CREDENTIALS=""
 ENV BUCKET_NAME=""
 ENV LOG_LEVEL=""
+ENV HOURLY_S3_UPLOAD_LIMIT="2"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/orchestrator \
@@ -38,6 +39,7 @@ $([ "$DISABLE_EJECTION" = "true" ] && echo "--disable-ejection") \
 $([ ! -z "$S3_CREDENTIALS" ] && echo "--s3-credentials $S3_CREDENTIALS") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
+$([ ! -z "$HOURLY_S3_UPLOAD_LIMIT" ] && echo "--hourly-s3-upload-limit $HOURLY_S3_UPLOAD_LIMIT") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 

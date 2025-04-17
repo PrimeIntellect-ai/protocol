@@ -20,6 +20,7 @@ pub struct DockerService {
     has_gpu: bool,
     system_memory_mb: Option<u32>,
     task_bridge_socket_path: String,
+    node_address: String,
 }
 
 const TASK_PREFIX: &str = "prime-task";
@@ -31,6 +32,7 @@ impl DockerService {
         system_memory_mb: Option<u32>,
         task_bridge_socket_path: String,
         storage_path: Option<String>,
+        node_address: String,
     ) -> Self {
         let docker_manager = Arc::new(DockerManager::new(storage_path).unwrap());
         Self {
@@ -40,6 +42,7 @@ impl DockerService {
             has_gpu,
             system_memory_mb,
             task_bridge_socket_path,
+            node_address,
         }
     }
 
@@ -92,7 +95,13 @@ impl DockerService {
                     let current_task = task_state_clone.get_current_task().await;
                     let task_id = generate_task_id(&current_task);
 
-                    let all_containers = manager.list_containers(true).await.unwrap();
+                    let all_containers = match manager.list_containers(true).await {
+                        Ok(containers) => containers,
+                        Err(e) => {
+                            log::error!("Error listing containers: {}", e);
+                            continue;
+                        }
+                    };
 
                     let old_tasks: Vec<ContainerInfo> = all_containers
                     .iter()
@@ -112,7 +121,7 @@ impl DockerService {
                                 let termination = terminate_manager_clone.remove_container(&task.id).await;
                                 match termination {
                                     Ok(_) => Console::info("DockerService", "Container terminated successfully"),
-                                    Err(e) => Console::error(&format!("Error terminating container: {}", e)),
+                                    Err(e) => log::error!("Error terminating container: {}", e),
                                 }
                             });
                             terminating_container_tasks.lock().await.push(handle);
@@ -145,8 +154,14 @@ impl DockerService {
                                     let has_gpu = self.has_gpu;
                                     let system_memory_mb = self.system_memory_mb;
                                     let task_bridge_socket_path = self.task_bridge_socket_path.clone();
+                                    let node_address = self.node_address.clone();
                                     let handle = tokio::spawn(async move {
-                                        let payload = state_clone.get_current_task().await.unwrap();
+                                        let payload = match state_clone.get_current_task().await {
+                                            Some(payload) => payload,
+                                            None => {
+                                                return;
+                                            }
+                                        };
                                         let cmd_full = (payload.command, payload.args);
                                         let cmd = match cmd_full {
                                             (Some(c), Some(a)) => {
@@ -163,6 +178,7 @@ impl DockerService {
                                             env_vars.extend(env.clone());
                                         }
 
+                                        env_vars.insert("NODE_ADDRESS".to_string(), node_address);
                                         env_vars.insert("PRIME_TASK_BRIDGE_SOCKET".to_string(), task_bridge_socket_path.to_string());
                                         env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
                                         let volumes = vec![
@@ -184,7 +200,7 @@ impl DockerService {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
                                             Err(e) => {
-                                                Console::error(&format!("Error starting container: {}", e));
+                                                log::error!("Error starting container: {}", e);
                                                 state_clone.update_task_state(payload.id, TaskState::FAILED).await;
                                             }
                                         }
@@ -197,9 +213,21 @@ impl DockerService {
                             }
                         } else {
                             let container_status = container_match.unwrap().clone();
-                            let status = manager.get_container_details(&container_status.id).await.unwrap();
+                            let status = match manager.get_container_details(&container_status.id).await {
+                                Ok(status) => status,
+                                Err(e) => {
+                                    log::error!("Error getting container details: {}", e);
+                                    continue;
+                                }
+                            };
 
-                            let task_state_current = task_state_clone.get_current_task().await.unwrap().state;
+                            let task_state_current = match task_state_clone.get_current_task().await {
+                                Some(task) => task.state,
+                                None => {
+                                    log::error!("No task found in state");
+                                    continue;
+                                }
+                            };
                             // handle edge case where container instantly dies due to invalid command
                             if status.status == Some(ContainerStateStatusEnum::CREATED) && task_state_current == TaskState::FAILED {
                                 Console::info("DockerService", "Task failed, waiting for new command from manager ...");
@@ -226,7 +254,7 @@ impl DockerService {
                                             let termination = terminate_manager_clone.remove_container(&container_status.id).await;
                                             match termination {
                                                 Ok(_) => Console::info("DockerService", "Container terminated successfully"),
-                                                Err(e) => Console::error(&format!("Error terminating container: {}", e)),
+                                                Err(e) => log::error!("Error terminating container: {}", e)
                                             }
                                         });
                                         terminating_container_tasks.lock().await.push(handle);
@@ -281,6 +309,7 @@ impl DockerService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy::primitives::Address;
     use shared::models::task::Task;
     use shared::models::task::TaskState;
     use uuid::Uuid;
@@ -295,6 +324,7 @@ mod tests {
             Some(1024),
             "/tmp/com.prime.worker/metrics.sock".to_string(),
             None,
+            Address::ZERO.to_string(),
         );
         let task = Task {
             image: "ubuntu:latest".to_string(),
@@ -339,6 +369,7 @@ mod tests {
             Some(1024),
             "/tmp/com.prime.worker/metrics.sock".to_string(),
             None,
+            Address::ZERO.to_string(),
         );
         let state = docker_service.state.clone();
 

@@ -17,6 +17,8 @@ use url::Url;
 
 #[cfg(test)]
 pub async fn create_test_app_state() -> Data<AppState> {
+    use crate::utils::loop_heartbeats::LoopHeartbeats;
+
     let store = Arc::new(RedisStore::new_test());
     let mut con = store
         .client
@@ -33,6 +35,8 @@ pub async fn create_test_app_state() -> Data<AppState> {
     let store_context = Arc::new(StoreContext::new(store.clone()));
     Data::new(AppState {
         store_context: store_context.clone(),
+        contracts: None,
+        pool_id: 1,
         wallet: Arc::new(
             Wallet::new(
                 "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
@@ -42,6 +46,9 @@ pub async fn create_test_app_state() -> Data<AppState> {
         ),
         s3_credentials: None,
         bucket_name: None,
+        heartbeats: Arc::new(LoopHeartbeats::new()),
+        hourly_upload_limit: 12,
+        redis_store: store.clone(),
     })
 }
 
