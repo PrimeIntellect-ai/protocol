@@ -121,7 +121,10 @@ impl NodeStatusUpdater {
         node: &OrchestratorNode,
         old_status: NodeStatus,
     ) -> Result<(), anyhow::Error> {
-        if old_status == node.status || node.status == NodeStatus::Unhealthy || node.status == NodeStatus::Discovered{
+        if old_status == node.status
+            || node.status == NodeStatus::Unhealthy
+            || node.status == NodeStatus::Discovered
+        {
             return Ok(());
         }
 
