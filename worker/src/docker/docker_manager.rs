@@ -203,7 +203,7 @@ impl DockerManager {
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 device_requests: Some(vec![DeviceRequest {
                     driver: Some("".into()),
-                    count: Some(-1),
+                    count: None,
                     device_ids: Some(device_ids),
                     capabilities: Some(vec![vec!["gpu".into()]]),
                     options: Some(HashMap::new()),
