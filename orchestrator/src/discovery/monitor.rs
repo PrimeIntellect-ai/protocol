@@ -213,14 +213,13 @@ impl<'b> DiscoveryMonitor<'b> {
             if let Err(e) = self.sync_single_node_with_discovery(discovery_node).await {
                 error!("Error syncing node with discovery: {}", e);
             }
-            None => {
-                info!("Discovered new validated node: {}", node_address);
-                let node = OrchestratorNode::from(discovery_node.clone());
-                self.store_context.node_store.add_node(node.clone());
-            }
         }
-        Ok(())
+        Ok(discovery_nodes
+            .into_iter()
+            .map(OrchestratorNode::from)
+            .collect())
     }
+}
 
     async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
         let discovery_nodes = self.fetch_nodes_from_discovery().await?;
