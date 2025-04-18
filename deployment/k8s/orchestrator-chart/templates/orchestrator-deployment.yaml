@@ -73,3 +73,7 @@ spec:
               value: "{{ .Values.env.LOG_LEVEL }}"
             - name: HOURLY_S3_UPLOAD_LIMIT
               value: "{{ .Values.env.HOURLY_S3_UPLOAD_LIMIT }}"
+            {{- if .Values.env.WEBHOOK_URLS }}
+            - name: WEBHOOK_URLS
+              value: "{{ .Values.env.WEBHOOK_URLS }}"
+            {{- end }}

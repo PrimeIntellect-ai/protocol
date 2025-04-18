@@ -86,6 +86,10 @@ struct Args {
     /// Log level
     #[arg(short = 'l', long, default_value = "info")]
     log_level: String,
+
+    /// Webhook urls (comma-separated string)
+    #[arg(long, default_value = "")]
+    webhook_urls: Option<String>,
 }
 
 #[tokio::main]
@@ -174,6 +178,13 @@ async fn main() -> Result<()> {
     let status_update_store_context = store_context.clone();
     let status_update_heartbeats = heartbeats.clone();
     let status_update_contracts = contracts.clone();
+    let webhook_urls = args
+        .webhook_urls
+        .clone()
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.to_string())
+        .collect();
     tasks.spawn(async move {
         let status_updater = NodeStatusUpdater::new(
             status_update_store_context.clone(),
@@ -183,6 +194,7 @@ async fn main() -> Result<()> {
             compute_pool_id,
             args.disable_ejection,
             status_update_heartbeats.clone(),
+            webhook_urls,
         );
         status_updater.run().await
     });

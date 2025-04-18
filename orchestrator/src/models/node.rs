@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shared::models::node::DiscoveryNode;
 use shared::models::task::TaskState;
-use std::fmt;
+use std::fmt::{self, Display};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestratorNode {
@@ -57,7 +57,6 @@ impl fmt::Display for OrchestratorNode {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum NodeStatus {
     Discovered,
@@ -67,4 +66,10 @@ pub enum NodeStatus {
     Dead,
     Ejected,
     Banned,
+}
+
+impl Display for NodeStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
