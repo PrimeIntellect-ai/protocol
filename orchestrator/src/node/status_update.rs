@@ -35,7 +35,6 @@ impl NodeStatusUpdater {
         heartbeats: Arc<LoopHeartbeats>,
         webhooks: Vec<String>,
     ) -> Self {
-        println!("webhooks: {:?}", webhooks);
         Self {
             store_context,
             update_interval,
@@ -122,7 +121,7 @@ impl NodeStatusUpdater {
         node: &OrchestratorNode,
         old_status: NodeStatus,
     ) -> Result<(), anyhow::Error> {
-        if old_status == node.status || node.status == NodeStatus::Unhealthy {
+        if old_status == node.status || node.status == NodeStatus::Unhealthy || node.status == NodeStatus::Discovered{
             return Ok(());
         }
 
@@ -748,7 +747,6 @@ mod tests {
             version: None,
             last_status_change: None,
         };
-        println!("Node: {:?}", node);
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
         let updater = NodeStatusUpdater::new(
