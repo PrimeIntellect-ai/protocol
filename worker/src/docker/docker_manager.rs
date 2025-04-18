@@ -194,15 +194,19 @@ impl DockerManager {
             let gpu = gpu.unwrap();
             let device_ids = match &gpu.indices {
                 Some(indices) if !indices.is_empty() => {
-                    vec![indices.iter().map(|i| i.to_string()).collect()]
+                    // Use specific GPU indices if available
+                    indices.iter().map(|i| i.to_string()).collect()
                 }
-                _ => vec![],
+                _ => {
+                    // Request all available GPUs if no specific indices
+                    vec!["all".to_string()]
+                }
             };
 
             Some(HostConfig {
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 device_requests: Some(vec![DeviceRequest {
-                    driver: Some("".into()),
+                    driver: Some("nvidia".into()),
                     count: None,
                     device_ids: Some(device_ids),
                     capabilities: Some(vec![vec!["gpu".into()]]),
