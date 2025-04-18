@@ -9,13 +9,31 @@ use serde_json::json;
 use shared::security::request_signer::sign_request;
 use std::str::FromStr;
 use std::time::Duration;
-
 // Timeout for node operations in seconds
 const NODE_REQUEST_TIMEOUT: u64 = 30;
 
 async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
     let nodes = app_state.store_context.node_store.get_nodes();
-    HttpResponse::Ok().json(json!({"success": true, "nodes": nodes}))
+
+    let mut status_counts = json!({});
+    for node in &nodes {
+        let status_str = format!("{:?}", node.status);
+        if let Some(count) = status_counts.get(&status_str) {
+            if let Some(count_value) = count.as_u64() {
+                status_counts[status_str] = json!(count_value + 1);
+            } else {
+                status_counts[status_str] = json!(1);
+            }
+        } else {
+            status_counts[status_str] = json!(1);
+        }
+    }
+
+    HttpResponse::Ok().json(json!({
+        "success": true,
+        "nodes": nodes,
+        "counts": status_counts
+    }))
 }
 
 async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
