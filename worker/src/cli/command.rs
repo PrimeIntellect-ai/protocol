@@ -347,14 +347,6 @@ pub async fn execute_command(
                 }
             }
 
-            let has_gpu = match node_config.compute_specs {
-                Some(ref specs) => specs.gpu.is_some(),
-                None => {
-                    Console::warning("Compute specs are not available, assuming no GPU.");
-                    false
-                }
-            };
-
             let metrics_store = Arc::new(MetricsStore::new());
             let heartbeat_metrics_clone = metrics_store.clone();
             let bridge_contracts = contracts.clone();
@@ -380,9 +372,13 @@ pub async fn execute_command(
                 .as_ref()
                 .map(|specs| specs.ram_mb.unwrap_or(0));
 
+            let gpu = node_config
+                .compute_specs
+                .clone()
+                .and_then(|specs| specs.gpu.clone());
             let docker_service = Arc::new(DockerService::new(
                 cancellation_token.clone(),
-                has_gpu,
+                gpu,
                 system_memory,
                 task_bridge.socket_path.clone(),
                 docker_storage_path,
