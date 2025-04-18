@@ -19,7 +19,11 @@ async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
     for node in &nodes {
         let status_str = format!("{:?}", node.status);
         if let Some(count) = status_counts.get(&status_str) {
-            status_counts[status_str] = json!(count.as_u64().unwrap() + 1);
+            if let Some(count_value) = count.as_u64() {
+                status_counts[status_str] = json!(count_value + 1);
+            } else {
+                status_counts[status_str] = json!(1);
+            }
         } else {
             status_counts[status_str] = json!(1);
         }
