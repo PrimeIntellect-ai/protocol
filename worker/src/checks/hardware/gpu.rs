@@ -19,6 +19,7 @@ struct GpuDevice {
     memory: u64,
     driver_version: String,
     count: u32,
+    indices: Vec<u32>,
 }
 
 pub fn detect_gpu() -> Vec<GpuSpecs> {
@@ -36,6 +37,7 @@ pub fn detect_gpu() -> Vec<GpuSpecs> {
             count: Some(device.count),
             model: Some(device.name.to_lowercase()),
             memory_mb: Some((device.memory / BYTES_TO_MB) as u32),
+            indices: Some(device.indices),
         })
         .collect()
 }
@@ -89,6 +91,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
 
                 if let Some(existing_device) = device_map.get_mut(&name) {
                     existing_device.count += 1;
+                    existing_device.indices.push(i as u32);
                 } else {
                     device_map.insert(
                         name.clone(),
@@ -97,6 +100,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
                             memory,
                             driver_version,
                             count: 1,
+                            indices: vec![i as u32],
                         },
                     );
                 }

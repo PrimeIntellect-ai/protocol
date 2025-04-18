@@ -66,6 +66,7 @@ pub struct GpuSpecs {
     pub count: Option<u32>,
     pub model: Option<String>,
     pub memory_mb: Option<u32>,
+    pub indices: Option<Vec<u32>>,
 }
 
 impl fmt::Display for GpuSpecs {
@@ -445,6 +446,7 @@ mod tests {
                     count: gpu_count,
                     model: gpu_model.map(String::from),
                     memory_mb: gpu_mem,
+                    indices: None,
                 })
             } else {
                 None
@@ -744,6 +746,7 @@ mod tests {
                 count: Some(4),
                 model: Some("A100".to_string()),
                 memory_mb: None,
+                indices: None,
             }),
             cpu: Some(CpuSpecs {
                 cores: Some(16),
