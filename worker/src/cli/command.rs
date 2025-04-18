@@ -375,8 +375,7 @@ pub async fn execute_command(
             let gpu = node_config
                 .compute_specs
                 .clone()
-                .map(|specs| specs.gpu.clone())
-                .flatten();
+                .and_then(|specs| specs.gpu.clone());
             let docker_service = Arc::new(DockerService::new(
                 cancellation_token.clone(),
                 gpu,
