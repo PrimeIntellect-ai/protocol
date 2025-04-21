@@ -264,6 +264,57 @@ impl ProviderOperations {
 
         // Get provider details again  - cleanup later
         Console::progress("Getting provider details");
+        let _ = self
+            .contracts
+            .compute_registry
+            .get_provider(address)
+            .await
+            .map_err(|_| ProviderError::Other)?;
+
+        let provider_exists = self.check_provider_exists().await?;
+
+        if !provider_exists {
+            Console::info(
+                "AI Token Balance",
+                &format!("{} tokens", balance / U256::from(10u128.pow(18))),
+            );
+            Console::info(
+                "ETH Balance",
+                &format!("{:.6} ETH", { f64::from(eth_balance) / 10f64.powf(18.0) }),
+            );
+            if balance < stake {
+                Console::user_error(&format!(
+                    "Insufficient AI Token balance for stake: {} tokens",
+                    stake / U256::from(10u128.pow(18))
+                ));
+                return Err(ProviderError::InsufficientBalance);
+            }
+            if !self.prompt_user_confirmation(&format!(
+                "Do you want to approve staking {} tokens?",
+                stake / U256::from(10u128.pow(18))
+            )) {
+                Console::info("Operation cancelled by user", "Staking approval declined");
+                return Err(ProviderError::UserCancelled);
+            }
+
+            Console::progress("Approving AI Token for Stake transaction");
+            self.contracts
+                .ai_token
+                .approve(stake)
+                .await
+                .map_err(|_| ProviderError::Other)?;
+            Console::progress("Registering Provider");
+            let register_tx = match self.contracts.prime_network.register_provider(stake).await {
+                Ok(tx) => tx,
+                Err(_) => {
+                    return Err(ProviderError::Other);
+                }
+            };
+            Console::info("Registration tx", &format!("{:?}", register_tx));
+        }
+
+        // Get provider details again  - cleanup later
+        Console::progress("Getting provider details");
         let provider = self
             .contracts
             .compute_registry

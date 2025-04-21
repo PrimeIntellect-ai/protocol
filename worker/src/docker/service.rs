@@ -323,7 +323,7 @@ mod tests {
             cancellation_token.clone(),
             None,
             Some(1024),
-            "/tmp/com.prime.worker/metrics.sock".to_string(),
+            "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
             Address::ZERO.to_string(),
         );
@@ -368,7 +368,7 @@ mod tests {
             cancellation_token.clone(),
             None,
             Some(1024),
-            "/tmp/com.prime.worker/metrics.sock".to_string(),
+            "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
             Address::ZERO.to_string(),
         );
