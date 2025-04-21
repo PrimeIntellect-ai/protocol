@@ -18,6 +18,7 @@ pub enum IssueType {
     InsufficientCpu,              // Minimum CPU cores needed
     NetworkConnectivityIssue,     // Network performance issues
     NoStoragePath,                // No storage path found
+    PortUnavailable,              // Port is unavailable
 }
 
 impl IssueType {

@@ -109,8 +109,7 @@ impl DockerService {
                     .filter(|c| {
                         c.names.iter().any(|name| name.contains(TASK_PREFIX))
                             && task_id
-                                .as_ref()
-                                .map_or(true, |id| !c.names.iter().any(|name| name.contains(id)))
+                                .as_ref().is_none_or(|id| !c.names.iter().any(|name| name.contains(id)))
                     })
                     .cloned()
                     .collect();

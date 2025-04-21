@@ -1,7 +1,7 @@
 use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::issue::IssueReport;
-use crate::checks::software::software_check;
+use crate::checks::software::SoftwareChecker;
 use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
@@ -291,8 +291,8 @@ pub async fn execute_command(
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
             let node_config = hardware_check.check_hardware(node_config).await.unwrap();
-            if let Err(err) = software_check::run_software_check(Some(issue_tracker.clone())).await
-            {
+            let software_checker = SoftwareChecker::new(Some(issue_tracker.clone()));
+            if let Err(err) = software_checker.check_software(&node_config).await {
                 Console::user_error(&format!("❌ Software check failed: {}", err));
                 std::process::exit(1);
             }
@@ -634,8 +634,9 @@ pub async fn execute_command(
             Console::section("🔍 PRIME WORKER SYSTEM CHECK");
             let issues = Arc::new(RwLock::new(IssueReport::new()));
 
-            // Run hardware checks
+            // Run checks
             let mut hardware_checker = HardwareChecker::new(Some(issues.clone()));
+            let software_checker = SoftwareChecker::new(Some(issues.clone()));
             let node_config = Node {
                 id: String::new(),
                 ip_address: String::new(),
@@ -645,12 +646,15 @@ pub async fn execute_command(
                 compute_pool_id: 0,
             };
 
-            if let Err(err) = hardware_checker.check_hardware(node_config).await {
-                Console::user_error(&format!("❌ Hardware check failed: {}", err));
-                std::process::exit(1);
-            }
+            let node_config = match hardware_checker.check_hardware(node_config).await {
+                Ok(node_config) => node_config,
+                Err(err) => {
+                    Console::user_error(&format!("❌ Hardware check failed: {}", err));
+                    std::process::exit(1);
+                }
+            };
 
-            if let Err(err) = software_check::run_software_check(Some(issues.clone())).await {
+            if let Err(err) = software_checker.check_software(&node_config).await {
                 Console::user_error(&format!("❌ Software check failed: {}", err));
                 std::process::exit(1);
             }
