@@ -11,6 +11,7 @@ use bollard::volume::CreateVolumeOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
 use log::{debug, error, info};
+use shared::models::node::GpuSpecs;
 use std::collections::HashMap;
 use std::time::Duration;
 use strip_ansi_escapes::strip;
@@ -104,7 +105,7 @@ impl DockerManager {
         name: &str,
         env_vars: Option<HashMap<String, String>>,
         command: Option<Vec<String>>,
-        gpu_enabled: bool,
+        gpu: Option<GpuSpecs>,
         // Simple Vec of (host_path, container_path, read_only)
         volumes: Option<Vec<(String, String, bool)>>,
         shm_size: Option<u64>,
@@ -189,13 +190,25 @@ impl DockerManager {
             Some(binds)
         };
 
-        let host_config = if gpu_enabled {
+        let host_config = if gpu.is_some() {
+            let gpu = gpu.unwrap();
+            let device_ids = match &gpu.indices {
+                Some(indices) if !indices.is_empty() => {
+                    // Use specific GPU indices if available
+                    indices.iter().map(|i| i.to_string()).collect()
+                }
+                _ => {
+                    // Request all available GPUs if no specific indices
+                    vec!["all".to_string()]
+                }
+            };
+
             Some(HostConfig {
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 device_requests: Some(vec![DeviceRequest {
-                    driver: Some("".into()),
-                    count: Some(-1),
-                    device_ids: None,
+                    driver: Some("nvidia".into()),
+                    count: None,
+                    device_ids: Some(device_ids),
                     capabilities: Some(vec![vec!["gpu".into()]]),
                     options: Some(HashMap::new()),
                 }]),

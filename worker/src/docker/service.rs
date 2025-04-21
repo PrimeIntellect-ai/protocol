@@ -4,6 +4,7 @@ use super::DockerState;
 use crate::console::Console;
 use bollard::models::ContainerStateStatusEnum;
 use chrono::{DateTime, Utc};
+use shared::models::node::GpuSpecs;
 use shared::models::task::Task;
 use shared::models::task::TaskState;
 use std::collections::HashMap;
@@ -17,7 +18,7 @@ pub struct DockerService {
     docker_manager: Arc<DockerManager>,
     cancellation_token: CancellationToken,
     pub state: Arc<DockerState>,
-    has_gpu: bool,
+    gpu: Option<GpuSpecs>,
     system_memory_mb: Option<u32>,
     task_bridge_socket_path: String,
     node_address: String,
@@ -28,7 +29,7 @@ const TASK_PREFIX: &str = "prime-task";
 impl DockerService {
     pub fn new(
         cancellation_token: CancellationToken,
-        has_gpu: bool,
+        gpu: Option<GpuSpecs>,
         system_memory_mb: Option<u32>,
         task_bridge_socket_path: String,
         storage_path: Option<String>,
@@ -39,7 +40,7 @@ impl DockerService {
             docker_manager,
             cancellation_token,
             state: Arc::new(DockerState::new()),
-            has_gpu,
+            gpu,
             system_memory_mb,
             task_bridge_socket_path,
             node_address,
@@ -151,7 +152,7 @@ impl DockerService {
                                     Console::info("DockerService", "Starting new container ...");
                                     let manager_clone = manager_clone.clone();
                                     let state_clone = task_state_clone.clone();
-                                    let has_gpu = self.has_gpu;
+                                    let gpu = self.gpu.clone();
                                     let system_memory_mb = self.system_memory_mb;
                                     let task_bridge_socket_path = self.task_bridge_socket_path.clone();
                                     let node_address = self.node_address.clone();
@@ -195,7 +196,7 @@ impl DockerService {
                                                 67108864 // Default to 64MB in bytes
                                             }
                                         };
-                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), has_gpu, Some(volumes), Some(shm_size)).await {
+                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size)).await {
                                             Ok(container_id) => {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
@@ -320,9 +321,9 @@ mod tests {
         let cancellation_token = CancellationToken::new();
         let docker_service = DockerService::new(
             cancellation_token.clone(),
-            false,
+            None,
             Some(1024),
-            "/tmp/com.prime.worker/metrics.sock".to_string(),
+            "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
             Address::ZERO.to_string(),
         );
@@ -365,9 +366,9 @@ mod tests {
         let cancellation_token = CancellationToken::new();
         let docker_service = DockerService::new(
             cancellation_token.clone(),
-            false,
+            None,
             Some(1024),
-            "/tmp/com.prime.worker/metrics.sock".to_string(),
+            "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
             Address::ZERO.to_string(),
         );
