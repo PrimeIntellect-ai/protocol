@@ -264,7 +264,8 @@ impl ProviderOperations {
 
         // Get provider details again  - cleanup later
         Console::progress("Getting provider details");
-        let provider = self
+        let _ = self
+            .contracts
             .compute_registry
             .get_provider(address)
             .await

@@ -2342,24 +2342,7 @@ dependencies = [
 
 [[package]]
 name = "discovery"
-<<<<<<< HEAD
-<<<<<<< HEAD
-version = "0.2.3"
-=======
-=======
->>>>>>> 8f0ec3f (bump version to release 0.2.4)
-<<<<<<< HEAD
-version = "0.1.7"
-=======
-version = "0.2.3"
->>>>>>> 84cb69a (bump version (#274))
-<<<<<<< HEAD
->>>>>>> ebb50f9 (bump version (#274))
-=======
-=======
 version = "0.2.4"
->>>>>>> 4e0d6a7 (bump version to release 0.2.4)
->>>>>>> 8f0ec3f (bump version to release 0.2.4)
 dependencies = [
  "actix-web",
  "alloy",
@@ -4366,24 +4349,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orchestrator"
-<<<<<<< HEAD
-<<<<<<< HEAD
-version = "0.2.3"
-=======
-=======
->>>>>>> 8f0ec3f (bump version to release 0.2.4)
-<<<<<<< HEAD
-version = "0.1.7"
-=======
-version = "0.2.3"
->>>>>>> 84cb69a (bump version (#274))
-<<<<<<< HEAD
->>>>>>> ebb50f9 (bump version (#274))
-=======
-=======
 version = "0.2.4"
->>>>>>> 4e0d6a7 (bump version to release 0.2.4)
->>>>>>> 8f0ec3f (bump version to release 0.2.4)
 dependencies = [
  "actix-web",
  "alloy",
@@ -6511,24 +6477,7 @@ dependencies = [
 
 [[package]]
 name = "validator"
-<<<<<<< HEAD
-<<<<<<< HEAD
-version = "0.2.3"
-=======
-=======
->>>>>>> 8f0ec3f (bump version to release 0.2.4)
-<<<<<<< HEAD
-version = "0.1.7"
-=======
-version = "0.2.3"
->>>>>>> 84cb69a (bump version (#274))
-<<<<<<< HEAD
->>>>>>> ebb50f9 (bump version (#274))
-=======
-=======
 version = "0.2.4"
->>>>>>> 4e0d6a7 (bump version to release 0.2.4)
->>>>>>> 8f0ec3f (bump version to release 0.2.4)
 dependencies = [
  "actix-web",
  "alloy",
@@ -7177,24 +7126,7 @@ dependencies = [
 
 [[package]]
 name = "worker"
-<<<<<<< HEAD
-<<<<<<< HEAD
-version = "0.2.3"
-=======
-=======
->>>>>>> 8f0ec3f (bump version to release 0.2.4)
-<<<<<<< HEAD
-version = "0.1.7"
-=======
-version = "0.2.3"
->>>>>>> 84cb69a (bump version (#274))
-<<<<<<< HEAD
->>>>>>> ebb50f9 (bump version (#274))
-=======
-=======
 version = "0.2.4"
->>>>>>> 4e0d6a7 (bump version to release 0.2.4)
->>>>>>> 8f0ec3f (bump version to release 0.2.4)
 dependencies = [
  "actix-web",
  "alloy",
