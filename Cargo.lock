@@ -4846,7 +4846,7 @@ dependencies = [
  "itertools 0.13.0",
  "proc-macro2",
  "quote",
- "syn 2.0.92",
+ "syn 2.0.100",
 ]
 
 [[package]]
@@ -6084,15 +6084,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-<<<<<<< HEAD
 version = "0.3.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7619e19bc266e0f9c5e6686659d394bc57973859340060a69221e57dbc0c40"
-=======
-version = "0.3.40"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d9c75b47bdff86fa3334a3db91356b8d7d86a9b839dab7d0bdc5c3d3a077618"
->>>>>>> 0fb0bba (Refactor: use shared dependencies across crates)
 dependencies = [
  "deranged",
  "itoa",
@@ -6111,15 +6105,9 @@ checksum = "c9e9a38711f559d9e3ce1cdb06dd7c5b8ea546bc90052da6d06bb76da74bb07c"
 
 [[package]]
 name = "time-macros"
-<<<<<<< HEAD
 version = "0.2.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3526739392ec93fd8b359c8e98514cb3e8e021beb4e5f597b00a0221f8ed8a49"
-=======
-version = "0.2.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29aa485584182073ed57fd5004aa09c371f021325014694e432313345865fd04"
->>>>>>> 0fb0bba (Refactor: use shared dependencies across crates)
 dependencies = [
  "num-conv",
  "time-core",
@@ -6579,17 +6567,11 @@ dependencies = [
  "actix-web",
  "alloy",
  "anyhow",
-<<<<<<< HEAD
  "chrono",
- "clap 4.5.27",
- "directories",
- "env_logger 0.11.6",
- "futures",
-=======
  "clap 4.5.32",
  "directories",
  "env_logger",
->>>>>>> 0fb0bba (Refactor: use shared dependencies across crates)
+ "futures",
  "hex",
  "log",
  "nalgebra",
@@ -6600,6 +6582,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shared",
+ "tempfile",
  "tokio",
  "tokio-util",
  "toml",
@@ -7259,12 +7242,8 @@ dependencies = [
  "strip-ansi-escapes",
  "sysinfo",
  "tempfile",
-<<<<<<< HEAD
- "thiserror 2.0.11",
- "time",
-=======
  "thiserror 2.0.12",
->>>>>>> 0fb0bba (Refactor: use shared dependencies across crates)
+ "time",
  "tokio",
  "tokio-util",
  "toml",
