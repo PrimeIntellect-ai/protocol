@@ -603,7 +603,6 @@ mod tests {
     use shared::web3::contracts::core::builder::ContractBuilder;
     use shared::web3::wallet::Wallet;
     use url::Url;
-
     fn test_store() -> RedisStore {
         let store = RedisStore::new_test();
         let mut con = store
@@ -639,6 +638,16 @@ mod tests {
             .build()
             .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
 
+        // Get S3 credentials from environment variables if they exist
+        let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+        let bucket_name = std::env::var("S3_BUCKET_NAME").ok();
+
+        // If either credential is missing, we'll proceed with None values
+        if s3_credentials.is_none() || bucket_name.is_none() {
+            println!("S3 credentials or bucket name not found in environment, proceeding with test using None values");
+            return Ok(());
+        }
+
         let validator = SyntheticDataValidator::new(
             "0".to_string(),
             contracts.synthetic_data_validator.clone().unwrap(),
@@ -651,8 +660,8 @@ mod tests {
                 unknown_status_expiry_seconds: 120,
             },
             U256::from(1000),
-            None,
-            None,
+            s3_credentials,
+            bucket_name,
             store,
             CancellationToken::new(),
         );
