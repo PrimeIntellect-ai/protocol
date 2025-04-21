@@ -827,7 +827,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        Console::error(&format!("Failed to create wallet: {}", err));
+                        Console::user_error(&format!("Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
                 },
@@ -837,7 +837,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        Console::error(&format!("❌ Failed to create wallet: {}", err));
+                        Console::user_error(&format!("❌ Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
                 },
@@ -845,6 +845,7 @@ pub async fn execute_command(
             let state = Arc::new(SystemState::new(
                 state_dir_overwrite.clone(),
                 *disable_state_storing,
+                None,
             ));
             /*
              Initialize dependencies - services, contracts, operations
@@ -877,7 +878,10 @@ pub async fn execute_command(
             let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
                 Ok(exists) => exists,
                 Err(e) => {
-                    Console::error(&format!("❌ Failed to check if compute node exists: {}", e));
+                    Console::user_error(&format!(
+                        "❌ Failed to check if compute node exists: {}",
+                        e
+                    ));
                     std::process::exit(1);
                 }
             };
@@ -902,7 +906,7 @@ pub async fn execute_command(
                         Console::success(&format!("Leave compute pool tx: {:?}", result));
                     }
                     Err(e) => {
-                        Console::error(&format!("❌ Failed to leave compute pool: {}", e));
+                        Console::user_error(&format!("❌ Failed to leave compute pool: {}", e));
                         std::process::exit(1);
                     }
                 }
@@ -914,13 +918,13 @@ pub async fn execute_command(
                                 Console::success("Successfully reclaimed stake");
                             }
                             Err(e) => {
-                                Console::error(&format!("❌ Failed to reclaim stake: {}", e));
+                                Console::user_error(&format!("❌ Failed to reclaim stake: {}", e));
                                 std::process::exit(1);
                             }
                         }
                     }
                     Err(e) => {
-                        Console::error(&format!("❌ Failed to remove compute node: {}", e));
+                        Console::user_error(&format!("❌ Failed to remove compute node: {}", e));
                         std::process::exit(1);
                     }
                 }

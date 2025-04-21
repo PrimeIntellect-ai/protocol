@@ -85,9 +85,7 @@ impl PrimeNetworkContract {
             .instance()
             .function(
                 "removeComputeNode",
-                &[
-                    provider_address.into(),
-                    node_address.into(),                ],
+                &[provider_address.into(), node_address.into()],
             )?
             .send()
             .await?
@@ -96,7 +94,6 @@ impl PrimeNetworkContract {
 
         Ok(remove_node_tx)
     }
-
 
     pub async fn validate_node(
         &self,
@@ -249,7 +246,10 @@ impl PrimeNetworkContract {
         Ok(members_vec)
     }
 
-    pub async fn reclaim_stake(&self, amount: U256) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+    pub async fn reclaim_stake(
+        &self,
+        amount: U256,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         let reclaim_tx = self
             .instance
             .instance()
