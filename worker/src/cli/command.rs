@@ -155,21 +155,9 @@ pub enum Commands {
         #[arg(long, default_value = "http://localhost:8545")]
         rpc_url: String,
 
-        /// State directory
-        #[arg(long)]
-        state_dir_overwrite: Option<String>,
-
-        /// Disable state storing
-        #[arg(long)]
-        disable_state_storing: bool,
-
         /// Compute pool ID
         #[arg(long)]
         compute_pool_id: u64,
-
-        /// Auto accept transactions
-        #[arg(long, default_value = "false")]
-        auto_accept: bool,
     },
 }
 
@@ -803,13 +791,10 @@ pub async fn execute_command(
             Ok(())
         }
         Commands::Deregister {
-            state_dir_overwrite,
-            disable_state_storing,
             private_key_provider,
             private_key_node,
             rpc_url,
             compute_pool_id,
-            auto_accept,
         } => {
             let private_key_provider = if let Some(key) = private_key_provider {
                 key.clone()
@@ -842,11 +827,7 @@ pub async fn execute_command(
                     }
                 },
             );
-            let state = Arc::new(SystemState::new(
-                state_dir_overwrite.clone(),
-                *disable_state_storing,
-                None,
-            ));
+            let state = Arc::new(SystemState::new(None, true, None));
             /*
              Initialize dependencies - services, contracts, operations
             */
@@ -869,11 +850,8 @@ pub async fn execute_command(
                 state.clone(),
             );
 
-            let provider_ops = ProviderOperations::new(
-                provider_wallet_instance.clone(),
-                contracts.clone(),
-                *auto_accept,
-            );
+            let provider_ops =
+                ProviderOperations::new(provider_wallet_instance.clone(), contracts.clone(), false);
 
             let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
                 Ok(exists) => exists,
@@ -889,10 +867,6 @@ pub async fn execute_command(
             let pool_id = U256::from(*compute_pool_id as u32);
 
             if compute_node_exists {
-                // TODO: What if we have two nodes?
-                Console::success("Compute node is registered");
-                // check if node has a pool
-                // remove node from pool
                 match contracts
                     .compute_pool
                     .leave_compute_pool(
