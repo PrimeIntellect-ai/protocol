@@ -153,7 +153,9 @@ impl DockerService {
 
                                 // Calculate backoff time using exponential backoff
                                 let backoff_seconds = if consecutive_failures > 0 {
-                                    let backoff = INITIAL_BACKOFF_SECONDS * (2_i64.pow(consecutive_failures as u32 - 1));
+                                    // Clamp consecutive_failures to prevent overflow
+                                    let clamped_failures = consecutive_failures.min(MAX_CONSECUTIVE_FAILURES);
+                                    let backoff = INITIAL_BACKOFF_SECONDS.saturating_mul(2_i64.saturating_pow(clamped_failures as u32 - 1));
                                     backoff.min(MAX_BACKOFF_SECONDS)
                                 } else {
                                     INITIAL_BACKOFF_SECONDS
