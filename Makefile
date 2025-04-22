@@ -188,3 +188,8 @@ submit-work:
 invalidate-work:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example invalidate_work -- --pool-id $${POOL_ID:-0} --penalty $${PENALTY} --work-key $${WORK_KEY} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
+
+deregister-worker:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run --bin worker -- deregister --compute-pool-id $${WORKER_COMPUTE_POOL_ID} --private-key-provider $${PRIVATE_KEY_PROVIDER} --private-key-node $${PRIVATE_KEY_NODE} --rpc-url $${RPC_URL}
+
