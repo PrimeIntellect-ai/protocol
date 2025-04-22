@@ -27,6 +27,7 @@ pub struct DockerService {
 const TASK_PREFIX: &str = "prime-task";
 const INITIAL_BACKOFF_SECONDS: i64 = 5; // Start with 5 seconds
 const MAX_BACKOFF_SECONDS: i64 = 300; // Cap at 5 minutes
+const MAX_CONSECUTIVE_FAILURES: i64 = 100;
 
 impl DockerService {
     pub fn new(
@@ -165,7 +166,11 @@ impl DockerService {
                                 if elapsed < backoff_seconds {
                                     Console::info("DockerService", &format!("Waiting before starting new container ({}s remaining)...", backoff_seconds - elapsed));
                                 } else {
-                                    Console::info("DockerService", &format!("Starting new container after {} failures...", consecutive_failures));
+                                    if consecutive_failures > 0 {
+                                        Console::info("DockerService", &format!("Starting new container after {} failures...", consecutive_failures));
+                                    } else {
+                                        Console::info("DockerService", "Starting new container...");
+                                    }
                                     let manager_clone = manager_clone.clone();
                                     let state_clone = task_state_clone.clone();
                                     let gpu = self.gpu.clone();
