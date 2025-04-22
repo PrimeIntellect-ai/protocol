@@ -1,7 +1,7 @@
 use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::issue::IssueReport;
-use crate::checks::software::software_check;
+use crate::checks::software::SoftwareChecker;
 use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
@@ -139,6 +139,25 @@ pub enum Commands {
         /// Private key for the node
         #[arg(long)]
         private_key_node: Option<String>,
+    },
+
+    /// Deregister worker from compute pool
+    Deregister {
+        /// Private key for the provider
+        #[arg(long)]
+        private_key_provider: Option<String>,
+
+        /// Private key for the node
+        #[arg(long)]
+        private_key_node: Option<String>,
+
+        /// RPC URL
+        #[arg(long, default_value = "http://localhost:8545")]
+        rpc_url: String,
+
+        /// Compute pool ID
+        #[arg(long)]
+        compute_pool_id: u64,
     },
 }
 
@@ -291,8 +310,8 @@ pub async fn execute_command(
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
             let node_config = hardware_check.check_hardware(node_config).await.unwrap();
-            if let Err(err) = software_check::run_software_check(Some(issue_tracker.clone())).await
-            {
+            let software_checker = SoftwareChecker::new(Some(issue_tracker.clone()));
+            if let Err(err) = software_checker.check_software(&node_config).await {
                 Console::user_error(&format!("❌ Software check failed: {}", err));
                 std::process::exit(1);
             }
@@ -634,8 +653,9 @@ pub async fn execute_command(
             Console::section("🔍 PRIME WORKER SYSTEM CHECK");
             let issues = Arc::new(RwLock::new(IssueReport::new()));
 
-            // Run hardware checks
+            // Run checks
             let mut hardware_checker = HardwareChecker::new(Some(issues.clone()));
+            let software_checker = SoftwareChecker::new(Some(issues.clone()));
             let node_config = Node {
                 id: String::new(),
                 ip_address: String::new(),
@@ -645,12 +665,15 @@ pub async fn execute_command(
                 compute_pool_id: 0,
             };
 
-            if let Err(err) = hardware_checker.check_hardware(node_config).await {
-                Console::user_error(&format!("❌ Hardware check failed: {}", err));
-                std::process::exit(1);
-            }
+            let node_config = match hardware_checker.check_hardware(node_config).await {
+                Ok(node_config) => node_config,
+                Err(err) => {
+                    Console::user_error(&format!("❌ Hardware check failed: {}", err));
+                    std::process::exit(1);
+                }
+            };
 
-            if let Err(err) = software_check::run_software_check(Some(issues.clone())).await {
+            if let Err(err) = software_checker.check_software(&node_config).await {
                 Console::user_error(&format!("❌ Software check failed: {}", err));
                 std::process::exit(1);
             }
@@ -768,6 +791,124 @@ pub async fn execute_command(
                 [provider_signature.as_bytes(), node_signature.as_bytes()].concat();
 
             println!("\nSignature: {}", hex::encode(combined_signature));
+
+            Ok(())
+        }
+        Commands::Deregister {
+            private_key_provider,
+            private_key_node,
+            rpc_url,
+            compute_pool_id,
+        } => {
+            let private_key_provider = if let Some(key) = private_key_provider {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_PROVIDER").expect("PRIVATE_KEY_PROVIDER must be set")
+            };
+
+            let private_key_node = if let Some(key) = private_key_node {
+                key.clone()
+            } else {
+                std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
+            };
+
+            let provider_wallet_instance = Arc::new(
+                match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
+                    Ok(wallet) => wallet,
+                    Err(err) => {
+                        Console::user_error(&format!("Failed to create wallet: {}", err));
+                        std::process::exit(1);
+                    }
+                },
+            );
+
+            let node_wallet_instance = Arc::new(
+                match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
+                    Ok(wallet) => wallet,
+                    Err(err) => {
+                        Console::user_error(&format!("❌ Failed to create wallet: {}", err));
+                        std::process::exit(1);
+                    }
+                },
+            );
+            let state = Arc::new(SystemState::new(None, true, None));
+            /*
+             Initialize dependencies - services, contracts, operations
+            */
+
+            let contracts = Arc::new(
+                ContractBuilder::new(&provider_wallet_instance)
+                    .with_compute_registry()
+                    .with_ai_token()
+                    .with_prime_network()
+                    .with_compute_pool()
+                    .with_stake_manager()
+                    .build()
+                    .unwrap(),
+            );
+
+            let compute_node_ops = ComputeNodeOperations::new(
+                &provider_wallet_instance,
+                &node_wallet_instance,
+                contracts.clone(),
+                state.clone(),
+            );
+
+            let provider_ops =
+                ProviderOperations::new(provider_wallet_instance.clone(), contracts.clone(), false);
+
+            let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
+                Ok(exists) => exists,
+                Err(e) => {
+                    Console::user_error(&format!(
+                        "❌ Failed to check if compute node exists: {}",
+                        e
+                    ));
+                    std::process::exit(1);
+                }
+            };
+
+            let pool_id = U256::from(*compute_pool_id as u32);
+
+            if compute_node_exists {
+                match contracts
+                    .compute_pool
+                    .leave_compute_pool(
+                        pool_id,
+                        provider_wallet_instance.wallet.default_signer().address(),
+                        node_wallet_instance.wallet.default_signer().address(),
+                    )
+                    .await
+                {
+                    Ok(result) => {
+                        Console::success(&format!("Leave compute pool tx: {:?}", result));
+                    }
+                    Err(e) => {
+                        Console::user_error(&format!("❌ Failed to leave compute pool: {}", e));
+                        std::process::exit(1);
+                    }
+                }
+                match compute_node_ops.remove_compute_node().await {
+                    Ok(_removed_node) => {
+                        Console::success("Compute node removed");
+                        match provider_ops.reclaim_stake(U256::from(0)).await {
+                            Ok(_) => {
+                                Console::success("Successfully reclaimed stake");
+                            }
+                            Err(e) => {
+                                Console::user_error(&format!("❌ Failed to reclaim stake: {}", e));
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        Console::user_error(&format!("❌ Failed to remove compute node: {}", e));
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                Console::success("Compute node is not registered");
+            }
 
             Ok(())
         }

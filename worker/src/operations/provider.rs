@@ -395,6 +395,23 @@ impl ProviderOperations {
         Console::success("Provider stake increased successfully");
         Ok(())
     }
+
+    pub async fn reclaim_stake(&self, amount: U256) -> Result<(), ProviderError> {
+        Console::progress("Reclaiming stake");
+        let reclaim_tx = match self.contracts.prime_network.reclaim_stake(amount).await {
+            Ok(tx) => tx,
+            Err(e) => {
+                println!("Failed to reclaim stake: {:?}", e);
+                return Err(ProviderError::Other);
+            }
+        };
+        Console::info(
+            "Stake reclaim transaction completed: ",
+            &format!("{:?}", reclaim_tx),
+        );
+        Console::success("Provider stake reclaimed successfully");
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
