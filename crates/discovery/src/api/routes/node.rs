@@ -44,6 +44,33 @@ pub async fn register_node(
                 return HttpResponse::Ok()
                     .json(ApiResponse::new(true, "Node registered successfully"));
             }
+            // Temp. adjustment: The gpu object has changed and includes a vec of indices now.
+            // This now causes the discovery svc to reject nodes that have just updated their software.
+            // This is a temporary fix to ensure the node is accepted even though the indices are different.
+            let mut existing_clone = existing_node.node.clone();
+            match &update_node.compute_specs {
+                Some(compute_specs) => {
+                    if let Some(ref mut existing_compute_specs) = existing_clone.compute_specs {
+                        match &compute_specs.gpu {
+                            Some(gpu_specs) => {
+                                existing_compute_specs.gpu = Some(gpu_specs.clone());
+                            }
+                            None => {
+                                existing_compute_specs.gpu = None;
+                            }
+                        }
+                    }
+                }
+                None => {
+                    existing_clone.compute_specs = None;
+                }
+            }
+
+            if existing_clone == update_node {
+                log::info!("Node {} is already active in a pool", update_node.id);
+                return HttpResponse::Ok()
+                    .json(ApiResponse::new(true, "Node registered successfully"));
+            }
 
             warn!(
                 "Node {} tried to change discovery but is already active in a pool",
