@@ -11,12 +11,15 @@ use crate::node::status_update::NodeStatusUpdater;
 use crate::store::core::RedisStore;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
+use alloy::primitives::U256;
 use anyhow::Result;
 use clap::Parser;
 use log::debug;
 use log::error;
+use log::info;
 use log::LevelFilter;
 use shared::web3::contracts::core::builder::ContractBuilder;
+use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -139,6 +142,18 @@ async fn main() -> Result<()> {
             .build()
             .unwrap(),
     );
+
+    match contracts.compute_pool.get_pool_info(U256::from(compute_pool_id)).await {
+        Ok(pool) if pool.status == PoolStatus::ACTIVE => Arc::new(pool),
+        Ok(_) => {
+            info!("Pool is not active. Exiting.");
+            return Ok(());
+        }
+        Err(e) => {
+            error!("Failed to get pool info: {}", e);
+            return Ok(());
+        }
+    };
 
     let discovery_store_context = store_context.clone();
     let discovery_heartbeats = heartbeats.clone();
