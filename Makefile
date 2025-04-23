@@ -68,22 +68,22 @@ whitelist-provider:
 
 watch-discovery:
 	set -a; source .env; set +a; \
-	cargo watch -w discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL}"
+	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL}"
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
+	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
 
 watch-check:
-	cargo watch -w worker/src -x "run --bin worker -- check"	
+	cargo watch -w crates/worker/src -x "run --bin worker -- check"	
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --toploc-server-url $${TOPLOC_SERVER_URL} --toploc-auth-token $${TOPLOC_AUTH_TOKEN} --s3-credentials $${S3_CREDENTIALS} --bucket-name $${BUCKET_NAME} -l $${LOG_LEVEL:-info} --toploc-grace-interval $${TOPLOC_GRACE_INTERVAL:-30}"
+	cargo watch -w crates/validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --toploc-server-url $${TOPLOC_SERVER_URL} --toploc-auth-token $${TOPLOC_AUTH_TOKEN} --s3-credentials $${S3_CREDENTIALS} --bucket-name $${BUCKET_NAME} -l $${LOG_LEVEL:-info} --toploc-grace-interval $${TOPLOC_GRACE_INTERVAL:-30}"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3}"
+	cargo watch -w crates/orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3}"
 
 build-worker:
 	cargo build --release --bin worker

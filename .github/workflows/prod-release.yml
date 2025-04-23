@@ -157,7 +157,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./discovery/Dockerfile
+          file: ./crates/discovery/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:latest
@@ -170,7 +170,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./validator/Dockerfile
+          file: ./crates/validator/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:latest
@@ -183,7 +183,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./orchestrator/Dockerfile
+          file: ./crates/orchestrator/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:latest

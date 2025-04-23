@@ -1,16 +1,16 @@
 [workspace]
 members = [
-    "discovery",
-    "worker",
-    "validator",
-    "shared",
-    "orchestrator",
-    "dev-utils",
+    "crates/discovery",
+    "crates/worker",
+    "crates/validator",
+    "crates/shared",
+    "crates/orchestrator",
+    "crates/dev-utils",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-shared = { path = "shared" }
+shared = { path = "crates/shared" }
 actix-web = "4.9.0"
 clap = { version = "4.5.27", features = ["derive"] }
 serde = { version = "1.0.219", features = ["derive"] }
