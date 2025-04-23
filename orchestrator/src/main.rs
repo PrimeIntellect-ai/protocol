@@ -143,7 +143,11 @@ async fn main() -> Result<()> {
             .unwrap(),
     );
 
-    match contracts.compute_pool.get_pool_info(U256::from(compute_pool_id)).await {
+    match contracts
+        .compute_pool
+        .get_pool_info(U256::from(compute_pool_id))
+        .await
+    {
         Ok(pool) if pool.status == PoolStatus::ACTIVE => Arc::new(pool),
         Ok(_) => {
             info!("Pool is not active. Exiting.");
