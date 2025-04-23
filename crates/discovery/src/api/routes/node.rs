@@ -45,6 +45,31 @@ pub async fn register_node(
                     .json(ApiResponse::new(true, "Node registered successfully"));
             }
 
+            let mut existing_clone = existing_node.node.clone();
+            match &update_node.compute_specs {
+                Some(compute_specs) => {
+                    if let Some(ref mut existing_compute_specs) = existing_clone.compute_specs {
+                        match &compute_specs.gpu {
+                            Some(gpu_specs) => {
+                                existing_compute_specs.gpu = Some(gpu_specs.clone());
+                            }
+                            None => {
+                                existing_compute_specs.gpu = None;
+                            }
+                        }
+                    }
+                }
+                None => {
+                    existing_clone.compute_specs = None;
+                }
+            }
+
+            if existing_clone == update_node {
+                log::info!("Node {} is already active in a pool", update_node.id);
+                return HttpResponse::Ok()
+                    .json(ApiResponse::new(true, "Node registered successfully"));
+            }
+
             warn!(
                 "Node {} tried to change discovery but is already active in a pool",
                 update_node.id
