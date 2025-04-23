@@ -44,7 +44,9 @@ pub async fn register_node(
                 return HttpResponse::Ok()
                     .json(ApiResponse::new(true, "Node registered successfully"));
             }
-
+            // Temp. adjustment: The gpu object has changed and includes a vec of indices now.
+            // This now causes the discovery svc to reject nodes that have just updated their software.
+            // This is a temporary fix to ensure the node is accepted even though the indices are different.
             let mut existing_clone = existing_node.node.clone();
             match &update_node.compute_specs {
                 Some(compute_specs) => {
