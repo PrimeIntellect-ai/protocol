@@ -160,6 +160,7 @@ impl ComputePool {
                 "submitWork",
                 &[pool_id.into(), node.into(), submit_data.into()],
             )?
+            .gas(1_000_000)
             .send()
             .await?
             .watch()
