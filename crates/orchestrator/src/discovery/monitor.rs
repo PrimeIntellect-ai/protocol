@@ -5,6 +5,8 @@ use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::Address;
 use anyhow::Error;
 use anyhow::Result;
+use futures::stream;
+use futures::StreamExt;
 use log::{error, info};
 use serde_json;
 use shared::models::api::ApiResponse;
@@ -209,11 +211,13 @@ impl<'b> DiscoveryMonitor<'b> {
     async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
         let discovery_nodes = self.fetch_nodes_from_discovery().await?;
 
-        for discovery_node in &discovery_nodes {
-            if let Err(e) = self.sync_single_node_with_discovery(discovery_node).await {
-                error!("Error syncing node with discovery: {}", e);
-            }
-        }
+        stream::iter(discovery_nodes.iter())
+            .for_each_concurrent(10, |node| async move {
+                if let Err(e) = self.sync_single_node_with_discovery(node).await {
+                    error!("Error syncing node with discovery: {}", e);
+                }
+            })
+            .await;
 
         Ok(discovery_nodes
             .into_iter()
