@@ -229,6 +229,12 @@ pub async fn execute_command(
                 },
             );
 
+            // Temp. solution to clear open transactions
+            // This will break setups when we have multiple nodes connected to a provider
+            let _ = provider_wallet_instance.clear_pending_transactions().await;
+
+            return Ok(());
+
             let node_wallet_instance = Arc::new(
                 match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
