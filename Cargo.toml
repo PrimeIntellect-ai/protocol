@@ -35,7 +35,7 @@ redis = "0.28.1"
 redis-test = "0.8.0"
 
 [workspace.package]
-version = "0.2.8"
+version = "0.2.6"
 edition = "2021"
 
 [workspace.features]
