@@ -192,7 +192,7 @@ impl NodeStatusUpdater {
 
     pub async fn process_nodes(&self) -> Result<(), anyhow::Error> {
         let nodes = self.store_context.node_store.get_nodes();
-        stream::iter(nodes.clone())
+        stream::iter(nodes)
             .for_each_concurrent(10, |node| async move {
                 if let Err(e) = self._process_node(&node).await {
                     error!("Error processing node {:?}: {}", node.address, e);
@@ -203,7 +203,6 @@ impl NodeStatusUpdater {
     }
 
     async fn _process_node(&self, node: &OrchestratorNode) -> Result<(), anyhow::Error> {
-        let node = node.clone();
         let old_status = node.status.clone();
         let heartbeat = self
             .store_context
@@ -214,7 +213,7 @@ impl NodeStatusUpdater {
             .heartbeat_store
             .get_unhealthy_counter(&node.address);
 
-        let is_node_in_pool = self.is_node_in_pool(&node).await;
+        let is_node_in_pool = self.is_node_in_pool(node).await;
         let mut status_changed = false;
         let mut new_status = node.status.clone();
 
@@ -286,38 +285,6 @@ impl NodeStatusUpdater {
                             new_status = NodeStatus::Unhealthy;
                             status_changed = true;
                         }
-                        NodeStatus::Unhealthy => {
-                            if unhealthy_counter + 1 >= self.missing_heartbeat_threshold {
-                                new_status = NodeStatus::Dead;
-                                status_changed = true;
-                            }
-                        }
-                        NodeStatus::Discovered => {
-                            if is_node_in_pool {
-                                // We have caught a very interesting edge case here.
-                                // The node is in pool but does not send heartbeats - maybe due to a downtime of the orchestrator?
-                                // Node invites fail now since the node cannot be in pool again.
-                                // We have to eject and re-invite - we can simply do this by setting the status to unhealthy. The node will eventually be ejected.
-                                new_status = NodeStatus::Unhealthy;
-                                status_changed = true;
-                            } else {
-                                // if we've been trying to invite this node for a while, we eventually give up and mark it as dead
-                                // The node will simply be in status discovered again when the discovery svc date > status change date.
-                                if unhealthy_counter + 1 > 360 {
-                                    new_status = NodeStatus::Dead;
-                                    status_changed = true;
-                                }
-                            }
-                        }
-                        NodeStatus::WaitingForHeartbeat => {
-                            if unhealthy_counter + 1 >= self.missing_heartbeat_threshold {
-                                // Unhealthy counter is reset when node is invited
-                                // usually it starts directly with heartbeat
-                                new_status = NodeStatus::Unhealthy;
-                                status_changed = true;
-                            }
-                        }
-                        _ => (),
                     }
                     NodeStatus::WaitingForHeartbeat => {
                         if unhealthy_counter + 1 >= self.missing_heartbeat_threshold {
