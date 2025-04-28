@@ -1,4 +1,3 @@
-use crate::console::Console;
 use shared::models::node::Node;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
