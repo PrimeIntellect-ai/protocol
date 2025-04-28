@@ -4,7 +4,7 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use alloy::primitives::U256;
-use log::warn;
+use log::{debug, warn};
 use shared::models::api::ApiResponse;
 use shared::models::node::{ComputeRequirements, Node};
 use std::str::FromStr;
@@ -68,8 +68,6 @@ pub async fn register_node(
                     existing_clone.compute_specs = None;
                 }
             }
-            println!("existing_clone: {:?}", existing_clone);
-            println!("update_node: {:?}", update_node);
 
             if existing_clone == update_node {
                 log::info!("Node {} is already active in a pool", update_node.id);
@@ -100,6 +98,8 @@ pub async fn register_node(
                 "Node {} tried to change discovery but another active node is already registered to this IP address",
                 update_node.id
             );
+            debug!("Existing node: {:?}", existing_node);
+            debug!("Update node: {:?}", update_node);
             return HttpResponse::BadRequest().json(ApiResponse::new(
                 false,
                 "Another active Node is already registered to this IP address",
