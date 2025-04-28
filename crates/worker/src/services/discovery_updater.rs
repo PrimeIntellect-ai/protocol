@@ -35,7 +35,6 @@ impl DiscoveryUpdater {
 
         self.is_running.store(true, Ordering::SeqCst);
         let is_running = self.is_running.clone();
-        let node_config = node_config;
         let discovery_service = self.discovery_service.clone();
         let system_state = self.system_state.clone();
         let cancellation_token = self.cancellation_token.clone();
