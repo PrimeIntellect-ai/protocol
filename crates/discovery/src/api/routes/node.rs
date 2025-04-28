@@ -54,6 +54,9 @@ pub async fn register_node(
                         match &compute_specs.gpu {
                             Some(gpu_specs) => {
                                 existing_compute_specs.gpu = Some(gpu_specs.clone());
+                                existing_compute_specs.storage_gb = compute_specs.storage_gb;
+                                existing_compute_specs.storage_path =
+                                    compute_specs.storage_path.clone();
                             }
                             None => {
                                 existing_compute_specs.gpu = None;
@@ -65,6 +68,8 @@ pub async fn register_node(
                     existing_clone.compute_specs = None;
                 }
             }
+            println!("existing_clone: {:?}", existing_clone);
+            println!("update_node: {:?}", update_node);
 
             if existing_clone == update_node {
                 log::info!("Node {} is already active in a pool", update_node.id);
@@ -483,5 +488,92 @@ mod tests {
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[actix_web::test]
+    async fn test_register_node_already_active_in_pool() {
+        let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
+        let mut node = Node {
+            id: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf".to_string(),
+            provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
+            ip_address: "127.0.0.1".to_string(),
+            port: 8089,
+            compute_pool_id: 0,
+            compute_specs: Some(ComputeSpecs {
+                gpu: Some(GpuSpecs {
+                    count: Some(4),
+                    model: Some("A100".to_string()),
+                    memory_mb: Some(40000),
+                    indices: None,
+                }),
+                cpu: Some(CpuSpecs {
+                    cores: Some(16),
+                    model: None,
+                }),
+                ram_mb: Some(64000),
+                storage_gb: Some(500),
+                storage_path: None,
+            }),
+        };
+
+        let app_state = AppState {
+            node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
+            contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+        };
+
+        app_state.node_store.register_node(node.clone()).unwrap();
+
+        node.compute_specs.as_mut().unwrap().storage_gb = Some(300);
+        node.compute_specs
+            .as_mut()
+            .unwrap()
+            .gpu
+            .as_mut()
+            .unwrap()
+            .indices = Some(vec![0, 1, 2, 3]);
+
+        let validate_signatures =
+            Arc::new(ValidatorState::new(vec![]).with_validator(move |_| true));
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(app_state.clone()))
+                .route("/nodes", put().to(register_node))
+                .wrap(ValidateSignature::new(validate_signatures.clone())),
+        )
+        .await;
+
+        let json = serde_json::to_value(node.clone()).unwrap();
+        let signature = sign_request(
+            "/nodes",
+            &Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap(),
+            Some(&json),
+        )
+        .await
+        .unwrap();
+
+        let req = test::TestRequest::put()
+            .uri("/nodes")
+            .set_json(json)
+            .insert_header(("x-address", node.id.clone()))
+            .insert_header(("x-signature", signature))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body: ApiResponse<String> = test::read_body_json(resp).await;
+        assert!(body.success);
+        assert_eq!(body.data, "Node registered successfully");
+
+        let nodes = app_state.node_store.get_nodes();
+        let nodes = match nodes {
+            Ok(nodes) => nodes,
+            Err(_) => {
+                panic!("Error getting nodes");
+            }
+        };
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].id, node.id);
     }
 }
