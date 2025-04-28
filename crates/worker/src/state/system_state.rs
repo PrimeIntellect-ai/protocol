@@ -121,7 +121,12 @@ impl SystemState {
             let mut is_running = self.is_running.write().await;
             let mut endpoint = self.endpoint.write().await;
             *is_running = running;
-            *endpoint = heartbeat_endpoint;
+
+            if !running {
+                *endpoint = None;
+            } else {
+                *endpoint = heartbeat_endpoint;
+            }
 
             if endpoint.is_some() {
                 if let Err(e) = self.save_state(endpoint.clone()) {

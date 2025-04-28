@@ -10,6 +10,7 @@ use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderOperations;
 use crate::services::discovery::DiscoveryService;
+use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::U256;
@@ -269,8 +270,12 @@ pub async fn execute_command(
                 compute_node_state,
             );
 
+            let discovery_wallet = node_wallet_instance.clone();
             let discovery_service =
-                DiscoveryService::new(&node_wallet_instance, discovery_url.clone(), None);
+                DiscoveryService::new(discovery_wallet, discovery_url.clone(), None);
+            let discovery_state = state.clone();
+            let discovery_updater =
+                DiscoveryUpdater::new(discovery_service.clone(), discovery_state.clone());
             let pool_id = U256::from(*compute_pool_id as u32);
 
             let pool_info = loop {
@@ -589,6 +594,7 @@ pub async fn execute_command(
             let mut attempts = 0;
             let max_attempts = 100;
             while attempts < max_attempts {
+                Console::title("📦 Uploading discovery info");
                 match discovery_service.upload_discovery_info(&node_config).await {
                     Ok(_) => break,
                     Err(e) => {
@@ -621,6 +627,8 @@ pub async fn execute_command(
                 "🌐 Starting endpoint service and waiting for sync with orchestrator",
                 "",
             );
+
+            discovery_updater.start_auto_update(node_config);
 
             if let Err(err) = {
                 let heartbeat_clone = heartbeat_service.unwrap().clone();
