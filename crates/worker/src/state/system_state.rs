@@ -123,6 +123,10 @@ impl SystemState {
             *is_running = running;
             *endpoint = heartbeat_endpoint;
 
+            if !running {
+                *endpoint = None;
+            }
+
             if endpoint.is_some() {
                 if let Err(e) = self.save_state(endpoint.clone()) {
                     // Only save the endpoint

@@ -2,15 +2,16 @@ use crate::console::Console;
 use shared::models::node::Node;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
+use std::sync::Arc;
 
-pub struct DiscoveryService<'b> {
-    wallet: &'b Wallet,
+pub struct DiscoveryService {
+    wallet: Arc<Wallet>,
     base_url: String,
     endpoint: String,
 }
 
-impl<'b> DiscoveryService<'b> {
-    pub fn new(wallet: &'b Wallet, base_url: Option<String>, endpoint: Option<String>) -> Self {
+impl DiscoveryService {
+    pub fn new(wallet: Arc<Wallet>, base_url: Option<String>, endpoint: Option<String>) -> Self {
         Self {
             wallet,
             base_url: base_url.unwrap_or_else(|| "http://localhost:8089".to_string()),
@@ -22,13 +23,11 @@ impl<'b> DiscoveryService<'b> {
         &self,
         node_config: &Node,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        Console::title("📦 Uploading discovery info");
-
         let request_data = serde_json::to_value(node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
         let signature_string =
-            sign_request(&self.endpoint, self.wallet, Some(&request_data)).await?;
+            sign_request(&self.endpoint, &self.wallet, Some(&request_data)).await?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -66,5 +65,15 @@ impl<'b> DiscoveryService<'b> {
         }
 
         Ok(())
+    }
+}
+
+impl Clone for DiscoveryService {
+    fn clone(&self) -> Self {
+        Self {
+            wallet: self.wallet.clone(),
+            base_url: self.base_url.clone(),
+            endpoint: self.endpoint.clone(),
+        }
     }
 }
