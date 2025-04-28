@@ -275,6 +275,13 @@ impl NodeStatusUpdater {
                                 // We have to eject and re-invite - we can simply do this by setting the status to unhealthy. The node will eventually be ejected.
                                 new_status = NodeStatus::Unhealthy;
                                 status_changed = true;
+                            } else {
+                                // if we've been trying to invite this node for a while, we eventually give up and mark it as dead
+                                // The node will simply be in status discovered again when the discovery svc date > status change date.
+                                if unhealthy_counter + 1 > 360 {
+                                    new_status = NodeStatus::Dead;
+                                    status_changed = true;
+                                }
                             }
                         }
                         NodeStatus::WaitingForHeartbeat => {
