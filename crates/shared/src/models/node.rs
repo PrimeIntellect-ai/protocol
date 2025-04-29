@@ -249,7 +249,8 @@ impl ComputeSpecs {
         if let Some(req_cpu) = &requirements.cpu {
             if !self
                 .cpu
-                .as_ref().is_some_and(|spec_cpu| spec_cpu.meets(req_cpu))
+                .as_ref()
+                .is_some_and(|spec_cpu| spec_cpu.meets(req_cpu))
             {
                 info!(
                     "CPU requirements not met: required {:?}, have {:?}",
@@ -273,7 +274,8 @@ impl ComputeSpecs {
         // Check Storage (if required)
         if let Some(req_storage) = requirements.storage_gb {
             if self
-                .storage_gb.is_none_or(|spec_storage| spec_storage < req_storage)
+                .storage_gb
+                .is_none_or(|spec_storage| spec_storage < req_storage)
             {
                 info!(
                     "Storage requirements not met: required {} GB, have {:?} GB",
@@ -313,9 +315,7 @@ impl GpuSpecs {
         // Check count (if required)
         if let Some(req_count) = requirement.count {
             // Node must have at least the required count. Node having 0 is okay only if req_count is 0 or None.
-            if self
-                .count.is_none_or(|spec_count| spec_count < req_count)
-            {
+            if self.count.is_none_or(|spec_count| spec_count < req_count) {
                 if self.count.is_none() && req_count > 0 {
                     return false;
                 }
@@ -359,9 +359,7 @@ impl CpuSpecs {
     fn meets(&self, requirement: &CpuSpecs) -> bool {
         // Check cores (if required)
         if let Some(req_cores) = requirement.cores {
-            if self
-                .cores.is_none_or(|spec_cores| spec_cores < req_cores)
-            {
+            if self.cores.is_none_or(|spec_cores| spec_cores < req_cores) {
                 return false;
             }
         }
