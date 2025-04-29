@@ -249,8 +249,7 @@ impl ComputeSpecs {
         if let Some(req_cpu) = &requirements.cpu {
             if !self
                 .cpu
-                .as_ref()
-                .map_or(false, |spec_cpu| spec_cpu.meets(req_cpu))
+                .as_ref().is_some_and(|spec_cpu| spec_cpu.meets(req_cpu))
             {
                 info!(
                     "CPU requirements not met: required {:?}, have {:?}",
@@ -262,7 +261,7 @@ impl ComputeSpecs {
 
         // Check RAM (if required)
         if let Some(req_ram) = requirements.ram_mb {
-            if !(self.ram_mb.map_or(false, |spec_ram| spec_ram >= req_ram)) {
+            if self.ram_mb.is_none_or(|spec_ram| spec_ram < req_ram) {
                 info!(
                     "RAM requirements not met: required {} MB, have {:?} MB",
                     req_ram, self.ram_mb
@@ -273,9 +272,8 @@ impl ComputeSpecs {
 
         // Check Storage (if required)
         if let Some(req_storage) = requirements.storage_gb {
-            if !(self
-                .storage_gb
-                .map_or(false, |spec_storage| spec_storage >= req_storage))
+            if self
+                .storage_gb.is_none_or(|spec_storage| spec_storage < req_storage)
             {
                 info!(
                     "Storage requirements not met: required {} GB, have {:?} GB",
@@ -315,21 +313,20 @@ impl GpuSpecs {
         // Check count (if required)
         if let Some(req_count) = requirement.count {
             // Node must have at least the required count. Node having 0 is okay only if req_count is 0 or None.
-            if !(self
-                .count
-                .map_or(false, |spec_count| spec_count >= req_count))
+            if self
+                .count.is_none_or(|spec_count| spec_count < req_count)
             {
                 if self.count.is_none() && req_count > 0 {
                     return false;
                 }
-                if self.count.map_or(true, |sc| sc < req_count) {
+                if self.count.is_none_or(|sc| sc < req_count) {
                     return false;
                 }
             }
         }
 
         if let Some(req_model) = &requirement.model {
-            if !(self.model.as_ref().map_or(false, |spec_model| {
+            if !self.model.as_ref().is_some_and(|spec_model| {
                 let normalized_spec = spec_model.to_lowercase().replace(' ', "_");
 
                 // Split the requirement model string by commas and check if any match
@@ -340,14 +337,14 @@ impl GpuSpecs {
                         normalized_spec.contains(&normalized_req)
                             || normalized_req.contains(&normalized_spec)
                     })
-            })) {
+            }) {
                 return false;
             }
         }
 
         // Check memory per GPU (if required)
         if let Some(req_mem) = requirement.memory_mb {
-            if !(self.memory_mb.map_or(false, |spec_mem| spec_mem >= req_mem)) {
+            if self.memory_mb.is_none_or(|spec_mem| spec_mem < req_mem) {
                 return false;
             }
         }
@@ -362,9 +359,8 @@ impl CpuSpecs {
     fn meets(&self, requirement: &CpuSpecs) -> bool {
         // Check cores (if required)
         if let Some(req_cores) = requirement.cores {
-            if !(self
-                .cores
-                .map_or(false, |spec_cores| spec_cores >= req_cores))
+            if self
+                .cores.is_none_or(|spec_cores| spec_cores < req_cores)
             {
                 return false;
             }
