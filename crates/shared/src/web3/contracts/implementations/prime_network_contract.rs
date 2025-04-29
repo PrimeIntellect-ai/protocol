@@ -197,6 +197,29 @@ impl PrimeNetworkContract {
         Ok(whitelist_provider_tx)
     }
 
+    pub async fn blacklist_provider(
+        &self,
+        provider_address: Address,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let blacklist_provider_tx = self
+            .instance
+            .instance()
+            .function("blacklistProvider", &[provider_address.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
+
+        let receipt = self
+            .instance
+            .provider()
+            .get_transaction_receipt(blacklist_provider_tx)
+            .await?;
+        println!("Receipt: {:?}", receipt);
+
+        Ok(blacklist_provider_tx)
+    }
+
     pub async fn invalidate_work(
         &self,
         pool_id: U256,
