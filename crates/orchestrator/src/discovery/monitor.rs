@@ -130,7 +130,10 @@ impl<'b> DiscoveryMonitor<'b> {
         let node_address = discovery_node.node.id.parse::<Address>()?;
         match self.store_context.node_store.get_node(&node_address) {
             Some(existing_node) => {
-                if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
+                if discovery_node.is_validated
+                    && !discovery_node.is_provider_whitelisted
+                    && existing_node.status != NodeStatus::Ejected
+                {
                     info!(
                         "Node {} is validated but not provider whitelisted, marking as ejected",
                         node_address

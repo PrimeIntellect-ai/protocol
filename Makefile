@@ -66,6 +66,10 @@ whitelist-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
 
+blacklist-provider:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example blacklist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
+
 watch-discovery:
 	set -a; source .env; set +a; \
 	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL}"

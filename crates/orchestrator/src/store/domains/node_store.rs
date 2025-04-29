@@ -84,10 +84,17 @@ impl NodeStore {
         let node_key: String = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
         let node_string: String = con.get(&node_key).unwrap();
         let mut node: OrchestratorNode = serde_json::from_str(&node_string).unwrap();
-        node.status = status;
-        node.last_status_change = Some(chrono::Utc::now());
-        let node_string = node.to_string();
-        let _: () = con.set(&node_key, node_string).unwrap();
+        if node.status != status {
+            node.status = status;
+            node.last_status_change = Some(chrono::Utc::now());
+            let node_string = node.to_string();
+            let _: () = con.set(&node_key, node_string).unwrap();
+        } else {
+            info!(
+                "update_node_status called with same status ({}) for node {}",
+                status, node_address
+            );
+        }
     }
 
     pub fn update_node_version(&self, node_address: &Address, version: &str) {
