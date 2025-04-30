@@ -14,7 +14,7 @@ shared = { path = "crates/shared" }
 actix-web = "4.9.0"
 clap = { version = "4.5.27", features = ["derive"] }
 serde = { version = "1.0.219", features = ["derive"] }
-tokio = { version = "1.43.0", features = ["full"] }
+tokio = { version = "1.43.0", features = ["full", "macros"] }
 uuid = { version = "1.12.1", features = ["v4", "serde"] }
 log = { version = "0.4.26" }
 env_logger = { version = "0.11.6" }
@@ -33,6 +33,7 @@ directories = "6.0.0"
 nalgebra = "0.33.2"
 redis = "0.28.1"
 redis-test = "0.8.0"
+stun = "0.7.0"
 
 [workspace.package]
 version = "0.2.10"

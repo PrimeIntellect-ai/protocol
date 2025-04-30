@@ -2,6 +2,7 @@ use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::issue::IssueReport;
 use crate::checks::software::SoftwareChecker;
+use crate::checks::stun::StunCheck;
 use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
@@ -50,7 +51,7 @@ pub enum Commands {
 
         /// External IP address for the worker to advertise
         #[arg(long)]
-        external_ip: String,
+        external_ip: Option<String>,
 
         /// Compute pool ID
         #[arg(long)]
@@ -295,13 +296,22 @@ pub async fn execute_command(
                 }
             };
 
+            let stun_check = StunCheck::new(Duration::from_secs(5), 0);
+            let detected_external_ip = match stun_check.get_public_ip().await {
+                Ok(ip) => ip,
+                Err(e) => {
+                    error!("❌ Failed to get public IP: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
             let node_config = Node {
                 id: node_wallet_instance
                     .wallet
                     .default_signer()
                     .address()
                     .to_string(),
-                ip_address: external_ip.to_string(),
+                ip_address: external_ip.unwrap_or(detected_external_ip),
                 port: *port,
                 provider_address: provider_wallet_instance
                     .wallet
@@ -319,6 +329,17 @@ pub async fn execute_command(
             if let Err(err) = software_checker.check_software(&node_config).await {
                 Console::user_error(&format!("❌ Software check failed: {}", err));
                 std::process::exit(1);
+            }
+
+            if let Some(external_ip) = external_ip {
+                if external_ip != detected_external_ip {
+                    Console::warning(
+                        &format!(
+                            "Automatically detected external IP {} does not match the provided external IP {}",
+                            detected_external_ip, external_ip
+                        ),
+                    );
+                }
             }
 
             let issues = issue_tracker.read().await;
