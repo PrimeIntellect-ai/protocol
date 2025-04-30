@@ -263,10 +263,7 @@ impl DockerManager {
     }
 
     pub async fn remove_container(&self, container_id: &str) -> Result<(), DockerError> {
-        let container = match self.get_container_details(container_id).await {
-            Ok(c) => Some(c),
-            Err(_) => None,
-        };
+        let container = (self.get_container_details(container_id).await).ok();
 
         if container.is_some() {
             if let Err(e) = self.docker.stop_container(container_id, None).await {
