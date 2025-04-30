@@ -332,7 +332,7 @@ pub async fn execute_command(
             }
 
             if let Some(external_ip) = external_ip {
-                if external_ip.to_string() != detected_external_ip {
+                if *external_ip != detected_external_ip {
                     Console::warning(
                         &format!(
                             "Automatically detected external IP {} does not match the provided external IP {}",
