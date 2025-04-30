@@ -40,11 +40,11 @@ start-compute-pool:
 
 setup: 
 	make mint-ai-tokens-to-provider
-	make transfer-eth-to-provider
-	make transfer-eth-to-pool-owner
-	make create-domain
-	make create-compute-pool
-	make start-compute-pool
+	# make transfer-eth-to-provider
+	# make transfer-eth-to-pool-owner
+	# make create-domain
+	# make create-compute-pool
+	# make start-compute-pool
 
 setup-dev-env:
 	make create-training-domain

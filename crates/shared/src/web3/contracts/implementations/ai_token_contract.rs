@@ -2,6 +2,7 @@ use crate::web3::contracts::constants::addresses::{AI_TOKEN_ADDRESS, PRIME_NETWO
 use crate::web3::contracts::core::contract::Contract;
 use crate::web3::wallet::Wallet;
 use alloy::primitives::{Address, FixedBytes, U256};
+use alloy::providers::Provider;
 
 #[derive(Clone)]
 pub struct AIToken {
@@ -52,19 +53,25 @@ impl AIToken {
 
         Ok(tx)
     }
+
     pub async fn mint(
         &self,
         to: Address,
         amount: U256,
+        nonce: u64,
+        gas: Option<u128>,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        let tx = self
+        let mut call = self
             .instance
             .instance()
-            .function("mint", &[to.into(), amount.into()])?
-            .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(tx)
+            .function("mint", &[to.into(), amount.into()])?;
+
+        call = call.nonce(nonce);
+        if let Some(gas) = gas {
+            call = call.gas_price(gas);
+        }
+
+        let send = call.send().await?;
+        Ok(send.tx_hash().clone())
     }
 }

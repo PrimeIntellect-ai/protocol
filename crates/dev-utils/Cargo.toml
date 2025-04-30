@@ -12,3 +12,4 @@ url = { workspace = true }
 alloy = { workspace = true }
 tokio-util = { workspace = true }
 hex = "0.4.3"
+rand = "0.9.1"
