@@ -311,7 +311,7 @@ pub async fn execute_command(
                     .default_signer()
                     .address()
                     .to_string(),
-                ip_address: external_ip.clone().unwrap_or(detected_external_ip.clone()),
+                ip_address: external_ip.unwrap_or(detected_external_ip),
                 port: *port,
                 provider_address: provider_wallet_instance
                     .wallet
@@ -332,7 +332,7 @@ pub async fn execute_command(
             }
 
             if let Some(external_ip) = external_ip {
-                if *external_ip != detected_external_ip {
+                if external_ip != detected_external_ip {
                     Console::warning(
                         &format!(
                             "Automatically detected external IP {} does not match the provided external IP {}",
