@@ -2292,7 +2292,6 @@ dependencies = [
  "clap 4.5.37",
  "eyre",
  "hex",
- "rand 0.9.1",
  "shared",
  "tokio",
  "tokio-util",

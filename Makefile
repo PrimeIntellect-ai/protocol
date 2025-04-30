@@ -147,7 +147,6 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 			clear && \
 			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w worker/src -x \"run --bin worker -- run \
 				--port $(PORT) \
-				--external-ip \$$EXTERNAL_IP \
 				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
 				--auto-accept \
 				2>&1 | tee worker.log\"'"
