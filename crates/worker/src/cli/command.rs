@@ -304,7 +304,6 @@ pub async fn execute_command(
                     std::process::exit(1);
                 }
             };
-            println!("Detected external IP: {}", detected_external_ip);
 
             let node_config = Node {
                 id: node_wallet_instance
