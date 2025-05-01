@@ -83,29 +83,46 @@ pub async fn invite_node(
 
     let max_tries = 3;
     let mut tries = 0;
-    let mut gas_price: Option<u64> = None;
+    let mut gas_price: Option<u128> = None;
+
     while tries < max_tries {
         let node_address = vec![wallet.wallet.default_signer().address()];
         let signatures = vec![FixedBytes::from(&bytes_array)];
+        let mut call = match contracts.compute_pool.build_join_compute_pool_call(
+            pool_id,
+            provider_address,
+            node_address,
+            signatures,
+        ) {
+            Ok(call) => call,
+            Err(err) => {
+                error!("Failed to build join compute pool call: {:?}", err);
+                return HttpResponse::InternalServerError().json(json!({
+                    "error": "Failed to build join compute pool call"
+                }));
+            }
+        };
 
-        // TODO: Timeout handling
-        match contracts
-            .compute_pool
-            .join_compute_pool(
-                pool_id,
-                provider_address,
-                node_address,
-                signatures,
-                true,
-                gas_price,
-            )
-            .await
-        {
+        if let Some(gas_price) = gas_price {
+            call = call.gas_price(gas_price);
+        }
+
+        let result = call.send().await;
+
+        match result {
             Ok(result) => {
-                Console::success(&format!("Successfully joined compute pool: {:?}", result));
-                break;
+                // TODO: Timeout handling missing
+                let join_success = result.watch().await;
+                if join_success.is_ok() {
+                    Console::success("Successfully joined compute pool");
+                    break;
+                } else {
+                    error!("Failed to join compute pool: {:?}", join_success);
+                    tries += 1;
+                }
             }
             Err(err) => {
+                error!("Failed to join compute pool: {:?}", err);
                 if err
                     .to_string()
                     .contains("replacement transaction underpriced")
@@ -114,7 +131,7 @@ pub async fn invite_node(
                     Console::user_error("Replacement transaction underpriced - Retrying...");
                     match app_state.provider_wallet.provider.get_gas_price().await {
                         Ok(price) => {
-                            gas_price = Some(price as u64 * (110 + tries * 10) / 100);
+                            gas_price = Some(price * (110 + tries * 10) / 100);
                         }
                         Err(err) => {
                             error!("Failed to get gas price: {:?}", err);
