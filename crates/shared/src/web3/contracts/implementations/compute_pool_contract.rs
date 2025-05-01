@@ -1,13 +1,10 @@
 use crate::web3::contracts::constants::addresses::COMPUTE_POOL_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
-use crate::web3::contracts::helpers::utils::get_selector;
+use crate::web3::contracts::helpers::utils::{get_selector, PrimeCallBuilder};
 use crate::web3::contracts::structs::compute_pool::{PoolInfo, PoolStatus};
-use crate::web3::wallet::{Wallet, WalletProvider};
-use alloy::contract::CallBuilder;
+use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
-use alloy::network::Ethereum;
 use alloy::primitives::{Address, FixedBytes, U256};
-use alloy::transports::http::{Client, Http};
 
 #[derive(Clone)]
 pub struct ComputePool {
@@ -85,10 +82,7 @@ impl ComputePool {
         provider_address: Address,
         nodes: Vec<Address>,
         signatures: Vec<FixedBytes<65>>,
-    ) -> Result<
-        CallBuilder<Http<Client>, &WalletProvider, alloy::json_abi::Function, Ethereum>,
-        Box<dyn std::error::Error>,
-    > {
+    ) -> Result<PrimeCallBuilder, Box<dyn std::error::Error>> {
         let join_compute_pool_selector =
             get_selector("joinComputePool(uint256,address,address[],bytes[])");
         let address = DynSolValue::from(
@@ -108,48 +102,6 @@ impl ComputePool {
             &[pool_id.into(), provider_address.into(), address, signatures],
         )?;
         Ok(call)
-    }
-
-    pub async fn join_compute_pool(
-        &self,
-        pool_id: U256,
-        provider_address: Address,
-        nodes: Vec<Address>,
-        signatures: Vec<FixedBytes<65>>,
-        watch: bool,
-        gas: Option<u64>,
-    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        let join_compute_pool_selector =
-            get_selector("joinComputePool(uint256,address,address[],bytes[])");
-        let address = DynSolValue::from(
-            nodes
-                .iter()
-                .map(|addr| DynSolValue::from(*addr))
-                .collect::<Vec<_>>(),
-        );
-        let signatures = DynSolValue::from(
-            signatures
-                .iter()
-                .map(|sig| DynSolValue::Bytes(sig.to_vec()))
-                .collect::<Vec<_>>(),
-        );
-
-        let call = self.instance.instance().function_from_selector(
-            &join_compute_pool_selector,
-            &[pool_id.into(), provider_address.into(), address, signatures],
-        )?;
-
-        let result = if let Some(gas) = gas {
-            call.gas(gas).send().await?
-        } else {
-            call.send().await?
-        };
-
-        Ok(if watch {
-            result.watch().await?
-        } else {
-            *result.tx_hash()
-        })
     }
 
     pub async fn leave_compute_pool(
