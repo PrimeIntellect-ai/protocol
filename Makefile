@@ -145,9 +145,8 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 			set -a && source .env && set +a && \
 			export EXTERNAL_IP=$(EXTERNAL_IP) && \
 			clear && \
-			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w worker/src -x \"run --bin worker -- run \
+			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w crates/worker/src -x \"run --bin worker -- run \
 				--port $(PORT) \
-				--external-ip \$$EXTERNAL_IP \
 				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
 				--auto-accept \
 				2>&1 | tee worker.log\"'"
@@ -171,11 +170,11 @@ eject-node:
 
 sign-message:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- sign-message --message example-content --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$PRIVATE_KEY_NODE"
+	cargo watch -w crates/worker/src -x "run --bin worker -- sign-message --message example-content --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$PRIVATE_KEY_NODE"
 
 balance:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- balance --private-key $$PRIVATE_KEY_PROVIDER --rpc-url $$RPC_URL"
+	cargo watch -w crates/worker/src -x "run --bin worker -- balance --private-key $$PRIVATE_KEY_PROVIDER --rpc-url $$RPC_URL"
 
 get-node-info:
 	set -a; source ${ENV_FILE}; set +a; \

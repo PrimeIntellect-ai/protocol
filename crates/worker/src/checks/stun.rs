@@ -1,4 +1,3 @@
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
@@ -9,7 +8,6 @@ use stun::agent::*;
 use stun::client::*;
 use stun::message::*;
 use stun::xoraddr::*;
-use stun::Error;
 
 use tracing::{debug, error, info};
 
@@ -134,7 +132,6 @@ impl StunCheck {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use tokio::test;
 
     #[tokio::test]
     async fn test_get_public_ip() {
