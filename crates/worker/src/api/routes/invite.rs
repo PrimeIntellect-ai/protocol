@@ -6,12 +6,11 @@ use actix_web::{
 };
 use alloy::primitives::FixedBytes;
 use alloy::primitives::U256;
-use alloy::providers::Provider;
 use hex;
 use log::error;
 use serde_json::json;
-use shared::models::invite::InviteRequest;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
+use shared::{models::invite::InviteRequest, web3::contracts::helpers::utils::retry_call};
 
 pub async fn invite_node(
     invite: web::Json<InviteRequest>,
@@ -61,7 +60,6 @@ pub async fn invite_node(
         }
     };
 
-    let signatures: Vec<FixedBytes<65>> = vec![FixedBytes::from(&bytes_array)];
     let provider_address = app_state.provider_wallet.wallet.default_signer().address();
 
     let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
@@ -81,75 +79,34 @@ pub async fn invite_node(
         }));
     }
 
-    let max_tries = 3;
-    let mut tries = 0;
-    let mut gas_price: Option<u128> = None;
-
-    while tries < max_tries {
-        let node_address = vec![wallet.wallet.default_signer().address()];
-        let signatures = vec![FixedBytes::from(&bytes_array)];
-        let mut call = match contracts.compute_pool.build_join_compute_pool_call(
-            pool_id,
-            provider_address,
-            node_address,
-            signatures,
-        ) {
-            Ok(call) => call,
-            Err(err) => {
-                error!("Failed to build join compute pool call: {:?}", err);
-                return HttpResponse::InternalServerError().json(json!({
-                    "error": "Failed to build join compute pool call"
-                }));
-            }
-        };
-
-        if let Some(gas_price) = gas_price {
-            call = call.gas_price(gas_price);
+    let node_address = vec![wallet.wallet.default_signer().address()];
+    let signatures = vec![FixedBytes::from(&bytes_array)];
+    let call = match contracts.compute_pool.build_join_compute_pool_call(
+        pool_id,
+        provider_address,
+        node_address,
+        signatures,
+    ) {
+        Ok(call) => call,
+        Err(err) => {
+            error!("Failed to build join compute pool call: {:?}", err);
+            return HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to build join compute pool call"
+            }));
         }
+    };
 
-        let result = call.send().await;
-
-        match result {
-            Ok(result) => {
-                // TODO: Timeout handling missing
-                let join_success = result.watch().await;
-                if join_success.is_ok() {
-                    Console::success("Successfully joined compute pool");
-                    break;
-                } else {
-                    error!("Failed to join compute pool: {:?}", join_success);
-                    tries += 1;
-                }
-            }
-            Err(err) => {
-                error!("Failed to join compute pool: {:?}", err);
-                if err
-                    .to_string()
-                    .contains("replacement transaction underpriced")
-                {
-                    tries += 1;
-                    Console::user_error("Replacement transaction underpriced - Retrying...");
-                    match app_state.provider_wallet.provider.get_gas_price().await {
-                        Ok(price) => {
-                            gas_price = Some(price * (110 + tries * 10) / 100);
-                        }
-                        Err(err) => {
-                            error!("Failed to get gas price: {:?}", err);
-                            return HttpResponse::InternalServerError().json(json!({
-                                "error": "Failed to get gas price"
-                            }));
-                        }
-                    }
-                } else {
-                    error!("Failed to join compute pool: {:?}", err);
-                    return HttpResponse::InternalServerError().json(json!({
-                        "error": "Failed to join compute pool"
-                    }));
-                }
-            }
+    match retry_call(call, 3, None).await {
+        Ok(result) => {
+            Console::success(&format!("Successfully joined compute pool: {}", result));
+        }
+        Err(err) => {
+            error!("Failed to join compute pool: {:?}", err);
+            return HttpResponse::InternalServerError().json(json!({
+                "error": format!("Failed to join compute pool: {}", err)
+            }));
         }
     }
-
     let endpoint = if let Some(url) = &invite.master_url {
         format!("{}/heartbeat", url)
     } else {
