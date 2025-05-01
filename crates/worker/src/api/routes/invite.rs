@@ -6,6 +6,7 @@ use actix_web::{
 };
 use alloy::primitives::FixedBytes;
 use alloy::primitives::U256;
+use alloy::providers::Provider;
 use hex;
 use log::error;
 use serde_json::json;
@@ -61,7 +62,6 @@ pub async fn invite_node(
     };
 
     let signatures: Vec<FixedBytes<65>> = vec![FixedBytes::from(&bytes_array)];
-    let node_address = vec![wallet.wallet.default_signer().address()];
     let provider_address = app_state.provider_wallet.wallet.default_signer().address();
 
     let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
@@ -81,19 +81,55 @@ pub async fn invite_node(
         }));
     }
 
-    match contracts
-        .compute_pool
-        .join_compute_pool(pool_id, provider_address, node_address, signatures)
-        .await
-    {
-        Ok(result) => {
-            Console::success(&format!("Successfully joined compute pool: {:?}", result));
-        }
-        Err(err) => {
-            error!("Failed to join compute pool: {:?}", err);
-            return HttpResponse::InternalServerError().json(json!({
-                "error": "Failed to join compute pool"
-            }));
+    let max_tries = 3;
+    let mut tries = 0;
+    let mut gas_price: Option<u64> = None;
+    while tries < max_tries {
+        let node_address = vec![wallet.wallet.default_signer().address()];
+        let signatures = vec![FixedBytes::from(&bytes_array)];
+
+        // TODO: Timeout handling
+        match contracts
+            .compute_pool
+            .join_compute_pool(
+                pool_id,
+                provider_address,
+                node_address,
+                signatures,
+                true,
+                gas_price,
+            )
+            .await
+        {
+            Ok(result) => {
+                Console::success(&format!("Successfully joined compute pool: {:?}", result));
+                break;
+            }
+            Err(err) => {
+                if err
+                    .to_string()
+                    .contains("replacement transaction underpriced")
+                {
+                    tries += 1;
+                    Console::user_error("Replacement transaction underpriced - Retrying...");
+                    match app_state.provider_wallet.provider.get_gas_price().await {
+                        Ok(price) => {
+                            gas_price = Some(price as u64 * (110 + tries * 10) / 100);
+                        }
+                        Err(err) => {
+                            error!("Failed to get gas price: {:?}", err);
+                            return HttpResponse::InternalServerError().json(json!({
+                                "error": "Failed to get gas price"
+                            }));
+                        }
+                    }
+                } else {
+                    error!("Failed to join compute pool: {:?}", err);
+                    return HttpResponse::InternalServerError().json(json!({
+                        "error": "Failed to join compute pool"
+                    }));
+                }
+            }
         }
     }
 

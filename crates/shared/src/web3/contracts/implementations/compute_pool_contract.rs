@@ -82,6 +82,8 @@ impl ComputePool {
         provider_address: Address,
         nodes: Vec<Address>,
         signatures: Vec<FixedBytes<65>>,
+        watch: bool,
+        gas: Option<u64>,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
         let join_compute_pool_selector =
             get_selector("joinComputePool(uint256,address,address[],bytes[])");
@@ -97,18 +99,23 @@ impl ComputePool {
                 .map(|sig| DynSolValue::Bytes(sig.to_vec()))
                 .collect::<Vec<_>>(),
         );
-        let result = self
-            .instance
-            .instance()
-            .function_from_selector(
-                &join_compute_pool_selector,
-                &[pool_id.into(), provider_address.into(), address, signatures],
-            )?
-            .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(result)
+
+        let call = self.instance.instance().function_from_selector(
+            &join_compute_pool_selector,
+            &[pool_id.into(), provider_address.into(), address, signatures],
+        )?;
+
+        let result = if let Some(gas) = gas {
+            call.gas(gas).send().await?
+        } else {
+            call.send().await?
+        };
+
+        Ok(if watch {
+            result.watch().await?
+        } else {
+            *result.tx_hash()
+        })
     }
 
     pub async fn leave_compute_pool(
@@ -117,11 +124,6 @@ impl ComputePool {
         provider_address: Address,
         node: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Leaving compute pool");
-
-        println!("Provider: {:?}", provider_address);
-        println!("Node: {:?}", node);
-
         let leave_compute_pool_selector = get_selector("leaveComputePool(uint256,address,address)");
 
         let result = self
@@ -135,7 +137,6 @@ impl ComputePool {
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
         Ok(result)
     }
     pub async fn submit_work(
