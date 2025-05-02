@@ -1,15 +1,15 @@
 use alloy::primitives::Address;
 use alloy::{
-    network::{Ethereum, EthereumWallet},
+    network::EthereumWallet,
     primitives::U256,
     providers::fillers::{
         BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller, WalletFiller,
     },
     providers::{Identity, Provider, ProviderBuilder, RootProvider},
     signers::local::PrivateKeySigner,
-    transports::http::{Client, Http},
 };
 use url::Url;
+
 pub type WalletProvider = FillProvider<
     JoinFill<
         JoinFill<
@@ -18,9 +18,7 @@ pub type WalletProvider = FillProvider<
         >,
         WalletFiller<EthereumWallet>,
     >,
-    RootProvider<Http<Client>>,
-    Http<Client>,
-    Ethereum,
+    RootProvider,
 >;
 
 pub struct Wallet {
@@ -37,7 +35,6 @@ impl Wallet {
 
         let wallet_clone = wallet.clone();
         let provider = ProviderBuilder::new()
-            .with_recommended_fillers()
             .wallet(wallet_clone)
             .on_http(provider_url);
 

@@ -1,9 +1,7 @@
 use crate::web3::wallet::{Wallet, WalletProvider};
 use alloy::{
     contract::{ContractInstance, Interface},
-    network::Ethereum,
     primitives::Address,
-    transports::http::{Client, Http},
 };
 
 use std::include_bytes;
@@ -17,7 +15,7 @@ macro_rules! include_abi {
 
 #[derive(Clone)]
 pub struct Contract {
-    instance: ContractInstance<Http<Client>, WalletProvider, Ethereum>,
+    instance: ContractInstance<WalletProvider>,
     provider: WalletProvider,
 }
 
@@ -34,7 +32,7 @@ impl Contract {
         path: &str,
         wallet: &Wallet,
         address: Address,
-    ) -> ContractInstance<Http<Client>, WalletProvider, Ethereum> {
+    ) -> ContractInstance<WalletProvider> {
         let artifact = match path {
             "compute_registry.json" => {
                 include_abi!("../../../../artifacts/abi/compute_registry.json")
@@ -63,10 +61,11 @@ impl Contract {
             });
         let abi =
             serde_json::from_value(abi_json.clone()).expect("Failed to parse ABI from artifact");
+
         ContractInstance::new(address, wallet.provider.clone(), Interface::new(abi))
     }
 
-    pub fn instance(&self) -> &ContractInstance<Http<Client>, WalletProvider, Ethereum> {
+    pub fn instance(&self) -> &ContractInstance<WalletProvider> {
         &self.instance
     }
 
