@@ -238,6 +238,13 @@ impl TaskBridge {
                                                     let file_sha_inner = file_sha.to_string();
                                                     let contracts_inner = contracts_ref.clone();
                                                     let node_inner = node_ref.clone();
+                                                    let provider = match wallet.as_ref() {
+                                                        Some(wallet) => wallet.provider.clone(),
+                                                        None => {
+                                                            error!("No wallet provider found");
+                                                            return;
+                                                        }
+                                                    };
 
                                                     tokio::spawn(async move {
                                                         if let Err(e) =
@@ -245,6 +252,7 @@ impl TaskBridge {
                                                                 &file_sha_inner,
                                                                 &contracts_inner,
                                                                 &node_inner,
+                                                                &provider,
                                                             )
                                                             .await
                                                         {

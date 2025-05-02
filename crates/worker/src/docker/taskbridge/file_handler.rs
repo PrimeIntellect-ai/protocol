@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
 use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::Contracts;
-use shared::web3::wallet::Wallet;
+use shared::web3::contracts::helpers::utils::retry_call;
+use shared::web3::wallet::{Wallet, WalletProvider};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -320,6 +321,7 @@ pub async fn handle_file_validation(
     file_sha: &str,
     contracts: &Arc<Contracts>,
     node: &Node,
+    provider: &WalletProvider,
 ) -> Result<()> {
     info!("📄 Received file SHA for validation: {}", file_sha);
     info!(
@@ -329,120 +331,37 @@ pub async fn handle_file_validation(
 
     let pool_id = node.compute_pool_id;
     let node_address = &node.id;
-
-    // Retry configuration
-    const MAX_RETRIES: usize = 5;
-    const INITIAL_RETRY_DELAY_MS: u64 = 1000; // 1 second
-    const TRANSACTION_TIMEOUT_SECS: u64 = 60; // Increased timeout for blockchain transactions
-
-    let mut retry_count = 0;
-    let mut last_error = None;
-    info!(
-        "Starting blockchain work submission with max {} retries",
-        MAX_RETRIES
-    );
-    while retry_count < MAX_RETRIES {
-        if retry_count > 0 {
-            let delay = INITIAL_RETRY_DELAY_MS * (1 << retry_count); // Exponential backoff
-            warn!(
-                "Retrying blockchain work submission (attempt {}/{}), waiting for {}ms",
-                retry_count + 1,
-                MAX_RETRIES,
-                delay
-            );
-            tokio::time::sleep(Duration::from_millis(delay)).await;
+    let decoded_sha = match hex::decode(file_sha) {
+        Ok(sha) => {
+            debug!("Decoded SHA bytes: {:?}", sha);
+            sha
         }
+        Err(e) => {
+            error!("Failed to decode SHA hex string: {}", e);
+            return Err(anyhow::anyhow!("Failed to decode SHA: {}", e));
+        }
+    };
 
-        let decoded_sha = match hex::decode(file_sha) {
-            Ok(sha) => {
-                debug!("Decoded SHA bytes: {:?}", sha);
-                sha
-            }
-            Err(e) => {
-                error!("Failed to decode SHA hex string: {}", e);
-                return Err(anyhow::anyhow!("Failed to decode SHA: {}", e));
-            }
-        };
+    let node_addr = match Address::from_str(node_address) {
+        Ok(addr) => addr,
+        Err(e) => {
+            error!("Failed to parse node address: {}", e);
+            return Err(anyhow::anyhow!("Invalid node address: {}", e));
+        }
+    };
 
-        let node_addr = match Address::from_str(node_address) {
-            Ok(addr) => addr,
-            Err(e) => {
-                error!("Failed to parse node address: {}", e);
-                return Err(anyhow::anyhow!("Invalid node address: {}", e));
-            }
-        };
+    let pool_id_u256 = U256::from(pool_id);
 
-        let pool_id_u256 = U256::from(pool_id);
-        info!(
-            "Submitting work to blockchain - Pool ID: {}, Node: {}",
-            pool_id_u256, node_addr
-        );
-
-        // Add timeout for the blockchain transaction
-        let submit_work_future =
-            contracts
-                .compute_pool
-                .submit_work(pool_id_u256, node_addr, decoded_sha.to_vec());
-
-        // Set a timeout for the blockchain transaction
-        debug!(
-            "Waiting up to {} seconds for blockchain transaction",
-            TRANSACTION_TIMEOUT_SECS
-        );
-        match tokio::time::timeout(
-            Duration::from_secs(TRANSACTION_TIMEOUT_SECS),
-            submit_work_future,
-        )
+    let call = contracts
+        .compute_pool
+        .build_work_submission_call(pool_id_u256, node_addr, decoded_sha.to_vec())
         .await
-        {
-            Ok(inner_result) => {
-                match inner_result {
-                    Ok(r) => {
-                        info!("Successfully submitted work to blockchain: {:?}", r);
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        let error_msg = e.to_string();
-                        error!("Failed to submit work: {}", error_msg);
+        .unwrap();
 
-                        // Check if the error is because work was already submitted
-                        // Currently a workaround as this is not reproducible
-                        if error_msg.contains("Work already submitted") {
-                            info!("Work was already submitted successfully, considering this a success");
-                            info!("This can happen when multiple nodes process the same file or if this node retried a successful submission");
-                            return Ok(());
-                        }
+    let tx = retry_call(call, 5, None, provider)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to submit work: {}", e))?;
 
-                        last_error = Some(anyhow::anyhow!("Failed to submit work: {}", e));
-                        retry_count += 1;
-                        continue;
-                    }
-                }
-            }
-            Err(_) => {
-                error!(
-                    "Timeout while submitting work to blockchain (after {} seconds)",
-                    TRANSACTION_TIMEOUT_SECS
-                );
-
-                last_error = Some(anyhow::anyhow!(
-                    "Blockchain transaction timeout after {} seconds",
-                    TRANSACTION_TIMEOUT_SECS
-                ));
-                retry_count += 1;
-                continue;
-            }
-        };
-    }
-
-    error!(
-        "Failed to submit work to blockchain after {} attempts",
-        MAX_RETRIES
-    );
-    Err(last_error.unwrap_or_else(|| {
-        anyhow::anyhow!(
-            "Failed to submit work to blockchain after {} attempts",
-            MAX_RETRIES
-        )
-    }))
+    info!("Successfully submitted work to blockchain: {:?}", tx);
+    Ok(())
 }

@@ -126,12 +126,12 @@ impl ComputePool {
         Ok(result)
     }
 
-    pub async fn submit_work(
+    pub async fn build_work_submission_call(
         &self,
         pool_id: U256,
         node: Address,
         data: Vec<u8>,
-    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+    ) -> Result<PrimeCallBuilder, Box<dyn std::error::Error>> {
         // Extract the work key from the first 32 bytes
         // Create a new data vector with work key and work units (set to 1)
         let mut submit_data = Vec::with_capacity(64);
@@ -141,20 +141,11 @@ impl ComputePool {
         let work_units = U256::from(1);
         submit_data.extend_from_slice(&work_units.to_be_bytes::<32>());
 
-        let result = self
-            .instance
-            .instance()
-            .function(
-                "submitWork",
-                &[pool_id.into(), node.into(), submit_data.into()],
-            )?
-            .gas(1_000_000)
-            .send()
-            .await?
-            .watch()
-            .await?;
-
-        Ok(result)
+        let call = self.instance.instance().function(
+            "submitWork",
+            &[pool_id.into(), node.into(), submit_data.into()],
+        )?;
+        Ok(call)
     }
 
     pub async fn blacklist_node(

@@ -71,27 +71,27 @@ async fn main() -> Result<()> {
     println!("Random: {:?}", random);
 
     let contracts_one = contracts.clone();
-    let provider = wallet.provider.clone();
+    let wallet_one = wallet.clone();
     tokio::spawn(async move {
         let mint_call = contracts_one
             .ai_token
             .build_mint_call(address, amount)
             .unwrap();
 
-        let tx = retry_call(mint_call, 5, Some(gas_price - 10), &provider)
+        let tx = retry_call(mint_call, 5, Some(gas_price - 10), &wallet_one.provider)
             .await
             .unwrap();
         println!("Transaction hash I: {:?}", tx);
     });
 
     let contracts_two = contracts.clone();
-    let provider_two = wallet.provider.clone();
+    let wallet_two = wallet.clone();
     tokio::spawn(async move {
         let mint_call_two = contracts_two
             .ai_token
             .build_mint_call(address, amount)
             .unwrap();
-        let tx = retry_call(mint_call_two, 5, None, &provider_two)
+        let tx = retry_call(mint_call_two, 5, None, &wallet_two.provider)
             .await
             .unwrap();
         println!("Transaction hash II: {:?}", tx);

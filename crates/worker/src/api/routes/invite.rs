@@ -96,7 +96,8 @@ pub async fn invite_node(
         }
     };
 
-    match retry_call(call, 3, None, &app_state.provider_wallet.provider).await {
+    let provider = &app_state.provider_wallet.provider;
+    match retry_call(call, 3, None, provider).await {
         Ok(result) => {
             Console::success(&format!("Successfully joined compute pool: {}", result));
         }

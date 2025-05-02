@@ -51,9 +51,14 @@ async fn main() -> Result<()> {
         panic!("Work key must be 32 bytes");
     }
 
-    let tx = contracts
+    let call = contracts
         .compute_pool
-        .submit_work(pool_id, node, work_key)
+        .build_work_submission_call(pool_id, node, work_key)
+        .await
+        .map_err(|e| eyre::eyre!("Failed to build work submission call: {}", e))?;
+
+    let tx = call
+        .send()
         .await
         .map_err(|e| eyre::eyre!("Failed to submit work: {}", e))?;
     println!(
