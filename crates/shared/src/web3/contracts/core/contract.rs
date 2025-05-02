@@ -15,7 +15,7 @@ macro_rules! include_abi {
 
 #[derive(Clone)]
 pub struct Contract {
-    instance: ContractInstance<WalletProvider>,
+    instance: ContractInstance<Http<Client>, WalletProvider>,
     provider: WalletProvider,
 }
 
@@ -32,7 +32,7 @@ impl Contract {
         path: &str,
         wallet: &Wallet,
         address: Address,
-    ) -> ContractInstance<WalletProvider> {
+    ) -> ContractInstance<Http<Client>, WalletProvider> {
         let artifact = match path {
             "compute_registry.json" => {
                 include_abi!("../../../../artifacts/abi/compute_registry.json")
@@ -65,7 +65,7 @@ impl Contract {
         ContractInstance::new(address, wallet.provider.clone(), Interface::new(abi))
     }
 
-    pub fn instance(&self) -> &ContractInstance<WalletProvider> {
+    pub fn instance(&self) -> &ContractInstance<Http<Client>, WalletProvider> {
         &self.instance
     }
 

@@ -2398,7 +2398,6 @@ name = "dev-utils"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "alloy-node-bindings",
  "clap 4.5.37",
  "eyre",
  "hex",

@@ -18,7 +18,8 @@ pub type WalletProvider = FillProvider<
         >,
         WalletFiller<EthereumWallet>,
     >,
-    RootProvider,
+    RootProvider<Http<Client>>,
+    Http<Client>
 >;
 
 pub struct Wallet {
