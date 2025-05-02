@@ -97,7 +97,28 @@ impl ComputePool {
                 .map(|sig| DynSolValue::Bytes(sig.to_vec()))
                 .collect::<Vec<_>>(),
         );
-        let call = self.instance.instance().function_from_selector(
+        let call: alloy::contract::CallBuilder<
+            &alloy::providers::fillers::FillProvider<
+                alloy::providers::fillers::JoinFill<
+                    alloy::providers::fillers::JoinFill<
+                        alloy::providers::Identity,
+                        alloy::providers::fillers::JoinFill<
+                            alloy::providers::fillers::GasFiller,
+                            alloy::providers::fillers::JoinFill<
+                                alloy::providers::fillers::BlobGasFiller,
+                                alloy::providers::fillers::JoinFill<
+                                    alloy::providers::fillers::NonceFiller,
+                                    alloy::providers::fillers::ChainIdFiller,
+                                >,
+                            >,
+                        >,
+                    >,
+                    alloy::providers::fillers::WalletFiller<alloy::network::EthereumWallet>,
+                >,
+                RootProvider,
+            >,
+            alloy::json_abi::Function,
+        > = self.instance.instance().function_from_selector(
             &join_compute_pool_selector,
             &[pool_id.into(), provider_address.into(), address, signatures],
         )?;

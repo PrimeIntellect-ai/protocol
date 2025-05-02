@@ -15,7 +15,7 @@ pub fn get_selector(fn_image: &str) -> Selector {
 }
 
 pub type PrimeCallBuilder<'a> =
-    CallBuilder<Http<Client>, &'a WalletProvider, alloy::json_abi::Function, Ethereum>;
+    alloy::contract::CallBuilder<&'a WalletProvider, alloy::json_abi::Function>;
 
 pub async fn retry_call(
     mut call: PrimeCallBuilder<'_>,
@@ -104,27 +104,23 @@ pub async fn retry_call(
     Err("Max retries reached".into())
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::{Error, Result};
     use alloy::{providers::ProviderBuilder, sol};
+    use anyhow::{Error, Result};
 
-
-
-   sol! {
+    sol! {
         #[allow(missing_docs)]
         // solc v0.8.26; solc Counter.sol --via-ir --optimize --bin
         #[sol(rpc, bytecode="6080806040523460135760df908160198239f35b600080fdfe6080806040526004361015601257600080fd5b60003560e01c9081633fb5c1cb1460925781638381f58a146079575063d09de08a14603c57600080fd5b3460745760003660031901126074576000546000198114605e57600101600055005b634e487b7160e01b600052601160045260246000fd5b600080fd5b3460745760003660031901126074576020906000548152f35b34607457602036600319011260745760043560005500fea2646970667358221220e978270883b7baed10810c4079c941512e93a7ba1cd1108c781d4bc738d9090564736f6c634300081a0033")]
         contract Counter {
             uint256 public number;
-     
+
             function setNumber(uint256 newNumber) public {
                 number = newNumber;
             }
-     
+
             function increment() public {
                 number++;
             }
@@ -144,12 +140,11 @@ mod tests {
         // Start anvil in a subprocess
         let mut cmd = std::process::Command::new("anvil");
         cmd.arg("--port")
-           .arg("9999")
-           .stdout(std::process::Stdio::null())
-           .stderr(std::process::Stdio::null());
-        
-        let status = cmd.spawn()
-            .expect("Failed to start anvil");
+            .arg("9999")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+
+        let status = cmd.spawn().expect("Failed to start anvil");
 
         println!("Anvil started with pid: {}", status.id());
         tokio::time::sleep(Duration::from_secs(10)).await;
@@ -162,14 +157,11 @@ mod tests {
         // terminte_pid(pid).await?;
 
         // let provider = ProviderBuilder::new().on_anvil_with_wallet();
- 
+
         // Deploy the `Counter` contract.
         // let contract = Counter::deploy(&provider).await?;
- 
+
         // println!("Deployed contract at address: {}", contract.address());
         Ok(())
     }
-
-    
 }
-
