@@ -6,7 +6,7 @@ use actix_web::web::BytesMut;
 use actix_web::HttpMessage;
 use actix_web::{Error, Result};
 use alloy::primitives::Address;
-use alloy::primitives::PrimitiveSignature;
+use alloy::signers::Signature;
 use dashmap::DashSet;
 use futures_util::future::LocalBoxFuture;
 use futures_util::future::{self};
@@ -238,7 +238,7 @@ where
             // Validate signature
             if let (Some(address), Some(signature)) = (x_address, x_signature) {
                 let signature = signature.trim_start_matches("0x");
-                let parsed_signature = match PrimitiveSignature::from_str(signature) {
+                let parsed_signature = match Signature::from_str(signature) {
                     Ok(sig) => sig,
                     Err(_) => return Err(ErrorBadRequest("Invalid signature format")),
                 };
