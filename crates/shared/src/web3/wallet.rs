@@ -36,7 +36,7 @@ impl Wallet {
         let wallet_clone = wallet.clone();
         let provider = ProviderBuilder::new()
             .wallet(wallet_clone)
-            .on_http(provider_url);
+            .connect_http(provider_url);
 
         Ok(Self {
             wallet,
