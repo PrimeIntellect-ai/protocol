@@ -5,6 +5,7 @@ use alloy::{
     primitives::{keccak256, FixedBytes, Selector},
     transports::http::{Client, Http},
 };
+use log::{info, warn};
 use tokio::time::{timeout, Duration};
 
 use crate::web3::wallet::WalletProvider;
@@ -29,7 +30,7 @@ pub async fn retry_call(
 
     while tries < max_tries {
         if let Some(price) = gas_price {
-            println!("Setting gas price to: {:?}", price);
+            info!("Setting gas price to: {:?}", price);
             call = call.gas_price(price);
         }
 
@@ -39,7 +40,7 @@ pub async fn retry_call(
 
         match call.send().await {
             Ok(result) => {
-                println!("Transaction sent, waiting for confirmation");
+                info!("Transaction sent, waiting for confirmation");
                 // If the submission to chain passes it might still timeout
                 match timeout(Duration::from_secs(WATCH_TIMEOUT_SECS), result.watch()).await {
                     Ok(watch_result) => {
@@ -63,7 +64,7 @@ pub async fn retry_call(
                     }
                     Err(_) => {
                         // Watch timed out, retry the transaction
-                        println!("Watch timed out, retrying transaction");
+                        warn!("Watch timed out, retrying transaction");
                         tries += 1;
                         if tries == max_tries {
                             return Err("Max retries reached after watch timeouts".into());
@@ -73,9 +74,9 @@ pub async fn retry_call(
             }
             Err(err) => {
                 if initial_gas_price.is_some() {
-                    println!("Transaction failed that had initial gas: {:?}", err);
+                    warn!("Transaction failed that had initial gas: {:?}", err);
                 } else {
-                    println!("Transaction failed: {:?}", err);
+                    warn!("Transaction failed: {:?}", err);
                 }
 
                 if err
