@@ -56,9 +56,16 @@ pub async fn retry_call(
                                     .into());
                                 }
                                 // Increase gas price to help transaction go through
-                                let network_gas_price = provider.get_gas_price().await.unwrap();
-                                gas_price =
-                                    Some(network_gas_price * (110 + tries as u128 * 10) / 100);
+                                match provider.get_gas_price().await {
+                                    Ok(network_gas_price) => {
+                                        gas_price = Some(
+                                            network_gas_price * (110 + tries as u128 * 10) / 100,
+                                        );
+                                    }
+                                    Err(err) => {
+                                        warn!("Failed to get gas price from provider: {:?}", err);
+                                    }
+                                }
                             }
                         }
                     }
