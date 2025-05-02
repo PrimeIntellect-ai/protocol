@@ -3,7 +3,6 @@ use crate::web3::contracts::core::contract::Contract;
 use crate::web3::contracts::helpers::utils::PrimeCallBuilder;
 use crate::web3::wallet::Wallet;
 use alloy::primitives::{Address, FixedBytes, U256};
-use alloy::providers::Provider;
 
 #[derive(Clone)]
 pub struct AIToken {
