@@ -11,5 +11,4 @@ clap = { workspace = true }
 url = { workspace = true }
 alloy = { workspace = true }
 tokio-util = { workspace = true }
-alloy-node-bindings = "0.9.2"
 hex = "0.4.3"
