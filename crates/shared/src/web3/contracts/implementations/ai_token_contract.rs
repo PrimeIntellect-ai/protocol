@@ -58,7 +58,7 @@ impl AIToken {
         &self,
         to: Address,
         amount: U256,
-    ) -> Result<PrimeCallBuilder<'_>, Box<dyn std::error::Error>> {
+    ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
         let call = self
             .instance
             .instance()

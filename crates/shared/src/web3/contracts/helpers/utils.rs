@@ -1,10 +1,11 @@
+use alloy::contract::CallDecoder;
 use alloy::providers::Provider;
 use alloy::{
     contract::CallBuilder,
-    network::Ethereum,
     primitives::{keccak256, FixedBytes, Selector},
-    transports::http::{Client, Http},
 };
+use alloy_provider::Network;
+use anyhow::Result;
 use log::{debug, info, warn};
 use tokio::time::{timeout, Duration};
 
@@ -14,29 +15,32 @@ pub fn get_selector(fn_image: &str) -> Selector {
     keccak256(fn_image.as_bytes())[..4].try_into().unwrap()
 }
 
-pub type PrimeCallBuilder<'a> =
-    alloy::contract::CallBuilder<&'a WalletProvider, alloy::json_abi::Function>;
-
-pub async fn retry_call(
-    mut call: PrimeCallBuilder<'_>,
+pub type PrimeCallBuilder<'a, D> = alloy::contract::CallBuilder<&'a WalletProvider, D>;
+pub async fn retry_call<P, D, N>(
+    mut call: CallBuilder<&P, D, N>,
     max_tries: u32,
     initial_gas_price: Option<u128>,
-    provider: &WalletProvider,
-) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-    const WATCH_TIMEOUT_SECS: u64 = 20;
-    const RETRY_DELAY_SECS: u64 = 5; // Add delay between retries
+    provider: P,
+    retry_delay: Option<u64>,
+) -> Result<FixedBytes<32>>
+where
+    P: Provider<N>,
+    N: Network,
+    D: CallDecoder,
+{
     let mut tries = 0;
-    let mut gas_price = initial_gas_price;
+    let gas_price = initial_gas_price;
+    let mut gas_multiplier: Option<f64> = None;
+    let retry_delay = retry_delay.unwrap_or(5);
+    if let Some(price) = gas_price {
+        info!("Setting gas price to: {:?}", price);
+        call = call.gas_price(price);
+    }
 
     while tries < max_tries {
-        if let Some(price) = gas_price {
-            info!("Setting gas price to: {:?}", price);
-            call = call.gas_price(price);
-        }
-
         let mut network_gas_price: Option<u128> = None;
         if tries > 0 {
-            tokio::time::sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
+            tokio::time::sleep(Duration::from_secs(retry_delay + 15)).await;
             match provider.get_gas_price().await {
                 Ok(gas_price) => {
                     network_gas_price = Some(gas_price);
@@ -46,68 +50,97 @@ pub async fn retry_call(
                 }
             }
         }
-
+        if let (Some(multiplier), Some(nw_gas_price)) = (gas_multiplier, network_gas_price) {
+            let new_gas = (multiplier * nw_gas_price as f64).round() as u128;
+            if new_gas < nw_gas_price {
+                return Err(anyhow::anyhow!("Gas price is too low"));
+            }
+            call = call.max_fee_per_gas(new_gas);
+            call = call.gas_price(new_gas);
+        }
         match call.send().await {
             Ok(result) => {
                 debug!("Transaction sent, waiting for confirmation");
-                // If the submission to chain passes it might still timeout
-                match timeout(Duration::from_secs(WATCH_TIMEOUT_SECS), result.watch()).await {
+                match timeout(Duration::from_secs(20), result.watch()).await {
                     Ok(watch_result) => match watch_result {
                         Ok(hash) => return Ok(hash),
                         Err(err) => {
                             tries += 1;
                             if tries == max_tries {
-                                return Err(format!(
+                                return Err(anyhow::anyhow!(
                                     "Transaction failed after {} attempts: {:?}",
-                                    tries, err
-                                )
-                                .into());
+                                    tries,
+                                    err
+                                ));
                             }
                         }
                     },
                     Err(_) => {
-                        // Watch timed out, retry the transaction
                         warn!("Watch timed out, retrying transaction");
                         tries += 1;
                         if tries == max_tries {
-                            return Err("Max retries reached after watch timeouts".into());
+                            return Err(anyhow::anyhow!(
+                                "Max retries reached after watch timeouts"
+                            ));
                         }
-                        // Increase gas price to help transaction go through
-                        if let Some(network_gas_price) = network_gas_price {
-                            gas_price = Some(network_gas_price * (110 + tries as u128 * 10) / 100);
-                        }
+                        gas_multiplier = Some((110.0 + (tries as f64 * 10.0)) / 100.0);
                     }
                 }
             }
             Err(err) => {
                 warn!("Transaction failed: {:?}", err);
 
-                if err
-                    .to_string()
-                    .contains("replacement transaction underpriced")
-                {
+                let err_str = err.to_string();
+                let retryable_errors = [
+                    "replacement transaction underpriced",
+                    "nonce too low",
+                    "transaction underpriced",
+                    "insufficient funds for gas",
+                    "already known",
+                    "temporarily unavailable",
+                    "network congested",
+                    "gas price too low",
+                    "transaction pool full",
+                    "max fee per gas less than block base fee",
+                ];
+
+                if retryable_errors.iter().any(|e| err_str.contains(e)) {
                     tries += 1;
                     if tries == max_tries {
-                        return Err("Max retries reached for underpriced transaction".into());
+                        return Err(anyhow::anyhow!(
+                            "Max retries reached after {} attempts. Last error: {:?}",
+                            tries,
+                            err
+                        ));
                     }
 
-                    if let Some(network_gas_price) = network_gas_price {
-                        gas_price = Some(network_gas_price * (110 + tries as u128 * 10) / 100);
+                    if err_str.contains("underpriced")
+                        || err_str.contains("gas price too low")
+                        || err_str.contains("max fee per gas less than block base fee")
+                    {
+                        gas_multiplier = Some((110.0 + (tries as f64 * 200.0)) / 100.0);
                     }
                 } else {
-                    return Err(format!("Transaction failed: {:?}", err).into());
+                    return Err(anyhow::anyhow!(
+                        "Transaction failed with non-retryable error: {:?}",
+                        err
+                    ));
                 }
             }
         }
     }
 
-    Err("Max retries reached".into())
+    Err(anyhow::anyhow!("Max retries reached"))
 }
 
 #[cfg(test)]
 mod tests {
+
+    use std::sync::Arc;
+
     use super::*;
-    use alloy::{providers::ProviderBuilder, sol};
+    use alloy::{primitives::U256, providers::ProviderBuilder, sol};
+
     use anyhow::{Error, Result};
 
     sol! {
@@ -127,41 +160,36 @@ mod tests {
         }
     }
 
-    async fn terminte_pid(pid: u32) -> Result<(), Error> {
-        std::process::Command::new("kill")
-            .arg("-9")
-            .arg(pid.to_string())
-            .spawn()
-            .expect("Failed to terminate anvil");
-        Ok(())
-    }
-
-    async fn setup_test() -> Result<u32, Error> {
-        // Start anvil in a subprocess
-        let mut cmd = std::process::Command::new("anvil");
-        cmd.arg("--port")
-            .arg("9999")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-
-        let status = cmd.spawn().expect("Failed to start anvil");
-
-        println!("Anvil started with pid: {}", status.id());
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        Ok(status.id())
-    }
-
     #[tokio::test]
-    async fn test_setup_test() -> Result<(), Error> {
-        // let pid = setup_test().await?;
-        // terminte_pid(pid).await?;
+    async fn test_concurrent_calls() -> Result<(), Error> {
+        let provider = Arc::new(
+            ProviderBuilder::new()
+                .with_simple_nonce_management()
+                .connect_anvil_with_wallet_and_config(|anvil| anvil.block_time(2))?,
+        );
 
-        // let provider = ProviderBuilder::new().on_anvil_with_wallet();
+        let provider_clone = provider.clone();
+        let contract = Counter::deploy(provider_clone).await?;
 
-        // Deploy the `Counter` contract.
-        // let contract = Counter::deploy(&provider).await?;
+        let provider_clone_1 = provider.clone();
+        let contract_clone_1 = contract.clone();
+        let handle_1 = tokio::spawn(async move {
+            let call = contract_clone_1.setNumber(U256::from(100));
+            retry_call(call, 3, Some(1), provider_clone_1, None).await
+        });
 
-        // println!("Deployed contract at address: {}", contract.address());
+        let contract_clone_2 = contract.clone();
+        let provider_clone_2 = provider.clone();
+        let handle_2 = tokio::spawn(async move {
+            let call = contract_clone_2.setNumber(U256::from(100));
+            retry_call(call, 3, None, provider_clone_2, None).await
+        });
+
+        let tx_base = handle_1.await.unwrap();
+        let tx_one = handle_2.await.unwrap();
+
+        assert!(tx_base.is_ok());
+        assert!(tx_one.is_ok());
         Ok(())
     }
 }

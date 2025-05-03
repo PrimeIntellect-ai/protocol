@@ -82,7 +82,7 @@ impl ComputePool {
         provider_address: Address,
         nodes: Vec<Address>,
         signatures: Vec<FixedBytes<65>>,
-    ) -> Result<PrimeCallBuilder, Box<dyn std::error::Error>> {
+    ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
         let join_compute_pool_selector =
             get_selector("joinComputePool(uint256,address,address[],bytes[])");
         let address = DynSolValue::from(
@@ -97,28 +97,7 @@ impl ComputePool {
                 .map(|sig| DynSolValue::Bytes(sig.to_vec()))
                 .collect::<Vec<_>>(),
         );
-        let call: alloy::contract::CallBuilder<
-            &alloy::providers::fillers::FillProvider<
-                alloy::providers::fillers::JoinFill<
-                    alloy::providers::fillers::JoinFill<
-                        alloy::providers::Identity,
-                        alloy::providers::fillers::JoinFill<
-                            alloy::providers::fillers::GasFiller,
-                            alloy::providers::fillers::JoinFill<
-                                alloy::providers::fillers::BlobGasFiller,
-                                alloy::providers::fillers::JoinFill<
-                                    alloy::providers::fillers::NonceFiller,
-                                    alloy::providers::fillers::ChainIdFiller,
-                                >,
-                            >,
-                        >,
-                    >,
-                    alloy::providers::fillers::WalletFiller<alloy::network::EthereumWallet>,
-                >,
-                RootProvider,
-            >,
-            alloy::json_abi::Function,
-        > = self.instance.instance().function_from_selector(
+        let call = self.instance.instance().function_from_selector(
             &join_compute_pool_selector,
             &[pool_id.into(), provider_address.into(), address, signatures],
         )?;
@@ -152,7 +131,7 @@ impl ComputePool {
         pool_id: U256,
         node: Address,
         data: Vec<u8>,
-    ) -> Result<PrimeCallBuilder, Box<dyn std::error::Error>> {
+    ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
         // Extract the work key from the first 32 bytes
         // Create a new data vector with work key and work units (set to 1)
         let mut submit_data = Vec::with_capacity(64);

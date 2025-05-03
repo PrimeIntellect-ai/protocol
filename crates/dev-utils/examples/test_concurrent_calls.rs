@@ -66,7 +66,6 @@ async fn main() -> Result<()> {
 
     let address = Address::from_str(&args.address).unwrap();
     let amount = U256::from(args.amount) * Unit::ETHER.wei();
-    let gas_price = wallet.provider.get_gas_price().await.unwrap();
     let random = (rand::random::<u8>() % 10) + 1;
     println!("Random: {:?}", random);
 
@@ -78,7 +77,7 @@ async fn main() -> Result<()> {
             .build_mint_call(address, amount)
             .unwrap();
 
-        let tx = retry_call(mint_call, 5, Some(gas_price - 10), &wallet_one.provider)
+        let tx = retry_call(mint_call, 5, Some(1), wallet_one.provider.clone(), None)
             .await
             .unwrap();
         println!("Transaction hash I: {:?}", tx);
@@ -91,7 +90,7 @@ async fn main() -> Result<()> {
             .ai_token
             .build_mint_call(address, amount)
             .unwrap();
-        let tx = retry_call(mint_call_two, 5, None, &wallet_two.provider)
+        let tx = retry_call(mint_call_two, 5, None, wallet_two.provider.clone(), None)
             .await
             .unwrap();
         println!("Transaction hash II: {:?}", tx);

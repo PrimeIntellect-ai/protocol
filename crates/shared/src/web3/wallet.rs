@@ -5,16 +5,20 @@ use alloy::{
     providers::fillers::{
         BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller, WalletFiller,
     },
-    providers::{Identity, Provider, ProviderBuilder, RootProvider},
+    providers::{Provider, ProviderBuilder, RootProvider},
     signers::local::PrivateKeySigner,
 };
+use alloy_provider::fillers::SimpleNonceManager;
 use url::Url;
 
 pub type WalletProvider = FillProvider<
     JoinFill<
         JoinFill<
-            Identity,
-            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
+            JoinFill<
+                alloy_provider::Identity,
+                JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
+            >,
+            NonceFiller<SimpleNonceManager>,
         >,
         WalletFiller<EthereumWallet>,
     >,
@@ -35,6 +39,7 @@ impl Wallet {
 
         let wallet_clone = wallet.clone();
         let provider = ProviderBuilder::new()
+            .with_simple_nonce_management()
             .wallet(wallet_clone)
             .connect_http(provider_url);
 

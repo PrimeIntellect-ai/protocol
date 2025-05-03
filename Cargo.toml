@@ -20,6 +20,7 @@ log = { version = "0.4.26" }
 env_logger = { version = "0.11.6" }
 futures-util = { version = "0.3.31" }
 alloy = { version = "0.15.7", features = ["full"] }
+alloy-provider = { version = "^0.15.7", features = ["anvil-node"] }
 url = "2.5.4"
 serde_json = "1.0.137"
 reqwest = "0.12.12"
