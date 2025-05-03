@@ -40,7 +40,7 @@ where
     while tries < max_tries {
         let mut network_gas_price: Option<u128> = None;
         if tries > 0 {
-            tokio::time::sleep(Duration::from_secs(retry_delay + 15)).await;
+            tokio::time::sleep(Duration::from_secs(retry_delay)).await;
             match provider.get_gas_price().await {
                 Ok(gas_price) => {
                     network_gas_price = Some(gas_price);
@@ -89,6 +89,7 @@ where
             }
             Err(err) => {
                 warn!("Transaction failed: {:?}", err);
+                println!("err: {:?}", err);
 
                 let err_str = err.to_string();
                 let retryable_errors = [
@@ -140,6 +141,7 @@ mod tests {
 
     use super::*;
     use alloy::{primitives::U256, providers::ProviderBuilder, sol};
+    use alloy_provider::WalletProvider;
 
     use anyhow::{Error, Result};
 
@@ -190,6 +192,31 @@ mod tests {
 
         assert!(tx_base.is_ok());
         assert!(tx_one.is_ok());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_transaction_replacement() -> Result<(), Error> {
+        let provider = Arc::new(
+            ProviderBuilder::new()
+                .with_simple_nonce_management()
+                .connect_anvil_with_wallet_and_config(|anvil| anvil.block_time(5))?,
+        );
+        let contract = Counter::deploy(provider.clone()).await?;
+
+        let wallet = provider.wallet();
+
+        let tx_count = provider
+            .get_transaction_count(wallet.default_signer().address())
+            .await?;
+
+        let provider_clone = provider.clone();
+        let _ = contract.increment().nonce(tx_count).send().await?;
+
+        let call_two = contract.increment().nonce(tx_count);
+        let tx = retry_call(call_two, 3, None, provider_clone, Some(1)).await;
+
+        assert!(tx.is_ok());
         Ok(())
     }
 }
