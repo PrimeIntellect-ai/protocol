@@ -14,7 +14,7 @@ impl SchedulerPlugin for NewestTaskPlugin {
 
         // Find newest task based on created_at timestamp
         tasks
-            .into_iter()
+            .iter()
             .max_by_key(|task| task.created_at)
             .map(|task| vec![task.clone()])
             .unwrap_or_default()
