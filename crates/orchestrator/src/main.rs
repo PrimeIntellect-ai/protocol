@@ -14,6 +14,7 @@ use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::U256;
 use anyhow::Result;
 use clap::Parser;
+use clap::ValueEnum;
 use log::debug;
 use log::error;
 use log::info;
@@ -24,8 +25,20 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
+
+#[derive(Parser, Clone, Copy, ValueEnum, Debug)]
+pub enum ServerMode {
+    ApiOnly,
+    ProcessorOnly,
+    Full,
+}
+
 #[derive(Parser)]
 struct Args {
+    // Server mode
+    #[arg(long, default_value = "full")]
+    mode: String,
+
     /// RPC URL
     #[arg(short = 'r', long, default_value = "http://localhost:8545")]
     rpc_url: String,
@@ -110,9 +123,18 @@ async fn main() -> Result<()> {
         .filter_level(log_level)
         .format_timestamp(None)
         .init();
-    debug!("Log level: {}", log_level);
 
-    let heartbeats = Arc::new(LoopHeartbeats::new());
+    let server_mode = match args.mode.as_str() {
+        "full" => ServerMode::Full,
+        "api" => ServerMode::ApiOnly,
+        "processor" => ServerMode::ProcessorOnly,
+        _ => ServerMode::Full,
+    };
+
+    debug!("Log level: {}", log_level);
+    debug!("Server mode: {:?}", server_mode);
+
+    let heartbeats = Arc::new(LoopHeartbeats::new(&server_mode));
 
     let compute_pool_id = args.compute_pool_id;
     let domain_id = args.domain_id;
@@ -159,68 +181,82 @@ async fn main() -> Result<()> {
         }
     };
 
-    let discovery_store_context = store_context.clone();
-    let discovery_heartbeats = heartbeats.clone();
-    tasks.spawn(async move {
-        let monitor = DiscoveryMonitor::new(
-            wallet_clone.as_ref(),
-            compute_pool_id,
-            args.discovery_refresh_interval,
-            args.discovery_url,
-            discovery_store_context.clone(),
-            discovery_heartbeats.clone(),
-        );
-        monitor.run().await
-    });
+    // Only spawn processor tasks if in ProcessorOnly or Full mode
+    if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+        let discovery_store_context = store_context.clone();
+        let discovery_heartbeats = heartbeats.clone();
+        tasks.spawn(async move {
+            let monitor = DiscoveryMonitor::new(
+                wallet_clone.as_ref(),
+                compute_pool_id,
+                args.discovery_refresh_interval,
+                args.discovery_url,
+                discovery_store_context.clone(),
+                discovery_heartbeats.clone(),
+            );
+            monitor.run().await
+        });
+
+        let inviter_store_context = store_context.clone();
+        let inviter_heartbeats = heartbeats.clone();
+        tasks.spawn(async move {
+            let inviter = NodeInviter::new(
+                coordinator_wallet.as_ref(),
+                compute_pool_id,
+                domain_id,
+                args.host.as_deref(),
+                Some(&args.port),
+                args.url.as_deref(),
+                inviter_store_context.clone(),
+                inviter_heartbeats.clone(),
+            );
+            inviter.run().await
+        });
+
+        let status_update_store_context = store_context.clone();
+        let status_update_heartbeats = heartbeats.clone();
+        let status_update_contracts = contracts.clone();
+        let webhook_urls = args
+            .webhook_urls
+            .clone()
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.to_string())
+            .collect();
+        tasks.spawn(async move {
+            let status_updater = NodeStatusUpdater::new(
+                status_update_store_context.clone(),
+                15,
+                None,
+                status_update_contracts.clone(),
+                compute_pool_id,
+                args.disable_ejection,
+                status_update_heartbeats.clone(),
+                webhook_urls,
+            );
+            status_updater.run().await
+        });
+    }
 
     let port = args.port;
-
-    let inviter_store_context = store_context.clone();
-    let inviter_heartbeats = heartbeats.clone();
-    tasks.spawn(async move {
-        let inviter = NodeInviter::new(
-            coordinator_wallet.as_ref(),
-            compute_pool_id,
-            domain_id,
-            args.host.as_deref(),
-            Some(&args.port),
-            args.url.as_deref(),
-            inviter_store_context.clone(),
-            inviter_heartbeats.clone(),
-        );
-        inviter.run().await
-    });
-
-    // The node status updater is responsible for checking the heartbeats
-    // and calculating the status of the node.
-    // It also ejects nodes when they are dead.
-    let status_update_store_context = store_context.clone();
-    let status_update_heartbeats = heartbeats.clone();
-    let status_update_contracts = contracts.clone();
-    let webhook_urls = args
-        .webhook_urls
-        .clone()
-        .unwrap_or_default()
-        .split(',')
-        .map(|s| s.to_string())
-        .collect();
-    tasks.spawn(async move {
-        let status_updater = NodeStatusUpdater::new(
-            status_update_store_context.clone(),
-            15,
-            None,
-            status_update_contracts.clone(),
-            compute_pool_id,
-            args.disable_ejection,
-            status_update_heartbeats.clone(),
-            webhook_urls,
-        );
-        status_updater.run().await
-    });
-
     let server_store_context = store_context.clone();
+    // Always start server regardless of mode
     tokio::select! {
-        res = start_server("0.0.0.0", port, server_store_context.clone(), server_wallet, args.admin_api_key, args.s3_credentials, args.bucket_name, heartbeats.clone(), store.clone(), args.hourly_s3_upload_limit, Some(contracts.clone()), compute_pool_id) => {
+        res = start_server(
+            "0.0.0.0",
+            port,
+            server_store_context.clone(),
+            server_wallet,
+            args.admin_api_key,
+            args.s3_credentials,
+            args.bucket_name,
+            heartbeats.clone(),
+            store.clone(),
+            args.hourly_s3_upload_limit,
+            Some(contracts.clone()),
+            compute_pool_id,
+            server_mode,
+        ) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
             }
@@ -234,6 +270,7 @@ async fn main() -> Result<()> {
             error!("Shutdown signal received");
         }
     }
+
     tasks.shutdown().await;
     Ok(())
 }

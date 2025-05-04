@@ -231,6 +231,7 @@ mod tests {
     use super::*;
     use crate::models::node::NodeStatus;
     use crate::store::core::{RedisStore, StoreContext};
+    use crate::ServerMode;
 
     #[tokio::test]
     async fn test_sync_single_node_with_discovery() {
@@ -280,13 +281,15 @@ mod tests {
         )
         .unwrap();
 
+        let mode = ServerMode::Full;
+
         let discovery_monitor = DiscoveryMonitor::new(
             &fake_wallet,
             1,
             10,
             "http://localhost:8080".to_string(),
             discovery_store_context,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
         );
 
         let store_context_clone = store_context.clone();
