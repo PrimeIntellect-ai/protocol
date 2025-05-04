@@ -10,7 +10,6 @@ env:
   DISCOVERY_REFRESH_INTERVAL: "60"
   BUCKET_NAME: "your-bucket-name"
   LOG_LEVEL: "info"
-  MODE: "full"
 
 secrets:
   coordinatorKey: "your-coordinator-private-key"

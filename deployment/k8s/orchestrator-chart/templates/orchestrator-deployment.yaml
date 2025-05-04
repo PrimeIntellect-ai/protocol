@@ -1,30 +1,8 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "orchestrator.fullname" . }}
-  namespace: {{ .Values.namespace }}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: {{ include "orchestrator.fullname" . }}
-  template:
-    metadata:
-      labels:
-        app: {{ include "orchestrator.fullname" . }}
-    spec:
-      containers:
-        - name: orchestrator
-          image: {{ .Values.image }}
+{{- define "orchestrator.container" }}
+          image: {{ .root.Values.image }}
+          {{- if .api }}
           ports:
             - containerPort: 8090
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "500m"
-            limits:
-              memory: "512Mi"
-              cpu: "2000m"
           readinessProbe:
             httpGet:
               path: /health
@@ -37,45 +15,92 @@ spec:
               port: 8090
             initialDelaySeconds: 15
             periodSeconds: 20
+          {{- end }}
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "500m"
+            limits:
+              memory: "512Mi"
+              cpu: "2000m"
           env:
             - name: URL
-              value: {{ .Values.url }}
+              value: {{ .root.Values.url }}
             - name: RPC_URL
-              value: {{ .Values.env.RPC_URL }}
+              value: {{ .root.Values.env.RPC_URL }}
             - name: MODE
-              value: {{ .Values.env.MODE }}
+              value: {{ .mode }}
             - name: REDIS_STORE_URL
-              value: "redis://{{ include "orchestrator.redisName" . }}:6379"
+              value: "redis://{{ include "orchestrator.redisName" .root }}:6379"
             - name: DISCOVERY_URL
-              value: {{ .Values.env.DISCOVERY_URL }}
+              value: {{ .root.Values.env.DISCOVERY_URL }}
             - name: COORDINATOR_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "orchestrator.secretName" . }}
+                  name: {{ include "orchestrator.secretName" .root }}
                   key: coordinatorKey
             - name: ADMIN_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "orchestrator.secretName" . }}
+                  name: {{ include "orchestrator.secretName" .root }}
                   key: adminApiKey
             - name: S3_CREDENTIALS
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "orchestrator.secretName" . }}
+                  name: {{ include "orchestrator.secretName" .root }}
                   key: s3Credentials
             - name: COMPUTE_POOL_ID
-              value: "{{ .Values.computePoolId }}"
+              value: "{{ .root.Values.computePoolId }}"
             - name: DOMAIN_ID
-              value: "{{ .Values.domainId }}"
+              value: "{{ .root.Values.domainId }}"
             - name: DISCOVERY_REFRESH_INTERVAL
-              value: "{{ .Values.env.DISCOVERY_REFRESH_INTERVAL }}"
+              value: "{{ .root.Values.env.DISCOVERY_REFRESH_INTERVAL }}"
             - name: BUCKET_NAME
-              value: "{{ .Values.env.BUCKET_NAME }}"
+              value: "{{ .root.Values.env.BUCKET_NAME }}"
             - name: LOG_LEVEL
-              value: "{{ .Values.env.LOG_LEVEL }}"
+              value: "{{ .root.Values.env.LOG_LEVEL }}"
             - name: HOURLY_S3_UPLOAD_LIMIT
-              value: "{{ .Values.env.HOURLY_S3_UPLOAD_LIMIT }}"
-            {{- if .Values.env.WEBHOOK_URLS }}
+              value: "{{ .root.Values.env.HOURLY_S3_UPLOAD_LIMIT }}"
+            {{- if .root.Values.env.WEBHOOK_URLS }}
             - name: WEBHOOK_URLS
-              value: "{{ .Values.env.WEBHOOK_URLS }}"
+              value: "{{ .root.Values.env.WEBHOOK_URLS }}"
             {{- end }}
+{{- end }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orchestrator.fullname" . }}-api
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "orchestrator.fullname" . }}-api
+  template:
+    metadata:
+      labels:
+        app: {{ include "orchestrator.fullname" . }}-api
+    spec:
+      containers:
+        - name: orchestrator-api
+          {{- include "orchestrator.container" (dict "root" . "mode" "api" "api" true) | nindent 10 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orchestrator.fullname" . }}-processor
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "orchestrator.fullname" . }}-processor
+  template:
+    metadata:
+      labels:
+        app: {{ include "orchestrator.fullname" . }}-processor
+    spec:
+      containers:
+        - name: orchestrator-processor
+          {{- include "orchestrator.container" (dict "root" . "mode" "processor" "api" false) | nindent 10 }}
