@@ -23,7 +23,6 @@ async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
 
 async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
     let task = Task::from(task.into_inner());
-    println!("task: {:?}", task);
     let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
     task_store.add_task(task);
     HttpResponse::Ok().json(json!({"success": true, "task": "updated_task"}))

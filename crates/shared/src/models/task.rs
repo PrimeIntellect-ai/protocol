@@ -67,7 +67,7 @@ pub struct Task {
     #[serde(default)]
     pub created_at: i64,
     #[serde(default)]
-    pub updated_at: Option<u64>
+    pub updated_at: Option<u64>,
 }
 
 impl From<TaskRequest> for Task {
@@ -81,7 +81,7 @@ impl From<TaskRequest> for Task {
             env_vars: request.env_vars,
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
-            updated_at: None 
+            updated_at: None,
         }
     }
 }
