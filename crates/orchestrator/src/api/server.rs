@@ -3,6 +3,7 @@ use crate::api::routes::storage::storage_routes;
 use crate::api::routes::task::tasks_routes;
 use crate::api::routes::{heartbeat::heartbeat_routes, metrics::metrics_routes};
 use crate::models::node::NodeStatus;
+use crate::scheduler::Scheduler;
 use crate::store::core::{RedisStore, StoreContext};
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use crate::ServerMode;
@@ -28,6 +29,7 @@ pub struct AppState {
     pub hourly_upload_limit: i64,
     pub contracts: Option<Arc<Contracts>>,
     pub pool_id: u32,
+    pub scheduler: Scheduler,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -45,6 +47,7 @@ pub async fn start_server(
     contracts: Option<Arc<Contracts>>,
     pool_id: u32,
     server_mode: ServerMode,
+    scheduler: Scheduler,
 ) -> Result<(), Error> {
     info!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
@@ -57,6 +60,7 @@ pub async fn start_server(
         hourly_upload_limit,
         contracts,
         pool_id,
+        scheduler,
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();

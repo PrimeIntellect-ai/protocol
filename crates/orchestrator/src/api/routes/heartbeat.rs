@@ -5,7 +5,7 @@ use actix_web::{
 };
 use alloy::primitives::Address;
 use serde_json::json;
-use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
+use shared::models::{api::ApiResponse, heartbeat::{HeartbeatRequest, HeartbeatResponse}};
 use std::str::FromStr;
 
 async fn heartbeat(
@@ -34,9 +34,20 @@ async fn heartbeat(
         .store_context
         .metrics_store
         .store_metrics(heartbeat.metrics.clone(), node_address);
-    let current_task = app_state.store_context.task_store.get_current_task();
-    let resp: HttpResponse = HeartbeatResponse { current_task }.into();
-    resp
+
+    let current_task = app_state.scheduler.get_task_for_node(node_address);
+    match current_task {
+        Ok(Some(task)) => {
+            let resp: HttpResponse = ApiResponse::new(true, HeartbeatResponse {
+                current_task: Some(task),
+            })
+            .into();
+            resp
+        }
+        _ => HttpResponse::Ok().json(ApiResponse::new(true, HeartbeatResponse {
+            current_task: None,
+        })),
+    }
 }
 
 pub fn heartbeat_routes() -> Scope {

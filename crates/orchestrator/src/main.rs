@@ -2,12 +2,14 @@ mod api;
 mod discovery;
 mod models;
 mod node;
+mod scheduler;
 mod store;
 mod utils;
 use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
 use crate::node::status_update::NodeStatusUpdater;
+use crate::scheduler::Scheduler;
 use crate::store::core::RedisStore;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
@@ -181,6 +183,8 @@ async fn main() -> Result<()> {
         }
     };
 
+    let scheduler = Scheduler::new(store_context.clone());
+
     // Only spawn processor tasks if in ProcessorOnly or Full mode
     if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
         let discovery_store_context = store_context.clone();
@@ -256,6 +260,7 @@ async fn main() -> Result<()> {
             Some(contracts.clone()),
             compute_pool_id,
             server_mode,
+            scheduler,
         ) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
