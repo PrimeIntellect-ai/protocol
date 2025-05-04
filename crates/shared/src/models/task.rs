@@ -1,3 +1,4 @@
+use chrono::Utc;
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -54,7 +55,6 @@ pub struct TaskRequest {
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: Uuid,
@@ -64,6 +64,10 @@ pub struct Task {
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
     pub state: TaskState,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: Option<u64>,
 }
 
 impl From<TaskRequest> for Task {
@@ -76,6 +80,8 @@ impl From<TaskRequest> for Task {
             args: request.args,
             env_vars: request.env_vars,
             state: TaskState::PENDING,
+            created_at: Utc::now().timestamp_millis(),
+            updated_at: None,
         }
     }
 }

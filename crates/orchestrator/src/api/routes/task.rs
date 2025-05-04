@@ -9,30 +9,37 @@ use shared::models::task::TaskRequest;
 
 async fn get_current_task(app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
-    match task_store.get_task() {
+    match task_store.get_current_task() {
         Some(task) => HttpResponse::Ok().json(json!({"success": true, "task": task})),
         None => HttpResponse::Ok().json(json!({"success": true, "task": null})),
     }
 }
 
-async fn update_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
+async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
+    let task_store = app_state.store_context.task_store.clone();
+    let tasks = task_store.get_all_tasks();
+    HttpResponse::Ok().json(json!({"success": true, "tasks": tasks}))
+}
+
+async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
     let task = Task::from(task.into_inner());
     let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
-    task_store.set_task(task);
+    task_store.add_task(task);
     HttpResponse::Ok().json(json!({"success": true, "task": "updated_task"}))
 }
 
-async fn delete_task(app_state: Data<AppState>) -> HttpResponse {
+async fn delete_current_task(app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
-    task_store.delete_task();
+    task_store.delete_current_task();
     HttpResponse::Ok().json(json!({"success": true, "task": "deleted_task"}))
 }
 
 pub fn tasks_routes() -> Scope {
     web::scope("/tasks")
-        .route("", get().to(get_current_task))
-        .route("", post().to(update_task))
-        .route("", delete().to(delete_task))
+        .route("/current", get().to(get_current_task))
+        .route("", get().to(get_all_tasks))
+        .route("", post().to(create_task))
+        .route("/current", delete().to(delete_current_task))
 }
 
 #[cfg(test)]
@@ -43,6 +50,8 @@ mod tests {
     use actix_web::test;
     use actix_web::App;
     use shared::models::task::Task;
+    use std::thread;
+    use std::time::Duration;
 
     #[actix_web::test]
     async fn test_get_current_task() {
@@ -50,11 +59,11 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(app_state.clone())
-                .route("/tasks", get().to(get_current_task)),
+                .route("/tasks/current", get().to(get_current_task)),
         )
         .await;
 
-        let req = test::TestRequest::get().uri("/tasks").to_request();
+        let req = test::TestRequest::get().uri("/tasks/current").to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
@@ -65,7 +74,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(app_state.clone())
-                .route("/tasks", post().to(update_task)),
+                .route("/tasks", post().to(create_task)),
         )
         .await;
 
@@ -84,7 +93,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
-        let task: Task = task_store.get_task().unwrap();
+        let task: Task = task_store.get_current_task().unwrap();
         assert_eq!(task.image, "test");
     }
 
@@ -94,11 +103,11 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(app_state.clone())
-                .route("/tasks", get().to(get_current_task)),
+                .route("/tasks/current", get().to(get_current_task)),
         )
         .await;
 
-        let req = test::TestRequest::get().uri("/tasks").to_request();
+        let req = test::TestRequest::get().uri("/tasks/current").to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
         let body = test::read_body(resp).await;
@@ -121,16 +130,16 @@ mod tests {
         .into();
 
         let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
-        task_store.set_task(task);
+        task_store.add_task(task);
 
         let app = test::init_service(
             App::new()
                 .app_data(app_state.clone())
-                .route("/tasks", get().to(get_current_task)),
+                .route("/tasks/current", get().to(get_current_task)),
         )
         .await;
 
-        let req = test::TestRequest::get().uri("/tasks").to_request();
+        let req = test::TestRequest::get().uri("/tasks/current").to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
@@ -149,7 +158,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(app_state.clone())
-                .route("/tasks", delete().to(delete_task)),
+                .route("/tasks/current", delete().to(delete_current_task)),
         )
         .await;
 
@@ -163,13 +172,108 @@ mod tests {
         .into();
 
         let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
-        task_store.set_task(task);
+        task_store.add_task(task);
 
-        let req = test::TestRequest::delete().uri("/tasks").to_request();
+        let req = test::TestRequest::delete()
+            .uri("/tasks/current")
+            .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let task_value = task_store.get_task(); // Use TaskStore
+        let task_value = task_store.get_current_task(); // Use TaskStore
         assert!(task_value.is_none());
+    }
+
+    #[actix_web::test]
+    async fn test_multiple_tasks_sorting() {
+        let app_state = create_test_app_state().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .route("/tasks", get().to(get_all_tasks))
+                .route("/tasks/current", get().to(get_current_task)),
+        )
+        .await;
+
+        let task_store = app_state.store_context.task_store.clone();
+
+        // Create first task
+        let task1: Task = TaskRequest {
+            image: "test1".to_string(),
+            name: "test1".to_string(),
+            command: None,
+            args: None,
+            env_vars: None,
+        }
+        .into();
+        task_store.add_task(task1.clone());
+
+        // Wait briefly to ensure different timestamps
+        thread::sleep(Duration::from_millis(10));
+
+        // Create second task
+        let task2: Task = TaskRequest {
+            image: "test2".to_string(),
+            name: "test2".to_string(),
+            command: None,
+            args: None,
+            env_vars: None,
+        }
+        .into();
+        task_store.add_task(task2.clone());
+
+        // Test get all tasks - should be sorted by created_at descending
+        let req = test::TestRequest::get().uri("/tasks").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let tasks = json["tasks"].as_array().unwrap();
+
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0]["image"], "test2");
+        assert_eq!(tasks[1]["image"], "test1");
+
+        // Test get current task - should return newest task
+        let req = test::TestRequest::get().uri("/tasks/current").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["task"]["image"], "test2");
+    }
+
+    #[actix_web::test]
+    async fn test_task_ordering_with_multiple_additions() {
+        let app_state = create_test_app_state().await;
+        let task_store = app_state.store_context.task_store.clone();
+
+        // Add tasks in sequence with delays
+        for i in 1..=3 {
+            let task: Task = TaskRequest {
+                image: format!("test{}", i),
+                name: format!("test{}", i),
+                command: None,
+                args: None,
+                env_vars: None,
+            }
+            .into();
+            task_store.add_task(task);
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let tasks = task_store.get_all_tasks();
+
+        // Verify tasks are ordered by created_at descending
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[0].image, "test3");
+        assert_eq!(tasks[1].image, "test2");
+        assert_eq!(tasks[2].image, "test1");
+
+        // Verify current task is the newest one
+        let current = task_store.get_current_task().unwrap();
+        assert_eq!(current.image, "test3");
     }
 }
