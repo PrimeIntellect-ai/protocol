@@ -15,22 +15,22 @@ async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
 
 async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
     let task = Task::from(task.into_inner());
-    let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
-    task_store.add_task(task);
-    HttpResponse::Ok().json(json!({"success": true, "task": "updated_task"}))
+    let task_store = app_state.store_context.task_store.clone();
+    task_store.add_task(task.clone());
+    HttpResponse::Ok().json(json!({"success": true, "task": task}))
 }
 
 async fn delete_task(id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
+    let task_store = app_state.store_context.task_store.clone();
     task_store.delete_task(id.into_inner());
-    HttpResponse::Ok().json(json!({"success": true, "task": "deleted_task"}))
+    HttpResponse::Ok().json(json!({"success": true}))
 }
 
 pub fn tasks_routes() -> Scope {
     web::scope("/tasks")
         .route("", get().to(get_all_tasks))
         .route("", post().to(create_task))
-        .route("/:id", delete().to(delete_task))
+        .route("/{id}", delete().to(delete_task))
 }
 
 #[cfg(test)]
@@ -45,7 +45,7 @@ mod tests {
     use std::time::Duration;
 
     #[actix_web::test]
-    async fn test_update_task() {
+    async fn test_create_task() {
         let app_state = create_test_app_state().await;
         let app = test::init_service(
             App::new()
@@ -67,6 +67,12 @@ mod tests {
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
+        assert!(json["task"]["id"].is_string());
+        assert_eq!(json["task"]["image"], "test");
     }
 
     #[actix_web::test]
@@ -101,7 +107,7 @@ mod tests {
         }
         .into();
 
-        let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
+        let task_store = app_state.store_context.task_store.clone();
         task_store.add_task(task);
 
         let app = test::init_service(
@@ -127,13 +133,6 @@ mod tests {
     #[actix_web::test]
     async fn test_delete_task() {
         let app_state = create_test_app_state().await;
-        let app = test::init_service(
-            App::new()
-                .app_data(app_state.clone())
-                .route("/tasks", delete().to(delete_task)),
-        )
-        .await;
-
         let task: Task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
@@ -143,14 +142,24 @@ mod tests {
         }
         .into();
 
-        let task_store = app_state.store_context.task_store.clone(); // Use TaskStore
-        task_store.add_task(task);
+        let task_store = app_state.store_context.task_store.clone();
+        task_store.add_task(task.clone());
+
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .route("/tasks/{id}", delete().to(delete_task)),
+        )
+        .await;
 
         let req = test::TestRequest::delete()
-            .uri("/tasks/current")
+            .uri(&format!("/tasks/{}", task.id))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
+
+        let tasks = task_store.get_all_tasks();
+        assert_eq!(tasks.len(), 0);
     }
 
     #[actix_web::test]
@@ -159,8 +168,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(app_state.clone())
-                .route("/tasks", get().to(get_all_tasks))
-                .route("/tasks", post().to(create_task)),
+                .route("/tasks", get().to(get_all_tasks)),
         )
         .await;
 
@@ -203,15 +211,6 @@ mod tests {
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0]["image"], "test2");
         assert_eq!(tasks[1]["image"], "test1");
-
-        // Test get current task - should return newest task
-        let req = test::TestRequest::get().uri("/tasks/current").to_request();
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let body = test::read_body(resp).await;
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["task"]["image"], "test2");
     }
 
     #[actix_web::test]
