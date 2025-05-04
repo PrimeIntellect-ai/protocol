@@ -34,7 +34,7 @@ async fn heartbeat(
         .store_context
         .metrics_store
         .store_metrics(heartbeat.metrics.clone(), node_address);
-    let current_task = app_state.store_context.task_store.get_task();
+    let current_task = app_state.store_context.task_store.get_current_task();
     let resp: HttpResponse = HeartbeatResponse { current_task }.into();
     resp
 }
@@ -116,7 +116,7 @@ mod tests {
             args: None,
             env_vars: None,
         };
-        app_state.store_context.task_store.set_task(task.into());
+        app_state.store_context.task_store.add_task(task.into());
 
         let req = test::TestRequest::post()
             .uri("/heartbeat")

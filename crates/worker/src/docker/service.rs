@@ -362,6 +362,8 @@ mod tests {
             command: Some("sleep".to_string()),
             args: Some(vec!["100".to_string()]),
             state: TaskState::PENDING,
+            created_at: Utc::now().timestamp_millis(),
+            updated_at: None,
         };
         let task_clone = task.clone();
         let state_clone = docker_service.state.clone();
@@ -410,6 +412,8 @@ mod tests {
             command: Some("invalid_command".to_string()),
             args: None,
             state: TaskState::PENDING,
+            created_at: Utc::now().timestamp_millis(),
+            updated_at: None,
         };
 
         let task_clone = task.clone();
