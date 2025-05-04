@@ -89,7 +89,6 @@ where
             }
             Err(err) => {
                 warn!("Transaction failed: {:?}", err);
-                println!("err: {:?}", err);
 
                 let err_str = err.to_string();
                 let retryable_errors = [
