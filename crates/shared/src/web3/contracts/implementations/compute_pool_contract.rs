@@ -1,6 +1,6 @@
 use crate::web3::contracts::constants::addresses::COMPUTE_POOL_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
-use crate::web3::contracts::helpers::utils::get_selector;
+use crate::web3::contracts::helpers::utils::{get_selector, PrimeCallBuilder};
 use crate::web3::contracts::structs::compute_pool::{PoolInfo, PoolStatus};
 use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
@@ -76,13 +76,13 @@ impl ComputePool {
         Ok(pool_info)
     }
 
-    pub async fn join_compute_pool(
+    pub fn build_join_compute_pool_call(
         &self,
         pool_id: U256,
         provider_address: Address,
         nodes: Vec<Address>,
         signatures: Vec<FixedBytes<65>>,
-    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+    ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
         let join_compute_pool_selector =
             get_selector("joinComputePool(uint256,address,address[],bytes[])");
         let address = DynSolValue::from(
@@ -97,18 +97,11 @@ impl ComputePool {
                 .map(|sig| DynSolValue::Bytes(sig.to_vec()))
                 .collect::<Vec<_>>(),
         );
-        let result = self
-            .instance
-            .instance()
-            .function_from_selector(
-                &join_compute_pool_selector,
-                &[pool_id.into(), provider_address.into(), address, signatures],
-            )?
-            .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(result)
+        let call = self.instance.instance().function_from_selector(
+            &join_compute_pool_selector,
+            &[pool_id.into(), provider_address.into(), address, signatures],
+        )?;
+        Ok(call)
     }
 
     pub async fn leave_compute_pool(
@@ -117,11 +110,6 @@ impl ComputePool {
         provider_address: Address,
         node: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Leaving compute pool");
-
-        println!("Provider: {:?}", provider_address);
-        println!("Node: {:?}", node);
-
         let leave_compute_pool_selector = get_selector("leaveComputePool(uint256,address,address)");
 
         let result = self
@@ -135,15 +123,15 @@ impl ComputePool {
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
         Ok(result)
     }
-    pub async fn submit_work(
+
+    pub async fn build_work_submission_call(
         &self,
         pool_id: U256,
         node: Address,
         data: Vec<u8>,
-    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+    ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
         // Extract the work key from the first 32 bytes
         // Create a new data vector with work key and work units (set to 1)
         let mut submit_data = Vec::with_capacity(64);
@@ -153,20 +141,11 @@ impl ComputePool {
         let work_units = U256::from(1);
         submit_data.extend_from_slice(&work_units.to_be_bytes::<32>());
 
-        let result = self
-            .instance
-            .instance()
-            .function(
-                "submitWork",
-                &[pool_id.into(), node.into(), submit_data.into()],
-            )?
-            .gas(1_000_000)
-            .send()
-            .await?
-            .watch()
-            .await?;
-
-        Ok(result)
+        let call = self.instance.instance().function(
+            "submitWork",
+            &[pool_id.into(), node.into(), submit_data.into()],
+        )?;
+        Ok(call)
     }
 
     pub async fn blacklist_node(

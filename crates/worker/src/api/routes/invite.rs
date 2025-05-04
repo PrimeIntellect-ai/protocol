@@ -9,8 +9,8 @@ use alloy::primitives::U256;
 use hex;
 use log::error;
 use serde_json::json;
-use shared::models::invite::InviteRequest;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
+use shared::{models::invite::InviteRequest, web3::contracts::helpers::utils::retry_call};
 
 pub async fn invite_node(
     invite: web::Json<InviteRequest>,
@@ -60,8 +60,6 @@ pub async fn invite_node(
         }
     };
 
-    let signatures: Vec<FixedBytes<65>> = vec![FixedBytes::from(&bytes_array)];
-    let node_address = vec![wallet.wallet.default_signer().address()];
     let provider_address = app_state.provider_wallet.wallet.default_signer().address();
 
     let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
@@ -81,22 +79,35 @@ pub async fn invite_node(
         }));
     }
 
-    match contracts
-        .compute_pool
-        .join_compute_pool(pool_id, provider_address, node_address, signatures)
-        .await
-    {
+    let node_address = vec![wallet.wallet.default_signer().address()];
+    let signatures = vec![FixedBytes::from(&bytes_array)];
+    let call = match contracts.compute_pool.build_join_compute_pool_call(
+        pool_id,
+        provider_address,
+        node_address,
+        signatures,
+    ) {
+        Ok(call) => call,
+        Err(err) => {
+            error!("Failed to build join compute pool call: {:?}", err);
+            return HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to build join compute pool call"
+            }));
+        }
+    };
+
+    let provider = &app_state.provider_wallet.provider;
+    match retry_call(call, 3, None, provider.clone(), None).await {
         Ok(result) => {
-            Console::success(&format!("Successfully joined compute pool: {:?}", result));
+            Console::success(&format!("Successfully joined compute pool: {}", result));
         }
         Err(err) => {
             error!("Failed to join compute pool: {:?}", err);
             return HttpResponse::InternalServerError().json(json!({
-                "error": "Failed to join compute pool"
+                "error": format!("Failed to join compute pool: {}", err)
             }));
         }
     }
-
     let endpoint = if let Some(url) = &invite.master_url {
         format!("{}/heartbeat", url)
     } else {

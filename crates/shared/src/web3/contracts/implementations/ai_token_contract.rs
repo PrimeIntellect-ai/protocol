@@ -1,5 +1,6 @@
 use crate::web3::contracts::constants::addresses::{AI_TOKEN_ADDRESS, PRIME_NETWORK_ADDRESS};
 use crate::web3::contracts::core::contract::Contract;
+use crate::web3::contracts::helpers::utils::PrimeCallBuilder;
 use crate::web3::wallet::Wallet;
 use alloy::primitives::{Address, FixedBytes, U256};
 
@@ -52,19 +53,27 @@ impl AIToken {
 
         Ok(tx)
     }
+
+    pub fn build_mint_call(
+        &self,
+        to: Address,
+        amount: U256,
+    ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
+        let call = self
+            .instance
+            .instance()
+            .function("mint", &[to.into(), amount.into()])?;
+
+        Ok(call)
+    }
+
     pub async fn mint(
         &self,
         to: Address,
         amount: U256,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        let tx = self
-            .instance
-            .instance()
-            .function("mint", &[to.into(), amount.into()])?
-            .send()
-            .await?
-            .watch()
-            .await?;
+        let call = self.build_mint_call(to, amount)?;
+        let tx = call.send().await?.watch().await?;
         Ok(tx)
     }
 }
