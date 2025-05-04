@@ -42,6 +42,8 @@ spec:
               value: {{ .Values.url }}
             - name: RPC_URL
               value: {{ .Values.env.RPC_URL }}
+            - name: MODE
+              value: {{ .Values.env.MODE }}
             - name: REDIS_STORE_URL
               value: "redis://{{ include "orchestrator.redisName" . }}:6379"
             - name: DISCOVERY_URL
