@@ -4,11 +4,7 @@ use super::{Plugin, SchedulerPlugin};
 
 pub struct NewestTaskPlugin;
 
-impl Plugin for NewestTaskPlugin {
-    fn name(&self) -> String {
-        "newest_task".to_string()
-    }
-}
+impl Plugin for NewestTaskPlugin {}
 
 impl SchedulerPlugin for NewestTaskPlugin {
     fn filter_tasks(&self, tasks: Vec<Task>) -> Vec<Task> {
