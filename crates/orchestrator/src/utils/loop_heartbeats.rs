@@ -3,6 +3,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::ServerMode;
+
 #[derive(Serialize)]
 pub struct HealthStatus {
     pub healthy: bool,
@@ -15,14 +17,16 @@ pub struct LoopHeartbeats {
     last_inviter_iteration: Arc<AtomicI64>,
     last_monitor_iteration: Arc<AtomicI64>,
     last_status_updater_iteration: Arc<AtomicI64>,
+    server_mode: ServerMode,
 }
 
 impl LoopHeartbeats {
-    pub fn new() -> Self {
+    pub fn new(server_mode: &ServerMode) -> Self {
         Self {
             last_inviter_iteration: Arc::new(AtomicI64::new(-1)),
             last_monitor_iteration: Arc::new(AtomicI64::new(-1)),
             last_status_updater_iteration: Arc::new(AtomicI64::new(-1)),
+            server_mode: *server_mode,
         }
     }
 
@@ -84,15 +88,18 @@ impl LoopHeartbeats {
             -1
         };
 
-        // All operations should have run at least once (not -1)
-        // and within the last 2 minutes
-        /*let healthy = inviter_last > 0
-        && inviter_seconds_ago < two_minutes
-        && monitor_last > 0
-        && monitor_seconds_ago < two_minutes
-        && status_updater_last > 0
-        && status_updater_seconds_ago < two_minutes;*/
-        let healthy = true;
+        let processes_healthy = inviter_seconds_ago < _two_minutes
+            && inviter_seconds_ago != -1
+            && monitor_seconds_ago < _two_minutes
+            && monitor_seconds_ago != -1
+            && status_updater_seconds_ago < _two_minutes
+            && status_updater_seconds_ago != -1;
+
+        let healthy = match self.server_mode {
+            // TODO: in the future we might want to check if the redis connection is healthy
+            ServerMode::ApiOnly => true,
+            _ => processes_healthy,
+        };
 
         HealthStatus {
             healthy,

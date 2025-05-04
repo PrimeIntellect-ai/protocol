@@ -5,6 +5,7 @@ use crate::api::routes::{heartbeat::heartbeat_routes, metrics::metrics_routes};
 use crate::models::node::NodeStatus;
 use crate::store::core::{RedisStore, StoreContext};
 use crate::utils::loop_heartbeats::LoopHeartbeats;
+use crate::ServerMode;
 use actix_web::middleware::{Compress, NormalizePath, TrailingSlash};
 use actix_web::{middleware, web::Data, App, HttpServer};
 use actix_web::{web, HttpResponse};
@@ -43,6 +44,7 @@ pub async fn start_server(
     hourly_upload_limit: i64,
     contracts: Option<Arc<Contracts>>,
     pool_id: u32,
+    server_mode: ServerMode,
 ) -> Result<(), Error> {
     info!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
@@ -69,7 +71,7 @@ pub async fn start_server(
     let api_key_middleware = Arc::new(ApiKeyMiddleware::new(admin_api_key));
 
     HttpServer::new(move || {
-        App::new()
+        let mut app = App::new()
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
             .wrap(Compress::default())
@@ -84,18 +86,24 @@ pub async fn start_server(
                         HttpResponse::InternalServerError().json(health_status)
                     }
                 },
-            )))
-            .service(heartbeat_routes().wrap(ValidateSignature::new(validator_state.clone())))
-            .service(storage_routes().wrap(ValidateSignature::new(validator_state.clone())))
-            .service(nodes_routes().wrap(api_key_middleware.clone()))
-            .service(tasks_routes().wrap(api_key_middleware.clone()))
-            .service(metrics_routes().wrap(api_key_middleware.clone()))
-            .default_service(web::route().to(|| async {
-                HttpResponse::NotFound().json(json!({
-                    "success": false,
-                    "error": "Resource not found"
-                }))
-            }))
+            )));
+
+        if !matches!(server_mode, ServerMode::ProcessorOnly) {
+            app = app
+                .service(heartbeat_routes().wrap(ValidateSignature::new(validator_state.clone())))
+                .service(storage_routes().wrap(ValidateSignature::new(validator_state.clone())))
+                .service(nodes_routes().wrap(api_key_middleware.clone()))
+                .service(tasks_routes().wrap(api_key_middleware.clone()))
+                .service(metrics_routes().wrap(api_key_middleware.clone()))
+                .default_service(web::route().to(|| async {
+                    HttpResponse::NotFound().json(json!({
+                        "success": false,
+                        "error": "Resource not found"
+                    }))
+                }));
+        }
+
+        app
     })
     .bind((host, port))?
     .run()

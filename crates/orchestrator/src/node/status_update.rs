@@ -319,6 +319,7 @@ mod tests {
     use crate::api::tests::helper::setup_contract;
     use crate::models::node::NodeStatus;
     use crate::models::node::OrchestratorNode;
+    use crate::ServerMode;
     use alloy::primitives::Address;
     use shared::models::heartbeat::HeartbeatRequest;
     use std::str::FromStr;
@@ -329,7 +330,7 @@ mod tests {
     async fn test_node_status_updater_runs() {
         let app_state = create_test_app_state().await;
         let contracts = setup_contract();
-
+        let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
             app_state.store_context.clone(),
             5,
@@ -337,7 +338,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
         );
         let node = OrchestratorNode {
@@ -404,6 +405,7 @@ mod tests {
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
+        let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
             app_state.store_context.clone(),
             5,
@@ -411,7 +413,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
         );
         tokio::spawn(async move {
@@ -449,6 +451,7 @@ mod tests {
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
+        let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
             app_state.store_context.clone(),
             5,
@@ -456,7 +459,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
         );
         tokio::spawn(async move {
@@ -504,6 +507,7 @@ mod tests {
             .heartbeat_store
             .set_unhealthy_counter(&node.address, 2);
 
+        let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
             app_state.store_context.clone(),
             5,
@@ -511,7 +515,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
         );
         tokio::spawn(async move {
@@ -563,6 +567,7 @@ mod tests {
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
         let _: () = app_state.store_context.node_store.add_node(node.clone());
 
+        let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
             app_state.store_context.clone(),
             5,
@@ -570,7 +575,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
         );
         tokio::spawn(async move {
@@ -630,6 +635,7 @@ mod tests {
 
         let _: () = app_state.store_context.node_store.add_node(node2.clone());
 
+        let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
             app_state.store_context.clone(),
             5,
@@ -637,7 +643,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
         );
         tokio::spawn(async move {
@@ -696,6 +702,7 @@ mod tests {
             .heartbeat_store
             .set_unhealthy_counter(&node.address, 2);
 
+        let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
             app_state.store_context.clone(),
             5,
@@ -703,7 +710,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
         );
         tokio::spawn(async move {
@@ -759,6 +766,7 @@ mod tests {
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
+        let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
             app_state.store_context.clone(),
             5,
@@ -766,7 +774,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
         );
         tokio::spawn(async move {
@@ -816,6 +824,7 @@ mod tests {
         assert_eq!(counter, 0);
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
+        let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
             app_state.store_context.clone(),
             5,
@@ -823,7 +832,7 @@ mod tests {
             Arc::new(contracts),
             0,
             false,
-            Arc::new(LoopHeartbeats::new()),
+            Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
         );
         tokio::spawn(async move {

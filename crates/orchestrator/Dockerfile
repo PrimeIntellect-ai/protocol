@@ -22,6 +22,7 @@ ENV BUCKET_NAME=""
 ENV LOG_LEVEL=""
 ENV HOURLY_S3_UPLOAD_LIMIT="2"
 ENV WEBHOOK_URLS=""
+ENV MODE="full"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/orchestrator \
@@ -36,6 +37,7 @@ $([ ! -z "$HOST" ] && echo "--host $HOST") \
 --redis-store-url "$REDIS_STORE_URL" \
 --discovery-url "$DISCOVERY_URL" \
 --admin-api-key "$ADMIN_API_KEY" \
+--mode "$MODE" \
 $([ "$DISABLE_EJECTION" = "true" ] && echo "--disable-ejection") \
 $([ ! -z "$S3_CREDENTIALS" ] && echo "--s3-credentials $S3_CREDENTIALS") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
