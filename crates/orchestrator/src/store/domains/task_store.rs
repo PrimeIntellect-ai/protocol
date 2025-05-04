@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 const TASK_KEY_PREFIX: &str = "orchestrator:task:";
 const TASK_LIST_KEY: &str = "orchestrator:tasks";
-const CURRENT_TASK_KEY: &str = "orchestrator:task:current";
 
 pub struct TaskStore {
     redis: Arc<RedisStore>,
@@ -14,16 +13,6 @@ pub struct TaskStore {
 impl TaskStore {
     pub fn new(redis: Arc<RedisStore>) -> Self {
         Self { redis }
-    }
-
-    pub fn get_current_task(&self) -> Option<Task> {
-        let mut con = self.redis.client.get_connection().unwrap();
-        let has_key: bool = con.exists(CURRENT_TASK_KEY).unwrap();
-        if !has_key {
-            return None;
-        }
-        let task: Task = con.get(CURRENT_TASK_KEY).unwrap();
-        Some(task)
     }
 
     pub fn add_task(&self, task: Task) {
@@ -35,9 +24,6 @@ impl TaskStore {
 
         // Add task ID to list of all tasks
         let _: () = con.rpush(TASK_LIST_KEY, task.id.to_string()).unwrap();
-
-        // Set as current task
-        let _: () = con.set(CURRENT_TASK_KEY, task).unwrap();
     }
 
     pub fn get_all_tasks(&self) -> Vec<Task> {
@@ -60,8 +46,14 @@ impl TaskStore {
         tasks
     }
 
-    pub fn delete_current_task(&self) {
+    pub fn delete_task(&self, id: String) {
         let mut con = self.redis.client.get_connection().unwrap();
-        let _: () = con.del(CURRENT_TASK_KEY).unwrap();
+
+        // Delete task from individual storage
+        let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
+        let _: () = con.del(&task_key).unwrap();
+
+        // Remove task ID from list
+        let _: () = con.lrem(TASK_LIST_KEY, 0, id).unwrap();
     }
 }
