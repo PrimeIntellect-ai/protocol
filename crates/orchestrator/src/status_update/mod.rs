@@ -1,8 +1,10 @@
+mod plugins;
 use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Ok;
 use log::{debug, error, info};
+use plugins::StatusUpdatePlugin;
 use reqwest::Client;
 use serde_json::json;
 use shared::web3::contracts::core::builder::Contracts;
@@ -21,6 +23,7 @@ pub struct NodeStatusUpdater {
     heartbeats: Arc<LoopHeartbeats>,
     webhooks: Vec<String>,
     http_client: Client,
+    plugins: Vec<Box<dyn StatusUpdatePlugin>>,
 }
 
 impl NodeStatusUpdater {
@@ -45,6 +48,7 @@ impl NodeStatusUpdater {
             heartbeats,
             webhooks,
             http_client: Client::new(),
+            plugins: vec![],
         }
     }
 
@@ -113,55 +117,6 @@ impl NodeStatusUpdater {
                 node.address
             );
         }
-        Ok(())
-    }
-
-    async fn trigger_webhooks(
-        &self,
-        node: &OrchestratorNode,
-        old_status: NodeStatus,
-    ) -> Result<(), anyhow::Error> {
-        if old_status == node.status
-            || node.status == NodeStatus::Unhealthy
-            || node.status == NodeStatus::Discovered
-        {
-            return Ok(());
-        }
-
-        // If no webhooks configured, return early
-        if self.webhooks.is_empty() {
-            return Ok(());
-        }
-
-        let payload = json!({
-            "node_address": node.address.to_string(),
-            "ip_address": node.ip_address,
-            "port": node.port,
-            "old_status": old_status.to_string(),
-            "new_status": node.status.to_string(),
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-        });
-
-        let webhooks = self.webhooks.clone();
-        let client = self.http_client.clone();
-        tokio::spawn(async move {
-            for webhook_url in webhooks {
-                if let Err(e) = client
-                    .post(&webhook_url)
-                    .json(&payload)
-                    .timeout(Duration::from_secs(5)) // Add timeout to prevent hanging
-                    .send()
-                    .await
-                {
-                    error!("Failed to send webhook to {}: {}", webhook_url, e);
-                } else {
-                    debug!("Webhook to {} triggered successfully", webhook_url);
-                }
-            }
-        });
-
-        tokio::time::sleep(Duration::from_millis(50)).await;
-
         Ok(())
     }
 
@@ -304,7 +259,14 @@ impl NodeStatusUpdater {
                     .update_node_status(&node.address, new_status);
 
                 if let Some(updated_node) = self.store_context.node_store.get_node(&node.address) {
-                    let _ = self.trigger_webhooks(&updated_node, old_status).await;
+                    for plugin in self.plugins.iter() {
+                        if let Err(e) = plugin
+                            .handle_status_change(&updated_node, &old_status)
+                            .await
+                        {
+                            error!("Error handling status change: {}", e);
+                        }
+                    }
                 }
             }
         }

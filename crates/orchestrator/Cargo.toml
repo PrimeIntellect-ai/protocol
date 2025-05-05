@@ -7,6 +7,7 @@ edition.workspace = true
 actix-web = { workspace = true }
 alloy = { workspace = true }
 anyhow = { workspace = true }
+async-trait = "0.1.88"
 base64 = "0.22.1"
 chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true }
@@ -16,6 +17,7 @@ google-cloud-auth = "0.18.0"
 google-cloud-storage = "0.24.0"
 hex = { workspace = true }
 log = { workspace = true }
+mockito = "1.7.0"
 rand = "0.9.0"
 redis = { workspace = true }
 redis-test = { workspace = true }
