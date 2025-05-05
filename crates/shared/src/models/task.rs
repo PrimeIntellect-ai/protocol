@@ -55,7 +55,7 @@ pub struct TaskRequest {
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Task {
     pub id: Uuid,
     pub image: String,

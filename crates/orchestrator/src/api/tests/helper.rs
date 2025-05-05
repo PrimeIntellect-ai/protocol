@@ -17,7 +17,7 @@ use url::Url;
 
 #[cfg(test)]
 pub async fn create_test_app_state() -> Data<AppState> {
-    use crate::{utils::loop_heartbeats::LoopHeartbeats, ServerMode};
+    use crate::{scheduler::Scheduler, utils::loop_heartbeats::LoopHeartbeats, ServerMode};
 
     let store = Arc::new(RedisStore::new_test());
     let mut con = store
@@ -34,6 +34,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
 
     let store_context = Arc::new(StoreContext::new(store.clone()));
     let mode = ServerMode::Full;
+    let scheduler = Scheduler::new(store_context.clone());
     Data::new(AppState {
         store_context: store_context.clone(),
         contracts: None,
@@ -50,6 +51,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,
         redis_store: store.clone(),
+        scheduler,
     })
 }
 
