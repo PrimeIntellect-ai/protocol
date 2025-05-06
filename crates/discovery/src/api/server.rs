@@ -23,6 +23,7 @@ pub struct AppState {
     pub node_store: Arc<NodeStore>,
     pub contracts: Option<Arc<Contracts>>,
     pub last_chain_sync: Arc<Mutex<Option<SystemTime>>>,
+    pub only_one_node_per_ip: bool,
 }
 
 async fn health_check(app_state: web::Data<AppState>) -> HttpResponse {
@@ -76,6 +77,7 @@ pub async fn start_server(
     contracts: Arc<Contracts>,
     platform_api_key: String,
     last_chain_sync: Arc<Mutex<Option<SystemTime>>>,
+    only_one_node_per_ip: bool,
 ) -> std::io::Result<()> {
     info!("Starting server at http://{}:{}", host, port);
 
@@ -91,6 +93,7 @@ pub async fn start_server(
         node_store,
         contracts: Some(contracts),
         last_chain_sync,
+        only_one_node_per_ip,
     };
 
     // it seems we have a validator for the validator

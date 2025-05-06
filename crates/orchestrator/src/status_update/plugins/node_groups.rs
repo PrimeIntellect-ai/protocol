@@ -1,12 +1,15 @@
+use alloy::primitives::Address;
 use anyhow::Error;
 use log::{debug, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
+use shared::models::task::Task;
 use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     models::node::{NodeStatus, OrchestratorNode},
     prelude::Plugin,
+    scheduler::plugins::SchedulerPlugin,
     store::core::{RedisStore, StoreContext},
 };
 
@@ -22,12 +25,13 @@ pub struct NodeGroup {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(Clone)]
 pub struct NodeGroupsPlugin {
     // Configuration
     min_group_size: usize,
     max_group_size: usize,
     store: Arc<RedisStore>,
-    store_context: StoreContext,
+    store_context: Arc<StoreContext>,
 }
 
 impl NodeGroupsPlugin {
@@ -35,7 +39,7 @@ impl NodeGroupsPlugin {
         min_group_size: usize,
         max_group_size: usize,
         store: Arc<RedisStore>,
-        store_context: StoreContext,
+        store_context: Arc<StoreContext>,
     ) -> Self {
         Self {
             min_group_size,
@@ -110,11 +114,21 @@ impl NodeGroupsPlugin {
             return Ok(None);
         }
 
+        // Limit nodes if needed
+        let nodes = if available_nodes.len() > self.max_group_size {
+            available_nodes
+                .into_iter()
+                .take(self.max_group_size)
+                .collect()
+        } else {
+            available_nodes
+        };
+
         // Create new group
         let group_id = Self::generate_group_id();
         let group = NodeGroup {
             id: group_id.clone(),
-            nodes: available_nodes.clone(),
+            nodes: nodes.clone(),
             created_at: chrono::Utc::now(),
         };
 
@@ -123,15 +137,20 @@ impl NodeGroupsPlugin {
         let group_data = serde_json::to_string(&group)?;
         conn.set::<_, _, ()>(&group_key, group_data)?;
 
-        // Map all nodes to group
-        for node in &available_nodes {
+        // Map nodes to group
+        for node in &nodes {
             conn.hset::<_, _, _, ()>(NODE_GROUP_MAP_KEY, node, &group_id)?;
         }
 
         debug!(
-            "Created new group {} with {} nodes",
+            "Created new group {} with {} nodes{}",
             group_id,
-            available_nodes.len()
+            nodes.len(),
+            if nodes.len() == self.max_group_size {
+                " (limited by max size)"
+            } else {
+                ""
+            }
         );
         Ok(Some(group))
     }
@@ -220,6 +239,18 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
     }
 }
 
+impl SchedulerPlugin for NodeGroupsPlugin {
+    fn filter_tasks(&self, tasks: &[Task], node_address: &Address) -> Vec<Task> {
+        // Pretty dumb first version - we return a task when the node is in a group
+        // otherwise we do not return a task
+        if let Ok(Some(_)) = self.get_node_group(&node_address.to_string()) {
+            return tasks.to_vec();
+        }
+        println!("Node {} is not in a group, skipping task", node_address);
+        return vec![];
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::store::core::StoreContext;
@@ -245,7 +276,7 @@ mod tests {
     async fn test_group_formation_and_dissolution() {
         let store = Arc::new(RedisStore::new_test());
         let context_store = store.clone();
-        let store_context = StoreContext::new(context_store);
+        let store_context = Arc::new(StoreContext::new(context_store));
 
         let plugin = NodeGroupsPlugin::new(2, 5, store.clone(), store_context);
 

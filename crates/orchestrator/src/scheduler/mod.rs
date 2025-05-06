@@ -1,4 +1,4 @@
-mod plugins;
+pub mod plugins;
 
 use alloy::primitives::Address;
 use plugins::{newest_task::NewestTaskPlugin, SchedulerPlugin};
@@ -14,18 +14,23 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(store_context: Arc<StoreContext>) -> Self {
+    pub fn new(store_context: Arc<StoreContext>, plugins: Vec<Box<dyn SchedulerPlugin>>) -> Self {
+        let mut plugins = plugins;
+        if plugins.is_empty() {
+            plugins.push(Box::new(NewestTaskPlugin));
+        }
+
         Self {
             store_context,
-            plugins: vec![Box::new(NewestTaskPlugin)],
+            plugins,
         }
     }
 
-    pub fn get_task_for_node(&self, _node_address: Address) -> Result<Option<Task>> {
+    pub fn get_task_for_node(&self, node_address: Address) -> Result<Option<Task>> {
         let mut all_tasks = self.store_context.task_store.get_all_tasks();
 
         for plugin in self.plugins.iter() {
-            let filtered_tasks = plugin.filter_tasks(&all_tasks);
+            let filtered_tasks = plugin.filter_tasks(&all_tasks, &node_address);
             all_tasks = filtered_tasks;
         }
 
@@ -49,7 +54,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_task_for_node() {
         let state = create_test_app_state().await;
-        let scheduler = Scheduler::new(state.store_context.clone());
+        let scheduler = Scheduler::new(state.store_context.clone(), vec![]);
 
         let task = Task {
             id: Uuid::new_v4(),
