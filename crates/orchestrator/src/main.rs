@@ -2,14 +2,17 @@ mod api;
 mod discovery;
 mod models;
 mod node;
+mod prelude;
 mod scheduler;
+mod status_update;
 mod store;
 mod utils;
 use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
-use crate::node::status_update::NodeStatusUpdater;
 use crate::scheduler::Scheduler;
+use crate::status_update::plugins::webhook::WebhookPlugin;
+use crate::status_update::NodeStatusUpdater;
 use crate::store::core::RedisStore;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
@@ -24,6 +27,7 @@ use log::LevelFilter;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
+use status_update::plugins::StatusUpdatePlugin;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
@@ -220,13 +224,19 @@ async fn main() -> Result<()> {
         let status_update_store_context = store_context.clone();
         let status_update_heartbeats = heartbeats.clone();
         let status_update_contracts = contracts.clone();
-        let webhook_urls = args
+        let webhook_urls: Vec<String> = args
             .webhook_urls
             .clone()
             .unwrap_or_default()
             .split(',')
             .map(|s| s.to_string())
             .collect();
+
+        let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
+        for url in webhook_urls {
+            status_update_plugins.push(Box::new(WebhookPlugin::new(url)));
+        }
+
         tasks.spawn(async move {
             let status_updater = NodeStatusUpdater::new(
                 status_update_store_context.clone(),
@@ -236,7 +246,7 @@ async fn main() -> Result<()> {
                 compute_pool_id,
                 args.disable_ejection,
                 status_update_heartbeats.clone(),
-                webhook_urls,
+                status_update_plugins,
             );
             status_updater.run().await
         });

@@ -4577,6 +4577,7 @@ dependencies = [
  "actix-web",
  "alloy",
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "clap 4.5.37",
