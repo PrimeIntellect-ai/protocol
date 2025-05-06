@@ -17,7 +17,6 @@ google-cloud-auth = "0.18.0"
 google-cloud-storage = "0.24.0"
 hex = { workspace = true }
 log = { workspace = true }
-mockito = "1.7.0"
 rand = "0.9.0"
 redis = { workspace = true }
 redis-test = { workspace = true }
