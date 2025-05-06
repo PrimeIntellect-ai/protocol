@@ -62,7 +62,6 @@ impl StatusUpdatePlugin for WebhookPlugin {
             }
         });
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
         Ok(())
     }
 }
