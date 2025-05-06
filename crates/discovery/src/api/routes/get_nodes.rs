@@ -144,6 +144,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            only_one_node_per_ip: true,
         };
         let app = test::init_service(
             App::new()
@@ -182,6 +183,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            only_one_node_per_ip: true,
         };
         let app = test::init_service(
             App::new()
