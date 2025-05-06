@@ -1,4 +1,6 @@
+pub mod node_groups;
 pub mod webhook;
+
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::prelude::Plugin;
