@@ -1,12 +1,10 @@
-mod plugins;
+pub mod plugins;
 use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Ok;
 use log::{debug, error, info};
 use plugins::StatusUpdatePlugin;
-use reqwest::Client;
-use serde_json::json;
 use shared::web3::contracts::core::builder::Contracts;
 use std::result::Result;
 use std::sync::Arc;
@@ -21,8 +19,6 @@ pub struct NodeStatusUpdater {
     pool_id: u32,
     disable_ejection: bool,
     heartbeats: Arc<LoopHeartbeats>,
-    webhooks: Vec<String>,
-    http_client: Client,
     plugins: Vec<Box<dyn StatusUpdatePlugin>>,
 }
 
@@ -36,7 +32,7 @@ impl NodeStatusUpdater {
         pool_id: u32,
         disable_ejection: bool,
         heartbeats: Arc<LoopHeartbeats>,
-        webhooks: Vec<String>,
+        plugins: Vec<Box<dyn StatusUpdatePlugin>>,
     ) -> Self {
         Self {
             store_context,
@@ -46,9 +42,7 @@ impl NodeStatusUpdater {
             pool_id,
             disable_ejection,
             heartbeats,
-            webhooks,
-            http_client: Client::new(),
-            plugins: vec![],
+            plugins,
         }
     }
 

@@ -15,6 +15,12 @@ pub struct WebhookPlugin {
     webhook_url: String,
 }
 
+impl WebhookPlugin {
+    pub fn new(webhook_url: String) -> Self {
+        Self { webhook_url }
+    }
+}
+
 impl Plugin for WebhookPlugin {}
 
 #[async_trait::async_trait]
