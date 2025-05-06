@@ -4,7 +4,7 @@ use log::{debug, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use shared::models::task::Task;
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc};
 
 use crate::{
     models::node::{NodeStatus, OrchestratorNode},
@@ -21,7 +21,7 @@ const NODE_GROUP_MAP_KEY: &str = "node_to_group";
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeGroup {
     pub id: String,
-    pub nodes: HashSet<String>, // Node addresses
+    pub nodes: BTreeSet<String>, // Node addresses stored in sorted order
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -74,15 +74,13 @@ impl NodeGroupsPlugin {
             .filter(|node| node.status == NodeStatus::Healthy)
             .filter(|node| node.address.to_string() != node_addr)
             .collect::<Vec<&OrchestratorNode>>();
-        println!("Healthy nodes: {:?}", healthy_nodes.len());
-        println!("Min group size: {:?}", self.min_group_size);
 
         if (healthy_nodes.len() + 1) < self.min_group_size {
             println!("Not enough healthy nodes to form a group");
             return Ok(None);
         }
 
-        let mut available_nodes = HashSet::new();
+        let mut available_nodes = BTreeSet::new();
         available_nodes.insert(node_addr.to_string());
 
         for node in healthy_nodes {
@@ -94,7 +92,8 @@ impl NodeGroupsPlugin {
             conn.hgetall(NODE_GROUP_MAP_KEY)?;
 
         // Scan through all node groups to find healthy unassigned nodes
-        let keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX))?;
+        let mut keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX))?;
+        keys.sort(); // Sort keys for consistent ordering
         for key in keys {
             let group_data: String = conn.get(&key)?;
             let group: NodeGroup = serde_json::from_str(&group_data)?;
@@ -114,7 +113,7 @@ impl NodeGroupsPlugin {
             return Ok(None);
         }
 
-        // Limit nodes if needed
+        // Take nodes up to max size while preserving order
         let nodes = if available_nodes.len() > self.max_group_size {
             available_nodes
                 .into_iter()
@@ -243,11 +242,32 @@ impl SchedulerPlugin for NodeGroupsPlugin {
     fn filter_tasks(&self, tasks: &[Task], node_address: &Address) -> Vec<Task> {
         // Pretty dumb first version - we return a task when the node is in a group
         // otherwise we do not return a task
-        if let Ok(Some(_)) = self.get_node_group(&node_address.to_string()) {
-            return tasks.to_vec();
+        if let Ok(Some(group)) = self.get_node_group(&node_address.to_string()) {
+            println!("Node {} is in group {:?}", node_address, group);
+
+            let node_group_index = group
+                .nodes
+                .iter()
+                .position(|n| n == &node_address.to_string())
+                .unwrap();
+
+            let mut final_tasks: Vec<Task> = Vec::new();
+            for task in tasks {
+                let mut task_clone = task.clone();
+
+                let mut env_vars = task_clone.env_vars.unwrap_or_default();
+                env_vars.insert("GROUP_INDEX".to_string(), node_group_index.to_string());
+                task_clone.env_vars = Some(env_vars);
+
+                // TODO: Add next peers p2p address
+
+                final_tasks.push(task_clone);
+            }
+
+            return final_tasks;
         }
         println!("Node {} is not in a group, skipping task", node_address);
-        return vec![];
+        vec![]
     }
 }
 
@@ -257,7 +277,9 @@ mod tests {
 
     use super::*;
     use alloy::primitives::Address;
+    use shared::models::task::TaskState;
     use std::{str::FromStr, sync::Arc};
+    use uuid::Uuid;
 
     fn create_test_node(addr: &str, status: NodeStatus) -> OrchestratorNode {
         OrchestratorNode {
@@ -322,5 +344,68 @@ mod tests {
             .hget(NODE_GROUP_MAP_KEY, node1.address.to_string())
             .unwrap();
         assert!(group_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_group_scheduling() {
+        let store = Arc::new(RedisStore::new_test());
+        let context_store = store.clone();
+        let store_context = Arc::new(StoreContext::new(context_store));
+
+        let plugin = NodeGroupsPlugin::new(2, 5, store.clone(), store_context);
+        let node1 = create_test_node(
+            "0x1234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node1.clone());
+        let node2 = create_test_node(
+            "0x2234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node2.clone());
+
+        let task1 = Task {
+            id: Uuid::new_v4(),
+            image: "image".to_string(),
+            name: "name".to_string(),
+            env_vars: None,
+            command: None,
+            args: None,
+            state: TaskState::PENDING,
+            created_at: 0,
+            updated_at: None,
+        };
+
+        let tasks = vec![task1];
+
+        let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+        assert_eq!(filtered_tasks.len(), 0);
+
+        let _ = plugin
+            .handle_status_change(&node1, &NodeStatus::Healthy)
+            .await;
+
+        let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+
+        // Check both nodes get assigned valid and different indexes
+        assert_eq!(filtered_tasks.len(), 1);
+        let first_index = filtered_tasks[0]
+            .env_vars
+            .as_ref()
+            .unwrap()
+            .get("GROUP_INDEX")
+            .unwrap()
+            .to_string();
+        assert!(first_index == "0");
+        let filtered_tasks = plugin.filter_tasks(&tasks, &node2.address);
+        assert_eq!(filtered_tasks.len(), 1);
+        let second_index = filtered_tasks[0]
+            .env_vars
+            .as_ref()
+            .unwrap()
+            .get("GROUP_INDEX")
+            .unwrap()
+            .to_string();
+        assert!(second_index == "1");
     }
 }

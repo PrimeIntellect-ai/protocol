@@ -17,7 +17,6 @@ use crate::store::core::RedisStore;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::U256;
-use alloy::serde::quantity::vec;
 use anyhow::Result;
 use clap::Parser;
 use clap::ValueEnum;
@@ -191,7 +190,11 @@ async fn main() -> Result<()> {
 
     // TODO: How do we make this configurable from the outside?
     let group_store_context = store_context.clone();
-    let group_plugin = NodeGroupsPlugin::new(2, 2, store.clone(), group_store_context);
+
+    // TODO: Move to proper factory / configuration
+    let group_size: usize = 4;
+    let group_plugin =
+        NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
     // Should be fine to clone this plugin since we're using redis for state anyways
     let status_group_plugin = group_plugin.clone();
     let scheduler = Scheduler::new(store_context.clone(), vec![Box::new(group_plugin)]);

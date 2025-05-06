@@ -34,7 +34,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
 
     let store_context = Arc::new(StoreContext::new(store.clone()));
     let mode = ServerMode::Full;
-    let scheduler = Scheduler::new(store_context.clone());
+    let scheduler = Scheduler::new(store_context.clone(), vec![]);
     Data::new(AppState {
         store_context: store_context.clone(),
         contracts: None,
