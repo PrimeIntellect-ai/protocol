@@ -234,7 +234,7 @@ async fn main() -> Result<()> {
 
         let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
         for url in webhook_urls {
-            status_update_plugins.push(Box::new(WebhookPlugin::new(url.to_string())));
+            status_update_plugins.push(Box::new(WebhookPlugin::new(url)));
         }
 
         tasks.spawn(async move {
