@@ -70,13 +70,16 @@ impl NodeGroupsPlugin {
         }
 
         let nodes = self.store_context.node_store.get_nodes();
+        println!("nodes: {:?}", nodes);
+        // Check for p2p id?
         let healthy_nodes = nodes
             .iter()
             .filter(|node| node.status == NodeStatus::Healthy)
             .filter(|node| node.address.to_string() != node_addr)
-            .filter(|node| node.p2p_id.is_some())
             .collect::<Vec<&OrchestratorNode>>();
-
+        println!("healthy_nodes: {:?}", healthy_nodes);
+        println!("min_group_size: {:?}", self.min_group_size);
+        println!("healthy_nodes.len() + 1: {:?}", healthy_nodes.len() + 1);
         if (healthy_nodes.len() + 1) < self.min_group_size {
             println!("Not enough healthy nodes to form a group");
             return Ok(None);

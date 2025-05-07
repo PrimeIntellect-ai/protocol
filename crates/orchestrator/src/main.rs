@@ -192,7 +192,7 @@ async fn main() -> Result<()> {
     let group_store_context = store_context.clone();
 
     // TODO: Move to proper factory / configuration
-    let group_size: usize = 4;
+    let group_size: usize = 2;
     let group_plugin =
         NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
     // Should be fine to clone this plugin since we're using redis for state anyways
@@ -252,7 +252,8 @@ async fn main() -> Result<()> {
         tasks.spawn(async move {
             let status_updater = NodeStatusUpdater::new(
                 status_update_store_context.clone(),
-                15,
+                // TODO: change this back
+               3, 
                 None,
                 status_update_contracts.clone(),
                 compute_pool_id,

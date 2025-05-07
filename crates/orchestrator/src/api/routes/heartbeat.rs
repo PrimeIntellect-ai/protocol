@@ -47,6 +47,7 @@ async fn heartbeat(
         .store_metrics(heartbeat.metrics.clone(), node_address);
 
     let current_task = app_state.scheduler.get_task_for_node(node_address);
+    println!("current_task: {:?}", current_task);
     match current_task {
         Ok(Some(task)) => {
             let resp: HttpResponse = ApiResponse::new(
