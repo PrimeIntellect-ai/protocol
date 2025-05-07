@@ -100,6 +100,16 @@ impl NodeStore {
         let _: () = con.set(&node_key, node_string).unwrap();
     }
 
+    pub fn update_node_p2p_id(&self, node_address: &Address, p2p_id: &str) {
+        let mut con = self.redis.client.get_connection().unwrap();
+        let node_key: String = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
+        let node_string: String = con.get(&node_key).unwrap();
+        let mut node: OrchestratorNode = serde_json::from_str(&node_string).unwrap();
+        node.p2p_id = Some(p2p_id.to_string());
+        let node_string = node.to_string();
+        let _: () = con.set(&node_key, node_string).unwrap();
+    }
+
     pub fn update_node_task(
         &self,
         node_address: Address,
@@ -169,6 +179,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
 
         let healthy_node = OrchestratorNode {
@@ -180,6 +191,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
 
         node_store.add_node(uninvited_node.clone());
@@ -204,6 +216,7 @@ mod tests {
                 task_id: None,
                 task_state: None,
                 version: None,
+                p2p_id: None,
                 last_status_change: None,
             },
             OrchestratorNode {
@@ -214,6 +227,7 @@ mod tests {
                 task_id: None,
                 task_state: None,
                 version: None,
+                p2p_id: None,
                 last_status_change: None,
             },
             OrchestratorNode {
@@ -224,6 +238,7 @@ mod tests {
                 task_id: None,
                 task_state: None,
                 version: None,
+                p2p_id: None,
                 last_status_change: None,
             },
         ];

@@ -270,6 +270,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
         app_state.store_context.node_store.add_node(node.clone());
 

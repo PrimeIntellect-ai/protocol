@@ -306,6 +306,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -316,6 +317,7 @@ mod tests {
             metrics: None,
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
             timestamp: None,
+            p2p_id: None,
         };
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
 
@@ -358,6 +360,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -404,6 +407,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -455,6 +459,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -506,6 +511,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
         let _: () = app_state
             .store_context
@@ -519,6 +525,7 @@ mod tests {
             metrics: None,
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
             timestamp: None,
+            p2p_id: None,
         };
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -571,6 +578,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
         let _: () = app_state
             .store_context
@@ -587,6 +595,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node2.clone());
@@ -650,6 +659,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -692,6 +702,7 @@ mod tests {
             metrics: None,
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
             timestamp: None,
+            p2p_id: None,
         };
         let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
 
@@ -719,6 +730,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -772,6 +784,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: None,
         };
         let counter = app_state
             .store_context

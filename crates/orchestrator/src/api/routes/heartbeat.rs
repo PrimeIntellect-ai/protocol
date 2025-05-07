@@ -32,6 +32,14 @@ async fn heartbeat(
         task_info.task_id,
         task_info.task_state,
     );
+
+    if let Some(p2p_id) = &heartbeat.p2p_id {
+        app_state
+            .store_context
+            .node_store
+            .update_node_p2p_id(&node_address, p2p_id);
+    }
+
     app_state.store_context.heartbeat_store.beat(&heartbeat);
     app_state
         .store_context
@@ -111,6 +119,7 @@ mod tests {
                 metrics: None,
                 version: None,
                 timestamp: None,
+                p2p_id: None,
             })
         );
     }
@@ -167,6 +176,7 @@ mod tests {
             metrics: None,
             version: None,
             timestamp: None,
+            p2p_id: None,
         };
         assert_eq!(value, heartbeat);
     }

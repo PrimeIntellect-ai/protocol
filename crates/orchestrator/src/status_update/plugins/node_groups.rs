@@ -4,6 +4,7 @@ use log::{debug, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use shared::models::task::Task;
+use std::str::FromStr;
 use std::{collections::BTreeSet, sync::Arc};
 
 use crate::{
@@ -73,6 +74,7 @@ impl NodeGroupsPlugin {
             .iter()
             .filter(|node| node.status == NodeStatus::Healthy)
             .filter(|node| node.address.to_string() != node_addr)
+            .filter(|node| node.p2p_id.is_some())
             .collect::<Vec<&OrchestratorNode>>();
 
         if (healthy_nodes.len() + 1) < self.min_group_size {
@@ -242,6 +244,7 @@ impl SchedulerPlugin for NodeGroupsPlugin {
     fn filter_tasks(&self, tasks: &[Task], node_address: &Address) -> Vec<Task> {
         // Pretty dumb first version - we return a task when the node is in a group
         // otherwise we do not return a task
+
         if let Ok(Some(group)) = self.get_node_group(&node_address.to_string()) {
             println!("Node {} is in group {:?}", node_address, group);
 
@@ -255,11 +258,40 @@ impl SchedulerPlugin for NodeGroupsPlugin {
             for task in tasks {
                 let mut task_clone = task.clone();
 
+                let next_node_idx = (node_group_index + 1) % group.nodes.len();
+                let next_node_addr = group.nodes.iter().nth(next_node_idx).unwrap();
+
+                // Get p2p_id for next node from node store
+                let next_p2p_id = if let Some(next_node) = self
+                    .store_context
+                    .node_store
+                    .get_node(&Address::from_str(next_node_addr).unwrap())
+                {
+                    next_node.p2p_id.unwrap_or_default()
+                } else {
+                    String::new()
+                };
+
                 let mut env_vars = task_clone.env_vars.unwrap_or_default();
                 env_vars.insert("GROUP_INDEX".to_string(), node_group_index.to_string());
-                task_clone.env_vars = Some(env_vars);
+                for (_, value) in env_vars.iter_mut() {
+                    let new_value = value
+                        .replace("${GROUP_INDEX}", &node_group_index.to_string())
+                        .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
+                        .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id);
 
-                // TODO: Add next peers p2p address
+                    *value = new_value;
+                }
+                task_clone.env_vars = Some(env_vars);
+                task_clone.args = task_clone.args.map(|args| {
+                    args.into_iter()
+                        .map(|arg| {
+                            arg.replace("${GROUP_INDEX}", &node_group_index.to_string())
+                                .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
+                                .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
+                        })
+                        .collect::<Vec<String>>()
+                });
 
                 final_tasks.push(task_clone);
             }
@@ -278,7 +310,7 @@ mod tests {
     use super::*;
     use alloy::primitives::Address;
     use shared::models::task::TaskState;
-    use std::{str::FromStr, sync::Arc};
+    use std::{collections::HashMap, str::FromStr, sync::Arc};
     use uuid::Uuid;
 
     fn create_test_node(addr: &str, status: NodeStatus) -> OrchestratorNode {
@@ -291,6 +323,7 @@ mod tests {
             task_state: None,
             version: None,
             last_status_change: None,
+            p2p_id: Some("test_p2p_id".to_string()),
         }
     }
 
@@ -364,13 +397,25 @@ mod tests {
         );
         plugin.store_context.node_store.add_node(node2.clone());
 
+        let mut env_vars = HashMap::new();
+        env_vars.insert("LOCAL_RANK".to_string(), "0".to_string());
+        env_vars.insert("RANK".to_string(), "${GROUP_INDEX}".to_string());
+        env_vars.insert("WORLD_SIZE".to_string(), "${GROUP_SIZE}".to_string());
+
         let task1 = Task {
             id: Uuid::new_v4(),
-            image: "image".to_string(),
-            name: "name".to_string(),
-            env_vars: None,
-            command: None,
-            args: None,
+            image: "prime-vllm".to_string(),
+            name: "test-task".to_string(),
+            env_vars: Some(env_vars),
+            command: Some("uv".to_string()),
+            args: Some(vec![
+                "run".to_string(),
+                "generate.py".to_string(),
+                "--model".to_string(),
+                "model/Qwen3-14B-${GROUP_INDEX}.${GROUP_SIZE}".to_string(),
+                "--top-p".to_string(),
+                "0.95".to_string(),
+            ]),
             state: TaskState::PENDING,
             created_at: 0,
             updated_at: None,
@@ -389,23 +434,21 @@ mod tests {
 
         // Check both nodes get assigned valid and different indexes
         assert_eq!(filtered_tasks.len(), 1);
-        let first_index = filtered_tasks[0]
-            .env_vars
-            .as_ref()
-            .unwrap()
-            .get("GROUP_INDEX")
-            .unwrap()
-            .to_string();
-        assert!(first_index == "0");
+        let task = &filtered_tasks[0];
+        let env_vars = task.env_vars.as_ref().unwrap();
+        println!("task: {:?}", task);
+        assert_eq!(env_vars.get("GROUP_INDEX").unwrap(), "0");
+        assert_eq!(env_vars.get("RANK").unwrap(), "0");
+        assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
+        assert_eq!(task.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
+
         let filtered_tasks = plugin.filter_tasks(&tasks, &node2.address);
         assert_eq!(filtered_tasks.len(), 1);
-        let second_index = filtered_tasks[0]
-            .env_vars
-            .as_ref()
-            .unwrap()
-            .get("GROUP_INDEX")
-            .unwrap()
-            .to_string();
-        assert!(second_index == "1");
+        let task = &filtered_tasks[0];
+        let env_vars = task.env_vars.as_ref().unwrap();
+        assert_eq!(env_vars.get("GROUP_INDEX").unwrap(), "1");
+        assert_eq!(env_vars.get("RANK").unwrap(), "1");
+        assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
+        assert_eq!(task.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
     }
 }

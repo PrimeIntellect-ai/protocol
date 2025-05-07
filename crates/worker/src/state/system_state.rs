@@ -8,6 +8,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::utils::p2p::generate_iroh_node_id_from_seed;
+use crate::utils::p2p::generate_random_seed;
+
 const STATE_FILENAME: &str = "heartbeat_state.toml";
 
 fn get_default_state_dir() -> Option<String> {
@@ -17,7 +20,8 @@ fn get_default_state_dir() -> Option<String> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PersistedSystemState {
-    endpoint: Option<String>, // Only store the endpoint
+    endpoint: Option<String>,
+    p2p_seed: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +32,8 @@ pub struct SystemState {
     state_dir_overwrite: Option<PathBuf>,
     disable_state_storing: bool,
     pub compute_pool_id: Option<String>,
+    pub p2p_id: Option<String>,
+    pub p2p_seed: Option<u64>,
 }
 
 impl SystemState {
@@ -43,7 +49,7 @@ impl SystemState {
             .or_else(|| default_state_dir.map(PathBuf::from));
         debug!("State path: {:?}", state_path);
         let mut endpoint = None;
-
+        let mut p2p_seed: Option<u64> = None;
         // Try to load state, log info if creating new file
         if let Some(path) = &state_path {
             let state_file = path.join(STATE_FILENAME);
@@ -55,10 +61,17 @@ impl SystemState {
             } else if let Ok(Some(loaded_state)) = SystemState::load_state(path) {
                 debug!("Loaded previous state from {:?}", state_file);
                 endpoint = loaded_state.endpoint;
+                p2p_seed = loaded_state.p2p_seed;
             } else {
                 debug!("Failed to load state from {:?}", state_file);
             }
         }
+        if p2p_seed.is_none() {
+            let seed = generate_random_seed();
+            p2p_seed = Some(seed);
+        }
+        // TODO: remove unwrap
+        let p2p_id = generate_iroh_node_id_from_seed(p2p_seed.unwrap()).unwrap();
 
         Self {
             last_heartbeat: Arc::new(RwLock::new(None)),
@@ -67,6 +80,8 @@ impl SystemState {
             state_dir_overwrite: state_path.clone(),
             disable_state_storing,
             compute_pool_id,
+            p2p_seed,
+            p2p_id: Some(p2p_id),
         }
     }
 
@@ -76,6 +91,7 @@ impl SystemState {
                 // Get values without block_on
                 let state = PersistedSystemState {
                     endpoint: heartbeat_endpoint,
+                    p2p_seed: self.p2p_seed,
                 };
 
                 fs::create_dir_all(state_dir)?;
@@ -96,6 +112,14 @@ impl SystemState {
             return Ok(Some(state));
         }
         Ok(None)
+    }
+
+    pub fn get_p2p_seed(&self) -> Option<u64> {
+        self.p2p_seed
+    }
+
+    pub fn get_p2p_id(&self) -> Option<String> {
+        self.p2p_id.clone()
     }
 
     pub async fn update_last_heartbeat(&self) {

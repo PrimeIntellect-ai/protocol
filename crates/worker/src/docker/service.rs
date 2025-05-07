@@ -22,6 +22,7 @@ pub struct DockerService {
     system_memory_mb: Option<u32>,
     task_bridge_socket_path: String,
     node_address: String,
+    p2p_seed: Option<u64>,
 }
 
 const TASK_PREFIX: &str = "prime-task";
@@ -37,6 +38,7 @@ impl DockerService {
         task_bridge_socket_path: String,
         storage_path: Option<String>,
         node_address: String,
+        p2p_seed: Option<u64>,
     ) -> Self {
         let docker_manager = Arc::new(DockerManager::new(storage_path).unwrap());
         Self {
@@ -47,6 +49,7 @@ impl DockerService {
             system_memory_mb,
             task_bridge_socket_path,
             node_address,
+            p2p_seed,
         }
     }
 
@@ -177,6 +180,7 @@ impl DockerService {
                                     let system_memory_mb = self.system_memory_mb;
                                     let task_bridge_socket_path = self.task_bridge_socket_path.clone();
                                     let node_address = self.node_address.clone();
+                                    let p2p_seed = self.p2p_seed;
                                     let handle = tokio::spawn(async move {
                                         let payload = match state_clone.get_current_task().await {
                                             Some(payload) => payload,
@@ -203,6 +207,9 @@ impl DockerService {
                                         env_vars.insert("NODE_ADDRESS".to_string(), node_address);
                                         env_vars.insert("PRIME_TASK_BRIDGE_SOCKET".to_string(), task_bridge_socket_path.to_string());
                                         env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
+                                        if let Some(p2p_seed) = p2p_seed {
+                                            env_vars.insert("IROH_SEED".to_string(), p2p_seed.to_string());
+                                        }
                                         let volumes = vec![
                                             (
                                                 Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
@@ -353,6 +360,7 @@ mod tests {
             "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
             Address::ZERO.to_string(),
+            None,
         );
         let task = Task {
             image: "ubuntu:latest".to_string(),
@@ -400,6 +408,7 @@ mod tests {
             "/tmp/com.prime.miner/metrics.sock".to_string(),
             None,
             Address::ZERO.to_string(),
+            None,
         );
         let state = docker_service.state.clone();
 
