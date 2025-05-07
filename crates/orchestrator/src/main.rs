@@ -253,7 +253,7 @@ async fn main() -> Result<()> {
             let status_updater = NodeStatusUpdater::new(
                 status_update_store_context.clone(),
                 // TODO: change this back
-               3, 
+                3,
                 None,
                 status_update_contracts.clone(),
                 compute_pool_id,

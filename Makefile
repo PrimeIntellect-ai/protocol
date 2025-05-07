@@ -159,6 +159,23 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 				--auto-accept \
 				2>&1 | tee worker.log\"'"
 
+.PHONY: watch-worker-remote-two
+watch-worker-remote-two: setup-remote setup-tunnel sync-remote
+	$(SSH_CONNECTION) -t "cd ~/$(notdir $(CURDIR)) && \
+		export PATH=\"\$$HOME/.cargo/bin:\$$PATH\" && \
+		. \"\$$HOME/.cargo/env\" && \
+		export TERM=xterm-256color && \
+		bash --login -i -c '\
+			set -a && source .env && set +a && \
+			export EXTERNAL_IP=$(EXTERNAL_IP) && \
+			clear && \
+			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w crates/worker/src -x \"run --bin worker -- run \
+				--port $(PORT) \
+				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
+				--auto-accept \
+				--private-key-node \$$PRIVATE_KEY_NODE_2 \
+				2>&1 | tee worker.log\"'"
+
 # Kill SSH tunnel
 .PHONY: kill-tunnel
 kill-tunnel:
@@ -170,6 +187,12 @@ kill-tunnel:
 remote-worker:
 	@trap 'make kill-tunnel' EXIT; \
 	make watch-worker-remote
+
+.PHONY: remote-worker-two
+remote-worker-two:
+	@trap 'make kill-tunnel' EXIT; \
+	make watch-worker-remote-two
+
 
 # testing:
 eject-node:
