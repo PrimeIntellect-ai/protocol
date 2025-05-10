@@ -119,6 +119,10 @@ struct Args {
     /// Only temporary setting - will be moved to proper plugin config
     #[arg(long)]
     with_basic_group_plugin: bool,
+
+    /// Group size
+    #[arg(long, default_value = "4")]
+    group_size: u32,
 }
 
 #[tokio::main]
@@ -200,7 +204,7 @@ async fn main() -> Result<()> {
 
     // Add group plugin if enabled
     if args.with_basic_group_plugin {
-        let group_size: usize = 2;
+        let group_size: usize = args.group_size as usize;
         let group_plugin =
             NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
         let status_group_plugin = group_plugin.clone();
