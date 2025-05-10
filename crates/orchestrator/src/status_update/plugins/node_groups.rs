@@ -22,7 +22,7 @@ const NODE_GROUP_MAP_KEY: &str = "node_to_group";
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeGroup {
     pub id: String,
-    pub nodes: BTreeSet<String>, 
+    pub nodes: BTreeSet<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -68,7 +68,7 @@ impl NodeGroupsPlugin {
             return Ok(None);
         }
 
-        let nodes = self.store_context.node_store.get_nodes(); 
+        let nodes = self.store_context.node_store.get_nodes();
 
         // TODO: Check for p2p id?
         let healthy_nodes = nodes
@@ -97,7 +97,7 @@ impl NodeGroupsPlugin {
 
         // Scan through all node groups to find healthy unassigned nodes
         let mut keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX))?;
-        keys.sort(); 
+        keys.sort();
         for key in keys {
             let group_data: String = conn.get(&key)?;
             let group: NodeGroup = serde_json::from_str(&group_data)?;
