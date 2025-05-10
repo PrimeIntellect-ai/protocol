@@ -9224,7 +9224,6 @@ dependencies = [
  "colored",
  "console",
  "ctrlc",
- "data-encoding",
  "directories",
  "env_logger",
  "futures",
