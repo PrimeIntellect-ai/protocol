@@ -665,5 +665,42 @@ mod tests {
         assert!(node2_group_count <= 1, "Node2 should be in at most one group");
         assert!(node3_group_count <= 1, "Node3 should be in at most one group");
 
+        // Add a fourth node and make it healthy
+        let node4 = create_test_node(
+            "0x4234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node4.clone());
+        let _ = plugin
+            .handle_status_change(&node4, &NodeStatus::Healthy)
+            .await;
+
+        // Get updated group keys
+        let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
+        
+        // There should now be exactly two groups
+        assert_eq!(group_keys.len(), 2, "There should be exactly two groups after adding node4");
+        
+        // Verify each node's updated group assignment
+        let node1_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node1.address.to_string()).unwrap();
+        let node2_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node2.address.to_string()).unwrap();
+        let node3_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node3.address.to_string()).unwrap();
+        let node4_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node4.address.to_string()).unwrap();
+        
+        // All nodes should now be in a group
+        assert!(node1_group_id.is_some(), "Node1 should be in a group");
+        assert!(node2_group_id.is_some(), "Node2 should be in a group");
+        assert!(node3_group_id.is_some(), "Node3 should be in a group");
+        assert!(node4_group_id.is_some(), "Node4 should be in a group");
+        
+        // Verify that we have exactly two distinct group IDs
+        let all_group_ids = vec![
+            node1_group_id.unwrap(), 
+            node2_group_id.unwrap(), 
+            node3_group_id.unwrap(), 
+            node4_group_id.unwrap()
+        ];
+        let unique_group_ids: std::collections::HashSet<_> = all_group_ids.iter().collect();
+        assert_eq!(unique_group_ids.len(), 2, "There should be exactly two distinct group IDs");
     }
 }
