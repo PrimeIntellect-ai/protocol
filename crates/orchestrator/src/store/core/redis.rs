@@ -44,8 +44,6 @@ impl RedisStore {
             redis::ConnectionAddr::Tcp(host, port) => (host.clone(), *port),
             _ => panic!("Expected TCP connection"),
         };
-        println!("host: {}", host);
-        println!("port: {}", port);
 
         let redis_url = format!("redis://{}:{}", host, port);
         debug!("Starting test Redis server at {}", redis_url);
