@@ -750,10 +750,12 @@ mod tests {
         assert!(node4_group_id.is_some(), "Node4 should be in a group");
 
         // Verify that we have exactly two distinct group IDs
-        let all_group_ids = [node1_group_id.unwrap(),
+        let all_group_ids = [
+            node1_group_id.unwrap(),
             node2_group_id.unwrap(),
             node3_group_id.unwrap(),
-            node4_group_id.unwrap()];
+            node4_group_id.unwrap(),
+        ];
         let unique_group_ids: std::collections::HashSet<_> = all_group_ids.iter().collect();
         assert_eq!(
             unique_group_ids.len(),
