@@ -70,8 +70,6 @@ impl NodeGroupsPlugin {
 
         let nodes = self.store_context.node_store.get_nodes();
 
-        // TODO: Node should already have a p2p_id
-
         let healthy_nodes = nodes
             .iter()
             .filter(|node| node.status == NodeStatus::Healthy)
