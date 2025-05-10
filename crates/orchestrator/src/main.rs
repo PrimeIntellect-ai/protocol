@@ -24,6 +24,7 @@ use log::debug;
 use log::error;
 use log::info;
 use log::LevelFilter;
+use scheduler::plugins::SchedulerPlugin;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
@@ -113,6 +114,11 @@ struct Args {
     /// Webhook urls (comma-separated string)
     #[arg(long, default_value = "")]
     webhook_urls: Option<String>,
+
+    /// With basic group plugin
+    /// Only temporary setting - will be moved to proper plugin config
+    #[arg(long)]
+    with_basic_group_plugin: bool,
 }
 
 #[tokio::main]
@@ -188,16 +194,21 @@ async fn main() -> Result<()> {
         }
     };
 
-    // TODO: How do we make this configurable from the outside?
     let group_store_context = store_context.clone();
+    let mut scheduler_plugins: Vec<Box<dyn SchedulerPlugin>> = Vec::new();
+    let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
 
-    // TODO: Move to proper factory / configuration
-    let group_size: usize = 2;
-    let group_plugin =
-        NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
-    // Should be fine to clone this plugin since we're using redis for state anyways
-    let status_group_plugin = group_plugin.clone();
-    let scheduler = Scheduler::new(store_context.clone(), vec![Box::new(group_plugin)]);
+    // Add group plugin if enabled
+    if args.with_basic_group_plugin {
+        let group_size: usize = 2;
+        let group_plugin =
+            NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
+        let status_group_plugin = group_plugin.clone();
+        scheduler_plugins.push(Box::new(group_plugin));
+        status_update_plugins.push(Box::new(status_group_plugin));
+    }
+
+    let scheduler = Scheduler::new(store_context.clone(), scheduler_plugins);
 
     // Only spawn processor tasks if in ProcessorOnly or Full mode
     if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
@@ -242,18 +253,14 @@ async fn main() -> Result<()> {
             .map(|s| s.to_string())
             .collect();
 
-        let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
         for url in webhook_urls {
             status_update_plugins.push(Box::new(WebhookPlugin::new(url.to_string())));
         }
 
-        status_update_plugins.push(Box::new(status_group_plugin));
-
         tasks.spawn(async move {
             let status_updater = NodeStatusUpdater::new(
                 status_update_store_context.clone(),
-                // TODO: change this back
-                3,
+                15,
                 None,
                 status_update_contracts.clone(),
                 compute_pool_id,
