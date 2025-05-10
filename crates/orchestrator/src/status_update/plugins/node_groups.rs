@@ -173,7 +173,7 @@ impl NodeGroupsPlugin {
         Ok(())
     }
 
-    fn get_node_group(&self, node_addr: &str) -> Result<Option<NodeGroup>, Error> {
+    pub fn get_node_group(&self, node_addr: &str) -> Result<Option<NodeGroup>, Error> {
         let mut conn = self.store.client.get_connection()?;
 
         let group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node_addr)?;

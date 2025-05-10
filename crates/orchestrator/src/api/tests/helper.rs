@@ -52,6 +52,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
         hourly_upload_limit: 12,
         redis_store: store.clone(),
         scheduler,
+        node_groups_plugin: None,
     })
 }
 

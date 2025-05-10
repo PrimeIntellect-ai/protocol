@@ -201,6 +201,7 @@ async fn main() -> Result<()> {
     let group_store_context = store_context.clone();
     let mut scheduler_plugins: Vec<Box<dyn SchedulerPlugin>> = Vec::new();
     let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
+    let mut node_groups_plugin: Option<Arc<NodeGroupsPlugin>> = None;
 
     // Add group plugin if enabled
     if args.with_basic_group_plugin {
@@ -208,6 +209,8 @@ async fn main() -> Result<()> {
         let group_plugin =
             NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
         let status_group_plugin = group_plugin.clone();
+        let group_plugin_for_server = group_plugin.clone();
+        node_groups_plugin = Some(Arc::new(group_plugin_for_server));
         scheduler_plugins.push(Box::new(group_plugin));
         status_update_plugins.push(Box::new(status_group_plugin));
     }
@@ -295,6 +298,7 @@ async fn main() -> Result<()> {
             compute_pool_id,
             server_mode,
             scheduler,
+            node_groups_plugin,
         ) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
