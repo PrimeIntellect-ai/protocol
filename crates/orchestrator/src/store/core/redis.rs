@@ -57,6 +57,7 @@ impl RedisStore {
                 // Verify connection works
                 if let Ok(mut conn) = client.get_connection() {
                     if redis::cmd("PING").query::<String>(&mut conn).is_ok() {
+                        let _ = redis::cmd("FLUSHALL").query::<String>(&mut conn);
                         break client;
                     }
                 }

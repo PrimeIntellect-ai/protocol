@@ -19,7 +19,7 @@ use super::StatusUpdatePlugin;
 const GROUP_KEY_PREFIX: &str = "node_group:";
 const NODE_GROUP_MAP_KEY: &str = "node_to_group";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct NodeGroup {
     pub id: String,
     pub nodes: BTreeSet<String>,
@@ -51,8 +51,8 @@ impl NodeGroupsPlugin {
 
     fn generate_group_id() -> String {
         use rand::Rng;
-        let mut rng = rand::rng();
-        format!("group_{}", rng.random::<u64>())
+        let mut rng = rand::thread_rng();
+        format!("group_{}", rng.gen::<u64>())
     }
 
     fn get_group_key(group_id: &str) -> String {
@@ -70,12 +70,18 @@ impl NodeGroupsPlugin {
 
         let nodes = self.store_context.node_store.get_nodes();
 
+        // Get all node->group mappings to check which nodes are already in groups
+        let assigned_nodes: std::collections::HashMap<String, String> =
+            conn.hgetall(NODE_GROUP_MAP_KEY)?;
+
         let healthy_nodes = nodes
             .iter()
             .filter(|node| node.status == NodeStatus::Healthy)
             .filter(|node| node.address.to_string() != node_addr)
             .filter(|node| node.p2p_id.is_some())
+            .filter(|node| !assigned_nodes.contains_key(&node.address.to_string()))
             .collect::<Vec<&OrchestratorNode>>();
+
         info!(
             "Found {} healthy nodes for potential group formation",
             healthy_nodes.len()
@@ -94,51 +100,23 @@ impl NodeGroupsPlugin {
 
         for node in healthy_nodes {
             available_nodes.insert(node.address.to_string());
-        }
-
-        // Get all node->group mappings
-        let assigned_nodes: std::collections::HashMap<String, String> =
-            conn.hgetall(NODE_GROUP_MAP_KEY)?;
-
-        // Scan through all node groups to find healthy unassigned nodes
-        let mut keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX))?;
-        keys.sort();
-        for key in keys {
-            let group_data: String = conn.get(&key)?;
-            let group: NodeGroup = serde_json::from_str(&group_data)?;
-
-            for node in group.nodes {
-                if !assigned_nodes.contains_key(&node) {
-                    available_nodes.insert(node);
-                    if available_nodes.len() >= self.min_group_size {
-                        break;
-                    }
-                }
+            if available_nodes.len() >= self.max_group_size {
+                break;
             }
         }
 
         // Not enough nodes to form a group
         if available_nodes.len() < self.min_group_size {
-            info!("After scanning existing groups, still not enough available nodes (have {}, need {})",
+            info!("Not enough available nodes to form a group (have {}, need {})",
                  available_nodes.len(), self.min_group_size);
             return Ok(None);
         }
-
-        // Take nodes up to max size while preserving order
-        let nodes = if available_nodes.len() > self.max_group_size {
-            available_nodes
-                .into_iter()
-                .take(self.max_group_size)
-                .collect()
-        } else {
-            available_nodes
-        };
 
         // Create new group
         let group_id = Self::generate_group_id();
         let group = NodeGroup {
             id: group_id.clone(),
-            nodes: nodes.clone(),
+            nodes: available_nodes.clone(),
             created_at: chrono::Utc::now(),
         };
 
@@ -148,15 +126,15 @@ impl NodeGroupsPlugin {
         conn.set::<_, _, ()>(&group_key, group_data)?;
 
         // Map nodes to group
-        for node in &nodes {
+        for node in &available_nodes {
             conn.hset::<_, _, _, ()>(NODE_GROUP_MAP_KEY, node, &group_id)?;
         }
 
-        debug!(
+        info!(
             "Created new group {} with {} nodes{}",
             group_id,
-            nodes.len(),
-            if nodes.len() == self.max_group_size {
+            available_nodes.len(),
+            if available_nodes.len() == self.max_group_size {
                 " (limited by max size)"
             } else {
                 ""
@@ -352,9 +330,16 @@ mod tests {
     use uuid::Uuid;
 
     fn create_test_node(addr: &str, status: NodeStatus) -> OrchestratorNode {
+        // Generate a deterministic IP address from the Ethereum address
+        let addr_bytes = Address::from_str(addr).unwrap().to_vec();
+        let ip_address = format!(
+            "{}.{}.{}.{}",
+            addr_bytes[0], addr_bytes[1], addr_bytes[2], addr_bytes[3]
+        );
+        
         OrchestratorNode {
             address: Address::from_str(addr).unwrap(),
-            ip_address: "127.0.0.1".to_string(),
+            ip_address,
             port: 8080,
             status,
             task_id: None,
@@ -474,7 +459,6 @@ mod tests {
         assert_eq!(filtered_tasks.len(), 1);
         let task = &filtered_tasks[0];
         let env_vars = task.env_vars.as_ref().unwrap();
-        println!("task: {:?}", task);
         assert_eq!(env_vars.get("GROUP_INDEX").unwrap(), "0");
         assert_eq!(env_vars.get("RANK").unwrap(), "0");
         assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
@@ -488,5 +472,198 @@ mod tests {
         assert_eq!(env_vars.get("RANK").unwrap(), "1");
         assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
         assert_eq!(task.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
+    }
+
+    #[tokio::test]
+    async fn test_group_formation_with_max_size() {
+        let store = Arc::new(RedisStore::new_test());
+        let context_store = store.clone();
+        let store_context = Arc::new(StoreContext::new(context_store));
+
+        // Set max group size to 2
+        let plugin = NodeGroupsPlugin::new(2, 2, store.clone(), store_context);
+
+        // Create three healthy nodes
+        let node1 = create_test_node(
+            "0x1234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node1.clone());
+
+        let node2 = create_test_node(
+            "0x2234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node2.clone());
+
+        let node3 = create_test_node(
+            "0x3234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node3.clone());
+
+        // Handle status changes to trigger group formation
+        let _ = plugin
+            .handle_status_change(&node1, &NodeStatus::Healthy)
+            .await;
+        let _ = plugin
+            .handle_status_change(&node2, &NodeStatus::Healthy)
+            .await;
+        let _ = plugin
+            .handle_status_change(&node3, &NodeStatus::Healthy)
+            .await;
+
+        // Create a test task
+        let mut env_vars = HashMap::new();
+        env_vars.insert("RANK".to_string(), "${GROUP_INDEX}".to_string());
+        env_vars.insert("WORLD_SIZE".to_string(), "${GROUP_SIZE}".to_string());
+
+        let task = Task {
+            id: Uuid::new_v4(),
+            image: "test-image".to_string(),
+            name: "test-task".to_string(),
+            env_vars: Some(env_vars),
+            command: Some("run".to_string()),
+            args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
+            state: TaskState::PENDING,
+            created_at: 0,
+            updated_at: None,
+        };
+
+        let tasks = vec![task];
+
+        // Check if node1 and node2 are in a group
+        let group1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
+        let group2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
+        
+        // Check if node3 is not in a group
+        let group3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
+
+        // Either node1 and node2 are in a group, or node2 and node3 are in a group
+        // But all three cannot be in the same group due to max_group_size=2
+        assert!(
+            (group1.is_some() && group2.is_some() && group1.as_ref() == group2.as_ref() && group3.is_none()) ||
+            (group2.is_some() && group3.is_some() && group2.as_ref() == group3.as_ref() && group1.is_none()) ||
+            (group1.is_some() && group3.is_some() && group1.as_ref() == group3.as_ref() && group2.is_none())
+        );
+
+        // Verify that tasks are only assigned to nodes in a group
+        for node in [&node1, &node2, &node3] {
+            let filtered_tasks = plugin.filter_tasks(&tasks, &node.address);
+            let group = plugin.get_node_group(&node.address.to_string()).unwrap();
+            
+            if group.is_some() {
+                assert_eq!(filtered_tasks.len(), 1, "Node in group should receive tasks");
+            } else {
+                assert_eq!(filtered_tasks.len(), 0, "Node not in group should not receive tasks");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_node_cannot_be_in_multiple_groups() {
+        let store = Arc::new(RedisStore::new_test());
+        let context_store = store.clone();
+        let store_context = Arc::new(StoreContext::new(context_store));
+        // Set max_group_size to 2, so groups can only have 2 nodes
+        let plugin = NodeGroupsPlugin::new(2, 2, store.clone(), store_context);
+
+        let all_nodes = plugin.store_context.node_store.get_nodes();
+        assert_eq!(all_nodes.len(), 0, "No nodes should be in the store");
+
+        // Create three nodes
+        let node1 = create_test_node(
+            "0x1234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        let node2 = create_test_node(
+            "0x2234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        let node3 = create_test_node(
+            "0x3234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+
+        // Add nodes to the store
+        plugin.store_context.node_store.add_node(node1.clone());
+        plugin.store_context.node_store.add_node(node2.clone());
+        plugin.store_context.node_store.add_node(node3.clone());
+
+        // Add nodes to groups through the normal flow
+        let _ = plugin
+            .handle_status_change(&node1, &NodeStatus::Healthy)
+            .await;
+        let _ = plugin
+            .handle_status_change(&node2, &NodeStatus::Healthy)
+            .await;
+        let _ = plugin
+            .handle_status_change(&node3, &NodeStatus::Healthy)
+            .await;
+
+        // Get connection to check Redis state
+        let mut conn = plugin.store.client.get_connection().unwrap();
+
+        // Verify each node's group assignment
+        let node1_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node1.address.to_string()).unwrap();
+        let node2_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node2.address.to_string()).unwrap();
+        let node3_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node3.address.to_string()).unwrap();
+
+        // With 3 nodes and max_group_size=2, one node MUST NOT be in a group
+        let nodes_without_group = [&node1_group_id, &node2_group_id, &node3_group_id]
+            .iter()
+            .filter(|id| id.is_none())
+            .count();
+        
+        assert_eq!(nodes_without_group, 1, "With 3 nodes and max_group_size=2, exactly one node must not be in a group");
+        
+        // The other two nodes must be in the same group
+        let group_ids: Vec<_> = [node1_group_id, node2_group_id, node3_group_id]
+            .iter()
+            .filter_map(|x| x.clone())
+            .collect();
+        assert_eq!(group_ids.len(), 2, "Exactly 2 nodes should have group IDs");
+        assert_eq!(group_ids[0], group_ids[1], "The 2 nodes in groups should be in the same group");
+
+        // Get all group keys
+        let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
+        let group_copy = group_keys.clone();
+        
+        // There should be exactly one group
+        
+        // Count how many groups each node appears in
+        let mut node1_group_count = 0;
+        let mut node2_group_count = 0;
+        let mut node3_group_count = 0;
+        
+        for key in group_keys {
+            let group_data: String = conn.get(&key).unwrap();
+            let group: NodeGroup = serde_json::from_str(&group_data).unwrap();
+            
+            // Verify the group has exactly 2 nodes
+            assert_eq!(group.nodes.len(), 2, "Group should have exactly 2 nodes");
+            
+            if group.nodes.contains(&node1.address.to_string()) {
+                node1_group_count += 1;
+            }
+            if group.nodes.contains(&node2.address.to_string()) {
+                node2_group_count += 1;
+            }
+            if group.nodes.contains(&node3.address.to_string()) {
+                node3_group_count += 1;
+            }
+        }
+
+        assert_eq!(group_copy.len(), 1, "There should be exactly one group");
+        
+        // Total group count should be 2 (exactly 2 nodes in groups)
+        assert_eq!(node1_group_count + node2_group_count + node3_group_count, 2, 
+            "Exactly 2 nodes should be in groups");
+        
+        // Each node should appear in at most one group
+        assert!(node1_group_count <= 1, "Node1 should be in at most one group");
+        assert!(node2_group_count <= 1, "Node2 should be in at most one group");
+        assert!(node3_group_count <= 1, "Node3 should be in at most one group");
+
     }
 }
