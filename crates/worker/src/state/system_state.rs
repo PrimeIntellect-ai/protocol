@@ -72,8 +72,16 @@ impl SystemState {
             let seed = generate_random_seed();
             p2p_seed = Some(seed);
         }
-        // TODO: remove unwrap
-        let p2p_id = generate_iroh_node_id_from_seed(p2p_seed.unwrap()).unwrap();
+        // Generate p2p_id from seed if available
+
+        let p2p_id: Option<String> =
+            p2p_seed.and_then(|seed| match generate_iroh_node_id_from_seed(seed) {
+                Ok(id) => Some(id),
+                Err(_) => {
+                    warn!("Failed to generate p2p_id from seed");
+                    None
+                }
+            });
 
         Self {
             last_heartbeat: Arc::new(RwLock::new(None)),
@@ -83,7 +91,7 @@ impl SystemState {
             disable_state_storing,
             compute_pool_id,
             p2p_seed,
-            p2p_id: Some(p2p_id),
+            p2p_id,
         }
     }
     fn save_state(&self, heartbeat_endpoint: Option<String>) -> Result<()> {
@@ -219,6 +227,7 @@ mod tests {
             false,
             None,
         );
+        assert!(state.p2p_id.is_some());
         let _ = state
             .set_running(true, Some("http://localhost:8080/heartbeat".to_string()))
             .await;

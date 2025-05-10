@@ -70,17 +70,24 @@ impl NodeGroupsPlugin {
 
         let nodes = self.store_context.node_store.get_nodes();
 
-        // TODO: Check for p2p id?
+        // TODO: Node should already have a p2p_id
+
         let healthy_nodes = nodes
             .iter()
             .filter(|node| node.status == NodeStatus::Healthy)
             .filter(|node| node.address.to_string() != node_addr)
+            .filter(|node| node.p2p_id.is_some())
             .collect::<Vec<&OrchestratorNode>>();
-        println!("healthy_nodes: {:?}", healthy_nodes);
-        println!("min_group_size: {:?}", self.min_group_size);
-        println!("healthy_nodes.len() + 1: {:?}", healthy_nodes.len() + 1);
+        info!(
+            "Found {} healthy nodes for potential group formation",
+            healthy_nodes.len()
+        );
         if (healthy_nodes.len() + 1) < self.min_group_size {
-            println!("Not enough healthy nodes to form a group");
+            info!(
+                "Not enough healthy nodes to form a group (need {}, have {})",
+                self.min_group_size,
+                healthy_nodes.len() + 1
+            );
             return Ok(None);
         }
 
@@ -114,6 +121,8 @@ impl NodeGroupsPlugin {
 
         // Not enough nodes to form a group
         if available_nodes.len() < self.min_group_size {
+            info!("After scanning existing groups, still not enough available nodes (have {}, need {})",
+                 available_nodes.len(), self.min_group_size);
             return Ok(None);
         }
 
@@ -175,7 +184,11 @@ impl NodeGroupsPlugin {
             // Delete group
             conn.del::<_, ()>(&group_key)?;
 
-            info!("Dissolved group {}", group_id);
+            info!(
+                "Dissolved group {} with {} nodes",
+                group_id,
+                group.nodes.len()
+            );
         }
 
         Ok(())
@@ -208,18 +221,21 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
     ) -> Result<(), Error> {
         let node_addr = node.address.to_string();
 
-        println!(
-            "Handle node status change in group plugin {:?}",
-            node.status
+        info!(
+            "Handling node status change in group plugin: node {} status is now {:?}",
+            node_addr, node.status
         );
 
         match node.status {
             NodeStatus::Healthy => {
                 // Try to form new group with healthy nodes
-                println!("Try to form new group with healthy nodes");
+                info!(
+                    "Node {} is healthy, attempting to form new group",
+                    node_addr
+                );
                 if let Some(group) = self.try_form_new_group(&node_addr)? {
                     info!(
-                        "Formed new group {} with {} nodes",
+                        "Successfully formed new group {} with {} nodes",
                         group.id,
                         group.nodes.len()
                     );
@@ -229,13 +245,21 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
                 // Dissolve entire group if node becomes unhealthy
                 if let Some(group) = self.get_node_group(&node_addr)? {
                     info!(
-                        "Node {} became {}, dissolving entire group {}",
-                        node_addr, node.status, group.id
+                        "Node {} became {}, dissolving entire group {} with {} nodes",
+                        node_addr,
+                        node.status,
+                        group.id,
+                        group.nodes.len()
                     );
                     self.dissolve_group(&group.id)?;
                 }
             }
-            _ => {}
+            _ => {
+                info!(
+                    "No group action needed for node {} with status {:?}",
+                    node_addr, node.status
+                );
+            }
         }
 
         Ok(())
@@ -248,7 +272,12 @@ impl SchedulerPlugin for NodeGroupsPlugin {
         // otherwise we do not return a task
 
         if let Ok(Some(group)) = self.get_node_group(&node_address.to_string()) {
-            println!("Node {} is in group {:?}", node_address, group);
+            info!(
+                "Node {} is in group {} with {} nodes",
+                node_address,
+                group.id,
+                group.nodes.len()
+            );
 
             let node_group_index = group
                 .nodes
@@ -298,9 +327,18 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                 final_tasks.push(task_clone);
             }
 
+            info!(
+                "Returning {} tasks for node {} in group {}",
+                final_tasks.len(),
+                node_address,
+                group.id
+            );
             return final_tasks;
         }
-        println!("Node {} is not in a group, skipping task", node_address);
+        info!(
+            "Node {} is not in a group, skipping all tasks",
+            node_address
+        );
         vec![]
     }
 }
