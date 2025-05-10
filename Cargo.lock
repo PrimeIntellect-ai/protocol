@@ -9226,7 +9226,6 @@ dependencies = [
  "ctrlc",
  "data-encoding",
  "directories",
- "ed25519-dalek",
  "env_logger",
  "futures",
  "futures-core",

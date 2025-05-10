@@ -52,7 +52,6 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing-log = "0.2.0"
 time = "0.3.41"
-ed25519-dalek = "2.1.1"
 data-encoding = "2.9.0"
 iroh = "0.34.1"
 rand_v8 = { package = "rand", version = "0.8.5", features = ["std"] }
