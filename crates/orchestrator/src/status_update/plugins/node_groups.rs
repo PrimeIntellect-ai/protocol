@@ -22,13 +22,12 @@ const NODE_GROUP_MAP_KEY: &str = "node_to_group";
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeGroup {
     pub id: String,
-    pub nodes: BTreeSet<String>, // Node addresses stored in sorted order
+    pub nodes: BTreeSet<String>, 
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Clone)]
 pub struct NodeGroupsPlugin {
-    // Configuration
     min_group_size: usize,
     max_group_size: usize,
     store: Arc<RedisStore>,
@@ -69,9 +68,9 @@ impl NodeGroupsPlugin {
             return Ok(None);
         }
 
-        let nodes = self.store_context.node_store.get_nodes();
-        println!("nodes: {:?}", nodes);
-        // Check for p2p id?
+        let nodes = self.store_context.node_store.get_nodes(); 
+
+        // TODO: Check for p2p id?
         let healthy_nodes = nodes
             .iter()
             .filter(|node| node.status == NodeStatus::Healthy)
@@ -98,7 +97,7 @@ impl NodeGroupsPlugin {
 
         // Scan through all node groups to find healthy unassigned nodes
         let mut keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX))?;
-        keys.sort(); // Sort keys for consistent ordering
+        keys.sort(); 
         for key in keys {
             let group_data: String = conn.get(&key)?;
             let group: NodeGroup = serde_json::from_str(&group_data)?;
