@@ -66,6 +66,14 @@
     - name: WEBHOOK_URLS
       value: "{{ .root.Values.env.WEBHOOK_URLS }}"
     {{- end }}
+    {{- if .root.Values.env.WITH_BASIC_GROUP_PLUGIN }}
+    - name: WITH_BASIC_GROUP_PLUGIN
+      value: "true"
+    {{- end }}
+    {{- if .root.Values.env.GROUP_SIZE }}
+    - name: GROUP_SIZE
+      value: "{{ .root.Values.env.GROUP_SIZE }}"
+    {{- end }}
 {{- end }}
 
 apiVersion: apps/v1

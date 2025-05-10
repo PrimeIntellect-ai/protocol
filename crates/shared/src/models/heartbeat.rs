@@ -29,4 +29,6 @@ pub struct HeartbeatRequest {
     #[serde(default)]
     pub version: Option<String>,
     pub timestamp: Option<u64>,
+    #[serde(default)]
+    pub p2p_id: Option<String>,
 }

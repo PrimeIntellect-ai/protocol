@@ -92,7 +92,7 @@ impl HeartbeatService {
                         if !state.is_running().await {
                             break;
                         }
-                        match Self::send_heartbeat(&client, state.get_heartbeat_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone()).await {
+                        match Self::send_heartbeat(&client, state.get_heartbeat_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone(), state.get_p2p_id()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
                                 if had_error {
@@ -142,6 +142,7 @@ impl HeartbeatService {
         wallet: Arc<Wallet>,
         docker_service: Arc<DockerService>,
         metrics_store: Arc<MetricsStore>,
+        p2p_id: Option<String>,
     ) -> Result<HeartbeatResponse, HeartbeatError> {
         if endpoint.is_none() {
             return Err(HeartbeatError::RequestFailed);
@@ -163,6 +164,7 @@ impl HeartbeatService {
                 metrics: Some(metrics_for_task),
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
                 timestamp: Some(ts),
+                p2p_id,
             }
         } else {
             HeartbeatRequest {
@@ -172,6 +174,7 @@ impl HeartbeatService {
                 metrics: None,
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
                 timestamp: Some(ts),
+                p2p_id,
             }
         };
 

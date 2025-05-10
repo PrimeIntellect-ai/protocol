@@ -24,9 +24,11 @@ use log::debug;
 use log::error;
 use log::info;
 use log::LevelFilter;
+use scheduler::plugins::SchedulerPlugin;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
+use status_update::plugins::node_groups::NodeGroupsPlugin;
 use status_update::plugins::StatusUpdatePlugin;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -112,6 +114,15 @@ struct Args {
     /// Webhook urls (comma-separated string)
     #[arg(long, default_value = "")]
     webhook_urls: Option<String>,
+
+    /// With basic group plugin
+    /// Only temporary setting - will be moved to proper plugin config
+    #[arg(long)]
+    with_basic_group_plugin: bool,
+
+    /// Group size
+    #[arg(long, default_value = "4")]
+    group_size: u32,
 }
 
 #[tokio::main]
@@ -187,7 +198,21 @@ async fn main() -> Result<()> {
         }
     };
 
-    let scheduler = Scheduler::new(store_context.clone());
+    let group_store_context = store_context.clone();
+    let mut scheduler_plugins: Vec<Box<dyn SchedulerPlugin>> = Vec::new();
+    let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
+
+    // Add group plugin if enabled
+    if args.with_basic_group_plugin {
+        let group_size: usize = args.group_size as usize;
+        let group_plugin =
+            NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
+        let status_group_plugin = group_plugin.clone();
+        scheduler_plugins.push(Box::new(group_plugin));
+        status_update_plugins.push(Box::new(status_group_plugin));
+    }
+
+    let scheduler = Scheduler::new(store_context.clone(), scheduler_plugins);
 
     // Only spawn processor tasks if in ProcessorOnly or Full mode
     if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
@@ -232,9 +257,8 @@ async fn main() -> Result<()> {
             .map(|s| s.to_string())
             .collect();
 
-        let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
         for url in webhook_urls {
-            status_update_plugins.push(Box::new(WebhookPlugin::new(url)));
+            status_update_plugins.push(Box::new(WebhookPlugin::new(url.to_string())));
         }
 
         tasks.spawn(async move {

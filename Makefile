@@ -78,6 +78,10 @@ watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
 
+watch-worker-two:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8092 --private-key-node $${PRIVATE_KEY_NODE_2} --private-key-provider $${PRIVATE_KEY_PROVIDER} --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
+
 watch-check:
 	cargo watch -w crates/worker/src -x "run --bin worker -- check"	
 
@@ -87,7 +91,7 @@ watch-validator:
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3}"
+	cargo watch -w crates/orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3} --with-basic-group-plugin --group-size 1"
 
 build-worker:
 	cargo build --release --bin worker
@@ -155,6 +159,23 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 				--auto-accept \
 				2>&1 | tee worker.log\"'"
 
+.PHONY: watch-worker-remote-two
+watch-worker-remote-two: setup-remote setup-tunnel sync-remote
+	$(SSH_CONNECTION) -t "cd ~/$(notdir $(CURDIR)) && \
+		export PATH=\"\$$HOME/.cargo/bin:\$$PATH\" && \
+		. \"\$$HOME/.cargo/env\" && \
+		export TERM=xterm-256color && \
+		bash --login -i -c '\
+			set -a && source .env && set +a && \
+			export EXTERNAL_IP=$(EXTERNAL_IP) && \
+			clear && \
+			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w crates/worker/src -x \"run --bin worker -- run \
+				--port $(PORT) \
+				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
+				--auto-accept \
+				--private-key-node \$$PRIVATE_KEY_NODE_2 \
+				2>&1 | tee worker.log\"'"
+
 # Kill SSH tunnel
 .PHONY: kill-tunnel
 kill-tunnel:
@@ -166,6 +187,12 @@ kill-tunnel:
 remote-worker:
 	@trap 'make kill-tunnel' EXIT; \
 	make watch-worker-remote
+
+.PHONY: remote-worker-two
+remote-worker-two:
+	@trap 'make kill-tunnel' EXIT; \
+	make watch-worker-remote-two
+
 
 # testing:
 eject-node:

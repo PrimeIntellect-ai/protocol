@@ -432,6 +432,7 @@ pub async fn execute_command(
                     .default_signer()
                     .address()
                     .to_string(),
+                state.get_p2p_seed(),
             ));
 
             let bridge_cancellation_token = cancellation_token.clone();

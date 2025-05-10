@@ -1,3 +1,4 @@
+use alloy::primitives::Address;
 use shared::models::task::Task;
 
 use super::{Plugin, SchedulerPlugin};
@@ -7,7 +8,7 @@ pub struct NewestTaskPlugin;
 impl Plugin for NewestTaskPlugin {}
 
 impl SchedulerPlugin for NewestTaskPlugin {
-    fn filter_tasks(&self, tasks: &[Task]) -> Vec<Task> {
+    fn filter_tasks(&self, tasks: &[Task], _node_address: &Address) -> Vec<Task> {
         if tasks.is_empty() {
             return vec![];
         }
@@ -56,7 +57,7 @@ mod tests {
             },
         ];
 
-        let filtered_tasks = plugin.filter_tasks(&tasks);
+        let filtered_tasks = plugin.filter_tasks(&tasks, &Address::ZERO);
         assert_eq!(filtered_tasks.len(), 1);
         assert_eq!(filtered_tasks[0].id, tasks[1].id);
     }

@@ -32,6 +32,10 @@ struct Args {
     /// Port
     #[arg(short = 'P', long, default_value = "8089")]
     port: u16,
+
+    /// Only one node per IP address
+    #[arg(long)]
+    only_one_node_per_ip: Option<bool>,
 }
 
 #[tokio::main]
@@ -86,6 +90,7 @@ async fn main() -> Result<()> {
         contracts_clone,
         args.platform_api_key,
         heartbeat_server_clone,
+        args.only_one_node_per_ip.unwrap_or(false),
     )
     .await
     {

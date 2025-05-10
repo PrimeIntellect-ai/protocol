@@ -92,18 +92,20 @@ pub async fn register_node(
     let existing_node_by_ip = data
         .node_store
         .get_active_node_by_ip(update_node.ip_address.clone());
-    if let Ok(Some(existing_node)) = existing_node_by_ip {
-        if existing_node.id != update_node.id {
-            warn!(
+    if data.only_one_node_per_ip {
+        if let Ok(Some(existing_node)) = existing_node_by_ip {
+            if existing_node.id != update_node.id {
+                warn!(
                 "Node {} tried to change discovery but another active node is already registered to this IP address",
                 update_node.id
             );
-            debug!("Existing node: {:?}", existing_node);
-            debug!("Update node: {:?}", update_node);
-            return HttpResponse::BadRequest().json(ApiResponse::new(
-                false,
-                "Another active Node is already registered to this IP address",
-            ));
+                debug!("Existing node: {:?}", existing_node);
+                debug!("Update node: {:?}", update_node);
+                return HttpResponse::BadRequest().json(ApiResponse::new(
+                    false,
+                    "Another active Node is already registered to this IP address",
+                ));
+            }
         }
     }
 
@@ -215,6 +217,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            only_one_node_per_ip: true,
         };
 
         let app = test::init_service(
@@ -270,6 +273,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            only_one_node_per_ip: true,
         };
 
         let validate_signatures =
@@ -394,6 +398,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            only_one_node_per_ip: true,
         };
 
         let validate_signatures =
@@ -458,6 +463,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            only_one_node_per_ip: true,
         };
 
         let validate_signatures =
@@ -520,6 +526,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            only_one_node_per_ip: true,
         };
 
         app_state.node_store.register_node(node.clone()).unwrap();
