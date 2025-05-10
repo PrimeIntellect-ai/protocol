@@ -1,6 +1,6 @@
 use alloy::primitives::Address;
 use anyhow::Error;
-use log::{debug, info};
+use log::info;
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use shared::models::task::Task;
@@ -51,8 +51,8 @@ impl NodeGroupsPlugin {
 
     fn generate_group_id() -> String {
         use rand::Rng;
-        let mut rng = rand::thread_rng();
-        format!("group_{}", rng.gen::<u64>())
+        let mut rng = rand::rng();
+        format!("group_{}", rng.random::<u64>())
     }
 
     fn get_group_key(group_id: &str) -> String {
@@ -107,8 +107,11 @@ impl NodeGroupsPlugin {
 
         // Not enough nodes to form a group
         if available_nodes.len() < self.min_group_size {
-            info!("Not enough available nodes to form a group (have {}, need {})",
-                 available_nodes.len(), self.min_group_size);
+            info!(
+                "Not enough available nodes to form a group (have {}, need {})",
+                available_nodes.len(),
+                self.min_group_size
+            );
             return Ok(None);
         }
 
@@ -336,7 +339,7 @@ mod tests {
             "{}.{}.{}.{}",
             addr_bytes[0], addr_bytes[1], addr_bytes[2], addr_bytes[3]
         );
-        
+
         OrchestratorNode {
             address: Address::from_str(addr).unwrap(),
             ip_address,
@@ -535,27 +538,44 @@ mod tests {
         // Check if node1 and node2 are in a group
         let group1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
         let group2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
-        
+
         // Check if node3 is not in a group
         let group3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
 
         // Either node1 and node2 are in a group, or node2 and node3 are in a group
         // But all three cannot be in the same group due to max_group_size=2
         assert!(
-            (group1.is_some() && group2.is_some() && group1.as_ref() == group2.as_ref() && group3.is_none()) ||
-            (group2.is_some() && group3.is_some() && group2.as_ref() == group3.as_ref() && group1.is_none()) ||
-            (group1.is_some() && group3.is_some() && group1.as_ref() == group3.as_ref() && group2.is_none())
+            (group1.is_some()
+                && group2.is_some()
+                && group1.as_ref() == group2.as_ref()
+                && group3.is_none())
+                || (group2.is_some()
+                    && group3.is_some()
+                    && group2.as_ref() == group3.as_ref()
+                    && group1.is_none())
+                || (group1.is_some()
+                    && group3.is_some()
+                    && group1.as_ref() == group3.as_ref()
+                    && group2.is_none())
         );
 
         // Verify that tasks are only assigned to nodes in a group
         for node in [&node1, &node2, &node3] {
             let filtered_tasks = plugin.filter_tasks(&tasks, &node.address);
             let group = plugin.get_node_group(&node.address.to_string()).unwrap();
-            
+
             if group.is_some() {
-                assert_eq!(filtered_tasks.len(), 1, "Node in group should receive tasks");
+                assert_eq!(
+                    filtered_tasks.len(),
+                    1,
+                    "Node in group should receive tasks"
+                );
             } else {
-                assert_eq!(filtered_tasks.len(), 0, "Node not in group should not receive tasks");
+                assert_eq!(
+                    filtered_tasks.len(),
+                    0,
+                    "Node not in group should not receive tasks"
+                );
             }
         }
     }
@@ -605,44 +625,56 @@ mod tests {
         let mut conn = plugin.store.client.get_connection().unwrap();
 
         // Verify each node's group assignment
-        let node1_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node1.address.to_string()).unwrap();
-        let node2_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node2.address.to_string()).unwrap();
-        let node3_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node3.address.to_string()).unwrap();
+        let node1_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node1.address.to_string())
+            .unwrap();
+        let node2_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node2.address.to_string())
+            .unwrap();
+        let node3_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node3.address.to_string())
+            .unwrap();
 
         // With 3 nodes and max_group_size=2, one node MUST NOT be in a group
         let nodes_without_group = [&node1_group_id, &node2_group_id, &node3_group_id]
             .iter()
             .filter(|id| id.is_none())
             .count();
-        
-        assert_eq!(nodes_without_group, 1, "With 3 nodes and max_group_size=2, exactly one node must not be in a group");
-        
+
+        assert_eq!(
+            nodes_without_group, 1,
+            "With 3 nodes and max_group_size=2, exactly one node must not be in a group"
+        );
+
         // The other two nodes must be in the same group
         let group_ids: Vec<_> = [node1_group_id, node2_group_id, node3_group_id]
             .iter()
             .filter_map(|x| x.clone())
             .collect();
         assert_eq!(group_ids.len(), 2, "Exactly 2 nodes should have group IDs");
-        assert_eq!(group_ids[0], group_ids[1], "The 2 nodes in groups should be in the same group");
+        assert_eq!(
+            group_ids[0], group_ids[1],
+            "The 2 nodes in groups should be in the same group"
+        );
 
         // Get all group keys
         let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
         let group_copy = group_keys.clone();
-        
+
         // There should be exactly one group
-        
+
         // Count how many groups each node appears in
         let mut node1_group_count = 0;
         let mut node2_group_count = 0;
         let mut node3_group_count = 0;
-        
+
         for key in group_keys {
             let group_data: String = conn.get(&key).unwrap();
             let group: NodeGroup = serde_json::from_str(&group_data).unwrap();
-            
+
             // Verify the group has exactly 2 nodes
             assert_eq!(group.nodes.len(), 2, "Group should have exactly 2 nodes");
-            
+
             if group.nodes.contains(&node1.address.to_string()) {
                 node1_group_count += 1;
             }
@@ -655,15 +687,27 @@ mod tests {
         }
 
         assert_eq!(group_copy.len(), 1, "There should be exactly one group");
-        
+
         // Total group count should be 2 (exactly 2 nodes in groups)
-        assert_eq!(node1_group_count + node2_group_count + node3_group_count, 2, 
-            "Exactly 2 nodes should be in groups");
-        
+        assert_eq!(
+            node1_group_count + node2_group_count + node3_group_count,
+            2,
+            "Exactly 2 nodes should be in groups"
+        );
+
         // Each node should appear in at most one group
-        assert!(node1_group_count <= 1, "Node1 should be in at most one group");
-        assert!(node2_group_count <= 1, "Node2 should be in at most one group");
-        assert!(node3_group_count <= 1, "Node3 should be in at most one group");
+        assert!(
+            node1_group_count <= 1,
+            "Node1 should be in at most one group"
+        );
+        assert!(
+            node2_group_count <= 1,
+            "Node2 should be in at most one group"
+        );
+        assert!(
+            node3_group_count <= 1,
+            "Node3 should be in at most one group"
+        );
 
         // Add a fourth node and make it healthy
         let node4 = create_test_node(
@@ -677,30 +721,44 @@ mod tests {
 
         // Get updated group keys
         let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
-        
+
         // There should now be exactly two groups
-        assert_eq!(group_keys.len(), 2, "There should be exactly two groups after adding node4");
-        
+        assert_eq!(
+            group_keys.len(),
+            2,
+            "There should be exactly two groups after adding node4"
+        );
+
         // Verify each node's updated group assignment
-        let node1_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node1.address.to_string()).unwrap();
-        let node2_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node2.address.to_string()).unwrap();
-        let node3_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node3.address.to_string()).unwrap();
-        let node4_group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node4.address.to_string()).unwrap();
-        
+        let node1_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node1.address.to_string())
+            .unwrap();
+        let node2_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node2.address.to_string())
+            .unwrap();
+        let node3_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node3.address.to_string())
+            .unwrap();
+        let node4_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node4.address.to_string())
+            .unwrap();
+
         // All nodes should now be in a group
         assert!(node1_group_id.is_some(), "Node1 should be in a group");
         assert!(node2_group_id.is_some(), "Node2 should be in a group");
         assert!(node3_group_id.is_some(), "Node3 should be in a group");
         assert!(node4_group_id.is_some(), "Node4 should be in a group");
-        
+
         // Verify that we have exactly two distinct group IDs
-        let all_group_ids = vec![
-            node1_group_id.unwrap(), 
-            node2_group_id.unwrap(), 
-            node3_group_id.unwrap(), 
-            node4_group_id.unwrap()
-        ];
+        let all_group_ids = [node1_group_id.unwrap(),
+            node2_group_id.unwrap(),
+            node3_group_id.unwrap(),
+            node4_group_id.unwrap()];
         let unique_group_ids: std::collections::HashSet<_> = all_group_ids.iter().collect();
-        assert_eq!(unique_group_ids.len(), 2, "There should be exactly two distinct group IDs");
+        assert_eq!(
+            unique_group_ids.len(),
+            2,
+            "There should be exactly two distinct group IDs"
+        );
     }
 }
