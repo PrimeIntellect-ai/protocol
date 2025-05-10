@@ -11,7 +11,6 @@ use std::str::FromStr;
 use std::time::Duration;
 // Timeout for node operations in seconds
 const NODE_REQUEST_TIMEOUT: u64 = 30;
-
 async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
     let nodes = app_state.store_context.node_store.get_nodes();
 
@@ -29,11 +28,34 @@ async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
         }
     }
 
-    HttpResponse::Ok().json(json!({
+    let mut response = json!({
         "success": true,
         "nodes": nodes,
         "counts": status_counts
-    }))
+    });
+
+    // If node groups plugin exists, add group information to each node
+    if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
+        let mut nodes_with_groups = Vec::new();
+
+        for node in &nodes {
+            let mut node_json = json!(node);
+
+            if let Ok(Some(group)) = node_groups_plugin.get_node_group(&node.address.to_string()) {
+                node_json["group"] = json!({
+                    "id": group.id,
+                    "size": group.nodes.len(),
+                    "created_at": group.created_at
+                });
+            }
+
+            nodes_with_groups.push(node_json);
+        }
+
+        response["nodes"] = json!(nodes_with_groups);
+    }
+
+    HttpResponse::Ok().json(response)
 }
 
 async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
