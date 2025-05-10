@@ -58,14 +58,15 @@ impl NodeGroupsPlugin {
     fn get_group_key(group_id: &str) -> String {
         format!("{}{}", GROUP_KEY_PREFIX, group_id)
     }
-
-    fn try_form_new_group(&self, node_addr: &str) -> Result<Option<NodeGroup>, Error> {
+    fn try_form_new_group(&self, node_addr: Option<&str>) -> Result<Option<NodeGroup>, Error> {
         let mut conn = self.store.client.get_connection()?;
 
-        // Check if node is already in a group
-        let existing_group: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node_addr)?;
-        if existing_group.is_some() {
-            return Ok(None);
+        // Check if node is already in a group (if a specific node was provided)
+        if let Some(addr) = node_addr {
+            let existing_group: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, addr)?;
+            if existing_group.is_some() {
+                return Ok(None);
+            }
         }
 
         let nodes = self.store_context.node_store.get_nodes();
@@ -74,29 +75,40 @@ impl NodeGroupsPlugin {
         let assigned_nodes: std::collections::HashMap<String, String> =
             conn.hgetall(NODE_GROUP_MAP_KEY)?;
 
-        let healthy_nodes = nodes
+        let mut healthy_nodes = nodes
             .iter()
             .filter(|node| node.status == NodeStatus::Healthy)
-            .filter(|node| node.address.to_string() != node_addr)
             .filter(|node| node.p2p_id.is_some())
             .filter(|node| !assigned_nodes.contains_key(&node.address.to_string()))
             .collect::<Vec<&OrchestratorNode>>();
+
+        // If a specific node was provided, make sure it's included and not counted twice
+        if let Some(addr) = node_addr {
+            healthy_nodes.retain(|node| node.address.to_string() != addr);
+        }
 
         info!(
             "Found {} healthy nodes for potential group formation",
             healthy_nodes.len()
         );
-        if (healthy_nodes.len() + 1) < self.min_group_size {
+
+        // Calculate total available nodes (healthy nodes + the provided node if any)
+        let total_available = healthy_nodes.len() + if node_addr.is_some() { 1 } else { 0 };
+
+        if total_available < self.min_group_size {
             info!(
                 "Not enough healthy nodes to form a group (need {}, have {})",
-                self.min_group_size,
-                healthy_nodes.len() + 1
+                self.min_group_size, total_available
             );
             return Ok(None);
         }
 
         let mut available_nodes = BTreeSet::new();
-        available_nodes.insert(node_addr.to_string());
+
+        // Add the provided node first if any
+        if let Some(addr) = node_addr {
+            available_nodes.insert(addr.to_string());
+        }
 
         for node in healthy_nodes {
             available_nodes.insert(node.address.to_string());
@@ -212,7 +224,7 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
                     "Node {} is healthy, attempting to form new group",
                     node_addr
                 );
-                if let Some(group) = self.try_form_new_group(&node_addr)? {
+                if let Some(group) = self.try_form_new_group(Some(&node_addr))? {
                     info!(
                         "Successfully formed new group {} with {} nodes",
                         group.id,
@@ -231,6 +243,7 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
                         group.nodes.len()
                     );
                     self.dissolve_group(&group.id)?;
+                    self.try_form_new_group(None)?;
                 }
             }
             _ => {
@@ -394,6 +407,10 @@ mod tests {
             "0x1234567890123456789012345678901234567890",
             NodeStatus::Dead,
         );
+        plugin
+            .store_context
+            .node_store
+            .update_node_status(&node1_dead.address, NodeStatus::Dead);
         let _ = plugin
             .handle_status_change(&node1_dead, &NodeStatus::Healthy)
             .await;
@@ -762,5 +779,90 @@ mod tests {
             2,
             "There should be exactly two distinct group IDs"
         );
+    }
+
+    #[tokio::test]
+    async fn test_reformation_on_death() {
+        let store = Arc::new(RedisStore::new_test());
+        let context_store = store.clone();
+        let store_context = Arc::new(StoreContext::new(context_store));
+        // Set max_group_size to 2, so groups can only have 2 nodes
+        let plugin = NodeGroupsPlugin::new(2, 2, store.clone(), store_context);
+
+        let all_nodes = plugin.store_context.node_store.get_nodes();
+        assert_eq!(all_nodes.len(), 0, "No nodes should be in the store");
+
+        // Create three nodes
+        let node1 = create_test_node(
+            "0x9234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        let mut node2 = create_test_node(
+            "0x8234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+
+        // Add nodes to the store
+        plugin.store_context.node_store.add_node(node1.clone());
+        plugin.store_context.node_store.add_node(node2.clone());
+
+        // Add nodes to groups through the normal flow
+        let _ = plugin
+            .handle_status_change(&node1, &NodeStatus::Healthy)
+            .await;
+        let _ = plugin
+            .handle_status_change(&node2, &NodeStatus::Healthy)
+            .await;
+
+        // Get connection to check Redis state
+        let mut conn = plugin.store.client.get_connection().unwrap();
+
+        // Verify each node's group assignment
+        let node1_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node1.address.to_string())
+            .unwrap();
+        let node2_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node2.address.to_string())
+            .unwrap();
+
+        assert!(node1_group_id.is_some(), "Node1 should be in a group");
+        assert!(node2_group_id.is_some(), "Node2 should be in a group");
+
+        let node_3 = create_test_node(
+            "0x3234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node_3.clone());
+
+        let node_3_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node_3.address.to_string())
+            .unwrap();
+
+        assert!(node_3_group_id.is_none(), "Node3 should not be in a group");
+
+        node2.status = NodeStatus::Dead;
+        plugin
+            .store_context
+            .node_store
+            .update_node_status(&node2.address, NodeStatus::Dead);
+        let _ = plugin
+            .handle_status_change(&node2, &NodeStatus::Healthy)
+            .await;
+        let nodes = plugin.store_context.node_store.get_nodes();
+        println!("nodes {:?}", nodes);
+
+        let node_2_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node2.address.to_string())
+            .unwrap();
+        let node_1_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node1.address.to_string())
+            .unwrap();
+        let node_3_group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node_3.address.to_string())
+            .unwrap();
+
+        assert!(node_2_group_id.is_none(), "Node2 should not be in a group");
+        assert!(node_1_group_id.is_some(), "Node1 should be in a group");
+        assert!(node_3_group_id.is_some(), "Node3 should be in a group");
     }
 }
