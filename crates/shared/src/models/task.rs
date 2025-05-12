@@ -54,6 +54,7 @@ pub struct TaskRequest {
     pub env_vars: Option<std::collections::HashMap<String, String>>,
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
+    pub auto_restart: Option<bool>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Task {
@@ -68,6 +69,8 @@ pub struct Task {
     pub created_at: i64,
     #[serde(default)]
     pub updated_at: Option<u64>,
+    #[serde(default)]
+    pub auto_restart: bool,
 }
 
 impl From<TaskRequest> for Task {
@@ -82,6 +85,7 @@ impl From<TaskRequest> for Task {
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             updated_at: None,
+            auto_restart: request.auto_restart.unwrap_or(false),
         }
     }
 }

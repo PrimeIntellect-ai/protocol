@@ -43,6 +43,7 @@ mod tests {
     use shared::models::task::Task;
     use std::thread;
     use std::time::Duration;
+    use uuid::Uuid;
 
     #[actix_web::test]
     async fn test_create_task() {
@@ -60,6 +61,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
+            auto_restart: None,
         };
         let req = test::TestRequest::post()
             .uri("/tasks")
@@ -104,6 +106,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
+            auto_restart: None,
         }
         .into();
 
@@ -139,6 +142,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
+            auto_restart: None,
         }
         .into();
 
@@ -181,6 +185,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
+            auto_restart: None,
         }
         .into();
         task_store.add_task(task1.clone());
@@ -195,6 +200,7 @@ mod tests {
             command: None,
             args: None,
             env_vars: None,
+            auto_restart: None,
         }
         .into();
         task_store.add_task(task2.clone());
@@ -226,6 +232,7 @@ mod tests {
                 command: None,
                 args: None,
                 env_vars: None,
+                auto_restart: None,
             }
             .into();
             task_store.add_task(task);
@@ -239,5 +246,91 @@ mod tests {
         assert_eq!(tasks[0].image, "test3");
         assert_eq!(tasks[1].image, "test2");
         assert_eq!(tasks[2].image, "test1");
+    }
+
+    #[actix_web::test]
+    async fn test_create_task_with_auto_restart_true() {
+        let app_state = create_test_app_state().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .service(tasks_routes()),
+        )
+        .await;
+
+        let payload = TaskRequest {
+            image: "test_restart_true".to_string(),
+            name: "test_restart_true_name".to_string(),
+            command: None,
+            args: None,
+            env_vars: None,
+            auto_restart: Some(true),
+        };
+        let req = test::TestRequest::post()
+            .uri("/tasks")
+            .set_json(&payload)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json_body["success"], serde_json::Value::Bool(true));
+        assert!(json_body["task"]["id"].is_string());
+        assert_eq!(json_body["task"]["image"], "test_restart_true");
+        assert_eq!(
+            json_body["task"]["auto_restart"],
+            serde_json::Value::Bool(true)
+        );
+
+        let task_id_str = json_body["task"]["id"].as_str().unwrap();
+        let task_id_uuid = Uuid::parse_str(task_id_str).unwrap();
+        let stored_task = app_state
+            .store_context
+            .task_store
+            .get_task_by_id(&task_id_uuid)
+            .unwrap();
+        assert_eq!(stored_task.auto_restart, true);
+    }
+
+    #[actix_web::test]
+    async fn test_create_task_with_auto_restart_false() {
+        let app_state = create_test_app_state().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .service(tasks_routes()),
+        )
+        .await;
+
+        let payload = TaskRequest {
+            image: "test_restart_false".to_string(),
+            name: "test_restart_false_name".to_string(),
+            command: None,
+            args: None,
+            env_vars: None,
+            auto_restart: Some(false),
+        };
+        let req = test::TestRequest::post()
+            .uri("/tasks")
+            .set_json(&payload)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            json_body["task"]["auto_restart"],
+            serde_json::Value::Bool(false)
+        );
+
+        let task_id_str = json_body["task"]["id"].as_str().unwrap();
+        let task_id_uuid = Uuid::parse_str(task_id_str).unwrap();
+        let stored_task = app_state
+            .store_context
+            .task_store
+            .get_task_by_id(&task_id_uuid)
+            .unwrap();
+        assert_eq!(stored_task.auto_restart, false);
     }
 }
