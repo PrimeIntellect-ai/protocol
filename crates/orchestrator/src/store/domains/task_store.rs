@@ -2,6 +2,7 @@ use crate::store::core::RedisStore;
 use redis::Commands;
 use shared::models::task::Task;
 use std::sync::Arc;
+use uuid::Uuid;
 
 const TASK_KEY_PREFIX: &str = "orchestrator:task:";
 const TASK_LIST_KEY: &str = "orchestrator:tasks";
@@ -24,6 +25,12 @@ impl TaskStore {
 
         // Add task ID to list of all tasks
         let _: () = con.rpush(TASK_LIST_KEY, task.id.to_string()).unwrap();
+    }
+
+    pub fn get_task_by_id(&self, id: &Uuid) -> Option<Task> {
+        let mut con = self.redis.client.get_connection().unwrap();
+        let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
+        con.get(&task_key).ok()
     }
 
     pub fn get_all_tasks(&self) -> Vec<Task> {

@@ -66,6 +66,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: 1,
             updated_at: None,
+            auto_restart: false,
         };
 
         state.store_context.task_store.add_task(task.clone());

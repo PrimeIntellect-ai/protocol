@@ -43,6 +43,7 @@ mod tests {
                 state: TaskState::PENDING,
                 created_at: 1,
                 updated_at: None,
+                auto_restart: false,
             },
             Task {
                 id: Uuid::new_v4(),
@@ -54,6 +55,7 @@ mod tests {
                 state: TaskState::PENDING,
                 created_at: 2,
                 updated_at: None,
+                auto_restart: false,
             },
         ];
 

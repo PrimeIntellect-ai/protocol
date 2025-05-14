@@ -467,6 +467,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: 0,
             updated_at: None,
+            auto_restart: false,
         };
 
         let tasks = vec![task1];
@@ -555,6 +556,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: 0,
             updated_at: None,
+            auto_restart: false,
         };
 
         let tasks = vec![task];

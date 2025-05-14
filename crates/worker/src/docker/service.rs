@@ -372,6 +372,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             updated_at: None,
+            auto_restart: false,
         };
         let task_clone = task.clone();
         let state_clone = docker_service.state.clone();
@@ -423,6 +424,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             updated_at: None,
+            auto_restart: false,
         };
 
         let task_clone = task.clone();
