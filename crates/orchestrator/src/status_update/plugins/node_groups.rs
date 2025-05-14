@@ -301,7 +301,8 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                     let new_value = value
                         .replace("${GROUP_INDEX}", &node_group_index.to_string())
                         .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
-                        .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id);
+                        .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
+                        .replace("${GROUP_ID}", &group.id);
 
                     *value = new_value;
                 }
@@ -312,6 +313,7 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                             arg.replace("${GROUP_INDEX}", &node_group_index.to_string())
                                 .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
                                 .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
+                                .replace("${GROUP_ID}", &group.id)
                         })
                         .collect::<Vec<String>>()
                 });
@@ -424,7 +426,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_group_scheduling() {
-        let store = Arc::new(RedisStore::new_test());
+        let store: Arc<RedisStore> = Arc::new(RedisStore::new_test());
         let context_store = store.clone();
         let store_context = Arc::new(StoreContext::new(context_store));
 
@@ -444,6 +446,7 @@ mod tests {
         env_vars.insert("LOCAL_RANK".to_string(), "0".to_string());
         env_vars.insert("RANK".to_string(), "${GROUP_INDEX}".to_string());
         env_vars.insert("WORLD_SIZE".to_string(), "${GROUP_SIZE}".to_string());
+        env_vars.insert("GROUP_ID".to_string(), "${GROUP_ID}".to_string());
 
         let task1 = Task {
             id: Uuid::new_v4(),
@@ -458,6 +461,8 @@ mod tests {
                 "model/Qwen3-14B-${GROUP_INDEX}.${GROUP_SIZE}".to_string(),
                 "--top-p".to_string(),
                 "0.95".to_string(),
+                "--group-id".to_string(),
+                "${GROUP_ID}".to_string(),
             ]),
             state: TaskState::PENDING,
             created_at: 0,
@@ -483,6 +488,7 @@ mod tests {
         assert_eq!(env_vars.get("RANK").unwrap(), "0");
         assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
         assert_eq!(task.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
+        assert_ne!(env_vars.get("GROUP_ID").unwrap(), "${GROUP_ID}");
 
         let filtered_tasks = plugin.filter_tasks(&tasks, &node2.address);
         assert_eq!(filtered_tasks.len(), 1);
@@ -492,6 +498,7 @@ mod tests {
         assert_eq!(env_vars.get("RANK").unwrap(), "1");
         assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
         assert_eq!(task.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
+        assert_ne!(env_vars.get("GROUP_ID").unwrap(), "${GROUP_ID}");
     }
 
     #[tokio::test]
