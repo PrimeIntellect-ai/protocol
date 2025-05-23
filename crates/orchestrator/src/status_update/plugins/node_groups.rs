@@ -842,6 +842,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: 0,
             updated_at: None,
+            scheduling_config: None,
         };
         plugin.store_context.task_store.add_task(task1.clone());
 
@@ -997,6 +998,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: 0,
             updated_at: None,
+            scheduling_config: None,
         };
         plugin.store_context.task_store.add_task(task.clone());
 

@@ -60,12 +60,9 @@ mod tests {
             id: Uuid::new_v4(),
             image: "image".to_string(),
             name: "name".to_string(),
-            env_vars: None,
-            command: None,
-            args: None,
             state: TaskState::PENDING,
             created_at: 1,
-            updated_at: None,
+            ..Default::default()
         };
 
         state.store_context.task_store.add_task(task.clone());

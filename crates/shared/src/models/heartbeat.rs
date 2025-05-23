@@ -20,7 +20,7 @@ impl From<HeartbeatResponse> for HttpResponse {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 pub struct HeartbeatRequest {
     pub address: String,
     pub task_id: Option<String>,
