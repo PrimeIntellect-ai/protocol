@@ -1,51 +1,55 @@
-use alloy::primitives::Address;
-use anyhow::Error;
-use log::{error, info, warn};
-use rand::seq::IndexedRandom;
-use redis::Commands;
-use serde::{Deserialize, Serialize};
-use shared::models::task::Task;
-use std::str::FromStr;
-use std::{collections::BTreeSet, sync::Arc};
-
 use crate::{
     models::node::{NodeStatus, OrchestratorNode},
     prelude::Plugin,
     scheduler::plugins::SchedulerPlugin,
     store::core::{RedisStore, StoreContext},
 };
+use alloy::primitives::Address;
+use anyhow::Error;
+use log::{error, info, warn};
+use rand::seq::IndexedRandom;
+use redis::Commands;
+use serde::{Deserialize, Serialize};
+use shared::models::node::ComputeRequirements;
+use shared::models::task::Task;
+use std::str::FromStr;
+use std::{collections::BTreeSet, sync::Arc};
 
 use super::StatusUpdatePlugin;
-
 const GROUP_KEY_PREFIX: &str = "node_group:";
 const NODE_GROUP_MAP_KEY: &str = "node_to_group";
 const GROUP_TASK_KEY_PREFIX: &str = "group_task:";
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NodeGroupConfiguration {
+    pub name: String,
+    pub min_group_size: usize,
+    pub max_group_size: usize,
+    pub compute_requirements: Option<ComputeRequirements>,
+}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct NodeGroup {
     pub id: String,
     pub nodes: BTreeSet<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub configuration_name: String,
 }
 
 #[derive(Clone)]
 pub struct NodeGroupsPlugin {
-    min_group_size: usize,
-    max_group_size: usize,
+    configurations: Vec<NodeGroupConfiguration>,
     store: Arc<RedisStore>,
     store_context: Arc<StoreContext>,
 }
 
 impl NodeGroupsPlugin {
     pub fn new(
-        min_group_size: usize,
-        max_group_size: usize,
+        configurations: Vec<NodeGroupConfiguration>,
         store: Arc<RedisStore>,
         store_context: Arc<StoreContext>,
     ) -> Self {
         Self {
-            min_group_size,
-            max_group_size,
+            configurations,
             store,
             store_context,
         }
@@ -98,67 +102,76 @@ impl NodeGroupsPlugin {
         // Calculate total available nodes (healthy nodes + the provided node if any)
         let total_available = healthy_nodes.len() + if node_addr.is_some() { 1 } else { 0 };
 
-        if total_available < self.min_group_size {
-            info!(
-                "Not enough healthy nodes to form a group (need {}, have {})",
-                self.min_group_size, total_available
-            );
-            return Ok(None);
-        }
-
-        let mut available_nodes = BTreeSet::new();
-
-        // Add the provided node first if any
-        if let Some(addr) = node_addr {
-            available_nodes.insert(addr.to_string());
-        }
-
-        for node in healthy_nodes {
-            available_nodes.insert(node.address.to_string());
-            if available_nodes.len() >= self.max_group_size {
-                break;
+        // Try each configuration in order
+        for config in &self.configurations {
+            if total_available < config.min_group_size {
+                info!(
+                    "Not enough healthy nodes for configuration {} (need {}, have {})",
+                    config.name, config.min_group_size, total_available
+                );
+                continue;
             }
-        }
 
-        // Not enough nodes to form a group
-        if available_nodes.len() < self.min_group_size {
+            let mut available_nodes = BTreeSet::new();
+
+            // Add the provided node first if any
+            if let Some(addr) = node_addr {
+                available_nodes.insert(addr.to_string());
+            }
+
+            for node in &healthy_nodes {
+                available_nodes.insert(node.address.to_string());
+                if available_nodes.len() >= config.max_group_size {
+                    break;
+                }
+            }
+
+            // Not enough nodes to form a group
+            if available_nodes.len() < config.min_group_size {
+                info!(
+                    "Not enough available nodes for configuration {} (have {}, need {})",
+                    config.name,
+                    available_nodes.len(),
+                    config.min_group_size
+                );
+                continue;
+            }
+
+            // Create new group
+            let group_id = Self::generate_group_id();
+            let group = NodeGroup {
+                id: group_id.clone(),
+                nodes: available_nodes.clone(),
+                created_at: chrono::Utc::now(),
+                configuration_name: config.name.clone(),
+            };
+
+            // Store group data
+            let group_key = Self::get_group_key(&group_id);
+            let group_data = serde_json::to_string(&group)?;
+            conn.set::<_, _, ()>(&group_key, group_data)?;
+
+            // Map nodes to group
+            for node in &available_nodes {
+                conn.hset::<_, _, _, ()>(NODE_GROUP_MAP_KEY, node, &group_id)?;
+            }
+
             info!(
-                "Not enough available nodes to form a group (have {}, need {})",
+                "Created new group {} with {} nodes for configuration {}{}",
+                group_id,
                 available_nodes.len(),
-                self.min_group_size
+                config.name,
+                if available_nodes.len() == config.max_group_size {
+                    " (limited by max size)"
+                } else {
+                    ""
+                }
             );
-            return Ok(None);
+            return Ok(Some(group));
         }
 
-        // Create new group
-        let group_id = Self::generate_group_id();
-        let group = NodeGroup {
-            id: group_id.clone(),
-            nodes: available_nodes.clone(),
-            created_at: chrono::Utc::now(),
-        };
-
-        // Store group data
-        let group_key = Self::get_group_key(&group_id);
-        let group_data = serde_json::to_string(&group)?;
-        conn.set::<_, _, ()>(&group_key, group_data)?;
-
-        // Map nodes to group
-        for node in &available_nodes {
-            conn.hset::<_, _, _, ()>(NODE_GROUP_MAP_KEY, node, &group_id)?;
-        }
-
-        info!(
-            "Created new group {} with {} nodes{}",
-            group_id,
-            available_nodes.len(),
-            if available_nodes.len() == self.max_group_size {
-                " (limited by max size)"
-            } else {
-                ""
-            }
-        );
-        Ok(Some(group))
+        info!("No suitable configuration found for group formation");
+        Ok(None)
     }
 
     fn dissolve_group(&self, group_id: &str) -> Result<(), Error> {
@@ -420,7 +433,14 @@ mod tests {
         let context_store = store.clone();
         let store_context = Arc::new(StoreContext::new(context_store));
 
-        let plugin = NodeGroupsPlugin::new(2, 5, store.clone(), store_context);
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: 2,
+            max_group_size: 5,
+            compute_requirements: None,
+        };
+
+        let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
 
         // Add first healthy node
         let node1 = create_test_node(
@@ -475,8 +495,14 @@ mod tests {
         let store: Arc<RedisStore> = Arc::new(RedisStore::new_test());
         let context_store = store.clone();
         let store_context = Arc::new(StoreContext::new(context_store));
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: 2,
+            max_group_size: 5,
+            compute_requirements: None,
+        };
 
-        let plugin = NodeGroupsPlugin::new(2, 5, store.clone(), store_context);
+        let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
         let node1 = create_test_node(
             "0x1234567890123456789012345678901234567890",
             NodeStatus::Healthy,
@@ -570,7 +596,13 @@ mod tests {
         let context_store = store.clone();
         let store_context = Arc::new(StoreContext::new(context_store));
 
-        let plugin = NodeGroupsPlugin::new(2, 5, store.clone(), store_context);
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: 2,
+            max_group_size: 5,
+            compute_requirements: None,
+        };
+        let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
         let node1 = create_test_node(
             "0x1234567890123456789012345678901234567890",
             NodeStatus::Healthy,
@@ -604,7 +636,13 @@ mod tests {
         let store_context = Arc::new(StoreContext::new(context_store));
 
         // Set max group size to 2
-        let plugin = NodeGroupsPlugin::new(2, 2, store.clone(), store_context);
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: 2,
+            max_group_size: 2,
+            compute_requirements: None,
+        };
+        let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
 
         // Create three healthy nodes
         let node1 = create_test_node(
@@ -706,8 +744,15 @@ mod tests {
         let store = Arc::new(RedisStore::new_test());
         let context_store = store.clone();
         let store_context = Arc::new(StoreContext::new(context_store));
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: 2,
+            max_group_size: 2,
+            compute_requirements: None,
+        };
+
         // Set max_group_size to 2, so groups can only have 2 nodes
-        let plugin = NodeGroupsPlugin::new(2, 2, store.clone(), store_context);
+        let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
 
         let all_nodes = plugin.store_context.node_store.get_nodes();
         assert_eq!(all_nodes.len(), 0, "No nodes should be in the store");
@@ -890,8 +935,13 @@ mod tests {
         let store = Arc::new(RedisStore::new_test());
         let context_store = store.clone();
         let store_context = Arc::new(StoreContext::new(context_store));
-        // Set max_group_size to 2, so groups can only have 2 nodes
-        let plugin = NodeGroupsPlugin::new(2, 2, store.clone(), store_context);
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: 2,
+            max_group_size: 2,
+            compute_requirements: None,
+        };
+        let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
 
         let all_nodes = plugin.store_context.node_store.get_nodes();
         assert_eq!(all_nodes.len(), 0, "No nodes should be in the store");

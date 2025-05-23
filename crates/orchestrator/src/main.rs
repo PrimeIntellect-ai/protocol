@@ -28,6 +28,7 @@ use scheduler::plugins::SchedulerPlugin;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
+use status_update::plugins::node_groups::NodeGroupConfiguration;
 use status_update::plugins::node_groups::NodeGroupsPlugin;
 use status_update::plugins::StatusUpdatePlugin;
 use std::sync::Arc;
@@ -206,8 +207,16 @@ async fn main() -> Result<()> {
     // Add group plugin if enabled
     if args.with_basic_group_plugin {
         let group_size: usize = args.group_size as usize;
+
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: group_size,
+            max_group_size: group_size,
+            compute_requirements: None,
+        };
+
         let group_plugin =
-            NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
+            NodeGroupsPlugin::new(vec![config], store.clone(), group_store_context);
         let status_group_plugin = group_plugin.clone();
         let group_plugin_for_server = group_plugin.clone();
         node_groups_plugin = Some(Arc::new(group_plugin_for_server));
