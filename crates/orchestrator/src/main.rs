@@ -28,6 +28,7 @@ use scheduler::plugins::SchedulerPlugin;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
+use status_update::plugins::node_groups::NodeGroupConfiguration;
 use status_update::plugins::node_groups::NodeGroupsPlugin;
 use status_update::plugins::StatusUpdatePlugin;
 use std::sync::Arc;
@@ -115,14 +116,9 @@ struct Args {
     #[arg(long, default_value = "")]
     webhook_urls: Option<String>,
 
-    /// With basic group plugin
-    /// Only temporary setting - will be moved to proper plugin config
+    /// Node group configurations in JSON format
     #[arg(long)]
-    with_basic_group_plugin: bool,
-
-    /// Group size
-    #[arg(long, default_value = "4")]
-    group_size: u32,
+    node_group_configs: Option<String>,
 }
 
 #[tokio::main]
@@ -203,16 +199,26 @@ async fn main() -> Result<()> {
     let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
     let mut node_groups_plugin: Option<Arc<NodeGroupsPlugin>> = None;
 
-    // Add group plugin if enabled
-    if args.with_basic_group_plugin {
-        let group_size: usize = args.group_size as usize;
-        let group_plugin =
-            NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
-        let status_group_plugin = group_plugin.clone();
-        let group_plugin_for_server = group_plugin.clone();
-        node_groups_plugin = Some(Arc::new(group_plugin_for_server));
-        scheduler_plugins.push(Box::new(group_plugin));
-        status_update_plugins.push(Box::new(status_group_plugin));
+    // This config loading is pretty ugly atm and should be optimized
+    // Issue: https://github.com/PrimeIntellect-ai/protocol/issues/336
+    if let Some(configs_json) = args.node_group_configs {
+        match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&configs_json) {
+            Ok(configs) if !configs.is_empty() => {
+                let group_plugin =
+                    NodeGroupsPlugin::new(configs, store.clone(), group_store_context);
+                let status_group_plugin = group_plugin.clone();
+                let group_plugin_for_server = group_plugin.clone();
+                node_groups_plugin = Some(Arc::new(group_plugin_for_server));
+                scheduler_plugins.push(Box::new(group_plugin));
+                status_update_plugins.push(Box::new(status_group_plugin));
+            }
+            Ok(_) => {
+                info!("No node group configurations provided, skipping plugin setup");
+            }
+            Err(e) => {
+                panic!("Failed to parse node group configurations: {}", e);
+            }
+        }
     }
 
     let scheduler = Scheduler::new(store_context.clone(), scheduler_plugins);
