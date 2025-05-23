@@ -24,10 +24,31 @@ const GROUP_TASK_KEY_PREFIX: &str = "group_task:";
 // TODO: Add support to load configurations (from file or CLI?)
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NodeGroupConfiguration {
-    pub name: String,
-    pub min_group_size: usize,
-    pub max_group_size: usize,
-    pub compute_requirements: Option<ComputeRequirements>,
+    name: String,
+    min_group_size: usize,
+    max_group_size: usize,
+    compute_requirements: Option<ComputeRequirements>,
+}
+
+impl NodeGroupConfiguration {
+    pub fn new(
+        name: String,
+        min_group_size: usize,
+        max_group_size: usize,
+        compute_requirements: Option<ComputeRequirements>,
+    ) -> Result<Self, Error> {
+        if max_group_size < min_group_size {
+            return Err(Error::msg(
+                "max_group_size must be greater than or equal to min_group_size",
+            ));
+        }
+        Ok(Self {
+            name,
+            min_group_size,
+            max_group_size,
+            compute_requirements,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -51,8 +72,11 @@ impl NodeGroupsPlugin {
         store: Arc<RedisStore>,
         store_context: Arc<StoreContext>,
     ) -> Self {
+        let mut sorted_configs = configurations;
+        sorted_configs.sort_by(|a, b| b.min_group_size.cmp(&a.min_group_size));
+
         Self {
-            configurations,
+            configurations: sorted_configs,
             store,
             store_context,
         }
@@ -109,8 +133,6 @@ impl NodeGroupsPlugin {
         // Calculate total available nodes (healthy nodes + the provided node if any)
         let total_available = healthy_nodes.len() + if new_healthy_node.is_some() { 1 } else { 0 };
 
-        println!("total_available: {}", total_available);
-
         // Try each configuration in order
         for config in &self.configurations {
             if total_available < config.min_group_size {
@@ -146,7 +168,6 @@ impl NodeGroupsPlugin {
                     (None, _) => true,
                     _ => false,
                 };
-                println!("should_add_node: {}", should_add_node);
 
                 if should_add_node {
                     available_nodes.insert(node.address.to_string());
@@ -518,6 +539,84 @@ mod tests {
             .hget(NODE_GROUP_MAP_KEY, node1.address.to_string())
             .unwrap();
         assert!(group_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_group_formation_with_multiple_configs() {
+        let store = Arc::new(RedisStore::new_test());
+        let context_store = store.clone();
+        let store_context = Arc::new(StoreContext::new(context_store));
+
+        let config_s = NodeGroupConfiguration {
+            name: "test-config-s".to_string(),
+            min_group_size: 2,
+            max_group_size: 2,
+            compute_requirements: None,
+        };
+
+        let config_xs = NodeGroupConfiguration {
+            name: "test-config-xs".to_string(),
+            min_group_size: 1,
+            max_group_size: 1,
+            compute_requirements: None,
+        };
+
+        // TODO: Currently the order of the configs matters here - will need to think of implications here
+        // This does not matter too much when we use requirements
+        let plugin = NodeGroupsPlugin::new(vec![config_s, config_xs], store.clone(), store_context);
+
+        // Add first healthy node
+        let node1 = create_test_node(
+            "0x1234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node1.clone());
+
+        // Add second healthy node to form group
+        let node2 = create_test_node(
+            "0x2234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node2.clone());
+        let _ = plugin
+            .handle_status_change(&node1, &NodeStatus::Healthy)
+            .await;
+
+        let _ = plugin
+            .handle_status_change(&node2, &NodeStatus::Healthy)
+            .await;
+
+        let node3 = create_test_node(
+            "0x3234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node3.clone());
+        let _ = plugin
+            .handle_status_change(&node3, &NodeStatus::Healthy)
+            .await;
+
+        let mut conn = plugin.store.client.get_connection().unwrap();
+        let groups: Vec<String> = conn
+            .keys(format!("{}*", GROUP_KEY_PREFIX).as_str())
+            .unwrap();
+        assert_eq!(groups.len(), 2);
+
+        // Verify group was created
+        let mut conn = plugin.store.client.get_connection().unwrap();
+        let group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node1.address.to_string())
+            .unwrap();
+        assert!(group_id.is_some());
+
+        let group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node2.address.to_string())
+            .unwrap();
+        assert!(group_id.is_some());
+
+        let group_id: Option<String> = conn
+            .hget(NODE_GROUP_MAP_KEY, node3.address.to_string())
+            .unwrap();
+        assert!(group_id.is_some());
     }
 
     #[tokio::test]

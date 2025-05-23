@@ -208,12 +208,8 @@ async fn main() -> Result<()> {
     if args.with_basic_group_plugin {
         let group_size: usize = args.group_size as usize;
 
-        let config = NodeGroupConfiguration {
-            name: "test-config".to_string(),
-            min_group_size: group_size,
-            max_group_size: group_size,
-            compute_requirements: None,
-        };
+        let config =
+            NodeGroupConfiguration::new("test-config".to_string(), group_size, group_size, None)?;
 
         let group_plugin = NodeGroupsPlugin::new(vec![config], store.clone(), group_store_context);
         let status_group_plugin = group_plugin.clone();
