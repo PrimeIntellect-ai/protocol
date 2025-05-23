@@ -215,8 +215,7 @@ async fn main() -> Result<()> {
             compute_requirements: None,
         };
 
-        let group_plugin =
-            NodeGroupsPlugin::new(vec![config], store.clone(), group_store_context);
+        let group_plugin = NodeGroupsPlugin::new(vec![config], store.clone(), group_store_context);
         let status_group_plugin = group_plugin.clone();
         let group_plugin_for_server = group_plugin.clone();
         node_groups_plugin = Some(Arc::new(group_plugin_for_server));
