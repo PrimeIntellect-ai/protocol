@@ -43,7 +43,7 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: 1.1.0
+          version: v1.1.0
 
       - name: Install Redis binary
         run: |
