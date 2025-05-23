@@ -199,14 +199,11 @@ async fn main() -> Result<()> {
     let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
     let mut node_groups_plugin: Option<Arc<NodeGroupsPlugin>> = None;
 
-    // Load node group configurations from JSON if provided
-    // TODO: Optimize this config loading
-    // TODO: The NodeGroupConfigurations are not really validated - maybe we work with config files?
+    // This config loading is pretty ugly atm and should be optimized
+    // Issue: https://github.com/PrimeIntellect-ai/protocol/issues/336
     if let Some(configs_json) = args.node_group_configs {
-        println!("configs_json: {}", configs_json);
         match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&configs_json) {
             Ok(configs) if !configs.is_empty() => {
-                println!("configs: {:?}", configs);
                 let group_plugin =
                     NodeGroupsPlugin::new(configs, store.clone(), group_store_context);
                 let status_group_plugin = group_plugin.clone();

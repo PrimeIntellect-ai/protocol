@@ -46,24 +46,11 @@ where
 }
 
 impl NodeGroupConfiguration {
-    #[allow(dead_code)]
-    pub fn new(
-        name: String,
-        min_group_size: usize,
-        max_group_size: usize,
-        compute_requirements: Option<ComputeRequirements>,
-    ) -> Result<Self, Error> {
-        if max_group_size < min_group_size {
-            return Err(Error::msg(
-                "max_group_size must be greater than or equal to min_group_size",
-            ));
+    pub fn is_valid(&self) -> bool {
+        if self.max_group_size < self.min_group_size {
+            return false;
         }
-        Ok(Self {
-            name,
-            min_group_size,
-            max_group_size,
-            compute_requirements,
-        })
+        true
     }
 }
 
@@ -95,6 +82,9 @@ impl NodeGroupsPlugin {
         for config in &sorted_configs {
             if !seen_names.insert(config.name.clone()) {
                 panic!("Configuration names must be unique");
+            }
+            if !config.is_valid() {
+                panic!("Plugin configuration is invalid");
             }
         }
 
@@ -1365,5 +1355,22 @@ mod tests {
         };
 
         let _plugin = NodeGroupsPlugin::new(vec![config1, config2], store.clone(), store_context);
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Plugin configuration is invalid")]
+    async fn ensure_config_validation() {
+        let store = Arc::new(RedisStore::new_test());
+        let context_store = store.clone();
+        let store_context = Arc::new(StoreContext::new(context_store));
+
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: 3,
+            max_group_size: 2, // Invalid: max < min
+            compute_requirements: None,
+        };
+
+        let _plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
     }
 }
