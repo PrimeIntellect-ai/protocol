@@ -293,6 +293,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
         app_state.store_context.node_store.add_node(node.clone());
 

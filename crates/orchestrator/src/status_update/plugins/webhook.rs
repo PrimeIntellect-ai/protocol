@@ -84,6 +84,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: Some(format!("test_p2p_id_{}", rand::random::<u64>())),
+            compute_specs: None,
         }
     }
 
