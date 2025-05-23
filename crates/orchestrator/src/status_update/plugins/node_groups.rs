@@ -8,7 +8,7 @@ use alloy::primitives::Address;
 use anyhow::Error;
 use log::{error, info, warn};
 use rand::seq::IndexedRandom;
-use redis::Commands;
+use redis::{Commands, Script};
 use serde::{Deserialize, Serialize};
 use shared::models::node::ComputeRequirements;
 use shared::models::task::Task;
@@ -284,6 +284,7 @@ impl NodeGroupsPlugin {
 
         Ok(None)
     }
+
     fn get_current_group_task(&self, group_id: &str) -> Result<Option<Task>, Error> {
         let mut conn = self.store.client.get_connection()?;
         let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
@@ -293,7 +294,24 @@ impl NodeGroupsPlugin {
             if let Some(task) = self.store_context.task_store.get_task(&task_id) {
                 return Ok(Some(task));
             }
+
             warn!("Task id set but task not found");
+            let script = Script::new(
+                r#"
+            local task_key = KEYS[1]
+            local expected_task_id = ARGV[1]
+            
+            local current_task_id = redis.call('GET', task_key)
+            if current_task_id == expected_task_id then
+                redis.call('DEL', task_key)
+                return 1
+            else
+                return 0
+            end
+        "#,
+            );
+
+            let _: () = script.key(&task_key).arg(task_id).invoke(&mut conn)?;
         }
         Ok(None)
     }
@@ -389,9 +407,8 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                         return vec![];
                     }
 
-                    let applicable_tasks: Vec<&Task> = tasks
-                        .iter()
-                        .filter(|task| match &task.scheduling_config {
+                    let applicable_tasks: Vec<Task> = tasks
+                        .iter().filter(|&task| match &task.scheduling_config {
                             None => true,
                             Some(config) => {
                                 match config.plugins.as_ref().and_then(|p| p.get("node_groups")) {
@@ -406,14 +423,14 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                                     }
                                 }
                             }
-                        })
+                        }).cloned()
                         .collect();
-
                     if applicable_tasks.is_empty() {
                         return vec![];
                     }
+                    println!("applicable_tasks: {:?}", applicable_tasks);
 
-                    if let Some(new_task) = tasks.choose(&mut rand::rng()) {
+                    if let Some(new_task) = applicable_tasks.choose(&mut rand::rng()) {
                         let task_id = new_task.id.to_string();
                         match self.assign_task_to_group(&group.id, &task_id) {
                             Ok(true) => {
@@ -432,7 +449,9 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                         }
                     }
                 }
-                _ => {}
+                _ => {
+                    println!("No current task - unexpected response from get_current_group_task");
+                }
             }
 
             if let Some(t) = current_task {
