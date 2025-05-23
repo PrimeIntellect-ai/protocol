@@ -365,6 +365,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: Some("test_p2p_id".to_string()),
+            compute_specs: None,
         }
     }
 

@@ -180,6 +180,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
 
         let healthy_node = OrchestratorNode {
@@ -192,6 +193,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
 
         node_store.add_node(uninvited_node.clone());
@@ -218,6 +220,7 @@ mod tests {
                 version: None,
                 p2p_id: None,
                 last_status_change: None,
+                compute_specs: None,
             },
             OrchestratorNode {
                 address: Address::from_str("0x0000000000000000000000000000000000000002").unwrap(),
@@ -229,6 +232,7 @@ mod tests {
                 version: None,
                 p2p_id: None,
                 last_status_change: None,
+                compute_specs: None,
             },
             OrchestratorNode {
                 address: Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
@@ -240,6 +244,7 @@ mod tests {
                 version: None,
                 p2p_id: None,
                 last_status_change: None,
+                compute_specs: None,
             },
         ];
         for node in nodes {
