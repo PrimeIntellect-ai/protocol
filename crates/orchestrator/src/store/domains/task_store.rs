@@ -56,4 +56,11 @@ impl TaskStore {
         // Remove task ID from list
         let _: () = con.lrem(TASK_LIST_KEY, 0, id).unwrap();
     }
+
+    pub fn get_task(&self, id: &str) -> Option<Task> {
+        let mut con = self.redis.client.get_connection().unwrap();
+        let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
+        let task: Option<Task> = con.get(&task_key).unwrap();
+        task
+    }
 }
