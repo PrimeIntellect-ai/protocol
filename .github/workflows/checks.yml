@@ -43,7 +43,7 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly
+          version: 1.4.0
 
       - name: Install Redis binary
         run: |
@@ -57,4 +57,4 @@ jobs:
         if: success() || failure()  
         run: |
           redis-server --version
-          cargo test -- --nocapture
+          RUST_BACKTRACE=1 cargo test -- --nocapture
