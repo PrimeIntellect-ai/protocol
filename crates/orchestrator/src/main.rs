@@ -25,7 +25,6 @@ use log::error;
 use log::info;
 use log::LevelFilter;
 use scheduler::plugins::SchedulerPlugin;
-use serde_json;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;

@@ -46,6 +46,7 @@ where
 }
 
 impl NodeGroupConfiguration {
+    #[allow(dead_code)]
     pub fn new(
         name: String,
         min_group_size: usize,
