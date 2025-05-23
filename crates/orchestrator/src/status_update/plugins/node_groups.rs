@@ -365,9 +365,6 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
 
 impl SchedulerPlugin for NodeGroupsPlugin {
     fn filter_tasks(&self, tasks: &[Task], node_address: &Address) -> Vec<Task> {
-        // Pretty dumb first version - we return a task when the node is in a group
-        // otherwise we do not return a task
-
         if let Ok(Some(group)) = self.get_node_group(&node_address.to_string()) {
             info!(
                 "Node {} is in group {} with {} nodes",
@@ -391,6 +388,31 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                     if tasks.is_empty() {
                         return vec![];
                     }
+
+                    let applicable_tasks: Vec<&Task> = tasks
+                        .iter()
+                        .filter(|task| match &task.scheduling_config {
+                            None => true,
+                            Some(config) => {
+                                match config.plugins.as_ref().and_then(|p| p.get("node_groups")) {
+                                    None => true,
+                                    Some(node_config) => {
+                                        match node_config.get("allowed_topologies") {
+                                            None => true,
+                                            Some(topologies) => {
+                                                topologies.contains(&group.configuration_name)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .collect();
+
+                    if applicable_tasks.is_empty() {
+                        return vec![];
+                    }
+
                     if let Some(new_task) = tasks.choose(&mut rand::rng()) {
                         let task_id = new_task.id.to_string();
                         match self.assign_task_to_group(&group.id, &task_id) {
@@ -471,7 +493,7 @@ mod tests {
     use alloy::primitives::Address;
     use shared::models::{
         node::{ComputeSpecs, GpuSpecs},
-        task::TaskState,
+        task::{SchedulingConfig, TaskState},
     };
     use std::{collections::HashMap, str::FromStr, sync::Arc};
 
@@ -1047,6 +1069,85 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_node_groups_with_allowed_topologies() {
+        let store = Arc::new(RedisStore::new_test());
+        let context_store = store.clone();
+        let store_context = Arc::new(StoreContext::new(context_store));
+
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: 1,
+            max_group_size: 1,
+            compute_requirements: None,
+        };
+
+        let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
+
+        let node1 = create_test_node(
+            "0x1234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+            None,
+        );
+        plugin.store_context.node_store.add_node(node1.clone());
+        let _ = plugin
+            .handle_status_change(&node1, &NodeStatus::Healthy)
+            .await;
+
+        let task_no_match = Task {
+            id: Uuid::new_v4(),
+            image: "test-image".to_string(),
+            name: "test-task".to_string(),
+            env_vars: None,
+            command: Some("run".to_string()),
+            args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
+            scheduling_config: Some(SchedulingConfig {
+                plugins: Some(HashMap::from([(
+                    "node_groups".to_string(),
+                    HashMap::from([(
+                        "allowed_topologies".to_string(),
+                        vec!["no-match-config".to_string()],
+                    )]),
+                )])),
+            }),
+            state: TaskState::PENDING,
+            created_at: 0,
+            updated_at: None,
+        };
+        plugin
+            .store_context
+            .task_store
+            .add_task(task_no_match.clone());
+
+        let mut tasks = vec![task_no_match];
+
+        let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+        assert_eq!(filtered_tasks.len(), 0);
+
+        let task_match = Task {
+            id: Uuid::new_v4(),
+            image: "test-image".to_string(),
+            name: "test-task".to_string(),
+            env_vars: None,
+            command: Some("run".to_string()),
+            args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
+            scheduling_config: Some(SchedulingConfig {
+                plugins: Some(HashMap::from([(
+                    "node_groups".to_string(),
+                    HashMap::from([(
+                        "allowed_topologies".to_string(),
+                        vec!["test-config".to_string()],
+                    )]),
+                )])),
+            }),
+            ..Default::default()
+        };
+        plugin.store_context.task_store.add_task(task_match.clone());
+        tasks.push(task_match);
+        let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+        assert_eq!(filtered_tasks.len(), 1);
     }
 
     #[tokio::test]

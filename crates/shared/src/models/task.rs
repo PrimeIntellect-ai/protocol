@@ -52,7 +52,7 @@ impl std::fmt::Display for TaskState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SchedulingConfig {
-    plugins: HashMap<String, HashMap<String, String>>,
+    pub plugins: Option<HashMap<String, HashMap<String, Vec<String>>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -16,6 +16,9 @@ async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
 async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
     let task = Task::from(task.into_inner());
     let task_store = app_state.store_context.task_store.clone();
+
+    // TODO: Run validation on plugin_configuration
+
     task_store.add_task(task.clone());
     HttpResponse::Ok().json(json!({"success": true, "task": task}))
 }
@@ -57,10 +60,7 @@ mod tests {
         let payload = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
-            command: None,
-            args: None,
-            env_vars: None,
-            scheduling_config: None,
+            ..Default::default()
         };
         let req = test::TestRequest::post()
             .uri("/tasks")
@@ -102,10 +102,7 @@ mod tests {
         let task: Task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
-            command: None,
-            args: None,
-            env_vars: None,
-            scheduling_config: None,
+            ..Default::default()
         }
         .into();
 
@@ -138,10 +135,7 @@ mod tests {
         let task: Task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
-            command: None,
-            args: None,
-            env_vars: None,
-            scheduling_config: None,
+            ..Default::default()
         }
         .into();
 
