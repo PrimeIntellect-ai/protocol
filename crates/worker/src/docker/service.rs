@@ -366,11 +366,13 @@ mod tests {
             image: "ubuntu:latest".to_string(),
             name: "test".to_string(),
             id: Uuid::new_v4(),
+            env_vars: None,
             command: Some("sleep".to_string()),
             args: Some(vec!["100".to_string()]),
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
-            ..Default::default()
+            updated_at: None,
+            scheduling_config: None,
         };
         let task_clone = task.clone();
         let state_clone = docker_service.state.clone();
@@ -416,6 +418,8 @@ mod tests {
             image: "ubuntu:latest".to_string(),
             name: "test-restart".to_string(),
             id: Uuid::new_v4(),
+            env_vars: None,
+            command: Some("invalid_command".to_string()),
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             ..Default::default()
