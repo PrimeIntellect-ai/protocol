@@ -19,6 +19,9 @@ use super::StatusUpdatePlugin;
 const GROUP_KEY_PREFIX: &str = "node_group:";
 const NODE_GROUP_MAP_KEY: &str = "node_to_group";
 const GROUP_TASK_KEY_PREFIX: &str = "group_task:";
+
+// TODO: add tests for multiple group building with different requirements
+// TODO: Add support to load configurations (from file or CLI?)
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NodeGroupConfiguration {
     pub name: String,
@@ -65,12 +68,16 @@ impl NodeGroupsPlugin {
         format!("{}{}", GROUP_KEY_PREFIX, group_id)
     }
 
-    fn try_form_new_group(&self, node_addr: Option<&str>) -> Result<Option<NodeGroup>, Error> {
+    fn try_form_new_group(
+        &self,
+        new_healthy_node: Option<&OrchestratorNode>,
+    ) -> Result<Option<NodeGroup>, Error> {
         let mut conn = self.store.client.get_connection()?;
 
         // Check if node is already in a group (if a specific node was provided)
-        if let Some(addr) = node_addr {
-            let existing_group: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, addr)?;
+        if let Some(node) = new_healthy_node {
+            let existing_group: Option<String> =
+                conn.hget(NODE_GROUP_MAP_KEY, node.address.to_string())?;
             if existing_group.is_some() {
                 return Ok(None);
             }
@@ -90,8 +97,8 @@ impl NodeGroupsPlugin {
             .collect::<Vec<&OrchestratorNode>>();
 
         // If a specific node was provided, make sure it's included and not counted twice
-        if let Some(addr) = node_addr {
-            healthy_nodes.retain(|node| node.address.to_string() != addr);
+        if let Some(new_node) = new_healthy_node {
+            healthy_nodes.retain(|node| node.address.to_string() != new_node.address.to_string());
         }
 
         info!(
@@ -100,7 +107,9 @@ impl NodeGroupsPlugin {
         );
 
         // Calculate total available nodes (healthy nodes + the provided node if any)
-        let total_available = healthy_nodes.len() + if node_addr.is_some() { 1 } else { 0 };
+        let total_available = healthy_nodes.len() + if new_healthy_node.is_some() { 1 } else { 0 };
+
+        println!("total_available: {}", total_available);
 
         // Try each configuration in order
         for config in &self.configurations {
@@ -112,17 +121,38 @@ impl NodeGroupsPlugin {
                 continue;
             }
 
+            // If a new node is provided, check if it meets the compute requirements
+            // If it does not meet the requirements, we will not form a group with this configuration
+            if let Some(compute_reqs) = &config.compute_requirements {
+                if let Some(node) = new_healthy_node {
+                    if let Some(compute_specs) = &node.compute_specs {
+                        if !compute_specs.meets(compute_reqs) {
+                            continue;
+                        }
+                    }
+                }
+            }
+
             let mut available_nodes = BTreeSet::new();
 
             // Add the provided node first if any
-            if let Some(addr) = node_addr {
-                available_nodes.insert(addr.to_string());
+            if let Some(node) = new_healthy_node {
+                available_nodes.insert(node.address.to_string());
             }
 
             for node in &healthy_nodes {
-                available_nodes.insert(node.address.to_string());
-                if available_nodes.len() >= config.max_group_size {
-                    break;
+                let should_add_node = match (&config.compute_requirements, &node.compute_specs) {
+                    (Some(reqs), Some(specs)) => specs.meets(reqs),
+                    (None, _) => true,
+                    _ => false,
+                };
+                println!("should_add_node: {}", should_add_node);
+
+                if should_add_node {
+                    available_nodes.insert(node.address.to_string());
+                    if available_nodes.len() >= config.max_group_size {
+                        break;
+                    }
                 }
             }
 
@@ -260,7 +290,7 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
                     "Node {} is healthy, attempting to form new group",
                     node_addr
                 );
-                if let Some(group) = self.try_form_new_group(Some(&node_addr))? {
+                if let Some(group) = self.try_form_new_group(Some(node))? {
                     info!(
                         "Successfully formed new group {} with {} nodes",
                         group.id,
