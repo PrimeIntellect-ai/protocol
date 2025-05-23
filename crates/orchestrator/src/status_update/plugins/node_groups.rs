@@ -162,8 +162,6 @@ impl NodeGroupsPlugin {
             if let Some(compute_reqs) = &config.compute_requirements {
                 if let Some(node) = new_healthy_node {
                     if let Some(compute_specs) = &node.compute_specs {
-                        println!("compute_specs: {:?}", compute_specs);
-                        println!("compute_reqs: {:?}", compute_reqs);
                         if !compute_specs.meets(compute_reqs) {
                             continue;
                         }
@@ -408,7 +406,8 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                     }
 
                     let applicable_tasks: Vec<Task> = tasks
-                        .iter().filter(|&task| match &task.scheduling_config {
+                        .iter()
+                        .filter(|&task| match &task.scheduling_config {
                             None => true,
                             Some(config) => {
                                 match config.plugins.as_ref().and_then(|p| p.get("node_groups")) {
@@ -423,12 +422,12 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                                     }
                                 }
                             }
-                        }).cloned()
+                        })
+                        .cloned()
                         .collect();
                     if applicable_tasks.is_empty() {
                         return vec![];
                     }
-                    println!("applicable_tasks: {:?}", applicable_tasks);
 
                     if let Some(new_task) = applicable_tasks.choose(&mut rand::rng()) {
                         let task_id = new_task.id.to_string();
@@ -449,9 +448,7 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                         }
                     }
                 }
-                _ => {
-                    println!("No current task - unexpected response from get_current_group_task");
-                }
+                _ => {}
             }
 
             if let Some(t) = current_task {
@@ -697,7 +694,6 @@ mod tests {
 
         let requirement_str = "gpu:count=8;gpu:model=RTX4090;";
         let requirements = ComputeRequirements::from_str(requirement_str).unwrap();
-        println!("requirements: {:?}", requirements);
 
         let config = NodeGroupConfiguration {
             name: "test-config-with-requirements".to_string(),
@@ -720,7 +716,6 @@ mod tests {
 
         // Ensure node is not in a group since it does not meet requirements
         let group_id_node_1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
-        println!("group_id_node_1: {:?}", group_id_node_1);
         assert!(group_id_node_1.is_none());
 
         let node_2 = create_test_node(
@@ -742,7 +737,6 @@ mod tests {
             .await;
 
         let group_id_node_2 = plugin.get_node_group(&node_2.address.to_string()).unwrap();
-        println!("group_id_node_2: {:?}", group_id_node_2);
         assert!(group_id_node_2.is_some());
     }
 
@@ -754,7 +748,6 @@ mod tests {
 
         let requirement_str = "gpu:count=8;gpu:model=RTX4090;";
         let requirements = ComputeRequirements::from_str(requirement_str).unwrap();
-        println!("requirements: {:?}", requirements);
 
         let config = NodeGroupConfiguration {
             name: "test-config-with-requirements".to_string(),
@@ -794,11 +787,9 @@ mod tests {
             .await;
 
         let group_id_node_1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
-        println!("group_id_node_1: {:?}", group_id_node_1);
         assert!(group_id_node_1.is_none());
 
         let group_id_node_2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
-        println!("group_id_node_2: {:?}", group_id_node_2);
         assert!(group_id_node_2.is_none());
 
         let node3 = create_test_node(
@@ -820,15 +811,12 @@ mod tests {
             .await;
 
         let group_id_node_3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
-        println!("group_id_node_3: {:?}", group_id_node_3);
         assert!(group_id_node_3.is_some());
         let group_id_node_2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
-        println!("group_id_node_2: {:?}", group_id_node_2);
         assert!(group_id_node_2.is_some());
 
         // Node 1 does not fullfill the requirements - hence it will not get added to the group
         let group_id_node_1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
-        println!("group_id_node_1: {:?}", group_id_node_1);
         assert!(group_id_node_1.is_none());
     }
 
