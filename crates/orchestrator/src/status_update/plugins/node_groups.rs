@@ -29,7 +29,6 @@ pub struct NodeGroupConfiguration {
     compute_requirements: Option<ComputeRequirements>,
 }
 
-// TODO: Currently always have to set null
 fn deserialize_compute_requirements<'de, D>(
     deserializer: D,
 ) -> Result<Option<ComputeRequirements>, D::Error>
