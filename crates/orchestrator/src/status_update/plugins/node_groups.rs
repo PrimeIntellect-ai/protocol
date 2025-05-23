@@ -202,7 +202,6 @@ impl NodeGroupsPlugin {
 
         Ok(None)
     }
-
     fn get_current_group_task(&self, group_id: &str) -> Result<Option<Task>, Error> {
         let mut conn = self.store.client.get_connection()?;
         let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
@@ -217,11 +216,11 @@ impl NodeGroupsPlugin {
         Ok(None)
     }
 
-    fn assign_task_to_group(&self, group_id: &str, task_id: &str) -> Result<(), Error> {
+    fn assign_task_to_group(&self, group_id: &str, task_id: &str) -> Result<bool, Error> {
         let mut conn = self.store.client.get_connection()?;
         let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
-        conn.set::<_, _, ()>(&task_key, task_id)?;
-        Ok(())
+        let result: bool = conn.set_nx::<_, _, bool>(&task_key, task_id)?;
+        Ok(result)
     }
 }
 
@@ -307,17 +306,26 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                     current_task = Some(task);
                 }
                 Ok(None) => {
-                    // TODO: Concurrency issue exists here
-                    // If this runs on multiple threads we could get a race condition
                     if tasks.is_empty() {
                         return vec![];
                     }
                     if let Some(new_task) = tasks.choose(&mut rand::rng()) {
                         let task_id = new_task.id.to_string();
-                        if let Err(e) = self.assign_task_to_group(&group.id, &task_id) {
-                            error!("Failed to assign task to group: {}", e);
+                        match self.assign_task_to_group(&group.id, &task_id) {
+                            Ok(true) => {
+                                // Successfully assigned the task
+                                current_task = Some(new_task.clone());
+                            }
+                            Ok(false) => {
+                                // Another node already assigned a task, try to get it
+                                if let Ok(Some(task)) = self.get_current_group_task(&group.id) {
+                                    current_task = Some(task);
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to assign task to group: {}", e);
+                            }
                         }
-                        current_task = Some(new_task.clone());
                     }
                 }
                 _ => {}
@@ -523,33 +531,34 @@ mod tests {
         let _ = plugin
             .handle_status_change(&node1, &NodeStatus::Healthy)
             .await;
-
-        let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
-
-        // Check both nodes get assigned valid and different indexes
-        // Also ensure both nodes get the same task
-        assert_eq!(filtered_tasks.len(), 1);
-        let task_node_1 = &filtered_tasks[0];
-        let env_vars = task_node_1.env_vars.as_ref().unwrap();
-        assert_eq!(env_vars.get("GROUP_INDEX").unwrap(), "0");
-        assert_eq!(env_vars.get("RANK").unwrap(), "0");
-        assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
-        assert_eq!(task_node_1.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
-        assert_ne!(env_vars.get("GROUP_ID").unwrap(), "${GROUP_ID}");
-
         let mut tasks_clone = tasks.clone();
         tasks_clone.reverse();
         assert_ne!(tasks_clone[0].id, tasks[0].id);
 
-        let filtered_tasks = plugin.filter_tasks(&tasks_clone, &node2.address);
-        assert_eq!(filtered_tasks.len(), 1);
-        let task_node_2 = &filtered_tasks[0];
-        let env_vars = task_node_2.env_vars.as_ref().unwrap();
-        assert_eq!(env_vars.get("GROUP_INDEX").unwrap(), "1");
-        assert_eq!(env_vars.get("RANK").unwrap(), "1");
-        assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
+        let (filtered_tasks_1, filtered_tasks_2) = tokio::join!(
+            async { plugin.filter_tasks(&tasks, &node1.address) },
+            async { plugin.filter_tasks(&tasks_clone, &node2.address) }
+        );
+
+        // Check both nodes get assigned valid and different indexes
+        // Also ensure both nodes get the same task
+        assert_eq!(filtered_tasks_1.len(), 1);
+        let task_node_1 = &filtered_tasks_1[0];
+        let env_vars_1 = task_node_1.env_vars.as_ref().unwrap();
+        assert_eq!(env_vars_1.get("GROUP_INDEX").unwrap(), "0");
+        assert_eq!(env_vars_1.get("RANK").unwrap(), "0");
+        assert_eq!(env_vars_1.get("WORLD_SIZE").unwrap(), "2");
+        assert_eq!(task_node_1.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
+        assert_ne!(env_vars_1.get("GROUP_ID").unwrap(), "${GROUP_ID}");
+
+        assert_eq!(filtered_tasks_2.len(), 1);
+        let task_node_2 = &filtered_tasks_2[0];
+        let env_vars_2 = task_node_2.env_vars.as_ref().unwrap();
+        assert_eq!(env_vars_2.get("GROUP_INDEX").unwrap(), "1");
+        assert_eq!(env_vars_2.get("RANK").unwrap(), "1");
+        assert_eq!(env_vars_2.get("WORLD_SIZE").unwrap(), "2");
         assert_eq!(task_node_2.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
-        assert_ne!(env_vars.get("GROUP_ID").unwrap(), "${GROUP_ID}");
+        assert_ne!(env_vars_2.get("GROUP_ID").unwrap(), "${GROUP_ID}");
 
         assert_eq!(task_node_1.id, task_node_2.id);
     }
@@ -642,6 +651,7 @@ mod tests {
             created_at: 0,
             updated_at: None,
         };
+        plugin.store_context.task_store.add_task(task.clone());
 
         let tasks = vec![task];
 
@@ -941,7 +951,6 @@ mod tests {
         let _ = plugin
             .handle_status_change(&node2, &NodeStatus::Healthy)
             .await;
-        let nodes = plugin.store_context.node_store.get_nodes();
 
         let node_2_group_id: Option<String> = conn
             .hget(NODE_GROUP_MAP_KEY, node2.address.to_string())
