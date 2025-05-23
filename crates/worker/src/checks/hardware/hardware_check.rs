@@ -49,8 +49,7 @@ impl HardwareChecker {
                 IssueType::InsufficientCpu,
                 "Failed to detect CPU information",
             );
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            return Err(Box::new(std::io::Error::other(
                 "Failed to detect CPU information",
             )));
         }

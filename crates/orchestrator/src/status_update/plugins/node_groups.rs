@@ -1,6 +1,7 @@
 use alloy::primitives::Address;
 use anyhow::Error;
-use log::info;
+use log::{error, info, warn};
+use rand::seq::IndexedRandom;
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use shared::models::task::Task;
@@ -18,6 +19,7 @@ use super::StatusUpdatePlugin;
 
 const GROUP_KEY_PREFIX: &str = "node_group:";
 const NODE_GROUP_MAP_KEY: &str = "node_to_group";
+const GROUP_TASK_KEY_PREFIX: &str = "group_task:";
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct NodeGroup {
@@ -58,6 +60,7 @@ impl NodeGroupsPlugin {
     fn get_group_key(group_id: &str) -> String {
         format!("{}{}", GROUP_KEY_PREFIX, group_id)
     }
+
     fn try_form_new_group(&self, node_addr: Option<&str>) -> Result<Option<NodeGroup>, Error> {
         let mut conn = self.store.client.get_connection()?;
 
@@ -199,6 +202,26 @@ impl NodeGroupsPlugin {
 
         Ok(None)
     }
+    fn get_current_group_task(&self, group_id: &str) -> Result<Option<Task>, Error> {
+        let mut conn = self.store.client.get_connection()?;
+        let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
+        let task_id: Option<String> = conn.get(&task_key)?;
+
+        if let Some(task_id) = task_id {
+            if let Some(task) = self.store_context.task_store.get_task(&task_id) {
+                return Ok(Some(task));
+            }
+            warn!("Task id set but task not found");
+        }
+        Ok(None)
+    }
+
+    fn assign_task_to_group(&self, group_id: &str, task_id: &str) -> Result<bool, Error> {
+        let mut conn = self.store.client.get_connection()?;
+        let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
+        let result: bool = conn.set_nx::<_, _, bool>(&task_key, task_id)?;
+        Ok(result)
+    }
 }
 
 impl Plugin for NodeGroupsPlugin {}
@@ -277,9 +300,39 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                 .position(|n| n == &node_address.to_string())
                 .unwrap();
 
-            let mut final_tasks: Vec<Task> = Vec::new();
-            for task in tasks {
-                let mut task_clone = task.clone();
+            let mut current_task: Option<Task> = None;
+            match self.get_current_group_task(&group.id) {
+                Ok(Some(task)) => {
+                    current_task = Some(task);
+                }
+                Ok(None) => {
+                    if tasks.is_empty() {
+                        return vec![];
+                    }
+                    if let Some(new_task) = tasks.choose(&mut rand::rng()) {
+                        let task_id = new_task.id.to_string();
+                        match self.assign_task_to_group(&group.id, &task_id) {
+                            Ok(true) => {
+                                // Successfully assigned the task
+                                current_task = Some(new_task.clone());
+                            }
+                            Ok(false) => {
+                                // Another node already assigned a task, try to get it
+                                if let Ok(Some(task)) = self.get_current_group_task(&group.id) {
+                                    current_task = Some(task);
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to assign task to group: {}", e);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+
+            if let Some(t) = current_task {
+                let mut task_clone = t.clone();
 
                 let next_node_idx = (node_group_index + 1) % group.nodes.len();
                 let next_node_addr = group.nodes.iter().nth(next_node_idx).unwrap();
@@ -317,17 +370,8 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                         })
                         .collect::<Vec<String>>()
                 });
-
-                final_tasks.push(task_clone);
+                return vec![task_clone];
             }
-
-            info!(
-                "Returning {} tasks for node {} in group {}",
-                final_tasks.len(),
-                node_address,
-                group.id
-            );
-            return final_tasks;
         }
         info!(
             "Node {} is not in a group, skipping all tasks",
@@ -345,6 +389,7 @@ mod tests {
     use alloy::primitives::Address;
     use shared::models::task::TaskState;
     use std::{collections::HashMap, str::FromStr, sync::Arc};
+
     use uuid::Uuid;
 
     fn create_test_node(addr: &str, status: NodeStatus) -> OrchestratorNode {
@@ -468,8 +513,74 @@ mod tests {
             created_at: 0,
             updated_at: None,
         };
+        plugin.store_context.task_store.add_task(task1.clone());
 
-        let tasks = vec![task1];
+        let mut task2 = task1.clone();
+        task2.id = Uuid::new_v4();
+        plugin.store_context.task_store.add_task(task2.clone());
+
+        let mut task3 = task1.clone();
+        task3.id = Uuid::new_v4();
+        plugin.store_context.task_store.add_task(task3.clone());
+
+        let tasks = vec![task1, task2, task3];
+
+        let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+        assert_eq!(filtered_tasks.len(), 0);
+
+        let _ = plugin
+            .handle_status_change(&node1, &NodeStatus::Healthy)
+            .await;
+        let mut tasks_clone = tasks.clone();
+        tasks_clone.reverse();
+        assert_ne!(tasks_clone[0].id, tasks[0].id);
+
+        let (filtered_tasks_1, filtered_tasks_2) = tokio::join!(
+            async { plugin.filter_tasks(&tasks, &node1.address) },
+            async { plugin.filter_tasks(&tasks_clone, &node2.address) }
+        );
+
+        // Check both nodes get assigned valid and different indexes
+        // Also ensure both nodes get the same task
+        assert_eq!(filtered_tasks_1.len(), 1);
+        let task_node_1 = &filtered_tasks_1[0];
+        let env_vars_1 = task_node_1.env_vars.as_ref().unwrap();
+        assert_eq!(env_vars_1.get("GROUP_INDEX").unwrap(), "0");
+        assert_eq!(env_vars_1.get("RANK").unwrap(), "0");
+        assert_eq!(env_vars_1.get("WORLD_SIZE").unwrap(), "2");
+        assert_eq!(task_node_1.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
+        assert_ne!(env_vars_1.get("GROUP_ID").unwrap(), "${GROUP_ID}");
+
+        assert_eq!(filtered_tasks_2.len(), 1);
+        let task_node_2 = &filtered_tasks_2[0];
+        let env_vars_2 = task_node_2.env_vars.as_ref().unwrap();
+        assert_eq!(env_vars_2.get("GROUP_INDEX").unwrap(), "1");
+        assert_eq!(env_vars_2.get("RANK").unwrap(), "1");
+        assert_eq!(env_vars_2.get("WORLD_SIZE").unwrap(), "2");
+        assert_eq!(task_node_2.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
+        assert_ne!(env_vars_2.get("GROUP_ID").unwrap(), "${GROUP_ID}");
+
+        assert_eq!(task_node_1.id, task_node_2.id);
+    }
+
+    #[tokio::test]
+    async fn test_group_scheduling_without_tasks() {
+        let store: Arc<RedisStore> = Arc::new(RedisStore::new_test());
+        let context_store = store.clone();
+        let store_context = Arc::new(StoreContext::new(context_store));
+
+        let plugin = NodeGroupsPlugin::new(2, 5, store.clone(), store_context);
+        let node1 = create_test_node(
+            "0x1234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node1.clone());
+        let node2 = create_test_node(
+            "0x2234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+        );
+        plugin.store_context.node_store.add_node(node2.clone());
+        let tasks = vec![];
 
         let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
         assert_eq!(filtered_tasks.len(), 0);
@@ -479,26 +590,10 @@ mod tests {
             .await;
 
         let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
-
-        // Check both nodes get assigned valid and different indexes
-        assert_eq!(filtered_tasks.len(), 1);
-        let task = &filtered_tasks[0];
-        let env_vars = task.env_vars.as_ref().unwrap();
-        assert_eq!(env_vars.get("GROUP_INDEX").unwrap(), "0");
-        assert_eq!(env_vars.get("RANK").unwrap(), "0");
-        assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
-        assert_eq!(task.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
-        assert_ne!(env_vars.get("GROUP_ID").unwrap(), "${GROUP_ID}");
+        assert_eq!(filtered_tasks.len(), 0);
 
         let filtered_tasks = plugin.filter_tasks(&tasks, &node2.address);
-        assert_eq!(filtered_tasks.len(), 1);
-        let task = &filtered_tasks[0];
-        let env_vars = task.env_vars.as_ref().unwrap();
-        assert_eq!(env_vars.get("GROUP_INDEX").unwrap(), "1");
-        assert_eq!(env_vars.get("RANK").unwrap(), "1");
-        assert_eq!(env_vars.get("WORLD_SIZE").unwrap(), "2");
-        assert_eq!(task.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
-        assert_ne!(env_vars.get("GROUP_ID").unwrap(), "${GROUP_ID}");
+        assert_eq!(filtered_tasks.len(), 0);
     }
 
     #[tokio::test]
@@ -556,6 +651,7 @@ mod tests {
             created_at: 0,
             updated_at: None,
         };
+        plugin.store_context.task_store.add_task(task.clone());
 
         let tasks = vec![task];
 
@@ -855,8 +951,6 @@ mod tests {
         let _ = plugin
             .handle_status_change(&node2, &NodeStatus::Healthy)
             .await;
-        let nodes = plugin.store_context.node_store.get_nodes();
-        println!("nodes {:?}", nodes);
 
         let node_2_group_id: Option<String> = conn
             .hget(NODE_GROUP_MAP_KEY, node2.address.to_string())
