@@ -1,4 +1,3 @@
-
 use crate::plugins::traits::SchedulerPlugin;
 use crate::plugins::traits::StatusUpdatePlugin;
 use crate::{
