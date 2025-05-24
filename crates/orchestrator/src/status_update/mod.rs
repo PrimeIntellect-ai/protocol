@@ -1,10 +1,9 @@
-pub mod plugins;
 use crate::models::node::{NodeStatus, OrchestratorNode};
+use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Ok;
 use log::{debug, error, info};
-use plugins::StatusUpdatePlugin;
 use shared::web3::contracts::core::builder::Contracts;
 use std::result::Result;
 use std::sync::Arc;

@@ -1,10 +1,8 @@
-pub mod plugins;
-
 use alloy::primitives::Address;
-use plugins::{newest_task::NewestTaskPlugin, SchedulerPlugin};
 use shared::models::task::Task;
 use std::sync::Arc;
 
+use crate::plugins::{newest_task::NewestTaskPlugin, SchedulerPlugin};
 use crate::store::core::StoreContext;
 use anyhow::Result;
 
