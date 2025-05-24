@@ -1,7 +1,6 @@
+use super::{Plugin, SchedulerPlugin, StatusUpdatePlugin};
 use crate::{
     models::node::{NodeStatus, OrchestratorNode},
-    prelude::Plugin,
-    scheduler::plugins::SchedulerPlugin,
     store::core::{RedisStore, StoreContext},
 };
 use alloy::primitives::Address;
@@ -16,7 +15,6 @@ use shared::models::task::Task;
 use std::{collections::BTreeSet, sync::Arc};
 use std::{collections::HashSet, str::FromStr};
 
-use super::StatusUpdatePlugin;
 const GROUP_KEY_PREFIX: &str = "node_group:";
 const NODE_GROUP_MAP_KEY: &str = "node_to_group";
 const GROUP_TASK_KEY_PREFIX: &str = "group_task:";

@@ -3,12 +3,9 @@ use std::time::Duration;
 use anyhow::Error;
 use serde_json::json;
 
-use crate::{
-    models::node::{NodeStatus, OrchestratorNode},
-    prelude::Plugin,
-};
+use crate::models::node::{NodeStatus, OrchestratorNode};
 
-use super::StatusUpdatePlugin;
+use super::{Plugin, StatusUpdatePlugin};
 use log::{debug, error};
 
 pub struct WebhookPlugin {
