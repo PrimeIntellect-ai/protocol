@@ -1,6 +1,7 @@
 use crate::store::node_store::NodeStore;
 use alloy::primitives::Address;
 use anyhow::Error;
+use futures::StreamExt;
 use log::error;
 use shared::models::node::DiscoveryNode;
 use shared::web3::contracts::core::builder::Contracts;
@@ -37,10 +38,8 @@ impl ChainSync {
     async fn sync_single_node(
         node_store: Arc<NodeStore>,
         contracts: Arc<Contracts>,
-        node: DiscoveryNode,
+        mut node: DiscoveryNode,
     ) -> Result<(), Error> {
-        let mut n = node.clone();
-
         // Safely parse provider_address and node_address
         let provider_address = Address::from_str(&node.provider_address).map_err(|e| {
             eprintln!("Failed to parse provider address: {}", e);
@@ -52,40 +51,37 @@ impl ChainSync {
             anyhow::anyhow!("Invalid node address")
         })?;
 
-        let node_info = contracts
-            .compute_registry
-            .get_node(provider_address, node_address)
-            .await
-            .map_err(|e| {
-                eprintln!("Error retrieving node info: {}", e);
-                anyhow::anyhow!("Failed to retrieve node info")
-            })?;
+        let (node_info_result, provider_info_result, is_blacklisted_result) = tokio::join!(
+            contracts
+                .compute_registry
+                .get_node(provider_address, node_address),
+            contracts.compute_registry.get_provider(provider_address),
+            contracts
+                .compute_pool
+                .is_node_blacklisted(node.node.compute_pool_id, node_address),
+        );
 
-        let provider_info = contracts
-            .compute_registry
-            .get_provider(provider_address)
-            .await
-            .map_err(|e| {
-                eprintln!("Error retrieving provider info: {}", e);
-                anyhow::anyhow!("Failed to retrieve provider info")
-            })?;
+        let node_info = node_info_result.map_err(|e| {
+            eprintln!("Error retrieving node info: {}", e);
+            anyhow::anyhow!("Failed to retrieve node info")
+        })?;
+
+        let provider_info = provider_info_result.map_err(|e| {
+            eprintln!("Error retrieving provider info: {}", e);
+            anyhow::anyhow!("Failed to retrieve provider info")
+        })?;
+
+        let is_blacklisted = is_blacklisted_result.map_err(|e| {
+            eprintln!("Error checking if node is blacklisted: {}", e);
+            anyhow::anyhow!("Failed to check blacklist status")
+        })?;
 
         let (is_active, is_validated) = node_info;
-        n.is_active = is_active;
-        n.is_validated = is_validated;
-        n.is_provider_whitelisted = provider_info.is_whitelisted;
-
-        // Handle potential errors from async calls
-        let is_blacklisted = contracts
-            .compute_pool
-            .is_node_blacklisted(node.node.compute_pool_id, node_address)
-            .await
-            .map_err(|e| {
-                eprintln!("Error checking if node is blacklisted: {}", e);
-                anyhow::anyhow!("Failed to check blacklist status")
-            })?;
-        n.is_blacklisted = is_blacklisted;
-        match node_store.update_node(n) {
+        node.is_active = is_active;
+        node.is_validated = is_validated;
+        node.is_provider_whitelisted = provider_info.is_whitelisted;
+        node.is_blacklisted = is_blacklisted;
+        match node_store.update_node(node) {
             Ok(_) => (),
             Err(e) => {
                 error!("Error updating node: {}", e);
@@ -110,11 +106,17 @@ impl ChainSync {
                         let nodes = node_store_clone.get_nodes();
                         match nodes {
                             Ok(nodes) => {
-                                for node in nodes {
-                                    if let Err(e) = ChainSync::sync_single_node(node_store_clone.clone(), contracts_clone.clone(), node).await {
-                                        error!("Error syncing node: {}", e);
-                                    }
-                                }
+                                futures::stream::iter(nodes)
+                                    .for_each_concurrent(10, |node| {
+                                        let node_store = node_store_clone.clone();
+                                        let contracts = contracts_clone.clone();
+                                        async move {
+                                            if let Err(e) = ChainSync::sync_single_node(node_store, contracts, node).await {
+                                                error!("Error syncing node: {}", e);
+                                            }
+                                        }
+                                    })
+                                    .await;
                                 // Update the last chain sync time
                                 let mut last_sync = last_chain_sync.lock().await;
                                 *last_sync = Some(SystemTime::now());

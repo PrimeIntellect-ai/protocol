@@ -22,7 +22,7 @@ impl ComputeRegistryContract {
     pub async fn get_provider(
         &self,
         address: Address,
-    ) -> Result<ComputeProvider, Box<dyn std::error::Error>> {
+    ) -> Result<ComputeProvider, Box<dyn std::error::Error + Send + Sync>> {
         let provider_response = self
             .instance
             .instance()

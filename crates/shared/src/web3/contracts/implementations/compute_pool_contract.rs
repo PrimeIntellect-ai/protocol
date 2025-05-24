@@ -173,7 +173,7 @@ impl ComputePool {
         &self,
         pool_id: u32,
         node: Address,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         let arg_pool_id: U256 = U256::from(pool_id);
         let result = self
             .instance
@@ -184,7 +184,13 @@ impl ComputePool {
             )?
             .call()
             .await?;
-        Ok(result.first().unwrap().as_bool().unwrap())
+        let first_value = result
+            .first()
+            .ok_or("Empty response when checking if node is blacklisted")?;
+        let is_blacklisted = first_value
+            .as_bool()
+            .ok_or("Expected a boolean value in response for node blacklisted check")?;
+        Ok(is_blacklisted)
     }
 
     pub async fn get_blacklisted_nodes(
