@@ -372,6 +372,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             updated_at: None,
+            scheduling_config: None,
         };
         let task_clone = task.clone();
         let state_clone = docker_service.state.clone();
@@ -419,10 +420,9 @@ mod tests {
             id: Uuid::new_v4(),
             env_vars: None,
             command: Some("invalid_command".to_string()),
-            args: None,
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
-            updated_at: None,
+            ..Default::default()
         };
 
         let task_clone = task.clone();

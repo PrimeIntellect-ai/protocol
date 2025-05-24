@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use chrono::Utc;
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum TaskState {
     PENDING,
     PULLING,
@@ -12,6 +14,7 @@ pub enum TaskState {
     FAILED,
     PAUSED,
     RESTARTING,
+    #[default]
     UNKNOWN,
 }
 
@@ -47,15 +50,25 @@ impl std::fmt::Display for TaskState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// Scheduling config
+// Proper typing and validation currently missing
+// Issue: https://github.com/PrimeIntellect-ai/protocol/issues/338
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SchedulingConfig {
+    pub plugins: Option<HashMap<String, HashMap<String, Vec<String>>>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TaskRequest {
     pub image: String,
     pub name: String,
     pub env_vars: Option<std::collections::HashMap<String, String>>,
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
+    pub scheduling_config: Option<SchedulingConfig>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct Task {
     pub id: Uuid,
     pub image: String,
@@ -68,6 +81,8 @@ pub struct Task {
     pub created_at: i64,
     #[serde(default)]
     pub updated_at: Option<u64>,
+    #[serde(default)]
+    pub scheduling_config: Option<SchedulingConfig>,
 }
 
 impl From<TaskRequest> for Task {
@@ -82,6 +97,7 @@ impl From<TaskRequest> for Task {
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             updated_at: None,
+            scheduling_config: request.scheduling_config,
         }
     }
 }

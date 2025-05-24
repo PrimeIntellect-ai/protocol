@@ -6,9 +6,10 @@ use crate::{
 };
 use alloy::primitives::Address;
 use anyhow::Error;
+use anyhow::Result;
 use log::{error, info, warn};
 use rand::seq::IndexedRandom;
-use redis::Commands;
+use redis::{Commands, Script};
 use serde::{Deserialize, Serialize};
 use shared::models::node::ComputeRequirements;
 use shared::models::task::Task;
@@ -162,8 +163,6 @@ impl NodeGroupsPlugin {
             if let Some(compute_reqs) = &config.compute_requirements {
                 if let Some(node) = new_healthy_node {
                     if let Some(compute_specs) = &node.compute_specs {
-                        println!("compute_specs: {:?}", compute_specs);
-                        println!("compute_reqs: {:?}", compute_reqs);
                         if !compute_specs.meets(compute_reqs) {
                             continue;
                         }
@@ -284,6 +283,7 @@ impl NodeGroupsPlugin {
 
         Ok(None)
     }
+
     fn get_current_group_task(&self, group_id: &str) -> Result<Option<Task>, Error> {
         let mut conn = self.store.client.get_connection()?;
         let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
@@ -293,7 +293,24 @@ impl NodeGroupsPlugin {
             if let Some(task) = self.store_context.task_store.get_task(&task_id) {
                 return Ok(Some(task));
             }
+
             warn!("Task id set but task not found");
+            let script = Script::new(
+                r#"
+            local task_key = KEYS[1]
+            local expected_task_id = ARGV[1]
+            
+            local current_task_id = redis.call('GET', task_key)
+            if current_task_id == expected_task_id then
+                redis.call('DEL', task_key)
+                return 1
+            else
+                return 0
+            end
+        "#,
+            );
+
+            let _: () = script.key(&task_key).arg(task_id).invoke(&mut conn)?;
         }
         Ok(None)
     }
@@ -365,9 +382,6 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
 
 impl SchedulerPlugin for NodeGroupsPlugin {
     fn filter_tasks(&self, tasks: &[Task], node_address: &Address) -> Vec<Task> {
-        // Pretty dumb first version - we return a task when the node is in a group
-        // otherwise we do not return a task
-
         if let Ok(Some(group)) = self.get_node_group(&node_address.to_string()) {
             info!(
                 "Node {} is in group {} with {} nodes",
@@ -391,7 +405,32 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                     if tasks.is_empty() {
                         return vec![];
                     }
-                    if let Some(new_task) = tasks.choose(&mut rand::rng()) {
+
+                    let applicable_tasks: Vec<Task> = tasks
+                        .iter()
+                        .filter(|&task| match &task.scheduling_config {
+                            None => true,
+                            Some(config) => {
+                                match config.plugins.as_ref().and_then(|p| p.get("node_groups")) {
+                                    None => true,
+                                    Some(node_config) => {
+                                        match node_config.get("allowed_topologies") {
+                                            None => true,
+                                            Some(topologies) => {
+                                                topologies.contains(&group.configuration_name)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .cloned()
+                        .collect();
+                    if applicable_tasks.is_empty() {
+                        return vec![];
+                    }
+
+                    if let Some(new_task) = applicable_tasks.choose(&mut rand::rng()) {
                         let task_id = new_task.id.to_string();
                         match self.assign_task_to_group(&group.id, &task_id) {
                             Ok(true) => {
@@ -471,7 +510,7 @@ mod tests {
     use alloy::primitives::Address;
     use shared::models::{
         node::{ComputeSpecs, GpuSpecs},
-        task::TaskState,
+        task::{SchedulingConfig, TaskState},
     };
     use std::{collections::HashMap, str::FromStr, sync::Arc};
 
@@ -656,7 +695,6 @@ mod tests {
 
         let requirement_str = "gpu:count=8;gpu:model=RTX4090;";
         let requirements = ComputeRequirements::from_str(requirement_str).unwrap();
-        println!("requirements: {:?}", requirements);
 
         let config = NodeGroupConfiguration {
             name: "test-config-with-requirements".to_string(),
@@ -679,7 +717,6 @@ mod tests {
 
         // Ensure node is not in a group since it does not meet requirements
         let group_id_node_1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
-        println!("group_id_node_1: {:?}", group_id_node_1);
         assert!(group_id_node_1.is_none());
 
         let node_2 = create_test_node(
@@ -701,7 +738,6 @@ mod tests {
             .await;
 
         let group_id_node_2 = plugin.get_node_group(&node_2.address.to_string()).unwrap();
-        println!("group_id_node_2: {:?}", group_id_node_2);
         assert!(group_id_node_2.is_some());
     }
 
@@ -713,7 +749,6 @@ mod tests {
 
         let requirement_str = "gpu:count=8;gpu:model=RTX4090;";
         let requirements = ComputeRequirements::from_str(requirement_str).unwrap();
-        println!("requirements: {:?}", requirements);
 
         let config = NodeGroupConfiguration {
             name: "test-config-with-requirements".to_string(),
@@ -753,11 +788,9 @@ mod tests {
             .await;
 
         let group_id_node_1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
-        println!("group_id_node_1: {:?}", group_id_node_1);
         assert!(group_id_node_1.is_none());
 
         let group_id_node_2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
-        println!("group_id_node_2: {:?}", group_id_node_2);
         assert!(group_id_node_2.is_none());
 
         let node3 = create_test_node(
@@ -779,15 +812,12 @@ mod tests {
             .await;
 
         let group_id_node_3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
-        println!("group_id_node_3: {:?}", group_id_node_3);
         assert!(group_id_node_3.is_some());
         let group_id_node_2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
-        println!("group_id_node_2: {:?}", group_id_node_2);
         assert!(group_id_node_2.is_some());
 
         // Node 1 does not fullfill the requirements - hence it will not get added to the group
         let group_id_node_1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
-        println!("group_id_node_1: {:?}", group_id_node_1);
         assert!(group_id_node_1.is_none());
     }
 
@@ -842,6 +872,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: 0,
             updated_at: None,
+            scheduling_config: None,
         };
         plugin.store_context.task_store.add_task(task1.clone());
 
@@ -997,6 +1028,7 @@ mod tests {
             state: TaskState::PENDING,
             created_at: 0,
             updated_at: None,
+            scheduling_config: None,
         };
         plugin.store_context.task_store.add_task(task.clone());
 
@@ -1045,6 +1077,86 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_node_groups_with_allowed_topologies() {
+        let store = Arc::new(RedisStore::new_test());
+        let context_store = store.clone();
+        let store_context = Arc::new(StoreContext::new(context_store));
+
+        let config = NodeGroupConfiguration {
+            name: "test-config".to_string(),
+            min_group_size: 1,
+            max_group_size: 1,
+            compute_requirements: None,
+        };
+
+        let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
+
+        let node1 = create_test_node(
+            "0x1234567890123456789012345678901234567890",
+            NodeStatus::Healthy,
+            None,
+        );
+        plugin.store_context.node_store.add_node(node1.clone());
+        let _ = plugin
+            .handle_status_change(&node1, &NodeStatus::Healthy)
+            .await;
+
+        let task_no_match = Task {
+            id: Uuid::new_v4(),
+            image: "test-image".to_string(),
+            name: "test-task".to_string(),
+            env_vars: None,
+            command: Some("run".to_string()),
+            args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
+            scheduling_config: Some(SchedulingConfig {
+                plugins: Some(HashMap::from([(
+                    "node_groups".to_string(),
+                    HashMap::from([(
+                        "allowed_topologies".to_string(),
+                        vec!["no-match-config".to_string()],
+                    )]),
+                )])),
+            }),
+            state: TaskState::PENDING,
+            created_at: 0,
+            updated_at: None,
+        };
+        plugin
+            .store_context
+            .task_store
+            .add_task(task_no_match.clone());
+
+        let mut tasks = vec![task_no_match];
+
+        let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+        assert_eq!(filtered_tasks.len(), 0);
+
+        let task_match = Task {
+            id: Uuid::new_v4(),
+            image: "test-image".to_string(),
+            name: "test-task".to_string(),
+            env_vars: None,
+            command: Some("run".to_string()),
+            args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
+            scheduling_config: Some(SchedulingConfig {
+                plugins: Some(HashMap::from([(
+                    "node_groups".to_string(),
+                    HashMap::from([(
+                        "allowed_topologies".to_string(),
+                        vec!["test-config".to_string()],
+                    )]),
+                )])),
+            }),
+            ..Default::default()
+        };
+
+        plugin.store_context.task_store.add_task(task_match.clone());
+        tasks.push(task_match);
+        let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+        assert_eq!(filtered_tasks.len(), 1);
     }
 
     #[tokio::test]
