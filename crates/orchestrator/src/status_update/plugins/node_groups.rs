@@ -6,6 +6,7 @@ use crate::{
 };
 use alloy::primitives::Address;
 use anyhow::Error;
+use anyhow::Result;
 use log::{error, info, warn};
 use rand::seq::IndexedRandom;
 use redis::{Commands, Script};
@@ -1151,6 +1152,7 @@ mod tests {
             }),
             ..Default::default()
         };
+
         plugin.store_context.task_store.add_task(task_match.clone());
         tasks.push(task_match);
         let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);

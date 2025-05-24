@@ -50,6 +50,9 @@ impl std::fmt::Display for TaskState {
     }
 }
 
+// Scheduling config
+// Proper typing and validation currently missing
+// Issue: https://github.com/PrimeIntellect-ai/protocol/issues/338
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SchedulingConfig {
     pub plugins: Option<HashMap<String, HashMap<String, Vec<String>>>>,
