@@ -4,7 +4,6 @@ use crate::plugins::StatusUpdatePlugin;
 use anyhow::Error;
 use anyhow::Result;
 use log::info;
-use rand::seq::IndexedRandom;
 use redis::Commands;
 use std::collections::BTreeSet;
 

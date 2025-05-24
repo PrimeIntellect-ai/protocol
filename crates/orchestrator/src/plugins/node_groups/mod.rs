@@ -12,6 +12,7 @@ use std::{collections::HashSet, str::FromStr};
 
 pub mod scheduler_impl;
 pub mod status_update_impl;
+#[cfg(test)]
 mod tests;
 
 const GROUP_KEY_PREFIX: &str = "node_group:";

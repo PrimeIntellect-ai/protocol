@@ -2,7 +2,6 @@ use super::{NodeGroupsPlugin, SchedulerPlugin};
 use alloy::primitives::Address;
 use log::{error, info};
 use rand::seq::IndexedRandom;
-use redis::Commands;
 use shared::models::task::Task;
 use std::str::FromStr;
 
