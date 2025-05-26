@@ -234,11 +234,7 @@ fn generate_file_name(template: &str, original_name: &str) -> String {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
-    use actix_web::{
-        test,
-        web::post,
-        App,
-    };
+    use actix_web::{test, web::post, App};
     use shared::models::task::{StorageConfig, Task};
     use uuid::Uuid;
 
