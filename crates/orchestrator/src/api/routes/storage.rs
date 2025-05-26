@@ -4,20 +4,13 @@ use actix_web::{
     HttpRequest, HttpResponse, Scope,
 };
 use redis::{Commands, RedisResult};
-use serde::{Deserialize, Serialize};
-use shared::utils::google_cloud::{generate_mapping_file, generate_upload_signed_url};
+use shared::{
+    models::storage::RequestUploadRequest,
+    utils::google_cloud::{generate_mapping_file, generate_upload_signed_url},
+};
 use std::time::Duration;
 
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct RequestUploadRequest {
-    pub file_name: String,
-    pub file_size: u64,
-    pub file_type: String,
-    pub sha256: String,
-    pub task_id: String,
-}
 
 async fn request_upload(
     req: HttpRequest,
