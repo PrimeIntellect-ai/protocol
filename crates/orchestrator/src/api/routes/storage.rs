@@ -15,6 +15,7 @@ pub struct RequestUploadRequest {
     pub file_size: u64,
     pub file_type: String,
     pub sha256: String,
+    pub task_id: String,
 }
 
 async fn request_upload(
@@ -79,6 +80,8 @@ async fn request_upload(
         }
     }
 
+    // TODO: We want to modify the file name here
+    // Get the current task upload string
     let file_name = &request_upload.file_name;
     let file_size = &request_upload.file_size;
     let file_type = &request_upload.file_type;

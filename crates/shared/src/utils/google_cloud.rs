@@ -40,6 +40,9 @@ fn get_bucket_name(bucket: &str) -> (String, String) {
     }
 }
 
+/// Generates a mapping file in GCS that maps a file's SHA256 hash to its original filename.
+/// This is necessary because on-chain storage only stores the file's SHA256 hash,
+/// so we need this mapping to retrieve the original filename when needed.
 pub async fn generate_mapping_file(
     bucket: &str,
     credentials_base64: &str,
@@ -47,9 +50,8 @@ pub async fn generate_mapping_file(
     file_name: &str,
 ) -> Result<String> {
     let client = create_gcs_client(credentials_base64).await?;
-    let mapping_path = format!("mapping/{}", sha256); // Use sha256 as filename
+    let mapping_path = format!("mapping/{}", sha256);
 
-    // Clean the file_name by removing leading slash if present
     let file_name = file_name.strip_prefix('/').unwrap_or(file_name);
     let content = file_name.to_string().into_bytes();
 

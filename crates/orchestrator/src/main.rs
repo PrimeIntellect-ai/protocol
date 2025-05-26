@@ -96,10 +96,6 @@ struct Args {
     #[arg(long)]
     disable_ejection: bool,
 
-    /// S3 credentials
-    #[arg(long)]
-    s3_credentials: Option<String>,
-
     /// Hourly s3 upload limit
     #[arg(long, default_value = "2")]
     hourly_s3_upload_limit: i64,
@@ -287,6 +283,8 @@ async fn main() -> Result<()> {
 
     let port = args.port;
     let server_store_context = store_context.clone();
+
+    let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
     // Always start server regardless of mode
     tokio::select! {
         res = start_server(
@@ -295,7 +293,7 @@ async fn main() -> Result<()> {
             server_store_context.clone(),
             server_wallet,
             args.admin_api_key,
-            args.s3_credentials,
+            s3_credentials,
             args.bucket_name,
             heartbeats.clone(),
             store.clone(),

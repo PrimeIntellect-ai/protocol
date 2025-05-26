@@ -14,12 +14,14 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+// TODO: Share
 #[derive(Deserialize, Serialize, Debug)]
 pub struct RequestUploadRequest {
     pub file_name: String,
     pub file_size: u64,
     pub file_type: String,
     pub sha256: String,
+    pub task_id: String,
 }
 
 /// Handles a file upload request
@@ -93,6 +95,7 @@ pub async fn handle_file_upload(
         file_size,
         file_type: "application/json".to_string(), // Assume JSON
         sha256: file_sha.clone(),
+        task_id: task_id.to_string(),
     };
 
     // Retry configuration
