@@ -35,6 +35,9 @@ pub async fn create_test_app_state() -> Data<AppState> {
     let store_context = Arc::new(StoreContext::new(store.clone()));
     let mode = ServerMode::Full;
     let scheduler = Scheduler::new(store_context.clone(), vec![]);
+    let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+    let bucket_name = std::env::var("BUCKET_NAME").ok();
+
     Data::new(AppState {
         store_context: store_context.clone(),
         contracts: None,
@@ -46,8 +49,8 @@ pub async fn create_test_app_state() -> Data<AppState> {
             )
             .unwrap(),
         ),
-        s3_credentials: None,
-        bucket_name: None,
+        s3_credentials,
+        bucket_name,
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,
         redis_store: store.clone(),

@@ -4,12 +4,13 @@ use actix_web::{
     HttpRequest, HttpResponse, Scope,
 };
 use redis::{Commands, RedisResult};
+use serde::{Deserialize, Serialize};
 use shared::utils::google_cloud::{generate_mapping_file, generate_upload_signed_url};
 use std::time::Duration;
 
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct RequestUploadRequest {
     pub file_name: String,
     pub file_size: u64,
@@ -80,9 +81,29 @@ async fn request_upload(
         }
     }
 
-    // TODO: We want to modify the file name here
-    // Get the current task upload string
-    let file_name = &request_upload.file_name;
+    let task = match app_state
+        .store_context
+        .task_store
+        .get_task(&request_upload.task_id)
+    {
+        Some(task) => task,
+        None => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "success": false,
+                "error": format!("Task not found")
+            }));
+        }
+    };
+
+    let storage_config = task.storage_config;
+
+    let mut file_name = request_upload.file_name.to_string();
+    if let Some(storage_config) = storage_config {
+        if let Some(file_name_template) = storage_config.file_name_template {
+            file_name = generate_file_name(&file_name_template, &request_upload.file_name);
+        }
+    }
+
     let file_size = &request_upload.file_size;
     let file_type = &request_upload.file_type;
     let sha256 = &request_upload.sha256;
@@ -117,7 +138,7 @@ async fn request_upload(
         app_state.bucket_name.clone().unwrap().as_str(),
         credentials,
         sha256,
-        file_name,
+        &file_name,
     )
     .await
     {
@@ -136,7 +157,7 @@ async fn request_upload(
     // Generate signed upload URL
     match generate_upload_signed_url(
         app_state.bucket_name.clone().unwrap().as_str(),
-        file_name,
+        &file_name,
         credentials,
         Some(file_type.to_string()),
         Duration::from_secs(3600), // 1 hour expiry
@@ -177,6 +198,13 @@ async fn request_upload(
                 "Successfully generated signed upload URL for file: {}",
                 file_name
             );
+            #[cfg(test)]
+            return HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "signed_url": signed_url,
+                "file_name": file_name
+            }));
+            #[cfg(not(test))]
             HttpResponse::Ok().json(serde_json::json!({
                 "success": true,
                 "signed_url": signed_url
@@ -194,4 +222,117 @@ async fn request_upload(
 
 pub fn storage_routes() -> Scope {
     web::scope("/storage").route("/request-upload", post().to(request_upload))
+}
+
+fn generate_file_name(template: &str, original_name: &str) -> String {
+    let mut file_name = template.to_string();
+    file_name = file_name.replace("${original_name}", original_name);
+    file_name
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::tests::helper::create_test_app_state;
+    use actix_web::{
+        test,
+        web::post,
+        App,
+    };
+    use shared::models::task::{StorageConfig, Task};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn test_generate_file_name() {
+        let template = "test/${original_name}";
+        let original_name = "test";
+        let file_name = generate_file_name(template, original_name);
+        assert_eq!(file_name, "test/test");
+    }
+
+    #[actix_web::test]
+    async fn test_request_upload_success() {
+        let app_state = create_test_app_state().await;
+
+        let task = Task {
+            id: Uuid::new_v4(),
+            image: "test-image".to_string(),
+            name: "test-task".to_string(),
+            storage_config: Some(StorageConfig {
+                file_name_template: Some("model_123/user_uploads/${original_name}".to_string()),
+            }),
+            ..Default::default()
+        };
+
+        let task_store = app_state.store_context.task_store.clone();
+        task_store.add_task(task.clone());
+
+        assert!(task_store.get_task(&task.id.to_string()).is_some());
+
+        if app_state.s3_credentials.is_none() {
+            println!("S3 credentials not configured");
+            return;
+        }
+
+        let app =
+            test::init_service(App::new().app_data(app_state.clone()).service(
+                web::scope("/storage").route("/request-upload", post().to(request_upload)),
+            ))
+            .await;
+
+        let req = test::TestRequest::post()
+            .uri("/storage/request-upload")
+            .insert_header(("x-address", "test_address"))
+            .set_json(&RequestUploadRequest {
+                file_name: "test.parquet".to_string(),
+                file_size: 1024,
+                file_type: "application/octet-stream".to_string(),
+                sha256: "test_sha256".to_string(),
+                task_id: task.id.to_string(),
+            })
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
+        assert_eq!(
+            json["file_name"],
+            serde_json::Value::String("model_123/user_uploads/test.parquet".to_string())
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_request_upload_invalid_task() {
+        let app_state = create_test_app_state().await;
+
+        if app_state.s3_credentials.is_none() {
+            println!("S3 credentials not configured");
+            return;
+        }
+
+        let app =
+            test::init_service(App::new().app_data(app_state.clone()).service(
+                web::scope("/storage").route("/request-upload", post().to(request_upload)),
+            ))
+            .await;
+
+        let non_existing_task_id = Uuid::new_v4().to_string();
+        let req = test::TestRequest::post()
+            .uri("/storage/request-upload")
+            .insert_header(("x-address", "test_address"))
+            .set_json(&RequestUploadRequest {
+                file_name: "test.txt".to_string(),
+                file_size: 1024,
+                file_type: "text/plain".to_string(),
+                sha256: "test_sha256".to_string(),
+                task_id: non_existing_task_id,
+            })
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(false));
+    }
 }

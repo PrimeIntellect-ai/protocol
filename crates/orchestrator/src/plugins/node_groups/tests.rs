@@ -373,8 +373,7 @@ async fn test_group_scheduling() {
         ]),
         state: TaskState::PENDING,
         created_at: 0,
-        updated_at: None,
-        scheduling_config: None,
+        ..Default::default()
     };
     plugin.store_context.task_store.add_task(task1.clone());
 
@@ -529,8 +528,7 @@ async fn test_group_formation_with_max_size() {
         args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
         state: TaskState::PENDING,
         created_at: 0,
-        updated_at: None,
-        scheduling_config: None,
+        ..Default::default()
     };
     plugin.store_context.task_store.add_task(task.clone());
 
@@ -625,6 +623,7 @@ async fn test_node_groups_with_allowed_topologies() {
         state: TaskState::PENDING,
         created_at: 0,
         updated_at: None,
+        ..Default::default()
     };
     plugin
         .store_context

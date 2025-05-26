@@ -90,7 +90,7 @@ pub struct Task {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StorageConfig {
-    pub file_path_prefix: Option<String>,
+    pub file_name_template: Option<String>,
 }
 
 impl From<TaskRequest> for Task {
