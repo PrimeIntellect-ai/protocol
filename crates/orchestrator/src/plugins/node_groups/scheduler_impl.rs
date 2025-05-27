@@ -15,11 +15,13 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                 group.nodes.len()
             );
 
-            let node_group_index = group
-                .nodes
-                .iter()
-                .position(|n| n == &node_address.to_string())
-                .unwrap();
+            let idx = match self.get_idx_in_group(&group, &node_address.to_string()) {
+                Ok(idx) => idx,
+                Err(e) => {
+                    error!("Failed to get index in group: {}", e);
+                    return vec![];
+                }
+            };
 
             let mut current_task: Option<Task> = None;
             match self.get_current_group_task(&group.id) {
@@ -80,7 +82,7 @@ impl SchedulerPlugin for NodeGroupsPlugin {
             if let Some(t) = current_task {
                 let mut task_clone = t.clone();
 
-                let next_node_idx = (node_group_index + 1) % group.nodes.len();
+                let next_node_idx = (idx + 1) % group.nodes.len();
                 let next_node_addr = group.nodes.iter().nth(next_node_idx).unwrap();
 
                 // Get p2p_id for next node from node store
@@ -95,10 +97,10 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                 };
 
                 let mut env_vars = task_clone.env_vars.unwrap_or_default();
-                env_vars.insert("GROUP_INDEX".to_string(), node_group_index.to_string());
+                env_vars.insert("GROUP_INDEX".to_string(), idx.to_string());
                 for (_, value) in env_vars.iter_mut() {
                     let new_value = value
-                        .replace("${GROUP_INDEX}", &node_group_index.to_string())
+                        .replace("${GROUP_INDEX}", &idx.to_string())
                         .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
                         .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
                         .replace("${GROUP_ID}", &group.id);
@@ -109,7 +111,7 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                 task_clone.args = task_clone.args.map(|args| {
                     args.into_iter()
                         .map(|arg| {
-                            arg.replace("${GROUP_INDEX}", &node_group_index.to_string())
+                            arg.replace("${GROUP_INDEX}", &idx.to_string())
                                 .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
                                 .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
                                 .replace("${GROUP_ID}", &group.id)
