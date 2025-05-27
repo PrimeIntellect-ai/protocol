@@ -21,11 +21,11 @@ const GROUP_TASK_KEY_PREFIX: &str = "group_task:";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NodeGroupConfiguration {
-    name: String,
-    min_group_size: usize,
-    max_group_size: usize,
+    pub name: String,
+    pub min_group_size: usize,
+    pub max_group_size: usize,
     #[serde(deserialize_with = "deserialize_compute_requirements")]
-    compute_requirements: Option<ComputeRequirements>,
+    pub compute_requirements: Option<ComputeRequirements>,
 }
 
 fn deserialize_compute_requirements<'de, D>(
@@ -118,6 +118,18 @@ impl NodeGroupsPlugin {
         }
 
         Ok(None)
+    }
+
+    pub fn get_idx_in_group(
+        &self,
+        node_group: &NodeGroup,
+        node_addr: &str,
+    ) -> Result<usize, Error> {
+        node_group
+            .nodes
+            .iter()
+            .position(|n| n == &node_addr.to_string())
+            .ok_or_else(|| anyhow::anyhow!("Node {} not found in group", node_addr))
     }
 
     fn get_current_group_task(&self, group_id: &str) -> Result<Option<Task>, Error> {

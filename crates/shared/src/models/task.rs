@@ -66,6 +66,7 @@ pub struct TaskRequest {
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
     pub scheduling_config: Option<SchedulingConfig>,
+    pub storage_config: Option<StorageConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -83,6 +84,13 @@ pub struct Task {
     pub updated_at: Option<u64>,
     #[serde(default)]
     pub scheduling_config: Option<SchedulingConfig>,
+    #[serde(default)]
+    pub storage_config: Option<StorageConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StorageConfig {
+    pub file_name_template: Option<String>,
 }
 
 impl From<TaskRequest> for Task {
@@ -98,6 +106,7 @@ impl From<TaskRequest> for Task {
             created_at: Utc::now().timestamp_millis(),
             updated_at: None,
             scheduling_config: request.scheduling_config,
+            storage_config: request.storage_config,
         }
     }
 }

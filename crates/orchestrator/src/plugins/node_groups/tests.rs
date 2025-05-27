@@ -14,6 +14,7 @@ use shared::models::{
     node::{ComputeRequirements, ComputeSpecs, GpuSpecs},
     task::{SchedulingConfig, Task, TaskState},
 };
+use std::collections::BTreeSet;
 use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use uuid::Uuid;
@@ -373,8 +374,7 @@ async fn test_group_scheduling() {
         ]),
         state: TaskState::PENDING,
         created_at: 0,
-        updated_at: None,
-        scheduling_config: None,
+        ..Default::default()
     };
     plugin.store_context.task_store.add_task(task1.clone());
 
@@ -529,8 +529,7 @@ async fn test_group_formation_with_max_size() {
         args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
         state: TaskState::PENDING,
         created_at: 0,
-        updated_at: None,
-        scheduling_config: None,
+        ..Default::default()
     };
     plugin.store_context.task_store.add_task(task.clone());
 
@@ -625,6 +624,7 @@ async fn test_node_groups_with_allowed_topologies() {
         state: TaskState::PENDING,
         created_at: 0,
         updated_at: None,
+        ..Default::default()
     };
     plugin
         .store_context
@@ -985,4 +985,78 @@ async fn ensure_config_validation() {
     };
 
     let _plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
+}
+
+#[tokio::test]
+async fn test_get_idx_in_group() {
+    let store = Arc::new(RedisStore::new_test());
+    let context_store = store.clone();
+    let store_context = Arc::new(StoreContext::new(context_store));
+
+    let plugin = NodeGroupsPlugin::new(vec![], store.clone(), store_context);
+
+    let node1 = create_test_node(
+        "0x1234567890123456789012345678901234567890",
+        NodeStatus::Healthy,
+        None,
+    );
+    let node2 = create_test_node(
+        "0x2234567890123456789012345678901234567890",
+        NodeStatus::Healthy,
+        None,
+    );
+    let node3 = create_test_node(
+        "0x3234567890123456789012345678901234567890",
+        NodeStatus::Healthy,
+        None,
+    );
+
+    plugin.store_context.node_store.add_node(node1.clone());
+    plugin.store_context.node_store.add_node(node2.clone());
+    plugin.store_context.node_store.add_node(node3.clone());
+
+    let group = NodeGroup {
+        id: "test-group".to_string(),
+        nodes: BTreeSet::from([
+            node1.address.to_string(),
+            node2.address.to_string(),
+            node3.address.to_string(),
+        ]),
+        created_at: chrono::Utc::now(),
+        configuration_name: "test-config".to_string(),
+    };
+
+    let idx = plugin
+        .get_idx_in_group(&group, &node1.address.to_string())
+        .unwrap();
+    assert_eq!(idx, 0);
+
+    let idx = plugin
+        .get_idx_in_group(&group, &node2.address.to_string())
+        .unwrap();
+    assert_eq!(idx, 1);
+
+    let idx = plugin
+        .get_idx_in_group(&group, &node3.address.to_string())
+        .unwrap();
+    assert_eq!(idx, 2);
+}
+
+#[tokio::test]
+async fn test_get_idx_in_group_not_found() {
+    let store = Arc::new(RedisStore::new_test());
+    let context_store = store.clone();
+    let store_context = Arc::new(StoreContext::new(context_store));
+
+    let plugin = NodeGroupsPlugin::new(vec![], store.clone(), store_context);
+
+    let group = NodeGroup {
+        id: "test-group".to_string(),
+        nodes: BTreeSet::from(["0x1234567890123456789012345678901234567890".to_string()]),
+        created_at: chrono::Utc::now(),
+        configuration_name: "test-config".to_string(),
+    };
+
+    let result = plugin.get_idx_in_group(&group, "0x2234567890123456789012345678901234567890");
+    assert!(result.is_err());
 }

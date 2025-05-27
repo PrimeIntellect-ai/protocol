@@ -113,10 +113,6 @@ struct Args {
     #[arg(long, default_value = "200")]
     validator_penalty: u64,
 
-    /// Temporary: S3 credentials
-    #[arg(long, default_value = None)]
-    s3_credentials: Option<String>,
-
     /// Temporary: S3 bucket name
     #[arg(long, default_value = None)]
     bucket_name: Option<String>,
@@ -248,13 +244,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     penalty, args.validator_penalty
                 );
 
+                let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+
                 Some(SyntheticDataValidator::new(
                     pool_id,
                     validator,
                     contracts.prime_network.clone(),
                     toploc_config,
                     penalty,
-                    args.s3_credentials,
+                    s3_credentials,
                     args.bucket_name,
                     redis_store,
                     cancellation_token,

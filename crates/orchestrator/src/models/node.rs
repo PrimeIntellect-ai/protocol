@@ -5,7 +5,7 @@ use shared::models::node::{ComputeSpecs, DiscoveryNode};
 use shared::models::task::TaskState;
 use std::fmt::{self, Display};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OrchestratorNode {
     #[serde(serialize_with = "serialize_address")]
     pub address: Address,
@@ -63,8 +63,9 @@ impl fmt::Display for OrchestratorNode {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum NodeStatus {
+    #[default]
     Discovered,
     WaitingForHeartbeat,
     Healthy,

@@ -4,8 +4,8 @@ use anyhow::Result;
 use log::{debug, error, info, warn};
 use reqwest::header::HeaderValue;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
+use shared::models::storage::RequestUploadRequest;
 use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::helpers::utils::retry_call;
@@ -13,14 +13,6 @@ use shared::web3::wallet::{Wallet, WalletProvider};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct RequestUploadRequest {
-    pub file_name: String,
-    pub file_size: u64,
-    pub file_type: String,
-    pub sha256: String,
-}
 
 /// Handles a file upload request
 pub async fn handle_file_upload(
@@ -93,6 +85,7 @@ pub async fn handle_file_upload(
         file_size,
         file_type: "application/json".to_string(), // Assume JSON
         sha256: file_sha.clone(),
+        task_id: task_id.to_string(),
     };
 
     // Retry configuration
