@@ -269,24 +269,6 @@ impl SyntheticDataValidator {
 
         let toploc_config = self.get_toploc_config_for_file_name(&file_name)?;
 
-        // Returns a file name like /model/dataset/groupid-groupsize-filenumber-idx
-
-        // We need to wait for all submissions before triggering the validation
-
-        // We actually need group information here since toploc wants all files at once
-        // http://localhost:8000/validategroup/outputs/step_2/meow - will be adding -$i  to the end of the file name
-        // this is important for the template of the task
-        /*
-        {
-            "file_shas": [
-              "c94d6199fd9fca27613f4def6bf039110435cc9ac645d50db9f756f70fb1dec2", "8d0f0079c99da0bb7573d913cfece7677f00f6c836cc09979944f0e2765248c7"
-            ],
-            "group_id": "string",
-            "file_number": 0,
-            "group_size": 2
-          }
-        */
-
         let validate_url = format!("{}/validate/{}", toploc_config.config.server_url, file_name);
         info!(
             "Triggering remote toploc validation for {} {}",
@@ -577,7 +559,6 @@ impl SyntheticDataValidator {
             debug!("Key {} has {} work units", work_key, work_info.work_units);
 
             // Invalidate work if work units exceed threshold
-            // TODO: This has to be adjusted for synthetic-II !
             if work_info.work_units > U256::from(1) {
                 if let Err(e) = self_arc.invalidate_work(work_key).await {
                     error!("Failed to invalidate work {}: {}", work_key, e);
