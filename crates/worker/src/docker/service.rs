@@ -192,7 +192,13 @@ impl DockerService {
                                         let cmd = match cmd_full {
                                             (Some(c), Some(a)) => {
                                                 let mut cmd = vec![c];
-                                                cmd.extend(a);
+                                                cmd.extend(a.into_iter().map(|arg| {
+                                                    if let Some(seed) = p2p_seed {
+                                                        arg.replace("${WORKER_P2P_SEED}", &seed.to_string())
+                                                    } else {
+                                                        arg
+                                                    }
+                                                }));
                                                 cmd
                                             }
                                             (Some(c), None) => vec![c],
