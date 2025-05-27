@@ -264,9 +264,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     args.bucket_name,
                     redis_store,
                     cancellation_token,
-                    args.toploc_grace_interval,
                     args.toploc_work_validation_interval,
                     args.toploc_work_validation_unknown_status_expiry_seconds,
+                    args.toploc_grace_interval,
                 ))
             }
             None => {
