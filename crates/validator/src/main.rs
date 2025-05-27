@@ -23,7 +23,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tokio_util::sync::CancellationToken;
 use url::Url;
 use validators::hardware::HardwareValidator;
-use validators::synthetic_data::{SyntheticDataValidator, ToplocConfig};
+use validators::synthetic_data::SyntheticDataValidator;
 
 // Track the last time the validation loop ran
 static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
@@ -31,7 +31,6 @@ static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 const MAX_VALIDATION_INTERVAL_SECS: i64 = 120;
 // Track the last loop duration in milliseconds
 static LAST_LOOP_DURATION_MS: AtomicI64 = AtomicI64::new(0);
-
 async fn health_check() -> impl Responder {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -89,7 +88,7 @@ struct Args {
     pool_id: Option<String>,
 
     /// Optional: Toploc configurations as JSON array string
-    /// Example: [{"server_url": "http://example.com", "auth_token": "token123", "file_prefix_filter": "prefix"}]
+    /// Example: [{"server_url": "http://example.com", "auth_token": "token123"}]
     #[arg(long, default_value = None)]
     toploc_configs: Option<String>,
 
@@ -97,7 +96,7 @@ struct Args {
     #[arg(long, default_value = "15")]
     toploc_grace_interval: u64,
 
-    // Optional: interval in minutes of max age of work on chain
+    /// Optional: interval in minutes of max age of work on chain
     #[arg(long, default_value = "15")]
     toploc_work_validation_interval: u64,
 
@@ -228,25 +227,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
-                let toploc_configs: Vec<ToplocConfig> = args
-                    .toploc_configs
-                    .as_ref()
-                    .map(|configs| {
-                        serde_json::from_str(configs).expect("Failed to parse toploc configs JSON")
-                    })
-                    .unwrap_or_default();
                 info!(
                     "Synthetic validator has penalty: {} ({})",
                     penalty, args.validator_penalty
                 );
 
+                if args.toploc_configs.is_none() {
+                    error!("Toploc configs are required for synthetic validator");
+                    std::process::exit(1);
+                }
                 let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+
+                let toploc_configs = match args.toploc_configs.as_ref() {
+                    Some(configs) => configs,
+                    None => {
+                        error!("Toploc configs are required but not provided");
+                        std::process::exit(1);
+                    }
+                };
+
+                let configs = match serde_json::from_str(toploc_configs) {
+                    Ok(configs) => configs,
+                    Err(e) => {
+                        error!("Failed to parse toploc configs: {}", e);
+                        std::process::exit(1);
+                    }
+                };
 
                 Some(SyntheticDataValidator::new(
                     pool_id,
                     validator,
                     contracts.prime_network.clone(),
-                    toploc_configs,
+                    configs,
                     penalty,
                     s3_credentials,
                     args.bucket_name,

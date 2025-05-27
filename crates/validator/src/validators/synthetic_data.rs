@@ -40,8 +40,6 @@ pub enum ProcessWorkKeyError {
     MaxAttemptsReached(String),
     /// Generic error to encapsulate unexpected errors.
     GenericError(anyhow::Error),
-    /// Error when no matching toploc config is found for the file name.
-    NoMatchingToplocConfig,
 }
 
 impl From<anyhow::Error> for ProcessWorkKeyError {
@@ -70,9 +68,6 @@ impl fmt::Display for ProcessWorkKeyError {
             }
             ProcessWorkKeyError::GenericError(err) => {
                 write!(f, "Generic error: {}", err)
-            }
-            ProcessWorkKeyError::NoMatchingToplocConfig => {
-                write!(f, "No matching toploc config found")
             }
         }
     }
