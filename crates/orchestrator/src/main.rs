@@ -205,10 +205,15 @@ async fn main() -> Result<()> {
                 status_update_plugins.push(Box::new(status_group_plugin));
             }
             Ok(_) => {
-                info!("No node group configurations provided in environment, skipping plugin setup");
+                info!(
+                    "No node group configurations provided in environment, skipping plugin setup"
+                );
             }
             Err(e) => {
-                error!("Failed to parse node group configurations from environment: {}", e);
+                error!(
+                    "Failed to parse node group configurations from environment: {}",
+                    e
+                );
             }
         }
     }
