@@ -78,7 +78,7 @@ impl fmt::Display for ProcessWorkKeyError {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ToplocConfig {
     pub server_url: String,
     pub auth_token: Option<String>,
@@ -759,7 +759,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_toploc_config_for_file_name() -> Result<(), Error> {
-        let configs = [ToplocConfig {
+        let configs = [
+            ToplocConfig {
                 server_url: "http://localhost:8080".to_string(),
                 file_prefix_filter: Some("model1".to_string()),
                 ..Default::default()
@@ -768,7 +769,8 @@ mod tests {
                 server_url: "http://localhost:8081".to_string(),
                 file_prefix_filter: Some("model2".to_string()),
                 ..Default::default()
-            }];
+            },
+        ];
 
         let file_name = "model1/dataset/groupid-groupsize-filenumber-idx";
         let config = configs

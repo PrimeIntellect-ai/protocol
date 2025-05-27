@@ -88,13 +88,10 @@ struct Args {
     #[arg(long, default_value = None)]
     pool_id: Option<String>,
 
-    /// Optional: Toploc Server URL for work validation
+    /// Optional: Toploc configurations as JSON array string
+    /// Example: [{"server_url": "http://example.com", "auth_token": "token123", "file_prefix_filter": "prefix"}]
     #[arg(long, default_value = None)]
-    toploc_server_url: Option<String>,
-
-    /// Optional: Toploc Auth Token
-    #[arg(long, default_value = None)]
-    toploc_auth_token: Option<String>,
+    toploc_configs: Option<String>,
 
     /// Optional: Toploc Grace Interval in seconds between work validation requests
     #[arg(long, default_value = "15")]
@@ -231,11 +228,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
-                let toploc_config = ToplocConfig {
-                    server_url: args.toploc_server_url.unwrap(),
-                    auth_token: args.toploc_auth_token,
-                    file_prefix_filter: None,
-                };
+                let toploc_configs: Vec<ToplocConfig> = args
+                    .toploc_configs
+                    .as_ref()
+                    .map(|configs| {
+                        serde_json::from_str(configs).expect("Failed to parse toploc configs JSON")
+                    })
+                    .unwrap_or_default();
                 info!(
                     "Synthetic validator has penalty: {} ({})",
                     penalty, args.validator_penalty
@@ -247,7 +246,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     pool_id,
                     validator,
                     contracts.prime_network.clone(),
-                    vec![toploc_config],
+                    toploc_configs,
                     penalty,
                     s3_credentials,
                     args.bucket_name,
