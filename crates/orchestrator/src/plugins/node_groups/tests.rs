@@ -44,6 +44,51 @@ fn create_test_node(
         compute_specs,
     }
 }
+#[tokio::test]
+async fn test_parsing_groups_from_string() {
+    let group_config = r#"
+    [
+        {
+            "name": "a100-group",
+            "min_group_size": 2,
+            "max_group_size": 2,
+            "compute_requirements": "gpu:model=A100;gpu:count=8"
+        },
+        {
+            "name": "h100-group",
+            "min_group_size": 1,
+            "max_group_size": 1,
+            "compute_requirements": "gpu:count=8;gpu:model=H100"
+        }
+    ]
+    "#;
+    let groups = serde_json::from_str::<Vec<NodeGroupConfiguration>>(group_config).unwrap();
+    assert_eq!(groups.len(), 2);
+
+    // Check A100 group config
+    let a100_config = &groups[0];
+    assert_eq!(a100_config.name, "a100-group");
+    assert_eq!(a100_config.min_group_size, 2);
+    assert_eq!(a100_config.max_group_size, 2);
+
+    let a100_requirements = a100_config.compute_requirements.as_ref().unwrap();
+    assert_eq!(a100_requirements.gpu.len(), 1);
+    let a100_gpu_spec = &a100_requirements.gpu[0];
+    assert_eq!(a100_gpu_spec.model, Some("A100".to_string()));
+    assert_eq!(a100_gpu_spec.count, Some(8));
+
+    // Check H100 group config
+    let h100_config = &groups[1];
+    assert_eq!(h100_config.name, "h100-group");
+    assert_eq!(h100_config.min_group_size, 1);
+    assert_eq!(h100_config.max_group_size, 1);
+
+    let h100_requirements = h100_config.compute_requirements.as_ref().unwrap();
+    assert_eq!(h100_requirements.gpu.len(), 1);
+    let h100_gpu_spec = &h100_requirements.gpu[0];
+    assert_eq!(h100_gpu_spec.model, Some("H100".to_string()));
+    assert_eq!(h100_gpu_spec.count, Some(8));
+}
 
 #[tokio::test]
 async fn test_group_formation_and_dissolution() {
