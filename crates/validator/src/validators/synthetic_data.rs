@@ -40,6 +40,8 @@ pub enum ProcessWorkKeyError {
     MaxAttemptsReached(String),
     /// Generic error to encapsulate unexpected errors.
     GenericError(anyhow::Error),
+    /// Error when no matching toploc config is found for the file name.
+    NoMatchingToplocConfig,
 }
 
 impl From<anyhow::Error> for ProcessWorkKeyError {
@@ -69,17 +71,33 @@ impl fmt::Display for ProcessWorkKeyError {
             ProcessWorkKeyError::GenericError(err) => {
                 write!(f, "Generic error: {}", err)
             }
+            ProcessWorkKeyError::NoMatchingToplocConfig => {
+                write!(f, "No matching toploc config found")
+            }
+        }
+    }
+}
+
+#[derive(Clone, Default, Debug, PartialEq)]
+pub struct ToplocConfig {
+    pub server_url: String,
+    pub auth_token: Option<String>,
+    pub file_prefix_filter: Option<String>,
+}
+
+impl ToplocConfig {
+    pub fn matches_file_name(&self, file_name: &str) -> bool {
+        match &self.file_prefix_filter {
+            Some(prefix) => file_name.starts_with(prefix),
+            None => true,
         }
     }
 }
 
 #[derive(Clone)]
-pub struct ToplocConfig {
-    pub server_url: String,
-    pub auth_token: Option<String>,
-    pub grace_interval: u64,
-    pub work_validation_interval: u64,
-    pub unknown_status_expiry_seconds: u64,
+struct ToplocConfigWithClient {
+    config: ToplocConfig,
+    client: reqwest::Client,
 }
 
 #[derive(Clone)]
@@ -87,13 +105,16 @@ pub struct SyntheticDataValidator {
     pool_id: U256,
     validator: SyntheticDataWorkValidator,
     prime_network: PrimeNetworkContract,
-    toploc_config: ToplocConfig,
+    toploc_configs: Vec<ToplocConfigWithClient>,
     penalty: U256,
     s3_credentials: Option<String>,
     bucket_name: Option<String>,
     redis_store: RedisStore,
     cancellation_token: CancellationToken,
-    http_client: reqwest::Client,
+    work_validation_interval: u64,
+    unknown_status_expiry_seconds: u64,
+    // Interval between work validation requests to toploc server
+    grace_interval: u64,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -110,12 +131,15 @@ impl SyntheticDataValidator {
         pool_id_str: String,
         validator: SyntheticDataWorkValidator,
         prime_network: PrimeNetworkContract,
-        toploc_config: ToplocConfig,
+        toploc_configs: Vec<ToplocConfig>,
         penalty: U256,
         s3_credentials: Option<String>,
         bucket_name: Option<String>,
         redis_store: RedisStore,
         cancellation_token: CancellationToken,
+        work_validation_interval: u64,
+        unknown_status_expiry_seconds: u64,
+        grace_interval: u64,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
@@ -124,32 +148,38 @@ impl SyntheticDataValidator {
             std::process::exit(1);
         }
 
-        let http_client = reqwest::Client::builder()
-            .default_headers({
-                let mut headers = reqwest::header::HeaderMap::new();
-                if let Some(token) = &toploc_config.auth_token {
-                    headers.insert(
-                        reqwest::header::AUTHORIZATION,
-                        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
-                            .expect("Invalid token"),
-                    );
-                }
-                headers
-            })
-            .build()
-            .expect("Failed to build HTTP client");
+        let mut toploc_configs_with_client = Vec::new();
+        for config in toploc_configs {
+            let client = reqwest::Client::builder()
+                .default_headers({
+                    let mut headers = reqwest::header::HeaderMap::new();
+                    if let Some(token) = &config.auth_token {
+                        headers.insert(
+                            reqwest::header::AUTHORIZATION,
+                            reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+                                .expect("Invalid token"),
+                        );
+                    }
+                    headers
+                })
+                .build()
+                .expect("Failed to build HTTP client");
+            toploc_configs_with_client.push(ToplocConfigWithClient { config, client });
+        }
 
         Self {
             pool_id,
             validator,
             prime_network,
-            toploc_config,
+            toploc_configs: toploc_configs_with_client,
             penalty,
             s3_credentials,
             bucket_name,
             redis_store,
-            http_client,
             cancellation_token,
+            work_validation_interval,
+            unknown_status_expiry_seconds,
+            grace_interval,
         }
     }
 
@@ -220,13 +250,49 @@ impl SyntheticDataValidator {
         Ok(cleaned_file_name.to_string())
     }
 
+    fn get_toploc_config_for_file_name(
+        &self,
+        file_name: &str,
+    ) -> Result<&ToplocConfigWithClient, Error> {
+        // Find the first config that matches the file name prefix filter
+        // If no filter is set, the config matches by default
+        let config = self
+            .toploc_configs
+            .iter()
+            .find(|config| config.config.matches_file_name(file_name))
+            .ok_or(Error::msg("No matching toploc config found"))?;
+
+        Ok(config)
+    }
+
     async fn trigger_remote_toploc_validation(
         &self,
         work_key: &str,
         key_address: &str,
     ) -> Result<(), ProcessWorkKeyError> {
         let file_name = self.get_file_name_for_work_key(work_key).await?;
-        let validate_url = format!("{}/validate/{}", self.toploc_config.server_url, file_name);
+
+        let toploc_config = self.get_toploc_config_for_file_name(&file_name)?;
+
+        // Returns a file name like /model/dataset/groupid-groupsize-filenumber-idx
+
+        // We need to wait for all submissions before triggering the validation
+
+        // We actually need group information here since toploc wants all files at once
+        // http://localhost:8000/validategroup/outputs/step_2/meow - will be adding -$i  to the end of the file name
+        // this is important for the template of the task
+        /*
+        {
+            "file_shas": [
+              "c94d6199fd9fca27613f4def6bf039110435cc9ac645d50db9f756f70fb1dec2", "8d0f0079c99da0bb7573d913cfece7677f00f6c836cc09979944f0e2765248c7"
+            ],
+            "group_id": "string",
+            "file_number": 0,
+            "group_size": 2
+          }
+        */
+
+        let validate_url = format!("{}/validate/{}", toploc_config.config.server_url, file_name);
         info!(
             "Triggering remote toploc validation for {} {}",
             file_name, validate_url
@@ -238,8 +304,8 @@ impl SyntheticDataValidator {
         });
 
         let start_time = std::time::Instant::now();
-        match self
-            .http_client
+        match toploc_config
+            .client
             .post(&validate_url)
             .json(&body)
             .send()
@@ -277,9 +343,11 @@ impl SyntheticDataValidator {
         &self,
         file_name: &str,
     ) -> Result<ValidationResult, Error> {
-        let url = format!("{}/status/{}", self.toploc_config.server_url, file_name);
+        let toploc_config = self.get_toploc_config_for_file_name(file_name)?;
 
-        match self.http_client.get(&url).send().await {
+        let url = format!("{}/status/{}", toploc_config.config.server_url, file_name);
+
+        match toploc_config.client.get(&url).send().await {
             Ok(response) => {
                 if response.status() != reqwest::StatusCode::OK {
                     error!(
@@ -345,7 +413,7 @@ impl SyntheticDataValidator {
     ) -> Result<(), Error> {
         let expiry = match status {
             // Must switch to pending within 60 seconds otherwise we resubmit it
-            ValidationResult::Unknown => self.toploc_config.unknown_status_expiry_seconds,
+            ValidationResult::Unknown => self.unknown_status_expiry_seconds,
             _ => 0,
         };
         let mut con = self.redis_store.client.get_connection()?;
@@ -454,7 +522,7 @@ impl SyntheticDataValidator {
         debug!("Validating work for pool ID: {:?}", self.pool_id);
 
         // Get all work keys for the pool from the last 24 hours
-        let max_age_in_seconds = 60 * self.toploc_config.work_validation_interval;
+        let max_age_in_seconds = 60 * self.work_validation_interval;
         let current_timestamp = U256::from(chrono::Utc::now().timestamp());
         let max_age_ago = current_timestamp - U256::from(max_age_in_seconds);
 
@@ -514,6 +582,7 @@ impl SyntheticDataValidator {
             debug!("Key {} has {} work units", work_key, work_info.work_units);
 
             // Invalidate work if work units exceed threshold
+            // TODO: This has to be adjusted for synthetic-II !
             if work_info.work_units > U256::from(1) {
                 if let Err(e) = self_arc.invalidate_work(work_key).await {
                     error!("Failed to invalidate work {}: {}", work_key, e);
@@ -563,10 +632,10 @@ impl SyntheticDataValidator {
                 }
                 info!(
                     "waiting before next task: {}",
-                    validator_clone_trigger.toploc_config.grace_interval
+                    validator_clone_trigger.grace_interval
                 );
                 tokio::time::sleep(tokio::time::Duration::from_secs(
-                    validator_clone_trigger.toploc_config.grace_interval,
+                    validator_clone_trigger.grace_interval,
                 ))
                 .await;
             }
@@ -652,18 +721,18 @@ mod tests {
             "0".to_string(),
             contracts.synthetic_data_validator.clone().unwrap(),
             contracts.prime_network.clone(),
-            ToplocConfig {
+            vec![ToplocConfig {
                 server_url: "http://localhost:8080".to_string(),
-                auth_token: None,
-                grace_interval: 15,
-                work_validation_interval: 10,
-                unknown_status_expiry_seconds: 120,
-            },
-            U256::from(1000),
+                ..Default::default()
+            }],
+            U256::from(0),
             s3_credentials,
             bucket_name,
             store,
             CancellationToken::new(),
+            10,
+            60,
+            1,
         );
         validator
             .update_work_validation_status(
@@ -685,6 +754,27 @@ mod tests {
                 Error::msg(format!("Failed to get work validation status: {}", e))
             })?;
         assert_eq!(status, Some(ValidationResult::Accept));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_toploc_config_for_file_name() -> Result<(), Error> {
+        let configs = [ToplocConfig {
+                server_url: "http://localhost:8080".to_string(),
+                file_prefix_filter: Some("model1".to_string()),
+                ..Default::default()
+            },
+            ToplocConfig {
+                server_url: "http://localhost:8081".to_string(),
+                file_prefix_filter: Some("model2".to_string()),
+                ..Default::default()
+            }];
+
+        let file_name = "model1/dataset/groupid-groupsize-filenumber-idx";
+        let config = configs
+            .iter()
+            .find(|config| config.matches_file_name(file_name));
+        assert_eq!(config, Some(&configs[0]));
         Ok(())
     }
 }

@@ -234,10 +234,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let toploc_config = ToplocConfig {
                     server_url: args.toploc_server_url.unwrap(),
                     auth_token: args.toploc_auth_token,
-                    grace_interval: args.toploc_grace_interval,
-                    work_validation_interval: args.toploc_work_validation_interval,
-                    unknown_status_expiry_seconds: args
-                        .toploc_work_validation_unknown_status_expiry_seconds,
+                    file_prefix_filter: None,
                 };
                 info!(
                     "Synthetic validator has penalty: {} ({})",
@@ -250,12 +247,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     pool_id,
                     validator,
                     contracts.prime_network.clone(),
-                    toploc_config,
+                    vec![toploc_config],
                     penalty,
                     s3_credentials,
                     args.bucket_name,
                     redis_store,
                     cancellation_token,
+                    args.toploc_grace_interval,
+                    args.toploc_work_validation_interval,
+                    args.toploc_work_validation_unknown_status_expiry_seconds,
                 ))
             }
             None => {
