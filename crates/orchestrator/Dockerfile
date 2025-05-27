@@ -44,7 +44,6 @@ $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 $([ ! -z "$HOURLY_S3_UPLOAD_LIMIT" ] && echo "--hourly-s3-upload-limit $HOURLY_S3_UPLOAD_LIMIT") \
 $([ ! -z "$WEBHOOK_URLS" ] && echo "--webhook-urls $WEBHOOK_URLS") \
-$([ ! -z "$NODE_GROUP_CONFIGS" ] && echo "--node-group-configs $NODE_GROUP_CONFIGS") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 

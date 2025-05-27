@@ -67,8 +67,8 @@
       value: "{{ .root.Values.env.WEBHOOK_URLS }}"
     {{- end }}
     {{- if .root.Values.env.NODE_GROUP_CONFIGS }}
-    - name: NODE_GROUP_CONFIGS
-      value: "{{ .root.Values.env.NODE_GROUP_CONFIGS }}"
+      - name: NODE_GROUP_CONFIGS
+        value: "{{ .root.Values.env.NODE_GROUP_CONFIGS | trim | quote }}"
     {{- end }}
 {{- end }}
 
