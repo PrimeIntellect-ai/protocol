@@ -122,11 +122,10 @@ impl fmt::Display for CpuSpecs {
 // Parser for compute requirements string
 impl FromStr for ComputeRequirements {
     type Err = anyhow::Error;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut requirements = ComputeRequirements::default();
         let mut current_gpu_spec = GpuSpecs::default();
-        let mut gpu_spec_started = false; // Track if we've started defining a GPU spec
+        let mut gpu_spec_started = false;
 
         for part in s.split(';') {
             let part = part.trim();
@@ -145,26 +144,10 @@ impl FromStr for ComputeRequirements {
             match key {
                 // --- GPU Specifications ---
                 "gpu:count" => {
-                    // If a GPU spec was already being defined, push it before starting a new one
-                    if gpu_spec_started
-                        && (current_gpu_spec.model.is_some()
-                            || current_gpu_spec.memory_mb.is_some())
-                    {
-                        // Basic validation: ensure at least model or memory was also set if count > 0
-                        if current_gpu_spec.count.unwrap_or(0) > 0
-                            && current_gpu_spec.model.is_none()
-                            && current_gpu_spec.memory_mb.is_none()
-                        {
-                            // Allow count=0 without model/mem, but require model/mem if count > 0 is specified for a previous entry.
-                            // This logic might need refinement based on exact requirements.
-                            // For now, we push what we have.
-                        }
+                    // If we have a complete GPU spec, push it before starting a new one
+                    if gpu_spec_started && current_gpu_spec.count.is_some() {
                         requirements.gpu.push(current_gpu_spec);
-                        current_gpu_spec = GpuSpecs::default(); // Reset for the new spec
-                    } else if gpu_spec_started && current_gpu_spec.count.is_some() {
-                        // Handle case like "gpu:count=1; gpu:count=2" - push the first count=1 spec (implicitly)
-                        requirements.gpu.push(current_gpu_spec);
-                        current_gpu_spec = GpuSpecs::default(); // Reset for the new spec
+                        current_gpu_spec = GpuSpecs::default();
                     }
 
                     gpu_spec_started = true;
@@ -175,21 +158,14 @@ impl FromStr for ComputeRequirements {
                     );
                 }
                 "gpu:model" => {
-                    if !gpu_spec_started && current_gpu_spec.count.is_none() {
-                        // If model comes before count, implicitly start a spec
+                    if !gpu_spec_started {
                         gpu_spec_started = true;
-                    } else if !gpu_spec_started {
-                        return Err(anyhow!("'gpu:model' specified without preceding 'gpu:count' to start a new GPU requirement block"));
                     }
-                    // TODO: Handle comma-separated models if needed, e.g., "A100,H100"
                     current_gpu_spec.model = Some(value.to_string());
                 }
                 "gpu:memory_mb" => {
-                    if !gpu_spec_started && current_gpu_spec.count.is_none() {
-                        // If memory comes before count, implicitly start a spec
+                    if !gpu_spec_started {
                         gpu_spec_started = true;
-                    } else if !gpu_spec_started {
-                        return Err(anyhow!("'gpu:memory_mb' specified without preceding 'gpu:count' to start a new GPU requirement block"));
                     }
                     current_gpu_spec.memory_mb =
                         Some(value.parse::<u32>().map_err(|e| {
@@ -227,7 +203,7 @@ impl FromStr for ComputeRequirements {
             }
         }
 
-        // Push the last defined GPU spec if it exists
+        // Push the last GPU spec if it exists and has any properties set
         if gpu_spec_started
             && (current_gpu_spec.count.is_some()
                 || current_gpu_spec.model.is_some()
@@ -235,7 +211,6 @@ impl FromStr for ComputeRequirements {
         {
             requirements.gpu.push(current_gpu_spec);
         }
-        // If no GPU specs were mentioned at all, requirements.gpu remains empty.
 
         Ok(requirements)
     }
