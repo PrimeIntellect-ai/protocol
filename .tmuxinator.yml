@@ -1,14 +1,15 @@
 name: prime-dev
 root: .
+enable_pane_titles: true
 windows:
   - services:
       layout: even-horizontal 
       panes:
-        - bash -c 'tmux select-pane -T "Worker" && sleep 5 && cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd .. && make setup && clear' 
-        - bash -c 'tmux select-pane -T "Discovery" && sleep 20 && make watch-discovery'
-        - bash -c 'tmux select-pane -T "Validator" && sleep 25 && make watch-validator' 
-        - bash -c 'tmux select-pane -T "Orchestrator" && sleep 30 && make watch-orchestrator'
+        - Worker: bash -c 'sleep 5 && cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd .. && make setup && clear'
+        - Discovery: bash -c 'sleep 20 && make watch-discovery'
+        - Validator: bash -c 'sleep 25 && make watch-validator'
+        - Orchestrator: bash -c 'sleep 30 && make watch-orchestrator'
   - background:
       layout: even-horizontal
       panes:
-        - bash -c 'tmux rename-window "Prime Dev Services" && docker compose up anvil redis'
+        - "Prime Dev Services": bash -c 'docker compose up anvil redis'
