@@ -12,11 +12,10 @@ ENV S3_CREDENTIALS=""
 ENV BUCKET_NAME=""
 ENV LOG_LEVEL=""
 ENV REDIS_URL="redis://localhost:6380"
-ENV TOPLOC_SERVER_URL=""
-ENV TOPLOC_AUTH_TOKEN=""
 ENV TOPLOC_GRACE_INTERVAL="15"
 ENV TOPLOC_WORK_VALIDATION_INTERVAL="15"
 ENV TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS="120"
+ENV TOPLOC_CONFIGS=""
 ENV DISABLE_HARDWARE_VALIDATION="false"
 ENV VALIDATOR_PENALTY="1"
 
@@ -26,8 +25,7 @@ exec /usr/local/bin/validator \
 --validator-key "$VALIDATOR_KEY" \
 --discovery-url "$DISCOVERY_URL" \
 $([ ! -z "$POOL_ID" ] && echo "--pool-id $POOL_ID") \
-$([ ! -z "$TOPLOC_SERVER_URL" ] && echo "--toploc-server-url $TOPLOC_SERVER_URL") \
-$([ ! -z "$TOPLOC_AUTH_TOKEN" ] && echo "--toploc-auth-token $TOPLOC_AUTH_TOKEN") \
+$([ ! -z "$TOPLOC_CONFIGS" ] && echo "--toploc-configs $TOPLOC_CONFIGS") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 $([ ! -z "$REDIS_URL" ] && echo "--redis-url $REDIS_URL") \
