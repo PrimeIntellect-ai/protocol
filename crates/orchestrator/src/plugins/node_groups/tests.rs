@@ -31,6 +31,19 @@ fn create_test_node(
         addr_bytes[0], addr_bytes[1], addr_bytes[2], addr_bytes[3]
     );
 
+    // Generate a deterministic p2p_id from the Ethereum address
+    let p2p_id = format!(
+        "{:x}{:x}{:x}{:x}{:x}{:x}{:x}{:x}",
+        addr_bytes[0],
+        addr_bytes[1],
+        addr_bytes[2],
+        addr_bytes[3],
+        addr_bytes[4],
+        addr_bytes[5],
+        addr_bytes[6],
+        addr_bytes[7]
+    );
+
     OrchestratorNode {
         address: Address::from_str(addr).unwrap(),
         ip_address,
@@ -40,7 +53,7 @@ fn create_test_node(
         task_state: None,
         version: None,
         last_status_change: None,
-        p2p_id: Some("test_p2p_id".to_string()),
+        p2p_id: Some(p2p_id),
         compute_specs,
     }
 }
@@ -400,6 +413,11 @@ async fn test_group_scheduling() {
     env_vars.insert("RANK".to_string(), "${GROUP_INDEX}".to_string());
     env_vars.insert("WORLD_SIZE".to_string(), "${GROUP_SIZE}".to_string());
     env_vars.insert("GROUP_ID".to_string(), "${GROUP_ID}".to_string());
+    env_vars.insert("P2P_ID".to_string(), "${P2P_ID}".to_string());
+    env_vars.insert(
+        "NEXT_P2P_ADDRESS".to_string(),
+        "${NEXT_P2P_ADDRESS}".to_string(),
+    );
 
     let task1 = Task {
         id: Uuid::new_v4(),
@@ -416,6 +434,8 @@ async fn test_group_scheduling() {
             "0.95".to_string(),
             "--group-id".to_string(),
             "${GROUP_ID}".to_string(),
+            "--p2p-id".to_string(),
+            "${P2P_ID}".to_string(),
         ]),
         state: TaskState::PENDING,
         created_at: 0,
@@ -453,11 +473,18 @@ async fn test_group_scheduling() {
     assert_eq!(filtered_tasks_1.len(), 1);
     let task_node_1 = &filtered_tasks_1[0];
     let env_vars_1 = task_node_1.env_vars.as_ref().unwrap();
+
+    let node1_p2p_id = node1.p2p_id.unwrap().to_string();
+    let node2_p2p_id = node2.p2p_id.unwrap().to_string();
+    assert_ne!(node1_p2p_id, node2_p2p_id);
+
     assert_eq!(env_vars_1.get("GROUP_INDEX").unwrap(), "0");
     assert_eq!(env_vars_1.get("RANK").unwrap(), "0");
     assert_eq!(env_vars_1.get("WORLD_SIZE").unwrap(), "2");
+    assert_eq!(env_vars_1.get("P2P_ID").unwrap(), &node1_p2p_id);
     assert_eq!(task_node_1.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
     assert_ne!(env_vars_1.get("GROUP_ID").unwrap(), "${GROUP_ID}");
+    assert_eq!(env_vars_1.get("NEXT_P2P_ADDRESS").unwrap(), &node2_p2p_id);
 
     assert_eq!(filtered_tasks_2.len(), 1);
     let task_node_2 = &filtered_tasks_2[0];
@@ -465,6 +492,7 @@ async fn test_group_scheduling() {
     assert_eq!(env_vars_2.get("GROUP_INDEX").unwrap(), "1");
     assert_eq!(env_vars_2.get("RANK").unwrap(), "1");
     assert_eq!(env_vars_2.get("WORLD_SIZE").unwrap(), "2");
+    assert_eq!(env_vars_2.get("P2P_ID").unwrap(), &node2_p2p_id);
     assert_eq!(task_node_2.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
     assert_ne!(env_vars_2.get("GROUP_ID").unwrap(), "${GROUP_ID}");
 

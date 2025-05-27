@@ -86,14 +86,19 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                 let next_node_addr = group.nodes.iter().nth(next_node_idx).unwrap();
 
                 // Get p2p_id for next node from node store
-                let next_p2p_id = if let Some(next_node) = self
-                    .store_context
-                    .node_store
-                    .get_node(&Address::from_str(next_node_addr).unwrap())
-                {
-                    next_node.p2p_id.unwrap_or_default()
-                } else {
-                    String::new()
+                let next_p2p_id = match Address::from_str(next_node_addr) {
+                    Ok(addr) => self
+                        .store_context
+                        .node_store
+                        .get_node(&addr)
+                        .and_then(|node| node.p2p_id)
+                        .unwrap_or_default(),
+                    Err(_) => String::new(),
+                };
+
+                let own_p2p_id = match self.store_context.node_store.get_node(node_address) {
+                    Some(node) => node.p2p_id.unwrap_or_default(),
+                    None => String::new(),
                 };
 
                 let mut env_vars = task_clone.env_vars.unwrap_or_default();
@@ -103,7 +108,8 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                         .replace("${GROUP_INDEX}", &idx.to_string())
                         .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
                         .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
-                        .replace("${GROUP_ID}", &group.id);
+                        .replace("${GROUP_ID}", &group.id)
+                        .replace("${P2P_ID}", &own_p2p_id);
 
                     *value = new_value;
                 }
@@ -115,6 +121,7 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                                 .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
                                 .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
                                 .replace("${GROUP_ID}", &group.id)
+                                .replace("${P2P_ID}", &own_p2p_id)
                         })
                         .collect::<Vec<String>>()
                 });
