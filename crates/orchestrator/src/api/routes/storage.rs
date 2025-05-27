@@ -114,6 +114,8 @@ async fn request_upload(
                 match plugin.get_node_group(address) {
                     Ok(Some(group)) => {
                         file_name = file_name.replace("${node_group_id}", &group.id);
+                        file_name =
+                            file_name.replace("${node_group_size}", &group.nodes.len().to_string());
                         let idx = plugin.get_idx_in_group(&group, address).unwrap();
                         file_name = file_name.replace("${node_group_index}", &idx.to_string());
                     }
@@ -414,7 +416,7 @@ mod tests {
             name: "test-task".to_string(),
             storage_config: Some(StorageConfig {
                 file_name_template: Some(
-                    "model_123/${node_group_id}-${node_group_index}-${original_name}".to_string(),
+                    "model_xyz/dataset_1/${node_group_id}-${node_group_size}-${node_group_index}.parquet".to_string(),
                 ),
             }),
             ..Default::default()
@@ -454,7 +456,12 @@ mod tests {
         assert_eq!(json["success"], serde_json::Value::Bool(true));
         assert_eq!(
             json["file_name"],
-            serde_json::Value::String(format!("model_123/{}-{}-test.parquet", group.id, 0))
+            serde_json::Value::String(format!(
+                "model_xyz/dataset_1/{}-{}-{}.parquet",
+                group.id,
+                group.nodes.len(),
+                0
+            ))
         );
     }
 }
