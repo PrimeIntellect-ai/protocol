@@ -111,10 +111,6 @@ struct Args {
     /// Webhook urls (comma-separated string)
     #[arg(long, default_value = "")]
     webhook_urls: Option<String>,
-
-    /// Node group configurations in JSON format
-    #[arg(long)]
-    node_group_configs: Option<String>,
 }
 
 #[tokio::main]
@@ -195,11 +191,11 @@ async fn main() -> Result<()> {
     let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
     let mut node_groups_plugin: Option<Arc<NodeGroupsPlugin>> = None;
 
-    // This config loading is pretty ugly atm and should be optimized
-    // Issue: https://github.com/PrimeIntellect-ai/protocol/issues/336
-    if let Some(configs_json) = args.node_group_configs {
+    // Load node group configurations from environment variable
+    if let Ok(configs_json) = std::env::var("NODE_GROUP_CONFIGS") {
         match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&configs_json) {
             Ok(configs) if !configs.is_empty() => {
+                println!("configs for node groups: {:?}", configs);
                 let group_plugin =
                     NodeGroupsPlugin::new(configs, store.clone(), group_store_context);
                 let status_group_plugin = group_plugin.clone();
@@ -209,10 +205,10 @@ async fn main() -> Result<()> {
                 status_update_plugins.push(Box::new(status_group_plugin));
             }
             Ok(_) => {
-                info!("No node group configurations provided, skipping plugin setup");
+                info!("No node group configurations provided in environment, skipping plugin setup");
             }
             Err(e) => {
-                panic!("Failed to parse node group configurations: {}", e);
+                error!("Failed to parse node group configurations from environment: {}", e);
             }
         }
     }
