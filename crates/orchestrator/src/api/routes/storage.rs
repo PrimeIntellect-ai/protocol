@@ -3,7 +3,7 @@ use actix_web::{
     web::{self, post, Data},
     HttpRequest, HttpResponse, Scope,
 };
-use redis::{Commands, Iter, RedisResult};
+use redis::{Commands, RedisResult};
 use shared::{
     models::storage::RequestUploadRequest,
     utils::google_cloud::{generate_mapping_file, generate_upload_signed_url},
