@@ -93,6 +93,8 @@ async fn request_upload(
     let storage_config = task.storage_config;
 
     let mut file_name = request_upload.file_name.to_string();
+    let mut group_id = None;
+
     if let Some(storage_config) = storage_config {
         if let Some(file_name_template) = storage_config.file_name_template {
             file_name = generate_file_name(&file_name_template, &request_upload.file_name);
@@ -113,6 +115,7 @@ async fn request_upload(
 
                 match plugin.get_node_group(address) {
                     Ok(Some(group)) => {
+                        group_id = Some(group.id.clone());
                         file_name = file_name.replace("${node_group_id}", &group.id);
                         file_name =
                             file_name.replace("${node_group_size}", &group.nodes.len().to_string());
@@ -131,6 +134,36 @@ async fn request_upload(
                 }
             }
         }
+    }
+
+    // Create a unique key for this file upload based on address, group_id, and file name
+    let upload_key = match &group_id {
+        Some(gid) => format!("upload:{}:{}:{}", address, gid, &request_upload.file_name),
+        None => format!(
+            "upload:{}:{}:{}",
+            address, "no-group", &request_upload.file_name
+        ),
+    };
+    let upload_exists: RedisResult<Option<String>> = redis_con.get(&upload_key);
+    if let Ok(None) = upload_exists {
+        let _: RedisResult<()> = redis_con.set(&upload_key, "pending");
+    }
+
+    let pattern = match &group_id {
+        Some(gid) => format!("upload:{}:{}:*", address, gid),
+        None => format!("upload:{}:no-group:*", address),
+    };
+    let total_uploads: RedisResult<Vec<String>> = redis_con.keys(&pattern);
+    let upload_count = match total_uploads {
+        Ok(keys) => keys.len(),
+        Err(e) => {
+            log::error!("Failed to count uploads: {}", e);
+            0
+        }
+    };
+
+    if file_name.contains("${upload_count}") {
+        file_name = file_name.replace("${upload_count}", &upload_count.to_string());
     }
 
     let file_size = &request_upload.file_size;
@@ -416,7 +449,7 @@ mod tests {
             name: "test-task".to_string(),
             storage_config: Some(StorageConfig {
                 file_name_template: Some(
-                    "model_xyz/dataset_1/${node_group_id}-${node_group_size}-${node_group_index}.parquet".to_string(),
+                    "model_xyz/dataset_1/${node_group_id}-${node_group_size}-${node_group_index}-${upload_count}.parquet".to_string(),
                 ),
             }),
             ..Default::default()
@@ -438,6 +471,7 @@ mod tests {
             ))
             .await;
 
+        // First request with test.parquet
         let req = test::TestRequest::post()
             .uri("/storage/request-upload")
             .insert_header(("x-address", node.address.to_string()))
@@ -457,11 +491,183 @@ mod tests {
         assert_eq!(
             json["file_name"],
             serde_json::Value::String(format!(
-                "model_xyz/dataset_1/{}-{}-{}.parquet",
+                "model_xyz/dataset_1/{}-{}-{}-{}.parquet",
                 group.id,
                 group.nodes.len(),
-                0
+                0,
+                1
             ))
+        );
+
+        // Second request with same file name - should not increment count
+        let req = test::TestRequest::post()
+            .uri("/storage/request-upload")
+            .insert_header(("x-address", node.address.to_string()))
+            .set_json(&RequestUploadRequest {
+                file_name: "test.parquet".to_string(),
+                file_size: 1024,
+                file_type: "application/octet-stream".to_string(),
+                sha256: "test_sha256".to_string(),
+                task_id: task.id.to_string(),
+            })
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
+        assert_eq!(
+            json["file_name"],
+            serde_json::Value::String(format!(
+                "model_xyz/dataset_1/{}-{}-{}-{}.parquet",
+                group.id,
+                group.nodes.len(),
+                0,
+                1
+            ))
+        );
+
+        // Third request with different file name - should increment count
+        let req = test::TestRequest::post()
+            .uri("/storage/request-upload")
+            .insert_header(("x-address", node.address.to_string()))
+            .set_json(&RequestUploadRequest {
+                file_name: "test2.parquet".to_string(),
+                file_size: 1024,
+                file_type: "application/octet-stream".to_string(),
+                sha256: "test_sha256_2".to_string(),
+                task_id: task.id.to_string(),
+            })
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
+        assert_eq!(
+            json["file_name"],
+            serde_json::Value::String(format!(
+                "model_xyz/dataset_1/{}-{}-{}-{}.parquet",
+                group.id,
+                group.nodes.len(),
+                0,
+                2
+            ))
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_upload_counter_without_node_group() {
+        let app_state = create_test_app_state_with_nodegroups().await;
+
+        let node = OrchestratorNode {
+            address: Address::ZERO,
+            ip_address: "127.0.0.1".to_string(),
+            port: 8080,
+            p2p_id: Some("test_p2p_id".to_string()),
+            status: NodeStatus::Healthy,
+            ..Default::default()
+        };
+
+        app_state.store_context.node_store.add_node(node.clone());
+
+        let node_from_store = app_state
+            .store_context
+            .node_store
+            .get_node(&node.address)
+            .unwrap();
+        assert_eq!(node_from_store.address, node.address);
+
+        let task = Task {
+            id: Uuid::new_v4(),
+            image: "test-image".to_string(),
+            name: "test-task".to_string(),
+            storage_config: Some(StorageConfig {
+                file_name_template: Some("model_xyz/dataset_1/${upload_count}.parquet".to_string()),
+            }),
+            ..Default::default()
+        };
+
+        let task_store = app_state.store_context.task_store.clone();
+        task_store.add_task(task.clone());
+
+        assert!(task_store.get_task(&task.id.to_string()).is_some());
+
+        if app_state.s3_credentials.is_none() {
+            println!("S3 credentials not configured");
+            return;
+        }
+
+        let app =
+            test::init_service(App::new().app_data(app_state.clone()).service(
+                web::scope("/storage").route("/request-upload", post().to(request_upload)),
+            ))
+            .await;
+
+        // First request with test.parquet
+        let req = test::TestRequest::post()
+            .uri("/storage/request-upload")
+            .insert_header(("x-address", node.address.to_string()))
+            .set_json(&RequestUploadRequest {
+                file_name: "test.parquet".to_string(),
+                file_size: 1024,
+                file_type: "application/octet-stream".to_string(),
+                sha256: "test_sha256".to_string(),
+                task_id: task.id.to_string(),
+            })
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
+        assert_eq!(
+            json["file_name"],
+            serde_json::Value::String("model_xyz/dataset_1/1.parquet".to_string())
+        );
+
+        // Second request with same file name - should not increment count
+        let req = test::TestRequest::post()
+            .uri("/storage/request-upload")
+            .insert_header(("x-address", node.address.to_string()))
+            .set_json(&RequestUploadRequest {
+                file_name: "test.parquet".to_string(),
+                file_size: 1024,
+                file_type: "application/octet-stream".to_string(),
+                sha256: "test_sha256".to_string(),
+                task_id: task.id.to_string(),
+            })
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
+        assert_eq!(
+            json["file_name"],
+            serde_json::Value::String("model_xyz/dataset_1/1.parquet".to_string())
+        );
+
+        // Third request with different file name - should increment count
+        let req = test::TestRequest::post()
+            .uri("/storage/request-upload")
+            .insert_header(("x-address", node.address.to_string()))
+            .set_json(&RequestUploadRequest {
+                file_name: "test2.parquet".to_string(),
+                file_size: 1024,
+                file_type: "application/octet-stream".to_string(),
+                sha256: "test_sha256_2".to_string(),
+                task_id: task.id.to_string(),
+            })
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
+        assert_eq!(
+            json["file_name"],
+            serde_json::Value::String("model_xyz/dataset_1/2.parquet".to_string())
         );
     }
 }
