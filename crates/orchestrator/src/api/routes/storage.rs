@@ -3,7 +3,7 @@ use actix_web::{
     web::{self, post, Data},
     HttpRequest, HttpResponse, Scope,
 };
-use redis::{Commands, RedisResult};
+use redis::{Commands, Iter, RedisResult};
 use shared::{
     models::storage::RequestUploadRequest,
     utils::google_cloud::{generate_mapping_file, generate_upload_signed_url},
@@ -148,12 +148,20 @@ async fn request_upload(
     if let Ok(None) = upload_exists {
         let _: RedisResult<()> = redis_con.set(&upload_key, "pending");
     }
-
     let pattern = match &group_id {
         Some(gid) => format!("upload:{}:{}:*", address, gid),
         None => format!("upload:{}:no-group:*", address),
     };
-    let total_uploads: RedisResult<Vec<String>> = redis_con.keys(&pattern);
+
+    let total_uploads: RedisResult<Vec<String>> = {
+        let mut keys = Vec::new();
+        let iter: Iter<String> = redis_con.scan_match(&pattern).unwrap();
+        for key in iter {
+            keys.push(key);
+        }
+        Ok(keys)
+    };
+
     let upload_count = match total_uploads {
         Ok(keys) => keys.len(),
         Err(e) => {
