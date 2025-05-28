@@ -40,6 +40,35 @@ fn get_bucket_name(bucket: &str) -> (String, String) {
     }
 }
 
+/// Checks if a file exists in the specified GCS bucket
+pub async fn file_exists(
+    bucket: &str,
+    credentials_base64: &str,
+    object_path: &str,
+) -> Result<bool> {
+    let client = create_gcs_client(credentials_base64).await?;
+    let (bucket_name, subpath) = get_bucket_name(bucket);
+    
+    let object_path = object_path.strip_prefix('/').unwrap_or(object_path);
+    let full_path = if !subpath.is_empty() {
+        format!("{}/{}", subpath, object_path)
+    } else {
+        object_path.to_string()
+    };
+
+    match client
+        .get_object(&GetObjectRequest {
+            bucket: bucket_name,
+            object: full_path,
+            ..Default::default()
+        })
+        .await
+    {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
 /// Generates a mapping file in GCS that maps a file's SHA256 hash to its original filename.
 /// This is necessary because on-chain storage only stores the file's SHA256 hash,
 /// so we need this mapping to retrieve the original filename when needed.

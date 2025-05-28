@@ -7,7 +7,7 @@ use log::{debug, warn};
 use log::{error, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
-use shared::utils::google_cloud::resolve_mapping_for_sha;
+use shared::utils::google_cloud::{file_exists, resolve_mapping_for_sha};
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::{
     SyntheticDataWorkValidator, WorkInfo,
@@ -89,7 +89,7 @@ impl ToplocConfig {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ToplocConfigWithClient {
     config: ToplocConfig,
     client: reqwest::Client,
@@ -194,6 +194,16 @@ impl SyntheticDataValidator {
                 Err(Error::msg(format!("Failed to invalidate work: {}", e)))
             }
         }
+    }
+
+    async fn check_if_file_exists(&self, file_name: &str) -> Result<bool, Error> {
+        let file_exists = file_exists(
+            self.bucket_name.clone().unwrap().as_str(),
+            self.s3_credentials.clone().unwrap().as_str(),
+            file_name,
+        )
+        .await?;
+        Ok(file_exists)
     }
 
     async fn get_file_name_for_work_key(
@@ -741,6 +751,155 @@ mod tests {
             .iter()
             .find(|config| config.matches_file_name(file_name));
         assert_eq!(config, Some(&configs[0]));
+        Ok(())
+    }
+
+    const TEST_WORK_KEY: &str = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
+    const TEST_FILE_PREFIX: &str = "Qwen3";
+    const TEST_WALLET_KEY: &str =
+        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97";
+
+    #[tokio::test]
+    async fn test_group_toploc_config() -> Result<(), Error> {
+        let store = test_store();
+        let demo_wallet = Wallet::new(
+            TEST_WALLET_KEY,
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
+
+        let contracts = ContractBuilder::new(&demo_wallet)
+            .with_compute_registry()
+            .with_ai_token()
+            .with_prime_network()
+            .with_compute_pool()
+            .with_domain_registry()
+            .with_stake_manager()
+            .with_synthetic_data_validator(Some(Address::ZERO))
+            .build()
+            .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
+
+        let config = ToplocConfig {
+            server_url: "http://localhost:8080".to_string(),
+            file_prefix_filter: Some(TEST_FILE_PREFIX.to_string()),
+            ..Default::default()
+        };
+
+        let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+        let bucket_name = std::env::var("S3_BUCKET_NAME").ok();
+
+        if s3_credentials.is_none() || bucket_name.is_none() {
+            println!("S3 credentials or bucket name not found in environment, proceeding with test using None values");
+            return Ok(());
+        }
+
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![config],
+            U256::from(0),
+            s3_credentials,
+            bucket_name,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+        );
+
+        let full_file_name = validator
+            .get_file_name_for_work_key(TEST_WORK_KEY)
+            .await
+            .unwrap();
+        println!("File name: {}", full_file_name);
+
+        let config = validator
+            .get_toploc_config_for_file_name(&full_file_name)
+            .unwrap();
+        println!("Config: {:?}", config);
+
+        let file_name = full_file_name.split('/').next_back().unwrap_or(&full_file_name);
+
+        // This regex is highly dependent on the storage setting of the orchestrator
+        let re = regex::Regex::new(r".*?[^-]*-(\d+)-(\d+)-(\d+)-(\d+)\.parquet").unwrap();
+        if let Some(caps) = re.captures(file_name) {
+            let prefix = file_name.split('-').next().unwrap();
+            let groupid = caps.get(1).unwrap().as_str();
+            let groupsize = caps.get(2).unwrap().as_str().parse::<usize>().unwrap();
+            let filenumber = caps.get(3).unwrap().as_str().parse::<usize>().unwrap();
+            let idx = caps.get(4).unwrap().as_str();
+
+            println!(
+                "Parsed components: groupid={}, groupsize={}, filenumber={}, idx={}",
+                groupid, groupsize, filenumber, idx
+            );
+
+            let file_exists = validator
+                .check_if_file_exists(&full_file_name)
+                .await
+                .unwrap();
+            println!("Original file exists: {}", file_exists);
+
+            let mut all_files_exist = true;
+
+            for i in 0..groupsize {
+                let group_file_name = format!(
+                    "{}-{}-{}-{}-{}.parquet",
+                    prefix, groupid, groupsize, filenumber, i
+                );
+
+                let full_group_path = format!(
+                    "{}/{}",
+                    full_file_name
+                        .split('/')
+                        .take(full_file_name.split('/').count() - 1)
+                        .collect::<Vec<&str>>()
+                        .join("/"),
+                    group_file_name
+                );
+
+                let exists = validator
+                    .check_if_file_exists(&full_group_path)
+                    .await
+                    .unwrap();
+                println!("Group file {} exists: {}", i, exists);
+
+                if !exists {
+                    all_files_exist = false;
+                }
+            }
+
+            println!("All files in group exist: {}", all_files_exist);
+            if all_files_exist {
+                // Remove the last -X before .parquet from the full file name
+                let mut file_path = full_file_name
+                    .split('-')
+                    .collect::<Vec<&str>>()
+                    .split_last()
+                    .map(|(_, rest)| rest.join("-") + ".parquet")
+                    .unwrap_or(full_file_name.to_string());
+
+                // TODO: Important - must remove the prefix of the model from the toploc config (if exists)
+                if let Some(prefix) = config.config.file_prefix_filter.as_ref() {
+                    file_path = file_path.replacen(prefix, "", 1);
+                }
+
+                println!("File path: {}", file_path);
+                /* let toploc_request = serde_json::json!({
+                    "file_shas": [
+                        "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
+                        "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf"
+                    ],
+                    "group_id": groupid,
+                    "file_number": filenumber,
+                    "group_size": groupsize
+                });*/
+            }
+        } else {
+            println!("Failed to parse filename: {}", file_name);
+        }
+
         Ok(())
     }
 }

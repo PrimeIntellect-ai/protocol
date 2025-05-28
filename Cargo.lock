@@ -8340,6 +8340,7 @@ dependencies = [
  "rand 0.9.1",
  "redis",
  "redis-test",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
