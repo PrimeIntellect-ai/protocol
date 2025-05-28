@@ -9,6 +9,7 @@ alloy = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 env_logger = { workspace = true }
+futures = { workspace = true }
 log = { workspace = true }
 redis = { workspace = true }
 redis-test = { workspace = true }
