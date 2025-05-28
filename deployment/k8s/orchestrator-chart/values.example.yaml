@@ -10,8 +10,7 @@ env:
   DISCOVERY_REFRESH_INTERVAL: "60"
   BUCKET_NAME: "your-bucket-name"
   LOG_LEVEL: "info"
-  NODE_GROUP_CONFIGS: '[{\"name\": \"h100-config\", \"min_group_size\": 1, \"max_group_size\": 1, \"compute_requirements\": \"gpu:model=h100;gpu:count=8\"}, {\"name\": \"a100-config\", \"min_group_size\": 2, \"max_group_size\": 2, \"compute_requirements\": \"gpu:model=a100;gpu:count=8\"}]'
-
+  NODE_GROUP_CONFIGS: '[{"name": "h100-config", "min_group_size": 1, "max_group_size": 1, "compute_requirements": "gpu:model=h100"}, {"name": "a100-config", "min_group_size": 2, "max_group_size": 2, "compute_requirements": "gpu:model=a100"}]'
 secrets:
   coordinatorKey: "your-coordinator-private-key"
   adminApiKey: "your-admin-api-key"
