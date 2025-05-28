@@ -82,7 +82,12 @@ impl<'a> NodeInviter<'a> {
         let domain_id: [u8; 32] = U256::from(self.domain_id).to_be_bytes();
         let pool_id: [u8; 32] = U256::from(self.pool_id).to_be_bytes();
 
-        let digest = keccak([&domain_id, &pool_id, node.address.as_slice()].concat());
+        // generate random nonce
+        let nonce: [u8; 32] = rand::random();
+        let expiration: [u8; 32] = U256::from(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + 1000)
+            .to_be_bytes();
+
+        let digest = keccak([&domain_id, &pool_id, &nonce, &expiration, node.address.as_slice()].concat());
 
         let signature = self
             .wallet
