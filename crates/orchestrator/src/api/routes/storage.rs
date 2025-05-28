@@ -157,11 +157,15 @@ async fn request_upload(
 
     let total_uploads: RedisResult<Vec<String>> = {
         let mut keys = Vec::new();
-        let iter: Iter<String> = redis_con.scan_match(&pattern).unwrap();
-        for key in iter {
-            keys.push(key);
+        match redis_con.scan_match(&pattern) {
+            Ok(iter) => {
+                for key in iter {
+                    keys.push(key);
+                }
+                Ok(keys)
+            }
+            Err(e) => Err(e),
         }
-        Ok(keys)
     };
 
     let upload_count = match total_uploads {
