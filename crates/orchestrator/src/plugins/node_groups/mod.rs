@@ -98,7 +98,7 @@ impl NodeGroupsPlugin {
     fn generate_group_id() -> String {
         use rand::Rng;
         let mut rng = rand::rng();
-        format!("group_{}", rng.random::<u64>())
+        format!("{}", rng.random::<u64>())
     }
 
     fn get_group_key(group_id: &str) -> String {
