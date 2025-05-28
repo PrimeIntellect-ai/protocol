@@ -146,7 +146,9 @@ async fn request_upload(
     };
     let upload_exists: RedisResult<Option<String>> = redis_con.get(&upload_key);
     if let Ok(None) = upload_exists {
-        let _: RedisResult<()> = redis_con.set(&upload_key, "pending");
+        if let Err(e) = redis_con.set::<_, _, ()>(&upload_key, "pending") {
+            log::error!("Failed to set upload status in Redis: {}", e);
+        }
     }
     let pattern = match &group_id {
         Some(gid) => format!("upload:{}:{}:*", address, gid),
