@@ -558,18 +558,6 @@ impl SyntheticDataValidator {
             };
             debug!("Key {} has {} work units", work_key, work_info.work_units);
 
-            // Invalidate work if work units exceed threshold
-            if work_info.work_units > U256::from(1) {
-                if let Err(e) = self_arc.invalidate_work(work_key).await {
-                    error!("Failed to invalidate work {}: {}", work_key, e);
-                    continue;
-                }
-                self_arc
-                    .update_work_validation_status(work_key, &ValidationResult::Invalidated)
-                    .await?;
-                continue;
-            }
-
             let cache_status = self_arc
                 .get_work_validation_status_from_redis(work_key)
                 .await?;
