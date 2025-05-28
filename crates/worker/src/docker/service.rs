@@ -211,7 +211,7 @@ impl DockerService {
                                         }
 
                                         env_vars.insert("NODE_ADDRESS".to_string(), node_address);
-                                        env_vars.insert("PRIME_TASK_BRIDGE_SOCKET".to_string(), task_bridge_socket_path.to_string());
+                                        env_vars.insert("PRIME_SOCKET_PATH".to_string(), task_bridge_socket_path.to_string());
                                         env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
                                         if let Some(p2p_seed) = p2p_seed {
                                             env_vars.insert("IROH_SEED".to_string(), p2p_seed.to_string());
