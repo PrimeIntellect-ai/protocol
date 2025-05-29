@@ -88,11 +88,6 @@ struct Args {
     #[arg(long, default_value = None)]
     pool_id: Option<String>,
 
-    /// Optional: Toploc configurations as JSON array string
-    /// Example: [{"server_url": "http://example.com", "auth_token": "token123"}]
-    #[arg(long, default_value = None)]
-    toploc_configs: Option<String>,
-
     /// Optional: Toploc Grace Interval in seconds between work validation requests
     #[arg(long, default_value = "15")]
     toploc_grace_interval: u64,
@@ -106,9 +101,9 @@ struct Args {
     toploc_work_validation_unknown_status_expiry_seconds: u64,
 
     /// Disable toploc ejection
-    /// If true, the validator will not eject nodes from toploc
+    /// If true, the validator will not invalidate work on toploc
     #[arg(long, default_value = "false")]
-    disable_toploc_ejection: bool,
+    disable_toploc_invalidation: bool,
 
     /// Grouping
     #[arg(long, default_value = "false")]
@@ -242,21 +237,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     penalty, args.validator_penalty
                 );
 
-                if args.toploc_configs.is_none() {
-                    error!("Toploc configs are required for synthetic validator");
-                    std::process::exit(1);
-                }
-                let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-
-                let toploc_configs = match args.toploc_configs.as_ref() {
-                    Some(configs) => configs,
-                    None => {
-                        error!("Toploc configs are required but not provided");
+                let toploc_configs = match std::env::var("TOPLOC_CONFIGS") {
+                    Ok(configs) => configs,
+                    Err(_) => {
+                        error!("Toploc configs are required but not provided in environment");
                         std::process::exit(1);
                     }
                 };
 
-                let configs = match serde_json::from_str(toploc_configs) {
+                let configs = match serde_json::from_str(&toploc_configs) {
                     Ok(configs) => configs,
                     Err(e) => {
                         error!("Failed to parse toploc configs: {}", e);
@@ -264,6 +253,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
+                let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
                 let gcs_storage =
                     GcsStorageProvider::new(&args.bucket_name.unwrap(), &s3_credentials.unwrap())
                         .await
@@ -283,7 +273,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     args.toploc_work_validation_unknown_status_expiry_seconds,
                     args.toploc_grace_interval,
                     args.use_grouping,
-                    !args.disable_toploc_ejection,
+                    !args.disable_toploc_invalidation,
                 ))
             }
             None => {
