@@ -472,7 +472,6 @@ impl SyntheticDataValidator {
                 error!("Failed to get file name for work key: {}", e);
                 Error::msg(format!("Failed to get file name for work key: {}", e))
             })?;
-        println!("File: {:?}", file);
         let group_info = GroupInformation::from_str(&file)?;
 
         let group_key: String = format!(
@@ -500,12 +499,9 @@ impl SyntheticDataValidator {
             Err(_) => return Ok(None),
         };
         let ready_for_validation = self.is_group_ready_for_validation(&group_key).await?;
-        println!("Group key: {:?}", group_key);
-        println!("Ready for validation: {:?}", ready_for_validation);
         if ready_for_validation {
             let mut redis: redis::Connection = self.redis_store.client.get_connection()?;
             let group_entries: HashMap<String, String> = redis.hgetall(&group_key)?;
-            println!("Group entries: {:?}", group_entries);
             // Parse all entries once and sort by idx
             let mut entries: Vec<(String, GroupInformation)> = group_entries
                 .into_iter()
@@ -620,7 +616,6 @@ impl SyntheticDataValidator {
                     // Needs triggering (covers Pending, Invalidated, and None cases)
                     if self.with_node_grouping {
                         let check_group = self.get_group(&work_key).await?;
-                        println!("Check group: {:?}", check_group);
                         if let Some(group) = check_group {
                             group_trigger_tasks.push(group);
                         }
@@ -673,6 +668,7 @@ impl SyntheticDataValidator {
         let toploc_config = self
             .find_matching_toploc_config(&group.prefix)
             .ok_or(Error::msg("No matching toploc config found"))?;
+
         toploc_config
             .trigger_group_file_validation(
                 &group.group_file_name,
@@ -1099,7 +1095,6 @@ mod tests {
             .await?;
         assert!(group.is_some());
         let group = group.unwrap();
-        println!("Group: {:?}", group);
         assert_eq!(&group.sorted_work_keys.len(), &2);
         assert_eq!(
             &group.sorted_work_keys[0],
@@ -1109,32 +1104,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_group_trigger() -> Result<(), Error> {
-        let server = Server::new_async().await;
+    async fn test_group_e2e() -> Result<(), Error> {
+        let mut server = Server::new_async().await;
         let (store, contracts) = setup_test_env()?;
 
         let config = ToplocConfig {
             server_url: server.url(),
+            file_prefix_filter: Some("Qwen3".to_string()),
             ..Default::default()
         };
 
+        let file_sha = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
+        let group_id = "3450756714426841564";
+
         let mock_storage = MockStorageProvider::new();
         mock_storage.add_file(
-            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+            &format!("Qwen3/dataset/samplingn-{}-1-9-1.parquet", group_id),
             "file1",
         );
         mock_storage.add_mapping_file(
-            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
-            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+            file_sha,
+            &format!("Qwen3/dataset/samplingn-{}-1-9-1.parquet", group_id),
         );
-        mock_storage.add_file(
-            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
-            "file2",
-        );
-        mock_storage.add_mapping_file(
-            "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf",
-            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
-        );
+        server
+            .mock(
+                "POST",
+                "/validategroup/dataset/samplingn-3450756714426841564-1-9.parquet",
+            )
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "file_shas": [file_sha],
+                "group_id": group_id,
+                "file_number": 9,
+                "group_size": 1
+            })))
+            .with_status(200)
+            .with_body(r#"ok"#)
+            .create();
+        server
+            .mock(
+                "GET",
+                "/statusgroup/dataset/samplingn-3450756714426841564-1-9.parquet",
+            )
+            .with_status(200)
+            .with_body(r#"{"status": "accept"}"#)
+            .create();
 
         let storage_provider = Arc::new(mock_storage);
 
@@ -1154,21 +1167,65 @@ mod tests {
             false,
         );
 
-        let work_keys: Vec<String> =
-            vec!["c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641".to_string()];
+        let work_keys: Vec<String> = vec![file_sha.to_string()];
+        let work_keys_2: Vec<String> = work_keys.clone();
+        let work_keys_3: Vec<String> = work_keys.clone();
 
-        let _ = validator.process_work_keys(work_keys).await;
+        let work_info = WorkInfo {
+            node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+            ..Default::default()
+        };
+        for work_key in work_keys.clone() {
+            validator
+                .update_work_info_in_redis(&work_key, &work_info)
+                .await?;
+        }
+
+        let plan = validator.build_validation_plan(work_keys).await?;
+        assert_eq!(plan.group_trigger_tasks.len(), 1);
+        assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
+
+        let group = validator.get_group(file_sha).await?;
+        assert!(group.is_some());
+        let group = group.unwrap();
+        assert_eq!(group.group_id, group_id);
+        assert_eq!(group.group_size, 1);
+        assert_eq!(group.file_number, 9);
+
+        let result = validator.process_group_task(group).await;
+        assert!(result.is_ok());
+
+        let cache_status = validator
+            .get_work_validation_status_from_redis(file_sha)
+            .await?;
+        assert_eq!(cache_status, Some(ValidationResult::Unknown));
+
+        let plan_2 = validator.build_validation_plan(work_keys_2).await?;
+        assert_eq!(plan_2.group_trigger_tasks.len(), 0);
+        assert_eq!(plan_2.group_status_check_tasks.len(), 1);
+
+        let result = validator
+            .process_group_status_check(plan_2.group_status_check_tasks[0].clone())
+            .await;
+        assert!(result.is_ok());
+
+        let cache_status = validator
+            .get_work_validation_status_from_redis(file_sha)
+            .await?;
+        assert_eq!(cache_status, Some(ValidationResult::Accept));
+
+        let plan_3 = validator.build_validation_plan(work_keys_3).await?;
+        assert_eq!(plan_3.group_trigger_tasks.len(), 0);
+        assert_eq!(plan_3.group_status_check_tasks.len(), 0);
 
         Ok(())
     }
+
     #[tokio::test]
     async fn test_process_group_status_check_reject() -> Result<(), Error> {
         let mut server = Server::new_async().await;
 
         // Mock the group status check endpoint to return a reject status
-
-        // TODO: Dont we have to replace the prefix?
-
         // Toploc server runs model Qwen3
         let _status_mock = server
             .mock(
@@ -1218,12 +1275,10 @@ mod tests {
         let group = validator
             .get_group("c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641")
             .await?;
-        println!("Group: {:?}", group);
         let group = group.unwrap();
 
         // Process the group status check
         let result = validator.process_group_status_check(group).await;
-        println!("Result: {:?}", result);
         assert!(result.is_ok());
 
         // Verify that the work was invalidated

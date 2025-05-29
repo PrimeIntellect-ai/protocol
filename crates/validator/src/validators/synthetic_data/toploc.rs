@@ -134,10 +134,7 @@ impl Toploc {
             "{}/validategroup/{}",
             self.config.server_url, processed_file_name
         );
-        println!(
-            "Triggering remote toploc group validation for {} {}",
-            file_name, validate_url
-        );
+
         info!(
             "Triggering remote toploc group validation for {} {}",
             file_name, validate_url
@@ -190,13 +187,12 @@ impl Toploc {
         file_name: &str,
     ) -> Result<GroupValidationResult, Error> {
         let processed_file_name = self.remove_prefix_if_present(file_name);
-        println!("Getting group validation status for {}", file_name);
+        debug!("Processed file name: {}", processed_file_name);
         let url = format!(
             "{}/statusgroup/{}",
             self.config.server_url, processed_file_name
         );
-        debug!("URL: {}", url);
-        println!("URL: {}", url);
+        debug!("Processing URL: {}", url);
 
         match self.client.get(&url).send().await {
             Ok(response) => {
@@ -361,7 +357,6 @@ mod tests {
         let result = toploc
             .trigger_single_file_validation("abc123", "0x456", "test-file.parquet")
             .await;
-        println!("Result for single: {:?}", result);
 
         assert!(result.is_ok());
         Ok(())
@@ -398,7 +393,6 @@ mod tests {
                 2,
             )
             .await;
-        println!("Resul for validation success: {:?}", result);
 
         assert!(result.is_ok());
         Ok(())
@@ -429,8 +423,6 @@ mod tests {
                 2,
             )
             .await;
-
-        println!("Result: {:?}", result);
 
         assert!(result.is_err());
         assert!(result
@@ -486,7 +478,6 @@ mod tests {
         let result = toploc
             .get_single_file_validation_status("test-file.parquet")
             .await;
-        println!("Result for single: {:?}", result);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), ValidationResult::Reject);
