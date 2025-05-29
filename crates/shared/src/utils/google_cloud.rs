@@ -115,7 +115,6 @@ pub async fn resolve_mapping_for_sha(
     sha256: &str,
 ) -> Result<String> {
     let client = create_gcs_client(credentials_base64).await?;
-
     let (bucket_name, subpath) = get_bucket_name(bucket);
     let mapping_path = format!("mapping/{}", sha256);
 

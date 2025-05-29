@@ -2,7 +2,6 @@ use super::ValidationResult;
 use anyhow::Error;
 use log::debug;
 use log::{error, info};
-use redis::Commands;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -18,6 +17,7 @@ pub struct Toploc {
     client: reqwest::Client,
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct GroupValidationResult {
     pub status: ValidationResult,
     pub flops: f64,

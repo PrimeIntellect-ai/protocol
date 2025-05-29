@@ -7,12 +7,14 @@ use log::{debug, warn};
 use log::{error, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
-use shared::utils::google_cloud::{file_exists, resolve_mapping_for_sha};
+use shared::utils::google_cloud::resolve_mapping_for_sha;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::{
     SyntheticDataWorkValidator, WorkInfo,
 };
+use std::collections::HashMap;
 use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 pub mod toploc;
@@ -42,6 +44,8 @@ pub enum ProcessWorkKeyError {
     MaxAttemptsReached(String),
     /// Generic error to encapsulate unexpected errors.
     GenericError(anyhow::Error),
+    /// Error when no matching toploc config is found.
+    NoMatchingToplocConfig(String),
 }
 
 impl From<anyhow::Error> for ProcessWorkKeyError {
@@ -71,17 +75,90 @@ impl fmt::Display for ProcessWorkKeyError {
             ProcessWorkKeyError::GenericError(err) => {
                 write!(f, "Generic error: {}", err)
             }
+            ProcessWorkKeyError::NoMatchingToplocConfig(msg) => {
+                write!(f, "No matching toploc config: {:?}", msg)
+            }
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct GroupInformation {
+    /// The full filename without the last -i.parquet index
+    group_file_name: String,
+    /// Everything before the first group ID number
+    prefix: String,
+    /// The group ID number from the filename
+    group_id: String,
+    /// The group size from the filename
+    group_size: u32,
+    /// The file number from the filename
+    file_number: u32,
+    /// The index number from the filename
+    idx: String,
+}
+
+impl FromStr for GroupInformation {
+    type Err = Error;
+
+    /// Parse a filename into GroupInformation
+    /// Expected format: "prefix-groupid-groupsize-filenumber-idx.parquet"
+    fn from_str(file_name: &str) -> Result<Self, Self::Err> {
+        let re = regex::Regex::new(r".*?-(\d+)-(\d+)-(\d+)-(\d+)\.parquet").unwrap();
+        if let Some(caps) = re.captures(file_name) {
+            let groupid_start = caps.get(1).unwrap().start();
+            let prefix = file_name[..groupid_start - 1].to_string();
+
+            let groupid = caps.get(1).unwrap().as_str();
+            let groupsize = caps.get(2).unwrap().as_str().parse::<u32>().unwrap();
+            let filenumber = caps.get(3).unwrap().as_str().parse::<u32>().unwrap();
+            let idx = caps.get(4).unwrap().as_str();
+
+            Ok(Self {
+                group_file_name: file_name[..file_name.rfind('-').unwrap()].to_string(),
+                prefix,
+                group_id: groupid.to_string(),
+                group_size: groupsize,
+                file_number: filenumber,
+                idx: idx.to_string(),
+            })
+        } else {
+            Err(Error::msg("Failed to parse file name"))
         }
     }
 }
 
 #[derive(Clone, Debug)]
-struct GroupInformation {
-    prefix: String,
-    group_id: String,
-    group_size: usize,
-    file_number: usize,
-    idx: String,
+pub struct ToplocGroup {
+    // This is the filename without the last -i.parquet index
+    pub group_file_name: String,
+    pub group_size: u32,
+    pub file_number: u32,
+    pub prefix: String,
+    pub sorted_work_keys: Vec<String>,
+    pub group_id: String,
+}
+
+impl From<GroupInformation> for ToplocGroup {
+    fn from(info: GroupInformation) -> Self {
+        Self {
+            group_file_name: info.group_file_name,
+            group_size: info.group_size,
+            file_number: info.file_number,
+            prefix: info.prefix,
+            sorted_work_keys: Vec::new(),
+            group_id: info.group_id,
+        }
+    }
+}
+
+impl GroupInformation {
+    fn to_redis(&self) -> Result<String, anyhow::Error> {
+        Ok(serde_json::to_string(self)?)
+    }
+
+    fn from_redis(s: &str) -> Result<Self, anyhow::Error> {
+        Ok(serde_json::from_str(s)?)
+    }
 }
 
 #[derive(Clone)]
@@ -109,6 +186,14 @@ impl Validator for SyntheticDataValidator {
     fn name(&self) -> &str {
         "Synthetic Data Validator"
     }
+}
+
+#[derive(Debug)]
+pub struct ValidationPlan {
+    pub single_trigger_tasks: Vec<(String, WorkInfo)>,
+    pub group_trigger_tasks: Vec<ToplocGroup>,
+    pub status_check_tasks: Vec<String>,
+    pub group_status_check_tasks: Vec<ToplocGroup>,
 }
 
 impl SyntheticDataValidator {
@@ -172,38 +257,6 @@ impl SyntheticDataValidator {
                 error!("Failed to invalidate work {}: {}", work_key, e);
                 Err(Error::msg(format!("Failed to invalidate work: {}", e)))
             }
-        }
-    }
-
-    async fn check_if_file_exists(&self, file_name: &str) -> Result<bool, Error> {
-        let file_exists = file_exists(
-            self.bucket_name.clone().unwrap().as_str(),
-            self.s3_credentials.clone().unwrap().as_str(),
-            file_name,
-        )
-        .await?;
-        Ok(file_exists)
-    }
-
-    fn parse_file_name(&self, file_name: &str) -> Result<GroupInformation, Error> {
-        // Filename for node grouping is fixed for now
-        let re = regex::Regex::new(r".*?[^-]*-(\d+)-(\d+)-(\d+)-(\d+)\.parquet").unwrap();
-        if let Some(caps) = re.captures(file_name) {
-            let prefix = caps.get(0).unwrap().as_str();
-            let groupid = caps.get(1).unwrap().as_str();
-            let groupsize = caps.get(2).unwrap().as_str().parse::<usize>().unwrap();
-            let filenumber = caps.get(3).unwrap().as_str().parse::<usize>().unwrap();
-            let idx = caps.get(4).unwrap().as_str();
-
-            Ok(GroupInformation {
-                prefix: prefix.to_string(),
-                group_id: groupid.to_string(),
-                group_size: groupsize,
-                file_number: filenumber,
-                idx: idx.to_string(),
-            })
-        } else {
-            Err(Error::msg("Failed to parse file name"))
         }
     }
 
@@ -285,6 +338,7 @@ impl SyntheticDataValidator {
             })
             .transpose()
     }
+
     async fn get_file_name_for_work_key(
         &self,
         work_key: &str,
@@ -341,8 +395,10 @@ impl SyntheticDataValidator {
             .toploc
             .iter()
             .find(|t| t.matches_file_name(&cleaned_file_name))
-            .unwrap();
-        // TODO: What if we do not have any matching config?
+            .ok_or(ProcessWorkKeyError::NoMatchingToplocConfig(format!(
+                "No matching toploc config found for {}",
+                cleaned_file_name
+            )))?;
 
         let result = toploc_config
             .get_single_file_validation_status(&cleaned_file_name)
@@ -380,6 +436,74 @@ impl SyntheticDataValidator {
         Ok(())
     }
 
+    async fn build_group_for_key(&self, work_key: &str) -> Result<String, Error> {
+        let file = self
+            .get_file_name_for_work_key(work_key)
+            .await
+            .map_err(|e| {
+                error!("Failed to get file name for work key: {}", e);
+                Error::msg(format!("Failed to get file name for work key: {}", e))
+            })?;
+        println!("File name: {}", file);
+        let group_info = GroupInformation::from_str(&file)?;
+
+        let group_key: String = format!(
+            "group:{}:{}:{}",
+            group_info.group_id, group_info.group_size, group_info.file_number
+        );
+        let mut redis: redis::Connection = self.redis_store.client.get_connection()?;
+        redis
+            .hset::<_, _, _, ()>(&group_key, work_key, group_info.to_redis()?)
+            .unwrap();
+
+        Ok(group_key)
+    }
+
+    async fn is_group_ready_for_validation(&self, group_key: &str) -> Result<bool, Error> {
+        let mut redis: redis::Connection = self.redis_store.client.get_connection()?;
+        let group_size: u32 = redis.hlen::<_, u32>(group_key).unwrap();
+        let expected_size = group_key.split(':').nth(2).unwrap().parse::<u32>().unwrap();
+        Ok(group_size == expected_size)
+    }
+
+    async fn get_group(&self, work_key: &str) -> Result<Option<ToplocGroup>, Error> {
+        let group_key = match self.build_group_for_key(work_key).await {
+            Ok(key) => key,
+            Err(_) => return Ok(None),
+        };
+        let ready_for_validation = self.is_group_ready_for_validation(&group_key).await?;
+        println!("Group key: {:?}", group_key);
+        println!("Ready for validation: {:?}", ready_for_validation);
+        if ready_for_validation {
+            let mut redis: redis::Connection = self.redis_store.client.get_connection()?;
+            let group_entries: HashMap<String, String> = redis.hgetall(&group_key)?;
+            println!("Group entries: {:?}", group_entries);
+            // Parse all entries once and sort by idx
+            let mut entries: Vec<(String, GroupInformation)> = group_entries
+                .into_iter()
+                .map(|(key, value)| {
+                    let info = GroupInformation::from_redis(&value).unwrap();
+                    (key, info)
+                })
+                .collect();
+
+            entries.sort_by_key(|(_, info)| info.idx.parse::<usize>().unwrap());
+
+            let mut toploc_group: ToplocGroup = entries
+                .first()
+                .ok_or_else(|| Error::msg("No group info found"))?
+                .1
+                .clone()
+                .into();
+
+            // Extract sorted work keys from the sorted entries
+            toploc_group.sorted_work_keys = entries.into_iter().map(|(key, _)| key).collect();
+
+            return Ok(Some(toploc_group));
+        }
+        Ok(None)
+    }
+
     pub async fn validate_work(self) -> Result<(), Error> {
         debug!("Validating work for pool ID: {:?}", self.pool_id);
 
@@ -406,33 +530,27 @@ impl SyntheticDataValidator {
                 max_age_in_seconds
             );
         }
+        self.process_work_keys(work_keys).await
+    }
 
-        let self_arc = Arc::new(self);
-        let cancellation_token = self_arc.cancellation_token.clone();
-        let validator_clone_trigger = self_arc.clone();
-        let validator_clone_status = self_arc.clone();
+    pub async fn build_validation_plan(
+        &self,
+        work_keys: Vec<String>,
+    ) -> Result<ValidationPlan, Error> {
+        let mut single_trigger_tasks: Vec<(String, WorkInfo)> = Vec::new();
+        let mut group_trigger_tasks: Vec<ToplocGroup> = Vec::new();
+        let mut status_check_tasks: Vec<String> = Vec::new();
+        let mut group_status_check_tasks: Vec<ToplocGroup> = Vec::new();
 
-        // Validations that we first have to trigger on toploc
-        let mut trigger_tasks: Vec<(String, WorkInfo)> = Vec::new();
-        // Validations that we have to check the status on toploc
-        // Toploc validates async
-        let status_tasks: Vec<String> = Vec::new();
-
-        for work_key in &work_keys {
-            // Get work info from cache or fetch from validator
-            let work_info = match self_arc.get_work_info_from_redis(work_key).await? {
+        for work_key in work_keys {
+            // Get work info from cache or fetch
+            let work_info = match self.get_work_info_from_redis(&work_key).await? {
                 Some(cached_info) => cached_info,
                 None => {
-                    match self_arc
-                        .validator
-                        .get_work_info(self_arc.pool_id, work_key)
-                        .await
-                    {
+                    match self.validator.get_work_info(self.pool_id, &work_key).await {
                         Ok(info) => {
                             // Update cache with fetched work info
-                            if let Err(e) =
-                                self_arc.update_work_info_in_redis(work_key, &info).await
-                            {
+                            if let Err(e) = self.update_work_info_in_redis(&work_key, &info).await {
                                 error!("Failed to cache work info for {}: {}", work_key, e);
                             }
                             info
@@ -444,78 +562,156 @@ impl SyntheticDataValidator {
                     }
                 }
             };
-            debug!("Key {} has {} work units", work_key, work_info.work_units);
-
-            let cache_status = self_arc
-                .get_work_validation_status_from_redis(work_key)
+            let cache_status = self
+                .get_work_validation_status_from_redis(&work_key)
                 .await?;
-            debug!("Cache status for {}: {:?}", work_key, cache_status);
-            let is_push_candidate = match cache_status {
-                Some(status) => match status {
-                    ValidationResult::Accept
-                    | ValidationResult::Reject
-                    | ValidationResult::Crashed => {
-                        debug!(
-                            "Work key {} already processed with status: {:?}",
-                            work_key, status
-                        );
-                        false
-                    }
-                    _ => true,
-                },
-                None => true,
-            };
-            if is_push_candidate {
-                if self_arc.with_node_grouping {
-                    // TODO: Implement node grouping
 
-                    // Add task to build group
-                } else {
-                    trigger_tasks.push((work_key.clone(), work_info));
+            match cache_status {
+                Some(
+                    ValidationResult::Accept | ValidationResult::Reject | ValidationResult::Crashed,
+                ) => {
+                    continue; // Already processed
+                }
+                Some(ValidationResult::Unknown) => {
+                    if self.with_node_grouping {
+                        let check_group = self.get_group(&work_key).await?;
+                        if let Some(group) = check_group {
+                            // Only add group if it's not already in the list
+                            if !group_status_check_tasks
+                                .iter()
+                                .any(|g| g.group_id == group.group_id)
+                            {
+                                group_status_check_tasks.push(group);
+                            }
+                        }
+                    } else {
+                        status_check_tasks.push(work_key); // Check status
+                    }
+                }
+                Some(_) | None => {
+                    // Needs triggering (covers Pending, Invalidated, and None cases)
+                    if self.with_node_grouping {
+                        let check_group = self.get_group(&work_key).await?;
+                        println!("Check group: {:?}", check_group);
+                        if let Some(group) = check_group {
+                            group_trigger_tasks.push(group);
+                        }
+                    } else {
+                        single_trigger_tasks.push((work_key.clone(), work_info));
+                    }
                 }
             }
         }
 
-        // TODO: check trigger tasks for groups
+        Ok(ValidationPlan {
+            single_trigger_tasks,
+            group_trigger_tasks,
+            status_check_tasks,
+            group_status_check_tasks,
+        })
+    }
+
+    fn find_matching_toploc_config(&self, file_name: &str) -> Option<&Toploc> {
+        self.toploc.iter().find(|t| t.matches_file_name(file_name))
+    }
+
+    pub async fn process_single_task(&self, work_info: (String, WorkInfo)) -> Result<(), Error> {
+        let file_name = self
+            .get_file_name_for_work_key(&work_info.0)
+            .await
+            .map_err(|e| {
+                error!("Failed to get file name for work key: {}", e);
+                Error::msg(format!("Failed to get file name for work key: {}", e))
+            })?;
+        let toploc_config = self
+            .find_matching_toploc_config(&file_name)
+            .ok_or(Error::msg("No matching toploc config found"))?;
+        toploc_config
+            .trigger_single_file_validation(
+                &work_info.0,
+                &work_info.1.node_id.to_string(),
+                &file_name,
+            )
+            .await?;
+
+        // Update validation status to Unknown after successful trigger
+        self.update_work_validation_status(&work_info.0, &ValidationResult::Unknown)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn process_group_task(&self, group: ToplocGroup) -> Result<(), Error> {
+        let toploc_config = self
+            .find_matching_toploc_config(&group.prefix)
+            .ok_or(Error::msg("No matching toploc config found"))?;
+        toploc_config
+            .trigger_group_file_validation(
+                &group.group_file_name,
+                group.sorted_work_keys.clone(),
+                &group.group_id,
+                group.file_number,
+                group.group_size,
+            )
+            .await?;
+
+        // Update status for all work keys in the group
+        for work_key in &group.sorted_work_keys {
+            self.update_work_validation_status(work_key, &ValidationResult::Unknown)
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn process_group_status_check(&self, group: ToplocGroup) -> Result<(), Error> {
+        let toploc_config = self
+            .find_matching_toploc_config(&group.prefix)
+            .ok_or(Error::msg("No matching toploc config found"))?;
+        let status = toploc_config
+            .get_group_file_validation_status(&group.group_file_name)
+            .await?;
+        println!("Group status: {:?}", status);
+
+        if status.status == ValidationResult::Reject {
+            let indices = status.failing_indices;
+            let mut work_keys_to_invalidate: Vec<String> = Vec::new();
+            for index in indices {
+                let work_key = group.sorted_work_keys[index as usize].clone();
+                work_keys_to_invalidate.push(work_key);
+            }
+            for work_key in work_keys_to_invalidate {
+                self.invalidate_work(&work_key).await?;
+            }
+        }
+
+        //for work_key in &group.sorted_work_keys {
+        //TODO: Check claimed units
+        //}
+
+        for work_key in &group.sorted_work_keys {
+            self.update_work_validation_status(work_key, &status.status)
+                .await?;
+            // Update cache value
+        }
+
+        Ok(())
+    }
+
+    pub async fn process_work_keys(self, work_keys: Vec<String>) -> Result<(), Error> {
+        let validation_plan = self.build_validation_plan(work_keys).await?;
+
+        let self_arc = Arc::new(self);
+        let cancellation_token = self_arc.cancellation_token.clone();
+        let validator_clone_trigger = self_arc.clone();
+        let validator_clone_group_trigger = self_arc.clone();
+        let validator_clone_group_status = self_arc.clone();
+        let validator_clone_single_status = self_arc.clone();
 
         let trigger_handle = tokio::spawn(async move {
-            for work_info in trigger_tasks {
-                // TODO: no unwrap
-                let file_name = validator_clone_trigger
-                    .get_file_name_for_work_key(&work_info.0)
-                    .await
-                    .unwrap();
-
-                let toploc_config = validator_clone_trigger
-                    .toploc
-                    .iter()
-                    .find(|t| t.matches_file_name(&file_name))
-                    .unwrap();
-
-                // TODO: What if we do not have any matching config?
-
-                match toploc_config
-                    .trigger_single_file_validation(
-                        &work_info.0,
-                        &work_info.1.node_id.to_string(),
-                        &file_name,
-                    )
-                    .await
-                {
-                    Ok(_) => {
-                        if let Err(e) = validator_clone_trigger
-                            .update_work_validation_status(&work_info.0, &ValidationResult::Unknown)
-                            .await
-                        {
-                            error!(
-                                "Failed to update validation status for {}: {}",
-                                work_info.0, e
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        error!("Failed to trigger work key {}: {}", work_info.0, e);
-                    }
+            for work_info in validation_plan.single_trigger_tasks {
+                if let Err(e) = validator_clone_trigger.process_single_task(work_info).await {
+                    error!("Failed to process single task: {}", e);
                 }
                 info!(
                     "waiting before next task: {}",
@@ -529,8 +725,8 @@ impl SyntheticDataValidator {
         });
 
         let status_handle = tokio::spawn(async move {
-            for work_key in status_tasks {
-                if let Err(e) = validator_clone_status
+            for work_key in validation_plan.status_check_tasks {
+                if let Err(e) = validator_clone_single_status
                     .process_workkey_status(&work_key)
                     .await
                 {
@@ -539,9 +735,41 @@ impl SyntheticDataValidator {
             }
         });
 
+        let group_trigger_handle = tokio::spawn(async move {
+            for group in validation_plan.group_trigger_tasks {
+                if let Err(e) = validator_clone_group_trigger
+                    .process_group_task(group)
+                    .await
+                {
+                    error!("Failed to process group task: {}", e);
+                }
+                info!(
+                    "waiting before next task: {}",
+                    validator_clone_group_trigger.grace_interval
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(
+                    validator_clone_group_trigger.grace_interval,
+                ))
+                .await;
+            }
+        });
+
+        let group_status_handle = tokio::spawn(async move {
+            for group in validation_plan.group_status_check_tasks {
+                if let Err(e) = validator_clone_group_status
+                    .process_group_status_check(group)
+                    .await
+                {
+                    error!("Failed to process group status check: {}", e);
+                }
+            }
+        });
+
         tokio::select! {
             _ = trigger_handle => (),
+            _ = group_trigger_handle => (),
             _ = status_handle => (),
+            _ = group_status_handle => (),
             _ = cancellation_token.cancelled() => {
                 warn!("Validation cancelled");
             }
@@ -556,8 +784,10 @@ mod tests {
     use super::*;
     use alloy::primitives::Address;
     use anyhow::Ok;
-    use shared::web3::contracts::core::builder::ContractBuilder;
+    use mockito::Server;
+    use shared::web3::contracts::core::builder::{ContractBuilder, Contracts};
     use shared::web3::wallet::Wallet;
+    use std::str::FromStr;
     use url::Url;
     fn test_store() -> RedisStore {
         let store = RedisStore::new_test();
@@ -573,6 +803,104 @@ mod tests {
             .query::<String>(&mut con)
             .expect("Redis should be flushed");
         store
+    }
+
+    fn setup_test_env() -> Result<(RedisStore, Contracts), Error> {
+        let store = test_store();
+        let url = Url::parse("http://localhost:8545").unwrap();
+
+        let demo_wallet = Wallet::new(
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            url,
+        )
+        .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
+
+        let contracts = ContractBuilder::new(&demo_wallet)
+            .with_compute_registry()
+            .with_ai_token()
+            .with_prime_network()
+            .with_compute_pool()
+            .with_domain_registry()
+            .with_stake_manager()
+            .with_synthetic_data_validator(Some(Address::ZERO))
+            .build()
+            .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
+
+        Ok((store, contracts))
+    }
+
+    #[tokio::test]
+    async fn test_build_validation_plan() -> Result<(), Error> {
+        // Add test to build validation plan
+        // Since we do not have blockchain access add task infos to redis first
+        let (store, contracts) = setup_test_env()
+            .map_err(|e| Error::msg(format!("Failed to setup test environment: {}", e)))?;
+        println!("Test environment setup completed");
+        let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+        let bucket_name = std::env::var("S3_BUCKET_NAME").ok();
+
+        // If either credential is missing, we'll proceed with None values
+        if s3_credentials.is_none() || bucket_name.is_none() {
+            println!("S3 credentials or bucket name not found in environment, proceeding with test using None values");
+            return Ok(());
+        }
+
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![ToplocConfig {
+                server_url: "http://localhost:8080".to_string(),
+                ..Default::default()
+            }],
+            U256::from(0),
+            s3_credentials,
+            bucket_name,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            true,
+        );
+
+        let work_keys = vec![
+            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641".to_string(),
+            "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf".to_string(),
+            "0x0000000000000000000000000000000000000001".to_string(),
+            "0x0000000000000000000000000000000000000002".to_string(),
+            "0x0000000000000000000000000000000000000003".to_string(),
+        ];
+
+        let work_info = WorkInfo {
+            node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+            ..Default::default()
+        };
+        for work_key in work_keys.clone() {
+            validator
+                .update_work_info_in_redis(&work_key, &work_info)
+                .await?;
+        }
+        validator
+            .update_work_validation_status(
+                "0x0000000000000000000000000000000000000002",
+                &ValidationResult::Unknown,
+            )
+            .await?;
+        validator
+            .update_work_validation_status(
+                "0x0000000000000000000000000000000000000003",
+                &ValidationResult::Accept,
+            )
+            .await?;
+
+        let validation_plan = validator.build_validation_plan(work_keys.clone()).await?;
+        // Only 2 instead of 4
+        // One is done, one is single file only (file not found)
+        assert_eq!(validation_plan.single_trigger_tasks.len(), 0);
+        assert_eq!(validation_plan.group_trigger_tasks.len(), 1);
+        assert_eq!(validation_plan.status_check_tasks.len(), 1);
+        Ok(())
     }
 
     #[tokio::test]
@@ -645,16 +973,113 @@ mod tests {
         Ok(())
     }
 
-    /*const TEST_WORK_KEY: &str = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
-    const TEST_FILE_PREFIX: &str = "Qwen3";
-    const TEST_WALLET_KEY: &str =
-        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97";
+    #[tokio::test]
+    async fn test_group_filename_parsing() -> Result<(), Error> {
+        // Test case 1: Valid filename with all components
+        let name = "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet";
+        let group_info = GroupInformation::from_str(name)?;
+
+        assert_eq!(
+            group_info.group_file_name,
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9"
+        );
+        assert_eq!(group_info.prefix, "Qwen3/dataset/samplingn");
+        assert_eq!(group_info.group_id, "3450756714426841564");
+        assert_eq!(group_info.group_size, 2);
+        assert_eq!(group_info.file_number, 9);
+        assert_eq!(group_info.idx, "1");
+
+        // Test case 2: Invalid filename format
+        let invalid_name = "invalid-filename.parquet";
+        assert!(GroupInformation::from_str(invalid_name).is_err());
+
+        // Test case 3: Filename with different numbers
+        let name2 = "test/dataset/data-123-5-10-3.parquet";
+        let group_info2 = GroupInformation::from_str(name2)?;
+
+        assert_eq!(group_info2.group_file_name, "test/dataset/data-123-5-10");
+        assert_eq!(group_info2.prefix, "test/dataset/data");
+        assert_eq!(group_info2.group_id, "123");
+        assert_eq!(group_info2.group_size, 5);
+        assert_eq!(group_info2.file_number, 10);
+        assert_eq!(group_info2.idx, "3");
+
+        Ok(())
+    }
 
     #[tokio::test]
-    async fn test_group_toploc_config() -> Result<(), Error> {
+    async fn test_group_build() -> Result<(), Error> {
         let store = test_store();
         let demo_wallet = Wallet::new(
-            TEST_WALLET_KEY,
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
+        let contracts = ContractBuilder::new(&demo_wallet)
+            .with_compute_registry()
+            .with_ai_token()
+            .with_prime_network()
+            .with_compute_pool()
+            .with_domain_registry()
+            .with_stake_manager()
+            .with_synthetic_data_validator(Some(Address::ZERO))
+            .build()
+            .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
+
+        let config = ToplocConfig {
+            server_url: "http://localhost:8080".to_string(),
+            ..Default::default()
+        };
+
+        let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+        let bucket_name = std::env::var("S3_BUCKET_NAME").ok();
+
+        if s3_credentials.is_none() || bucket_name.is_none() {
+            println!("S3 credentials or bucket name not found in environment, proceeding with test using None values");
+            return Ok(());
+        }
+
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![config],
+            U256::from(0),
+            s3_credentials,
+            bucket_name,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            false,
+        );
+
+        let group = validator
+            .get_group("c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641")
+            .await?;
+        assert!(group.is_none());
+
+        let group = validator
+            .get_group("88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf")
+            .await?;
+        assert!(group.is_some());
+        let group = group.unwrap();
+        println!("Group: {:?}", group);
+        assert_eq!(&group.sorted_work_keys.len(), &2);
+        assert_eq!(
+            &group.sorted_work_keys[0],
+            "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_group_trigger() -> Result<(), Error> {
+        let server = Server::new_async().await;
+        let store = test_store();
+        let demo_wallet = Wallet::new(
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
             Url::parse("http://localhost:8545").unwrap(),
         )
         .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
@@ -671,8 +1096,7 @@ mod tests {
             .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
 
         let config = ToplocConfig {
-            server_url: "http://localhost:8080".to_string(),
-            file_prefix_filter: Some(TEST_FILE_PREFIX.to_string()),
+            server_url: server.url(),
             ..Default::default()
         };
 
@@ -700,99 +1124,13 @@ mod tests {
             true,
         );
 
-        let full_file_name = validator
-            .get_file_name_for_work_key(TEST_WORK_KEY)
-            .await
-            .unwrap();
-        println!("File name: {}", full_file_name);
+        let work_keys: Vec<String> =
+            vec!["c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641".to_string()];
 
-        /*let toploc = validator
-            .toploc.iter()
-            .find(|t| t.matches_file_name(&full_file_name))
-            .unwrap();*/
-        println!("Config: {:?}", toploc);
+        let _ = validator.process_work_keys(work_keys).await;
 
-        let file_name = full_file_name.split('/').next_back().unwrap_or(&full_file_name);
-
-        // This regex is highly dependent on the storage setting of the orchestrator
-        let re = regex::Regex::new(r".*?[^-]*-(\d+)-(\d+)-(\d+)-(\d+)\.parquet").unwrap();
-        if let Some(caps) = re.captures(file_name) {
-            let prefix = file_name.split('-').next().unwrap();
-            let groupid = caps.get(1).unwrap().as_str();
-            let groupsize = caps.get(2).unwrap().as_str().parse::<usize>().unwrap();
-            let filenumber = caps.get(3).unwrap().as_str().parse::<usize>().unwrap();
-            let idx = caps.get(4).unwrap().as_str();
-
-            println!(
-                "Parsed components: groupid={}, groupsize={}, filenumber={}, idx={}",
-                groupid, groupsize, filenumber, idx
-            );
-
-            let file_exists = validator
-                .check_if_file_exists(&full_file_name)
-                .await
-                .unwrap();
-            println!("Original file exists: {}", file_exists);
-
-            let mut all_files_exist = true;
-
-            for i in 0..groupsize {
-                let group_file_name = format!(
-                    "{}-{}-{}-{}-{}.parquet",
-                    prefix, groupid, groupsize, filenumber, i
-                );
-
-                let full_group_path = format!(
-                    "{}/{}",
-                    full_file_name
-                        .split('/')
-                        .take(full_file_name.split('/').count() - 1)
-                        .collect::<Vec<&str>>()
-                        .join("/"),
-                    group_file_name
-                );
-
-                let exists = validator
-                    .check_if_file_exists(&full_group_path)
-                    .await
-                    .unwrap();
-                println!("Group file {} exists: {}", i, exists);
-
-                if !exists {
-                    all_files_exist = false;
-                }
-            }
-
-            println!("All files in group exist: {}", all_files_exist);
-            if all_files_exist {
-                // Remove the last -X before .parquet from the full file name
-                let mut file_path = full_file_name
-                    .split('-')
-                    .collect::<Vec<&str>>()
-                    .split_last()
-                    .map(|(_, rest)| rest.join("-") + ".parquet")
-                    .unwrap_or(full_file_name.to_string());
-
-                // TODO: Important - must remove the prefix of the model from the toploc config (if exists)
-                if let Some(prefix) = toploc.config.file_prefix_filter.as_ref() {
-                    file_path = file_path.replacen(prefix, "", 1);
-                }
-
-                println!("File path: {}", file_path);
-                /* let toploc_request = serde_json::json!({
-                    "file_shas": [
-                        "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
-                        "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf"
-                    ],
-                    "group_id": groupid,
-                    "file_number": filenumber,
-                    "group_size": groupsize
-                });*/
-            }
-        } else {
-            println!("Failed to parse filename: {}", file_name);
-        }
+        // Gotta make validate work testable now - simply split the fetching of the keys and the processing of the keys
 
         Ok(())
-    }*/
+    }
 }
