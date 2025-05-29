@@ -28,6 +28,7 @@ use plugins::node_groups::NodeGroupsPlugin;
 use plugins::webhook::WebhookPlugin;
 use plugins::SchedulerPlugin;
 use plugins::StatusUpdatePlugin;
+use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
@@ -286,6 +287,12 @@ async fn main() -> Result<()> {
     let server_store_context = store_context.clone();
 
     let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+
+    let gcs_storage = GcsStorageProvider::new(&args.bucket_name.unwrap(), &s3_credentials.unwrap())
+        .await
+        .unwrap();
+    let storage_provider = Arc::new(gcs_storage);
+
     // Always start server regardless of mode
     tokio::select! {
         res = start_server(
@@ -294,8 +301,7 @@ async fn main() -> Result<()> {
             server_store_context.clone(),
             server_wallet,
             args.admin_api_key,
-            s3_credentials,
-            args.bucket_name,
+            storage_provider,
             heartbeats.clone(),
             store.clone(),
             args.hourly_s3_upload_limit,

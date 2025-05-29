@@ -11,6 +11,7 @@ use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 use shared::security::request_signer::sign_request;
+use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
@@ -103,6 +104,15 @@ struct Args {
     /// Optional: interval in minutes of max age of work on chain
     #[arg(long, default_value = "120")]
     toploc_work_validation_unknown_status_expiry_seconds: u64,
+
+    /// Disable toploc ejection
+    /// If true, the validator will not eject nodes from toploc
+    #[arg(long, default_value = "false")]
+    disable_toploc_ejection: bool,
+
+    /// Grouping
+    #[arg(long, default_value = "false")]
+    use_grouping: bool,
 
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
@@ -254,20 +264,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
+                let gcs_storage =
+                    GcsStorageProvider::new(&args.bucket_name.unwrap(), &s3_credentials.unwrap())
+                        .await
+                        .unwrap();
+                let storage_provider = Arc::new(gcs_storage);
+
                 Some(SyntheticDataValidator::new(
                     pool_id,
                     validator,
                     contracts.prime_network.clone(),
                     configs,
                     penalty,
-                    s3_credentials,
-                    args.bucket_name,
+                    storage_provider,
                     redis_store,
                     cancellation_token,
                     args.toploc_work_validation_interval,
                     args.toploc_work_validation_unknown_status_expiry_seconds,
                     args.toploc_grace_interval,
-                    false,
+                    args.use_grouping,
+                    !args.disable_toploc_ejection,
                 ))
             }
             None => {

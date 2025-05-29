@@ -7226,6 +7226,7 @@ dependencies = [
  "alloy",
  "alloy-provider",
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "dashmap",

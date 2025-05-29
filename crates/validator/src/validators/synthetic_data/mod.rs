@@ -7,7 +7,7 @@ use log::{debug, warn};
 use log::{error, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
-use shared::utils::google_cloud::resolve_mapping_for_sha;
+use shared::utils::StorageProvider;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::{
     SyntheticDataWorkValidator, WorkInfo,
@@ -168,8 +168,7 @@ pub struct SyntheticDataValidator {
     prime_network: PrimeNetworkContract,
     toploc: Vec<Toploc>,
     penalty: U256,
-    s3_credentials: Option<String>,
-    bucket_name: Option<String>,
+    storage_provider: Arc<dyn StorageProvider>,
     redis_store: RedisStore,
     cancellation_token: CancellationToken,
     work_validation_interval: u64,
@@ -178,6 +177,7 @@ pub struct SyntheticDataValidator {
     grace_interval: u64,
     // Whether to use node grouping
     with_node_grouping: bool,
+    disable_chain_invalidation: bool,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -204,21 +204,16 @@ impl SyntheticDataValidator {
         prime_network: PrimeNetworkContract,
         toploc_configs: Vec<ToplocConfig>,
         penalty: U256,
-        s3_credentials: Option<String>,
-        bucket_name: Option<String>,
+        storage_provider: Arc<dyn StorageProvider>,
         redis_store: RedisStore,
         cancellation_token: CancellationToken,
         work_validation_interval: u64,
         unknown_status_expiry_seconds: u64,
         grace_interval: u64,
         with_node_grouping: bool,
+        disable_chain_invalidation: bool,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
-
-        if s3_credentials.is_none() && bucket_name.is_none() {
-            error!("S3 credentials and bucket name are not provided");
-            std::process::exit(1);
-        }
 
         let mut toploc = Vec::new();
         for config in toploc_configs {
@@ -231,14 +226,14 @@ impl SyntheticDataValidator {
             prime_network,
             toploc,
             penalty,
-            s3_credentials,
-            bucket_name,
+            storage_provider,
             redis_store,
             cancellation_token,
             work_validation_interval,
             unknown_status_expiry_seconds,
             grace_interval,
             with_node_grouping,
+            disable_chain_invalidation,
         }
     }
 
@@ -246,6 +241,11 @@ impl SyntheticDataValidator {
         let data = hex::decode(work_key)
             .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
         info!("Invalidating work: {}", work_key);
+
+        if self.disable_chain_invalidation {
+            info!("Chain invalidation is disabled, skipping work invalidation");
+            return Ok(());
+        }
 
         match self
             .prime_network
@@ -358,14 +358,11 @@ impl SyntheticDataValidator {
             return Ok(cached_file_name);
         }
 
-        // Resolve the file name if not found in cache
-        let original_file_name = resolve_mapping_for_sha(
-            self.bucket_name.clone().unwrap().as_str(),
-            &self.s3_credentials.clone().unwrap(),
-            work_key,
-        )
-        .await
-        .map_err(|e| ProcessWorkKeyError::FileNameResolutionError(e.to_string()))?;
+        let original_file_name = self
+            .storage_provider
+            .resolve_mapping_for_sha(work_key)
+            .await
+            .map_err(|e| ProcessWorkKeyError::FileNameResolutionError(e.to_string()))?;
 
         if original_file_name.is_empty() {
             error!(
@@ -444,7 +441,6 @@ impl SyntheticDataValidator {
                 error!("Failed to get file name for work key: {}", e);
                 Error::msg(format!("Failed to get file name for work key: {}", e))
             })?;
-        println!("File name: {}", file);
         let group_info = GroupInformation::from_str(&file)?;
 
         let group_key: String = format!(
@@ -680,6 +676,7 @@ impl SyntheticDataValidator {
                 let work_key = group.sorted_work_keys[index as usize].clone();
                 work_keys_to_invalidate.push(work_key);
             }
+
             for work_key in work_keys_to_invalidate {
                 self.invalidate_work(&work_key).await?;
             }
@@ -785,10 +782,12 @@ mod tests {
     use alloy::primitives::Address;
     use anyhow::Ok;
     use mockito::Server;
+    use shared::utils::MockStorageProvider;
     use shared::web3::contracts::core::builder::{ContractBuilder, Contracts};
     use shared::web3::wallet::Wallet;
     use std::str::FromStr;
     use url::Url;
+
     fn test_store() -> RedisStore {
         let store = RedisStore::new_test();
         let mut con = store
@@ -833,17 +832,36 @@ mod tests {
     async fn test_build_validation_plan() -> Result<(), Error> {
         // Add test to build validation plan
         // Since we do not have blockchain access add task infos to redis first
-        let (store, contracts) = setup_test_env()
-            .map_err(|e| Error::msg(format!("Failed to setup test environment: {}", e)))?;
-        println!("Test environment setup completed");
-        let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-        let bucket_name = std::env::var("S3_BUCKET_NAME").ok();
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
 
-        // If either credential is missing, we'll proceed with None values
-        if s3_credentials.is_none() || bucket_name.is_none() {
-            println!("S3 credentials or bucket name not found in environment, proceeding with test using None values");
-            return Ok(());
-        }
+        // single group
+        let single_group_file_name = "Qwen3/dataset/samplingn-9999999-1-9-0.parquet";
+        mock_storage.add_file(single_group_file_name, "file1");
+        mock_storage.add_mapping_file(
+            "9999999999999999999999999999999999999999999999999999999999999999",
+            single_group_file_name,
+        );
+
+        // multiple group
+        mock_storage.add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+            "file1",
+        );
+        mock_storage.add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+            "file2",
+        );
+        mock_storage.add_mapping_file(
+            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+        );
+        mock_storage.add_mapping_file(
+            "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+        );
+
+        let storage_provider = Arc::new(mock_storage);
 
         let validator = SyntheticDataValidator::new(
             "0".to_string(),
@@ -854,22 +872,20 @@ mod tests {
                 ..Default::default()
             }],
             U256::from(0),
-            s3_credentials,
-            bucket_name,
+            storage_provider,
             store,
             CancellationToken::new(),
             10,
             60,
             1,
             true,
+            false,
         );
 
         let work_keys = vec![
+            "9999999999999999999999999999999999999999999999999999999999999999".to_string(),
             "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641".to_string(),
             "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf".to_string(),
-            "0x0000000000000000000000000000000000000001".to_string(),
-            "0x0000000000000000000000000000000000000002".to_string(),
-            "0x0000000000000000000000000000000000000003".to_string(),
         ];
 
         let work_info = WorkInfo {
@@ -881,56 +897,20 @@ mod tests {
                 .update_work_info_in_redis(&work_key, &work_info)
                 .await?;
         }
-        validator
-            .update_work_validation_status(
-                "0x0000000000000000000000000000000000000002",
-                &ValidationResult::Unknown,
-            )
-            .await?;
-        validator
-            .update_work_validation_status(
-                "0x0000000000000000000000000000000000000003",
-                &ValidationResult::Accept,
-            )
-            .await?;
 
         let validation_plan = validator.build_validation_plan(work_keys.clone()).await?;
-        // Only 2 instead of 4
-        // One is done, one is single file only (file not found)
         assert_eq!(validation_plan.single_trigger_tasks.len(), 0);
-        assert_eq!(validation_plan.group_trigger_tasks.len(), 1);
-        assert_eq!(validation_plan.status_check_tasks.len(), 1);
+        assert_eq!(validation_plan.group_trigger_tasks.len(), 2);
+        assert_eq!(validation_plan.status_check_tasks.len(), 0);
+        assert_eq!(validation_plan.group_status_check_tasks.len(), 0);
         Ok(())
     }
 
     #[tokio::test]
     async fn test_status_update() -> Result<(), Error> {
-        let store = test_store();
-        let demo_wallet = Wallet::new(
-            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-            Url::parse("http://localhost:8545").unwrap(),
-        )
-        .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
-        let contracts = ContractBuilder::new(&demo_wallet)
-            .with_compute_registry()
-            .with_ai_token()
-            .with_prime_network()
-            .with_compute_pool()
-            .with_domain_registry()
-            .with_stake_manager()
-            .with_synthetic_data_validator(Some(Address::ZERO))
-            .build()
-            .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
-
-        // Get S3 credentials from environment variables if they exist
-        let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-        let bucket_name = std::env::var("S3_BUCKET_NAME").ok();
-
-        // If either credential is missing, we'll proceed with None values
-        if s3_credentials.is_none() || bucket_name.is_none() {
-            println!("S3 credentials or bucket name not found in environment, proceeding with test using None values");
-            return Ok(());
-        }
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
+        let storage_provider = Arc::new(mock_storage);
 
         let validator = SyntheticDataValidator::new(
             "0".to_string(),
@@ -941,13 +921,13 @@ mod tests {
                 ..Default::default()
             }],
             U256::from(0),
-            s3_credentials,
-            bucket_name,
+            storage_provider,
             store,
             CancellationToken::new(),
             10,
             60,
             1,
+            false,
             false,
         );
         validator
@@ -1009,35 +989,32 @@ mod tests {
 
     #[tokio::test]
     async fn test_group_build() -> Result<(), Error> {
-        let store = test_store();
-        let demo_wallet = Wallet::new(
-            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-            Url::parse("http://localhost:8545").unwrap(),
-        )
-        .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
-        let contracts = ContractBuilder::new(&demo_wallet)
-            .with_compute_registry()
-            .with_ai_token()
-            .with_prime_network()
-            .with_compute_pool()
-            .with_domain_registry()
-            .with_stake_manager()
-            .with_synthetic_data_validator(Some(Address::ZERO))
-            .build()
-            .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
+        let (store, contracts) = setup_test_env()?;
 
         let config = ToplocConfig {
             server_url: "http://localhost:8080".to_string(),
             ..Default::default()
         };
 
-        let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-        let bucket_name = std::env::var("S3_BUCKET_NAME").ok();
+        let mock_storage = MockStorageProvider::new();
+        mock_storage.add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+            "file1",
+        );
+        mock_storage.add_mapping_file(
+            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+        );
+        mock_storage.add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+            "file2",
+        );
+        mock_storage.add_mapping_file(
+            "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+        );
 
-        if s3_credentials.is_none() || bucket_name.is_none() {
-            println!("S3 credentials or bucket name not found in environment, proceeding with test using None values");
-            return Ok(());
-        }
+        let storage_provider = Arc::new(mock_storage);
 
         let validator = SyntheticDataValidator::new(
             "0".to_string(),
@@ -1045,13 +1022,13 @@ mod tests {
             contracts.prime_network.clone(),
             vec![config],
             U256::from(0),
-            s3_credentials,
-            bucket_name,
+            storage_provider,
             store,
             CancellationToken::new(),
             10,
             60,
             1,
+            false,
             false,
         );
 
@@ -1077,36 +1054,32 @@ mod tests {
     #[tokio::test]
     async fn test_group_trigger() -> Result<(), Error> {
         let server = Server::new_async().await;
-        let store = test_store();
-        let demo_wallet = Wallet::new(
-            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-            Url::parse("http://localhost:8545").unwrap(),
-        )
-        .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
-
-        let contracts = ContractBuilder::new(&demo_wallet)
-            .with_compute_registry()
-            .with_ai_token()
-            .with_prime_network()
-            .with_compute_pool()
-            .with_domain_registry()
-            .with_stake_manager()
-            .with_synthetic_data_validator(Some(Address::ZERO))
-            .build()
-            .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
+        let (store, contracts) = setup_test_env()?;
 
         let config = ToplocConfig {
             server_url: server.url(),
             ..Default::default()
         };
 
-        let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-        let bucket_name = std::env::var("S3_BUCKET_NAME").ok();
+        let mock_storage = MockStorageProvider::new();
+        mock_storage.add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+            "file1",
+        );
+        mock_storage.add_mapping_file(
+            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+        );
+        mock_storage.add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+            "file2",
+        );
+        mock_storage.add_mapping_file(
+            "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+        );
 
-        if s3_credentials.is_none() || bucket_name.is_none() {
-            println!("S3 credentials or bucket name not found in environment, proceeding with test using None values");
-            return Ok(());
-        }
+        let storage_provider = Arc::new(mock_storage);
 
         let validator = SyntheticDataValidator::new(
             "0".to_string(),
@@ -1114,14 +1087,14 @@ mod tests {
             contracts.prime_network.clone(),
             vec![config],
             U256::from(0),
-            s3_credentials,
-            bucket_name,
+            storage_provider,
             store,
             CancellationToken::new(),
             10,
             60,
             1,
             true,
+            false,
         );
 
         let work_keys: Vec<String> =
