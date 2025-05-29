@@ -345,7 +345,7 @@ impl SyntheticDataValidator {
         // TODO: What if we do not have any matching config?
 
         let result = toploc_config
-            .get_validation_status(&cleaned_file_name)
+            .get_single_file_validation_status(&cleaned_file_name)
             .await;
         let validation_result = result?;
         info!(
@@ -495,7 +495,7 @@ impl SyntheticDataValidator {
                 // TODO: What if we do not have any matching config?
 
                 match toploc_config
-                    .trigger_remote_toploc_validation(
+                    .trigger_single_file_validation(
                         &work_info.0,
                         &work_info.1.node_id.to_string(),
                         &file_name,
