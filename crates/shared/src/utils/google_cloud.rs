@@ -48,7 +48,7 @@ pub async fn file_exists(
 ) -> Result<bool> {
     let client = create_gcs_client(credentials_base64).await?;
     let (bucket_name, subpath) = get_bucket_name(bucket);
-    
+
     let object_path = object_path.strip_prefix('/').unwrap_or(object_path);
     let full_path = if !subpath.is_empty() {
         format!("{}/{}", subpath, object_path)

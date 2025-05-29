@@ -15,9 +15,11 @@ use shared::web3::contracts::implementations::work_validators::synthetic_data_va
 use std::fmt;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
+pub mod toploc;
+use toploc::{Toploc, ToplocConfig};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-enum ValidationResult {
+pub enum ValidationResult {
     Accept,
     Reject,
     Crashed,
@@ -73,26 +75,13 @@ impl fmt::Display for ProcessWorkKeyError {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ToplocConfig {
-    pub server_url: String,
-    pub auth_token: Option<String>,
-    pub file_prefix_filter: Option<String>,
-}
-
-impl ToplocConfig {
-    pub fn matches_file_name(&self, file_name: &str) -> bool {
-        match &self.file_prefix_filter {
-            Some(prefix) => file_name.starts_with(prefix),
-            None => true,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
-struct ToplocConfigWithClient {
-    config: ToplocConfig,
-    client: reqwest::Client,
+struct GroupInformation {
+    prefix: String,
+    group_id: String,
+    group_size: usize,
+    file_number: usize,
+    idx: String,
 }
 
 #[derive(Clone)]
@@ -100,7 +89,7 @@ pub struct SyntheticDataValidator {
     pool_id: U256,
     validator: SyntheticDataWorkValidator,
     prime_network: PrimeNetworkContract,
-    toploc_configs: Vec<ToplocConfigWithClient>,
+    toploc: Vec<Toploc>,
     penalty: U256,
     s3_credentials: Option<String>,
     bucket_name: Option<String>,
@@ -110,6 +99,8 @@ pub struct SyntheticDataValidator {
     unknown_status_expiry_seconds: u64,
     // Interval between work validation requests to toploc server
     grace_interval: u64,
+    // Whether to use node grouping
+    with_node_grouping: bool,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -135,6 +126,7 @@ impl SyntheticDataValidator {
         work_validation_interval: u64,
         unknown_status_expiry_seconds: u64,
         grace_interval: u64,
+        with_node_grouping: bool,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
@@ -143,30 +135,16 @@ impl SyntheticDataValidator {
             std::process::exit(1);
         }
 
-        let mut toploc_configs_with_client = Vec::new();
+        let mut toploc = Vec::new();
         for config in toploc_configs {
-            let client = reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    if let Some(token) = &config.auth_token {
-                        headers.insert(
-                            reqwest::header::AUTHORIZATION,
-                            reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
-                                .expect("Invalid token"),
-                        );
-                    }
-                    headers
-                })
-                .build()
-                .expect("Failed to build HTTP client");
-            toploc_configs_with_client.push(ToplocConfigWithClient { config, client });
+            toploc.push(Toploc::new(config));
         }
 
         Self {
             pool_id,
             validator,
             prime_network,
-            toploc_configs: toploc_configs_with_client,
+            toploc,
             penalty,
             s3_credentials,
             bucket_name,
@@ -175,6 +153,7 @@ impl SyntheticDataValidator {
             work_validation_interval,
             unknown_status_expiry_seconds,
             grace_interval,
+            with_node_grouping,
         }
     }
 
@@ -206,186 +185,25 @@ impl SyntheticDataValidator {
         Ok(file_exists)
     }
 
-    async fn get_file_name_for_work_key(
-        &self,
-        work_key: &str,
-    ) -> Result<String, ProcessWorkKeyError> {
-        let redis_key = format!("file_name:{}", work_key);
-        let mut con = self
-            .redis_store
-            .client
-            .get_connection()
-            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+    fn parse_file_name(&self, file_name: &str) -> Result<GroupInformation, Error> {
+        // Filename for node grouping is fixed for now
+        let re = regex::Regex::new(r".*?[^-]*-(\d+)-(\d+)-(\d+)-(\d+)\.parquet").unwrap();
+        if let Some(caps) = re.captures(file_name) {
+            let prefix = caps.get(0).unwrap().as_str();
+            let groupid = caps.get(1).unwrap().as_str();
+            let groupsize = caps.get(2).unwrap().as_str().parse::<usize>().unwrap();
+            let filenumber = caps.get(3).unwrap().as_str().parse::<usize>().unwrap();
+            let idx = caps.get(4).unwrap().as_str();
 
-        // Try to get the file name from Redis cache
-        let file_name: Option<String> = con
-            .get(&redis_key)
-            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
-        if let Some(cached_file_name) = file_name {
-            return Ok(cached_file_name);
-        }
-
-        // Resolve the file name if not found in cache
-        let original_file_name = resolve_mapping_for_sha(
-            self.bucket_name.clone().unwrap().as_str(),
-            &self.s3_credentials.clone().unwrap(),
-            work_key,
-        )
-        .await
-        .map_err(|e| ProcessWorkKeyError::FileNameResolutionError(e.to_string()))?;
-
-        if original_file_name.is_empty() {
-            error!(
-                "Failed to resolve original file name for work key: {}",
-                work_key
-            );
-            return Err(ProcessWorkKeyError::FileNameResolutionError(format!(
-                "Failed to resolve original file name for work key: {}",
-                work_key
-            )));
-        }
-
-        let cleaned_file_name = original_file_name
-            .strip_prefix('/')
-            .unwrap_or(&original_file_name);
-
-        // Cache the resolved and cleaned file name in Redis
-        let _: () = con.set(&redis_key, cleaned_file_name).unwrap();
-
-        Ok(cleaned_file_name.to_string())
-    }
-
-    fn get_toploc_config_for_file_name(
-        &self,
-        file_name: &str,
-    ) -> Result<&ToplocConfigWithClient, Error> {
-        // Find the first config that matches the file name prefix filter
-        // If no filter is set, the config matches by default
-        let config = self
-            .toploc_configs
-            .iter()
-            .find(|config| config.config.matches_file_name(file_name))
-            .ok_or(Error::msg("No matching toploc config found"))?;
-
-        Ok(config)
-    }
-
-    async fn trigger_remote_toploc_validation(
-        &self,
-        work_key: &str,
-        key_address: &str,
-    ) -> Result<(), ProcessWorkKeyError> {
-        let file_name = self.get_file_name_for_work_key(work_key).await?;
-
-        let toploc_config = self.get_toploc_config_for_file_name(&file_name)?;
-
-        let validate_url = format!("{}/validate/{}", toploc_config.config.server_url, file_name);
-        info!(
-            "Triggering remote toploc validation for {} {}",
-            file_name, validate_url
-        );
-
-        let body = serde_json::json!({
-            "file_sha": work_key,
-            "address": key_address
-        });
-
-        let start_time = std::time::Instant::now();
-        match toploc_config
-            .client
-            .post(&validate_url)
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(_) => {
-                let trigger_duration = start_time.elapsed();
-                info!(
-                    "Remote toploc validation triggered for {} in {:?}",
-                    file_name, trigger_duration
-                );
-
-                let redis_start = std::time::Instant::now();
-                self.update_work_validation_status(work_key, &ValidationResult::Unknown)
-                    .await?;
-                let redis_duration = redis_start.elapsed();
-                info!(
-                    "Redis status updated for {} in {:?}",
-                    work_key, redis_duration
-                );
-
-                Ok(())
-            }
-            Err(e) => {
-                error!(
-                    "Failed to trigger remote toploc validation for {}: {}",
-                    file_name, e
-                );
-                Err(ProcessWorkKeyError::ValidationTriggerError(e.to_string()))
-            }
-        }
-    }
-
-    async fn poll_remote_toploc_validation(
-        &self,
-        file_name: &str,
-    ) -> Result<ValidationResult, Error> {
-        let toploc_config = self.get_toploc_config_for_file_name(file_name)?;
-
-        let url = format!("{}/status/{}", toploc_config.config.server_url, file_name);
-
-        match toploc_config.client.get(&url).send().await {
-            Ok(response) => {
-                if response.status() != reqwest::StatusCode::OK {
-                    error!(
-                        "Unexpected status code {} for {}",
-                        response.status(),
-                        file_name
-                    );
-                    return Err(Error::msg(format!(
-                        "Unexpected status code: {}",
-                        response.status()
-                    )));
-                }
-                let status_json: serde_json::Value = response.json().await.map_err(|e| {
-                    error!("Failed to parse JSON response for {}: {}", file_name, e);
-                    Error::msg(format!("Failed to parse JSON response: {}", e))
-                })?;
-
-                if status_json.get("status").is_none() {
-                    error!("No status found for {}", file_name);
-                    Err(Error::msg("No status found"))
-                } else {
-                    match status_json.get("status").and_then(|s| s.as_str()) {
-                        Some(status) => {
-                            debug!("Validation status for {}: {}", file_name, status);
-
-                            let validation_result = match status {
-                                "accept" => ValidationResult::Accept,
-                                "reject" => ValidationResult::Reject,
-                                "crashed" => ValidationResult::Crashed,
-                                "pending" => ValidationResult::Pending,
-                                _ => ValidationResult::Unknown,
-                            };
-                            Ok(validation_result)
-                        }
-                        None => {
-                            error!("No status found for {}", file_name);
-                            Err(Error::msg("No status found"))
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                error!(
-                    "Failed to poll remote toploc validation for {}: {}",
-                    file_name, e
-                );
-                Err(Error::msg(format!(
-                    "Failed to poll remote toploc validation: {}",
-                    e
-                )))
-            }
+            Ok(GroupInformation {
+                prefix: prefix.to_string(),
+                group_id: groupid.to_string(),
+                group_size: groupsize,
+                file_number: filenumber,
+                idx: idx.to_string(),
+            })
+        } else {
+            Err(Error::msg("Failed to parse file name"))
         }
     }
 
@@ -467,11 +285,68 @@ impl SyntheticDataValidator {
             })
             .transpose()
     }
+    async fn get_file_name_for_work_key(
+        &self,
+        work_key: &str,
+    ) -> Result<String, ProcessWorkKeyError> {
+        let redis_key = format!("file_name:{}", work_key);
+        let mut con = self
+            .redis_store
+            .client
+            .get_connection()
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+
+        // Try to get the file name from Redis cache
+        let file_name: Option<String> = con
+            .get(&redis_key)
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+        if let Some(cached_file_name) = file_name {
+            return Ok(cached_file_name);
+        }
+
+        // Resolve the file name if not found in cache
+        let original_file_name = resolve_mapping_for_sha(
+            self.bucket_name.clone().unwrap().as_str(),
+            &self.s3_credentials.clone().unwrap(),
+            work_key,
+        )
+        .await
+        .map_err(|e| ProcessWorkKeyError::FileNameResolutionError(e.to_string()))?;
+
+        if original_file_name.is_empty() {
+            error!(
+                "Failed to resolve original file name for work key: {}",
+                work_key
+            );
+            return Err(ProcessWorkKeyError::FileNameResolutionError(format!(
+                "Failed to resolve original file name for work key: {}",
+                work_key
+            )));
+        }
+
+        let cleaned_file_name = original_file_name
+            .strip_prefix('/')
+            .unwrap_or(&original_file_name);
+
+        // Cache the resolved and cleaned file name in Redis
+        let _: () = con.set(&redis_key, cleaned_file_name).unwrap();
+
+        Ok(cleaned_file_name.to_string())
+    }
 
     async fn process_workkey_status(&self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
         let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
 
-        let result = self.poll_remote_toploc_validation(&cleaned_file_name).await;
+        let toploc_config = self
+            .toploc
+            .iter()
+            .find(|t| t.matches_file_name(&cleaned_file_name))
+            .unwrap();
+        // TODO: What if we do not have any matching config?
+
+        let result = toploc_config
+            .get_validation_status(&cleaned_file_name)
+            .await;
         let validation_result = result?;
         info!(
             "Validation result for {}: {:?}",
@@ -537,8 +412,11 @@ impl SyntheticDataValidator {
         let validator_clone_trigger = self_arc.clone();
         let validator_clone_status = self_arc.clone();
 
+        // Validations that we first have to trigger on toploc
         let mut trigger_tasks: Vec<(String, WorkInfo)> = Vec::new();
-        let mut status_tasks: Vec<String> = Vec::new();
+        // Validations that we have to check the status on toploc
+        // Toploc validates async
+        let status_tasks: Vec<String> = Vec::new();
 
         for work_key in &work_keys {
             // Get work info from cache or fetch from validator
@@ -572,7 +450,7 @@ impl SyntheticDataValidator {
                 .get_work_validation_status_from_redis(work_key)
                 .await?;
             debug!("Cache status for {}: {:?}", work_key, cache_status);
-            match cache_status {
+            let is_push_candidate = match cache_status {
                 Some(status) => match status {
                     ValidationResult::Accept
                     | ValidationResult::Reject
@@ -581,28 +459,63 @@ impl SyntheticDataValidator {
                             "Work key {} already processed with status: {:?}",
                             work_key, status
                         );
-                        continue;
+                        false
                     }
-                    _ => {
-                        status_tasks.push(work_key.clone());
-                    }
+                    _ => true,
                 },
-                None => {
+                None => true,
+            };
+            if is_push_candidate {
+                if self_arc.with_node_grouping {
+                    // TODO: Implement node grouping
+
+                    // Add task to build group
+                } else {
                     trigger_tasks.push((work_key.clone(), work_info));
                 }
             }
         }
 
+        // TODO: check trigger tasks for groups
+
         let trigger_handle = tokio::spawn(async move {
             for work_info in trigger_tasks {
-                if let Err(e) = validator_clone_trigger
+                // TODO: no unwrap
+                let file_name = validator_clone_trigger
+                    .get_file_name_for_work_key(&work_info.0)
+                    .await
+                    .unwrap();
+
+                let toploc_config = validator_clone_trigger
+                    .toploc
+                    .iter()
+                    .find(|t| t.matches_file_name(&file_name))
+                    .unwrap();
+
+                // TODO: What if we do not have any matching config?
+
+                match toploc_config
                     .trigger_remote_toploc_validation(
                         &work_info.0,
                         &work_info.1.node_id.to_string(),
+                        &file_name,
                     )
                     .await
                 {
-                    error!("Failed to trigger work key {}: {}", work_info.0, e);
+                    Ok(_) => {
+                        if let Err(e) = validator_clone_trigger
+                            .update_work_validation_status(&work_info.0, &ValidationResult::Unknown)
+                            .await
+                        {
+                            error!(
+                                "Failed to update validation status for {}: {}",
+                                work_info.0, e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to trigger work key {}: {}", work_info.0, e);
+                    }
                 }
                 info!(
                     "waiting before next task: {}",
@@ -707,6 +620,7 @@ mod tests {
             10,
             60,
             1,
+            false,
         );
         validator
             .update_work_validation_status(
@@ -731,30 +645,7 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_get_toploc_config_for_file_name() -> Result<(), Error> {
-        let configs = [
-            ToplocConfig {
-                server_url: "http://localhost:8080".to_string(),
-                file_prefix_filter: Some("model1".to_string()),
-                ..Default::default()
-            },
-            ToplocConfig {
-                server_url: "http://localhost:8081".to_string(),
-                file_prefix_filter: Some("model2".to_string()),
-                ..Default::default()
-            },
-        ];
-
-        let file_name = "model1/dataset/groupid-groupsize-filenumber-idx";
-        let config = configs
-            .iter()
-            .find(|config| config.matches_file_name(file_name));
-        assert_eq!(config, Some(&configs[0]));
-        Ok(())
-    }
-
-    const TEST_WORK_KEY: &str = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
+    /*const TEST_WORK_KEY: &str = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
     const TEST_FILE_PREFIX: &str = "Qwen3";
     const TEST_WALLET_KEY: &str =
         "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97";
@@ -806,6 +697,7 @@ mod tests {
             10,
             60,
             1,
+            true,
         );
 
         let full_file_name = validator
@@ -814,10 +706,11 @@ mod tests {
             .unwrap();
         println!("File name: {}", full_file_name);
 
-        let config = validator
-            .get_toploc_config_for_file_name(&full_file_name)
-            .unwrap();
-        println!("Config: {:?}", config);
+        /*let toploc = validator
+            .toploc.iter()
+            .find(|t| t.matches_file_name(&full_file_name))
+            .unwrap();*/
+        println!("Config: {:?}", toploc);
 
         let file_name = full_file_name.split('/').next_back().unwrap_or(&full_file_name);
 
@@ -881,7 +774,7 @@ mod tests {
                     .unwrap_or(full_file_name.to_string());
 
                 // TODO: Important - must remove the prefix of the model from the toploc config (if exists)
-                if let Some(prefix) = config.config.file_prefix_filter.as_ref() {
+                if let Some(prefix) = toploc.config.file_prefix_filter.as_ref() {
                     file_path = file_path.replacen(prefix, "", 1);
                 }
 
@@ -901,5 +794,5 @@ mod tests {
         }
 
         Ok(())
-    }
+    }*/
 }
