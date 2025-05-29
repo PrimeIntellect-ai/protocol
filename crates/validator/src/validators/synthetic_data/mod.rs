@@ -96,34 +96,65 @@ struct GroupInformation {
     /// The index number from the filename
     idx: String,
 }
-
 impl FromStr for GroupInformation {
     type Err = Error;
 
     /// Parse a filename into GroupInformation
     /// Expected format: "prefix-groupid-groupsize-filenumber-idx.parquet"
     fn from_str(file_name: &str) -> Result<Self, Self::Err> {
-        let re = regex::Regex::new(r".*?-(\d+)-(\d+)-(\d+)-(\d+)\.parquet").unwrap();
-        if let Some(caps) = re.captures(file_name) {
-            let groupid_start = caps.get(1).unwrap().start();
-            let prefix = file_name[..groupid_start - 1].to_string();
+        let re = regex::Regex::new(r".*?-(\d+)-(\d+)-(\d+)-(\d+)(\.[^.]+)$")
+            .map_err(|e| Error::msg(format!("Failed to compile regex: {}", e)))?;
 
-            let groupid = caps.get(1).unwrap().as_str();
-            let groupsize = caps.get(2).unwrap().as_str().parse::<u32>().unwrap();
-            let filenumber = caps.get(3).unwrap().as_str().parse::<u32>().unwrap();
-            let idx = caps.get(4).unwrap().as_str();
+        let caps = re
+            .captures(file_name)
+            .ok_or_else(|| Error::msg("File name does not match expected format"))?;
 
-            Ok(Self {
-                group_file_name: file_name[..file_name.rfind('-').unwrap()].to_string(),
-                prefix,
-                group_id: groupid.to_string(),
-                group_size: groupsize,
-                file_number: filenumber,
-                idx: idx.to_string(),
-            })
-        } else {
-            Err(Error::msg("Failed to parse file name"))
-        }
+        let groupid_start = caps
+            .get(1)
+            .ok_or_else(|| Error::msg("Failed to extract group ID"))?
+            .start();
+        let prefix = file_name[..groupid_start - 1].to_string();
+
+        let groupid = caps
+            .get(1)
+            .ok_or_else(|| Error::msg("Failed to extract group ID"))?
+            .as_str();
+        let groupsize = caps
+            .get(2)
+            .ok_or_else(|| Error::msg("Failed to extract group size"))?
+            .as_str()
+            .parse::<u32>()
+            .map_err(|e| Error::msg(format!("Failed to parse group size: {}", e)))?;
+        let filenumber = caps
+            .get(3)
+            .ok_or_else(|| Error::msg("Failed to extract file number"))?
+            .as_str()
+            .parse::<u32>()
+            .map_err(|e| Error::msg(format!("Failed to parse file number: {}", e)))?;
+        let idx = caps
+            .get(4)
+            .ok_or_else(|| Error::msg("Failed to extract index"))?
+            .as_str();
+        let extension = caps
+            .get(5)
+            .ok_or_else(|| Error::msg("Failed to extract extension"))?
+            .as_str();
+
+        // Get the group file name by removing just the index part but keeping the extension
+        let group_file_name = file_name[..file_name
+            .rfind('-')
+            .ok_or_else(|| Error::msg("Failed to find last hyphen in filename"))?]
+            .to_string()
+            + extension;
+
+        Ok(Self {
+            group_file_name,
+            prefix,
+            group_id: groupid.to_string(),
+            group_size: groupsize,
+            file_number: filenumber,
+            idx: idx.to_string(),
+        })
     }
 }
 
@@ -441,6 +472,7 @@ impl SyntheticDataValidator {
                 error!("Failed to get file name for work key: {}", e);
                 Error::msg(format!("Failed to get file name for work key: {}", e))
             })?;
+        println!("File: {:?}", file);
         let group_info = GroupInformation::from_str(&file)?;
 
         let group_key: String = format!(
@@ -664,10 +696,12 @@ impl SyntheticDataValidator {
         let toploc_config = self
             .find_matching_toploc_config(&group.prefix)
             .ok_or(Error::msg("No matching toploc config found"))?;
+
         let status = toploc_config
             .get_group_file_validation_status(&group.group_file_name)
             .await?;
-        println!("Group status: {:?}", status);
+
+        info!("Group {} toploc status: {:?}", group.group_id, status);
 
         if status.status == ValidationResult::Reject {
             let indices = status.failing_indices;
@@ -682,14 +716,23 @@ impl SyntheticDataValidator {
             }
         }
 
-        //for work_key in &group.sorted_work_keys {
-        //TODO: Check claimed units
-        //}
+        let mut total_claimed_units: U256 = U256::from(0);
+        for work_key in &group.sorted_work_keys {
+            let work_info = self.get_work_info_from_redis(work_key).await?;
+            if let Some(work_info) = work_info {
+                total_claimed_units += work_info.work_units;
+            }
+        }
+        let toploc_units = status.flops;
+        info!(
+            "Group {} total claimed units: {:?} - toploc units: {:?}",
+            group.group_id, total_claimed_units, toploc_units
+        );
+        // TODO: We need to invalidate work that has claimed too many units
 
         for work_key in &group.sorted_work_keys {
             self.update_work_validation_status(work_key, &status.status)
                 .await?;
-            // Update cache value
         }
 
         Ok(())
@@ -843,6 +886,13 @@ mod tests {
             single_group_file_name,
         );
 
+        let single_unknown_file_name = "Qwen3/dataset/samplingn-8888888-1-9-0.parquet";
+        mock_storage.add_file(single_unknown_file_name, "file1");
+        mock_storage.add_mapping_file(
+            "8888888888888888888888888888888888888888888888888888888888888888",
+            single_unknown_file_name,
+        );
+
         // multiple group
         mock_storage.add_file(
             "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
@@ -886,6 +936,7 @@ mod tests {
             "9999999999999999999999999999999999999999999999999999999999999999".to_string(),
             "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641".to_string(),
             "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf".to_string(),
+            "8888888888888888888888888888888888888888888888888888888888888888".to_string(),
         ];
 
         let work_info = WorkInfo {
@@ -897,12 +948,15 @@ mod tests {
                 .update_work_info_in_redis(&work_key, &work_info)
                 .await?;
         }
+        validator
+            .update_work_validation_status(&work_keys[3], &ValidationResult::Unknown)
+            .await?;
 
         let validation_plan = validator.build_validation_plan(work_keys.clone()).await?;
         assert_eq!(validation_plan.single_trigger_tasks.len(), 0);
         assert_eq!(validation_plan.group_trigger_tasks.len(), 2);
         assert_eq!(validation_plan.status_check_tasks.len(), 0);
-        assert_eq!(validation_plan.group_status_check_tasks.len(), 0);
+        assert_eq!(validation_plan.group_status_check_tasks.len(), 1);
         Ok(())
     }
 
@@ -961,7 +1015,7 @@ mod tests {
 
         assert_eq!(
             group_info.group_file_name,
-            "Qwen3/dataset/samplingn-3450756714426841564-2-9"
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9.parquet"
         );
         assert_eq!(group_info.prefix, "Qwen3/dataset/samplingn");
         assert_eq!(group_info.group_id, "3450756714426841564");
@@ -977,7 +1031,10 @@ mod tests {
         let name2 = "test/dataset/data-123-5-10-3.parquet";
         let group_info2 = GroupInformation::from_str(name2)?;
 
-        assert_eq!(group_info2.group_file_name, "test/dataset/data-123-5-10");
+        assert_eq!(
+            group_info2.group_file_name,
+            "test/dataset/data-123-5-10.parquet"
+        );
         assert_eq!(group_info2.prefix, "test/dataset/data");
         assert_eq!(group_info2.group_id, "123");
         assert_eq!(group_info2.group_size, 5);
@@ -1102,7 +1159,80 @@ mod tests {
 
         let _ = validator.process_work_keys(work_keys).await;
 
-        // Gotta make validate work testable now - simply split the fetching of the keys and the processing of the keys
+        Ok(())
+    }
+    #[tokio::test]
+    async fn test_process_group_status_check_reject() -> Result<(), Error> {
+        let mut server = Server::new_async().await;
+
+        // Mock the group status check endpoint to return a reject status
+
+        // TODO: Dont we have to replace the prefix?
+
+        // Toploc server runs model Qwen3
+        let _status_mock = server
+            .mock(
+                "GET",
+                "/statusgroup/dataset/samplingn-3450756714426841564-1-9.parquet",
+            )
+            .with_status(200)
+            .with_body(r#"{"status": "reject", "flops": 0.0, "failing_indices": [0]}"#)
+            .create();
+
+        let (store, contracts) = setup_test_env()?;
+
+        let config = ToplocConfig {
+            server_url: server.url(),
+            file_prefix_filter: Some("Qwen3".to_string()),
+            ..Default::default()
+        };
+
+        let mock_storage = MockStorageProvider::new();
+        mock_storage.add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-1-9-0.parquet",
+            "file1",
+        );
+        mock_storage.add_mapping_file(
+            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
+            "Qwen3/dataset/samplingn-3450756714426841564-1-9-0.parquet",
+        );
+
+        let storage_provider = Arc::new(mock_storage);
+
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![config],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            true,
+            true,
+        );
+
+        let group = validator
+            .get_group("c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641")
+            .await?;
+        println!("Group: {:?}", group);
+        let group = group.unwrap();
+
+        // Process the group status check
+        let result = validator.process_group_status_check(group).await;
+        println!("Result: {:?}", result);
+        assert!(result.is_ok());
+
+        // Verify that the work was invalidated
+        let work_info = validator
+            .get_work_info_from_redis(
+                "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
+            )
+            .await?;
+        assert!(work_info.is_none(), "Work should be invalidated");
 
         Ok(())
     }

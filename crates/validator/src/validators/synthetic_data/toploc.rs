@@ -45,9 +45,25 @@ impl Toploc {
         Self { config, client }
     }
 
-    pub fn matches_file_name(&self, file_name: &str) -> bool {
+    fn normalize_path(&self, path: &str) -> String {
+        // Remove leading slashes and normalize any double slashes
+        path.trim_start_matches('/').replace("//", "/")
+    }
+
+    fn remove_prefix_if_present(&self, file_name: &str) -> String {
+        let normalized_name = self.normalize_path(file_name);
         match &self.config.file_prefix_filter {
-            Some(prefix) => file_name.starts_with(prefix),
+            Some(prefix) if normalized_name.starts_with(prefix) => {
+                self.normalize_path(&normalized_name[prefix.len()..])
+            }
+            _ => normalized_name,
+        }
+    }
+
+    pub fn matches_file_name(&self, file_name: &str) -> bool {
+        let normalized_name = self.normalize_path(file_name);
+        match &self.config.file_prefix_filter {
+            Some(prefix) => normalized_name.starts_with(prefix),
             None => true,
         }
     }
@@ -58,7 +74,11 @@ impl Toploc {
         key_address: &str,
         file_name: &str,
     ) -> Result<(), Error> {
-        let validate_url = format!("{}/validate/{}", self.config.server_url, file_name);
+        let processed_file_name = self.remove_prefix_if_present(file_name);
+        let validate_url = format!(
+            "{}/validate/{}",
+            self.config.server_url, processed_file_name
+        );
         info!(
             "Triggering remote toploc validation for {} {}",
             file_name, validate_url
@@ -109,7 +129,11 @@ impl Toploc {
         file_number: u32,
         group_size: u32,
     ) -> Result<(), Error> {
-        let validate_url = format!("{}/validategroup/{}", self.config.server_url, file_name);
+        let processed_file_name = self.remove_prefix_if_present(file_name);
+        let validate_url = format!(
+            "{}/validategroup/{}",
+            self.config.server_url, processed_file_name
+        );
         println!(
             "Triggering remote toploc group validation for {} {}",
             file_name, validate_url
@@ -165,7 +189,14 @@ impl Toploc {
         &self,
         file_name: &str,
     ) -> Result<GroupValidationResult, Error> {
-        let url = format!("{}/statusgroup/{}", self.config.server_url, file_name);
+        let processed_file_name = self.remove_prefix_if_present(file_name);
+        println!("Getting group validation status for {}", file_name);
+        let url = format!(
+            "{}/statusgroup/{}",
+            self.config.server_url, processed_file_name
+        );
+        debug!("URL: {}", url);
+        println!("URL: {}", url);
 
         match self.client.get(&url).send().await {
             Ok(response) => {
@@ -238,11 +269,13 @@ impl Toploc {
             }
         }
     }
+
     pub async fn get_single_file_validation_status(
         &self,
         file_name: &str,
     ) -> Result<ValidationResult, Error> {
-        let url = format!("{}/status/{}", self.config.server_url, file_name);
+        let processed_file_name = self.remove_prefix_if_present(file_name);
+        let url = format!("{}/status/{}", self.config.server_url, processed_file_name);
 
         match self.client.get(&url).send().await {
             Ok(response) => {
