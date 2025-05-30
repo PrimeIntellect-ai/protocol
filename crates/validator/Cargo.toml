@@ -30,5 +30,4 @@ toml = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
-mockito = "1.7.0"
 tempfile = "=3.14.0"
