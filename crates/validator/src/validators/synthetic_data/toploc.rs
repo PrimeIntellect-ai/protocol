@@ -558,6 +558,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_nested_filter() {
+        let config = ToplocConfig {
+            server_url: "http://test".to_string(),
+            auth_token: None,
+            file_prefix_filter: Some("Qwen/Qwen0.6".to_string()),
+        };
+        let toploc = Toploc::new(config);
+
+        assert!(toploc.matches_file_name("/Qwen/Qwen0.6/-model-data.parquet"));
+        assert!(toploc.matches_file_name("Qwen/Qwen0.6"));
+        assert!(!toploc.matches_file_name("Qwen/Qwen0.7-model-data.parquet"));
+        assert!(!toploc.matches_file_name("qwen3-lowercase.parquet")); // Case sensitive
+    }
+
+    #[tokio::test]
     async fn test_file_prefix_filter_none() {
         let config = ToplocConfig {
             server_url: "http://test".to_string(),

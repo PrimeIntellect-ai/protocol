@@ -472,8 +472,9 @@ impl SyntheticDataValidator {
                 error!("Failed to get file name for work key: {}", e);
                 Error::msg(format!("Failed to get file name for work key: {}", e))
             })?;
+        debug!("File for work key: {:?} | {:?}", work_key, file);
         let group_info = GroupInformation::from_str(&file)?;
-
+        debug!("Group info: {:?}", group_info);
         let group_key: String = format!(
             "group:{}:{}:{}",
             group_info.group_id, group_info.group_size, group_info.file_number
@@ -599,6 +600,7 @@ impl SyntheticDataValidator {
                 Some(ValidationResult::Unknown) => {
                     if self.with_node_grouping {
                         let check_group = self.get_group(&work_key).await?;
+                        debug!("Group for work key: {:?} | {:?}", work_key, check_group);
                         if let Some(group) = check_group {
                             // Only add group if it's not already in the list
                             if !group_status_check_tasks
@@ -667,7 +669,10 @@ impl SyntheticDataValidator {
     pub async fn process_group_task(&self, group: ToplocGroup) -> Result<(), Error> {
         let toploc_config = self
             .find_matching_toploc_config(&group.prefix)
-            .ok_or(Error::msg("No matching toploc config found"))?;
+            .ok_or(Error::msg(format!(
+                "No matching toploc config found for group {} {}",
+                group.group_id, group.prefix
+            )))?;
 
         toploc_config
             .trigger_group_file_validation(
@@ -691,7 +696,10 @@ impl SyntheticDataValidator {
     pub async fn process_group_status_check(&self, group: ToplocGroup) -> Result<(), Error> {
         let toploc_config = self
             .find_matching_toploc_config(&group.prefix)
-            .ok_or(Error::msg("No matching toploc config found"))?;
+            .ok_or(Error::msg(format!(
+                "No matching toploc config found for group for status check {} {}",
+                group.group_id, group.prefix
+            )))?;
 
         let status = toploc_config
             .get_group_file_validation_status(&group.group_file_name)
@@ -735,7 +743,9 @@ impl SyntheticDataValidator {
     }
 
     pub async fn process_work_keys(self, work_keys: Vec<String>) -> Result<(), Error> {
+        debug!("Processing work keys: {:?}", work_keys);
         let validation_plan = self.build_validation_plan(work_keys).await?;
+        debug!("Validation plan: {:?}", validation_plan);
 
         let self_arc = Arc::new(self);
         let cancellation_token = self_arc.cancellation_token.clone();
@@ -1110,7 +1120,7 @@ mod tests {
 
         let config = ToplocConfig {
             server_url: server.url(),
-            file_prefix_filter: Some("Qwen3".to_string()),
+            file_prefix_filter: Some("Qwen/Qwen0.6".to_string()),
             ..Default::default()
         };
 
@@ -1119,12 +1129,12 @@ mod tests {
 
         let mock_storage = MockStorageProvider::new();
         mock_storage.add_file(
-            &format!("Qwen3/dataset/samplingn-{}-1-9-1.parquet", group_id),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-9-1.parquet", group_id),
             "file1",
         );
         mock_storage.add_mapping_file(
             file_sha,
-            &format!("Qwen3/dataset/samplingn-{}-1-9-1.parquet", group_id),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-9-1.parquet", group_id),
         );
         server
             .mock(
@@ -1186,6 +1196,7 @@ mod tests {
         assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
 
         let group = validator.get_group(file_sha).await?;
+        println!("group: {:?}", group);
         assert!(group.is_some());
         let group = group.unwrap();
         assert_eq!(group.group_id, group_id);
