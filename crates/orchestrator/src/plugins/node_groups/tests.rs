@@ -400,6 +400,7 @@ async fn test_group_scheduling() {
     env_vars.insert("RANK".to_string(), "${GROUP_INDEX}".to_string());
     env_vars.insert("WORLD_SIZE".to_string(), "${GROUP_SIZE}".to_string());
     env_vars.insert("GROUP_ID".to_string(), "${GROUP_ID}".to_string());
+    env_vars.insert("UPLOAD_COUNT".to_string(), "${UPLOAD_COUNT}".to_string());
 
     let task1 = Task {
         id: Uuid::new_v4(),
@@ -416,6 +417,8 @@ async fn test_group_scheduling() {
             "0.95".to_string(),
             "--group-id".to_string(),
             "${GROUP_ID}".to_string(),
+            "--upload-count".to_string(),
+            "${UPLOAD_COUNT}".to_string(),
         ]),
         state: TaskState::PENDING,
         created_at: 0,
@@ -443,6 +446,13 @@ async fn test_group_scheduling() {
     tasks_clone.reverse();
     assert_ne!(tasks_clone[0].id, tasks[0].id);
 
+    let group = plugin.get_node_group(&node1.address.to_string()).unwrap();
+    assert!(group.is_some());
+    let group = group.unwrap();
+    let mut redis_con = plugin.store.client.get_connection().unwrap();
+    let upload_key = format!("upload:{}:{}:test.txt", node1.address, group.id);
+    let _: () = redis_con.set(&upload_key, "pending").unwrap();
+
     let (filtered_tasks_1, filtered_tasks_2) = tokio::join!(
         async { plugin.filter_tasks(&tasks, &node1.address) },
         async { plugin.filter_tasks(&tasks_clone, &node2.address) }
@@ -458,6 +468,8 @@ async fn test_group_scheduling() {
     assert_eq!(env_vars_1.get("WORLD_SIZE").unwrap(), "2");
     assert_eq!(task_node_1.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
     assert_ne!(env_vars_1.get("GROUP_ID").unwrap(), "${GROUP_ID}");
+    assert_eq!(env_vars_1.get("UPLOAD_COUNT").unwrap(), "1");
+    assert_eq!(task_node_1.args.as_ref().unwrap()[9], "1"); // Check upload count in args
 
     assert_eq!(filtered_tasks_2.len(), 1);
     let task_node_2 = &filtered_tasks_2[0];
@@ -467,6 +479,8 @@ async fn test_group_scheduling() {
     assert_eq!(env_vars_2.get("WORLD_SIZE").unwrap(), "2");
     assert_eq!(task_node_2.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
     assert_ne!(env_vars_2.get("GROUP_ID").unwrap(), "${GROUP_ID}");
+    assert_eq!(env_vars_2.get("UPLOAD_COUNT").unwrap(), "0");
+    assert_eq!(task_node_2.args.as_ref().unwrap()[9], "0"); // Check upload count in args
 
     assert_eq!(task_node_1.id, task_node_2.id);
 }
