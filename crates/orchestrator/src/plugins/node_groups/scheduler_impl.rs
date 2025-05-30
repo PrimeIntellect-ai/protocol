@@ -2,6 +2,7 @@ use super::{NodeGroupsPlugin, SchedulerPlugin};
 use alloy::primitives::Address;
 use log::{error, info};
 use rand::seq::IndexedRandom;
+use redis::Commands;
 use shared::models::task::Task;
 use std::str::FromStr;
 
@@ -96,6 +97,30 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                     String::new()
                 };
 
+                // Temporary hack to get the upload count
+                let pattern = format!("upload:{}:{}:*", node_address, group.id);
+                let upload_count = match self.store.client.get_connection() {
+                    Ok(mut conn) => {
+                        let mut keys: Vec<String> = Vec::new();
+                        match conn.scan_match(&pattern) {
+                            Ok(iter) => {
+                                for key in iter {
+                                    keys.push(key);
+                                }
+                                keys.len().to_string()
+                            }
+                            Err(e) => {
+                                error!("Failed to scan upload keys: {}", e);
+                                "0".to_string()
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to get Redis connection: {}", e);
+                        "0".to_string()
+                    }
+                };
+
                 let mut env_vars = task_clone.env_vars.unwrap_or_default();
                 env_vars.insert("GROUP_INDEX".to_string(), idx.to_string());
                 for (_, value) in env_vars.iter_mut() {
@@ -103,7 +128,8 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                         .replace("${GROUP_INDEX}", &idx.to_string())
                         .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
                         .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
-                        .replace("${GROUP_ID}", &group.id);
+                        .replace("${GROUP_ID}", &group.id)
+                        .replace("${UPLOAD_COUNT}", &upload_count.to_string());
 
                     *value = new_value;
                 }
@@ -115,6 +141,7 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                                 .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
                                 .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
                                 .replace("${GROUP_ID}", &group.id)
+                                .replace("${UPLOAD_COUNT}", &upload_count.to_string())
                         })
                         .collect::<Vec<String>>()
                 });
