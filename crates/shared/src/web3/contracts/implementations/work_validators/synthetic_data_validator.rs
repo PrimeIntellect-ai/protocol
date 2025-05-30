@@ -14,7 +14,7 @@ pub struct SyntheticDataWorkValidator {
     pub instance: Contract,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct WorkInfo {
     pub provider: Address,
     pub node_id: Address,

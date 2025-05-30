@@ -17,6 +17,8 @@ use url::Url;
 
 #[cfg(test)]
 pub async fn create_test_app_state() -> Data<AppState> {
+    use shared::utils::MockStorageProvider;
+
     use crate::{scheduler::Scheduler, utils::loop_heartbeats::LoopHeartbeats, ServerMode};
 
     let store = Arc::new(RedisStore::new_test());
@@ -35,8 +37,9 @@ pub async fn create_test_app_state() -> Data<AppState> {
     let store_context = Arc::new(StoreContext::new(store.clone()));
     let mode = ServerMode::Full;
     let scheduler = Scheduler::new(store_context.clone(), vec![]);
-    let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-    let bucket_name = std::env::var("BUCKET_NAME").ok();
+
+    let mock_storage = MockStorageProvider::new();
+    let storage_provider = Arc::new(mock_storage);
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -49,8 +52,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
             )
             .unwrap(),
         ),
-        s3_credentials,
-        bucket_name,
+        storage_provider,
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,
         redis_store: store.clone(),
@@ -61,6 +63,8 @@ pub async fn create_test_app_state() -> Data<AppState> {
 
 #[cfg(test)]
 pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
+    use shared::utils::MockStorageProvider;
+
     use crate::{
         plugins::node_groups::{NodeGroupConfiguration, NodeGroupsPlugin},
         scheduler::Scheduler,
@@ -84,8 +88,6 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
     let store_context = Arc::new(StoreContext::new(store.clone()));
     let mode = ServerMode::Full;
     let scheduler = Scheduler::new(store_context.clone(), vec![]);
-    let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-    let bucket_name = std::env::var("BUCKET_NAME").ok();
 
     let config = NodeGroupConfiguration {
         name: "test-config".to_string(),
@@ -100,6 +102,9 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
         store_context.clone(),
     )));
 
+    let mock_storage = MockStorageProvider::new();
+    let storage_provider = Arc::new(mock_storage);
+
     Data::new(AppState {
         store_context: store_context.clone(),
         contracts: None,
@@ -111,8 +116,7 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
             )
             .unwrap(),
         ),
-        s3_credentials,
-        bucket_name,
+        storage_provider,
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,
         redis_store: store.clone(),

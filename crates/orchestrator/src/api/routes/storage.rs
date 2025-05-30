@@ -4,10 +4,7 @@ use actix_web::{
     HttpRequest, HttpResponse, Scope,
 };
 use redis::{Commands, RedisResult};
-use shared::{
-    models::storage::RequestUploadRequest,
-    utils::google_cloud::{generate_mapping_file, generate_upload_signed_url},
-};
+use shared::models::storage::RequestUploadRequest;
 use std::time::Duration;
 
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
@@ -192,31 +189,16 @@ async fn request_upload(
         sha256
     );
 
-    // Get credentials from app state
-    let credentials = match &app_state.s3_credentials {
-        Some(creds) => creds,
-        None => {
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "success": false,
-                "error": "Storage credentials not configured"
-            }))
-        }
-    };
-
     log::info!(
-        "Generating mapping file for sha256: {} to file: {} in bucket: {}",
+        "Generating mapping file for sha256: {} to file: {}",
         sha256,
         file_name,
-        app_state.bucket_name.clone().unwrap_or_default()
     );
 
-    if let Err(e) = generate_mapping_file(
-        app_state.bucket_name.clone().unwrap().as_str(),
-        credentials,
-        sha256,
-        &file_name,
-    )
-    .await
+    if let Err(e) = app_state
+        .storage_provider
+        .generate_mapping_file(sha256, &file_name)
+        .await
     {
         log::error!("Failed to generate mapping file: {}", e);
         return HttpResponse::InternalServerError().json(serde_json::json!({
@@ -231,15 +213,15 @@ async fn request_upload(
     );
 
     // Generate signed upload URL
-    match generate_upload_signed_url(
-        app_state.bucket_name.clone().unwrap().as_str(),
-        &file_name,
-        credentials,
-        Some(file_type.to_string()),
-        Duration::from_secs(3600), // 1 hour expiry
-        Some(*file_size),
-    )
-    .await
+    match app_state
+        .storage_provider
+        .generate_upload_signed_url(
+            &file_name,
+            Some(file_type.to_string()),
+            Duration::from_secs(3600), // 1 hour expiry
+            Some(*file_size),
+        )
+        .await
     {
         Ok(signed_url) => {
             // Increment rate limit counter after successful URL generation
@@ -347,11 +329,6 @@ mod tests {
 
         assert!(task_store.get_task(&task.id.to_string()).is_some());
 
-        if app_state.s3_credentials.is_none() {
-            println!("S3 credentials not configured");
-            return;
-        }
-
         let app =
             test::init_service(App::new().app_data(app_state.clone()).service(
                 web::scope("/storage").route("/request-upload", post().to(request_upload)),
@@ -383,11 +360,6 @@ mod tests {
     #[actix_web::test]
     async fn test_request_upload_invalid_task() {
         let app_state = create_test_app_state().await;
-
-        if app_state.s3_credentials.is_none() {
-            println!("S3 credentials not configured");
-            return;
-        }
 
         let app =
             test::init_service(App::new().app_data(app_state.clone()).service(
@@ -473,11 +445,6 @@ mod tests {
         task_store.add_task(task.clone());
 
         assert!(task_store.get_task(&task.id.to_string()).is_some());
-
-        if app_state.s3_credentials.is_none() {
-            println!("S3 credentials not configured");
-            return;
-        }
 
         let app =
             test::init_service(App::new().app_data(app_state.clone()).service(
@@ -606,11 +573,6 @@ mod tests {
         task_store.add_task(task.clone());
 
         assert!(task_store.get_task(&task.id.to_string()).is_some());
-
-        if app_state.s3_credentials.is_none() {
-            println!("S3 credentials not configured");
-            return;
-        }
 
         let app =
             test::init_service(App::new().app_data(app_state.clone()).service(

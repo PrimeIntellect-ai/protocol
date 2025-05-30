@@ -84,3 +84,11 @@ spec:
             - name: POOL_ID
               value: "{{ .Values.computePoolId }}"
             {{- end }}
+            {{- if .Values.env.USE_GROUPING }}
+            - name: USE_GROUPING
+              value: "{{ .Values.env.USE_GROUPING }}"
+            {{- end }}
+            {{- if .Values.env.DISABLE_TOPLOC_INVALIDATION }}
+            - name: DISABLE_TOPLOC_INVALIDATION
+              value: "{{ .Values.env.DISABLE_TOPLOC_INVALIDATION }}"
+            {{- end }}

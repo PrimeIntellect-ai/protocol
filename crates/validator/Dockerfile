@@ -17,7 +17,9 @@ ENV TOPLOC_WORK_VALIDATION_INTERVAL="15"
 ENV TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS="120"
 ENV TOPLOC_CONFIGS=""
 ENV DISABLE_HARDWARE_VALIDATION="false"
+ENV DISABLE_TOPLOC_INVALIDATION="false"
 ENV VALIDATOR_PENALTY="1"
+ENV USE_GROUPING="false"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/validator \
@@ -25,13 +27,14 @@ exec /usr/local/bin/validator \
 --validator-key "$VALIDATOR_KEY" \
 --discovery-url "$DISCOVERY_URL" \
 $([ ! -z "$POOL_ID" ] && echo "--pool-id $POOL_ID") \
-$([ ! -z "$TOPLOC_CONFIGS" ] && echo "--toploc-configs $TOPLOC_CONFIGS") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 $([ ! -z "$REDIS_URL" ] && echo "--redis-url $REDIS_URL") \
 $([ ! -z "$TOPLOC_GRACE_INTERVAL" ] && echo "--toploc-grace-interval $TOPLOC_GRACE_INTERVAL") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_INTERVAL" ] && echo "--toploc-work-validation-interval $TOPLOC_WORK_VALIDATION_INTERVAL") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS" ] && echo "--toploc-work-validation-unknown-status-expiry-seconds $TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS") \
+$([ ! -z "$USE_GROUPING" ] && echo "--use-grouping $USE_GROUPING") \
+$([ ! -z "$DISABLE_TOPLOC_INVALIDATION" ] && echo "--disable-toploc-invalidation $DISABLE_TOPLOC_INVALIDATION") \
 $([ ! -z "$VALIDATOR_PENALTY" ] && echo "--validator-penalty $VALIDATOR_PENALTY") \
 $([ "$DISABLE_HARDWARE_VALIDATION" = "true" ] && echo "--disable-hardware-validation") \
 "$@"' > /entrypoint.sh && \
