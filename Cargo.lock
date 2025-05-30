@@ -7237,6 +7237,7 @@ dependencies = [
  "nalgebra",
  "rand 0.9.1",
  "redis",
+ "regex",
  "serde",
  "serde_json",
  "tokio",

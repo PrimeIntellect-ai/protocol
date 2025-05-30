@@ -113,11 +113,11 @@ async fn request_upload(
                 match plugin.get_node_group(address) {
                     Ok(Some(group)) => {
                         group_id = Some(group.id.clone());
-                        file_name = file_name.replace("${node_group_id}", &group.id);
+                        file_name = file_name.replace("${NODE_GROUP_ID}", &group.id);
                         file_name =
-                            file_name.replace("${node_group_size}", &group.nodes.len().to_string());
+                            file_name.replace("${NODE_GROUP_SIZE}", &group.nodes.len().to_string());
                         let idx = plugin.get_idx_in_group(&group, address).unwrap();
-                        file_name = file_name.replace("${node_group_index}", &idx.to_string());
+                        file_name = file_name.replace("${NODE_GROUP_INDEX}", &idx.to_string());
                     }
                     Ok(None) => {
                         log::warn!(
@@ -174,11 +174,11 @@ async fn request_upload(
     };
     let file_number = upload_count.saturating_sub(1);
 
-    if file_name.contains("${upload_count}") {
-        file_name = file_name.replace("${upload_count}", &upload_count.to_string());
+    if file_name.contains("${TOTAL_UPLOAD_COUNT_AFTER}") {
+        file_name = file_name.replace("${TOTAL_UPLOAD_COUNT_AFTER}", &upload_count.to_string());
     }
-    if file_name.contains("${file_number}") {
-        file_name = file_name.replace("${file_number}", &file_number.to_string());
+    if file_name.contains("${CURRENT_FILE_INDEX}") {
+        file_name = file_name.replace("${CURRENT_FILE_INDEX}", &file_number.to_string());
     }
 
     let file_size = &request_upload.file_size;
@@ -287,7 +287,7 @@ pub fn storage_routes() -> Scope {
 
 fn generate_file_name(template: &str, original_name: &str) -> String {
     let mut file_name = template.to_string();
-    file_name = file_name.replace("${original_name}", original_name);
+    file_name = file_name.replace("${ORIGINAL_NAME}", original_name);
     file_name
 }
 
@@ -308,7 +308,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_file_name() {
-        let template = "test/${original_name}";
+        let template = "test/${ORIGINAL_NAME}";
         let original_name = "test";
         let file_name = generate_file_name(template, original_name);
         assert_eq!(file_name, "test/test");
@@ -323,7 +323,7 @@ mod tests {
             image: "test-image".to_string(),
             name: "test-task".to_string(),
             storage_config: Some(StorageConfig {
-                file_name_template: Some("model_123/user_uploads/${original_name}".to_string()),
+                file_name_template: Some("model_123/user_uploads/${ORIGINAL_NAME}".to_string()),
             }),
             ..Default::default()
         };
@@ -439,7 +439,7 @@ mod tests {
             name: "test-task".to_string(),
             storage_config: Some(StorageConfig {
                 file_name_template: Some(
-                    "model_xyz/dataset_1/${node_group_id}-${node_group_size}-${node_group_index}-${upload_count}-${file_number}.parquet".to_string(),
+                    "model_xyz/dataset_1/${NODE_GROUP_ID}-${NODE_GROUP_SIZE}-${NODE_GROUP_INDEX}-${TOTAL_UPLOAD_COUNT_AFTER}-${CURRENT_FILE_INDEX}.parquet".to_string(),
                 ),
             }),
             ..Default::default()
@@ -572,7 +572,8 @@ mod tests {
             name: "test-task".to_string(),
             storage_config: Some(StorageConfig {
                 file_name_template: Some(
-                    "model_xyz/dataset_1/${upload_count}-${file_number}.parquet".to_string(),
+                    "model_xyz/dataset_1/${TOTAL_UPLOAD_COUNT_AFTER}-${CURRENT_FILE_INDEX}.parquet"
+                        .to_string(),
                 ),
             }),
             ..Default::default()

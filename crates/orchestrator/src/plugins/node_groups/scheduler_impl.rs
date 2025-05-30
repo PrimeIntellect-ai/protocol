@@ -99,7 +99,7 @@ impl SchedulerPlugin for NodeGroupsPlugin {
 
                 // Temporary hack to get the upload count
                 let pattern = format!("upload:{}:{}:*", node_address, group.id);
-                let upload_count = match self.store.client.get_connection() {
+                let total_upload_count = match self.store.client.get_connection() {
                     Ok(mut conn) => {
                         let mut keys: Vec<String> = Vec::new();
                         match conn.scan_match(&pattern) {
@@ -121,7 +121,10 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                     }
                 };
                 // File number starts with 0 for the first file, while filecount is at 1
-                let file_number = upload_count.parse::<u32>().unwrap_or(0).saturating_sub(1);
+                let last_file_idx = total_upload_count
+                    .parse::<u32>()
+                    .unwrap_or(0)
+                    .saturating_sub(1);
 
                 let mut env_vars = task_clone.env_vars.unwrap_or_default();
                 env_vars.insert("GROUP_INDEX".to_string(), idx.to_string());
@@ -131,8 +134,8 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                         .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
                         .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
                         .replace("${GROUP_ID}", &group.id)
-                        .replace("${UPLOAD_COUNT}", &upload_count.to_string())
-                        .replace("${FILE_NUMBER}", &file_number.to_string());
+                        .replace("${TOTAL_UPLOAD_COUNT}", &total_upload_count.to_string())
+                        .replace("${LAST_FILE_IDX}", &last_file_idx.to_string());
 
                     *value = new_value;
                 }
@@ -144,8 +147,8 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                                 .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
                                 .replace("${NEXT_P2P_ADDRESS}", &next_p2p_id)
                                 .replace("${GROUP_ID}", &group.id)
-                                .replace("${UPLOAD_COUNT}", &upload_count.to_string())
-                                .replace("${FILE_NUMBER}", &file_number.to_string())
+                                .replace("${TOTAL_UPLOAD_COUNT}", &total_upload_count.to_string())
+                                .replace("${LAST_FILE_IDX}", &last_file_idx.to_string())
                         })
                         .collect::<Vec<String>>()
                 });

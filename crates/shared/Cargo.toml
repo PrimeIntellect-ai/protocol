@@ -32,3 +32,4 @@ google-cloud-storage = "0.24.0"
 base64 = "0.22.1"
 chrono = { workspace = true, features = ["serde"] }
 async-trait = "0.1.88"
+regex = "1.11.1"
