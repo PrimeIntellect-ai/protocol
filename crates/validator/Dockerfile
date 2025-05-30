@@ -33,8 +33,8 @@ $([ ! -z "$REDIS_URL" ] && echo "--redis-url $REDIS_URL") \
 $([ ! -z "$TOPLOC_GRACE_INTERVAL" ] && echo "--toploc-grace-interval $TOPLOC_GRACE_INTERVAL") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_INTERVAL" ] && echo "--toploc-work-validation-interval $TOPLOC_WORK_VALIDATION_INTERVAL") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS" ] && echo "--toploc-work-validation-unknown-status-expiry-seconds $TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS") \
-$([ ! -z "$USE_GROUPING" ] && echo "--use-grouping $USE_GROUPING") \
-$([ ! -z "$DISABLE_TOPLOC_INVALIDATION" ] && echo "--disable-toploc-invalidation $DISABLE_TOPLOC_INVALIDATION") \
+$([ ! -z "$USE_GROUPING" ] && echo "--use-grouping") \
+$([ ! -z "$DISABLE_TOPLOC_INVALIDATION" ] && echo "--disable-toploc-invalidation") \
 $([ ! -z "$VALIDATOR_PENALTY" ] && echo "--validator-penalty $VALIDATOR_PENALTY") \
 $([ "$DISABLE_HARDWARE_VALIDATION" = "true" ] && echo "--disable-hardware-validation") \
 "$@"' > /entrypoint.sh && \
