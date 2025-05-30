@@ -401,6 +401,7 @@ async fn test_group_scheduling() {
     env_vars.insert("WORLD_SIZE".to_string(), "${GROUP_SIZE}".to_string());
     env_vars.insert("GROUP_ID".to_string(), "${GROUP_ID}".to_string());
     env_vars.insert("UPLOAD_COUNT".to_string(), "${UPLOAD_COUNT}".to_string());
+    env_vars.insert("FILE_NUMBER".to_string(), "${FILE_NUMBER}".to_string());
 
     let task1 = Task {
         id: Uuid::new_v4(),
@@ -419,6 +420,8 @@ async fn test_group_scheduling() {
             "${GROUP_ID}".to_string(),
             "--upload-count".to_string(),
             "${UPLOAD_COUNT}".to_string(),
+            "--file-number".to_string(),
+            "${FILE_NUMBER}".to_string(),
         ]),
         state: TaskState::PENDING,
         created_at: 0,
@@ -469,6 +472,7 @@ async fn test_group_scheduling() {
     assert_eq!(task_node_1.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
     assert_ne!(env_vars_1.get("GROUP_ID").unwrap(), "${GROUP_ID}");
     assert_eq!(env_vars_1.get("UPLOAD_COUNT").unwrap(), "1");
+    assert_eq!(env_vars_1.get("FILE_NUMBER").unwrap(), "0");
     assert_eq!(task_node_1.args.as_ref().unwrap()[9], "1"); // Check upload count in args
 
     assert_eq!(filtered_tasks_2.len(), 1);
@@ -480,6 +484,7 @@ async fn test_group_scheduling() {
     assert_eq!(task_node_2.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
     assert_ne!(env_vars_2.get("GROUP_ID").unwrap(), "${GROUP_ID}");
     assert_eq!(env_vars_2.get("UPLOAD_COUNT").unwrap(), "0");
+    assert_eq!(env_vars_2.get("FILE_NUMBER").unwrap(), "0");
     assert_eq!(task_node_2.args.as_ref().unwrap()[9], "0"); // Check upload count in args
 
     assert_eq!(task_node_1.id, task_node_2.id);
