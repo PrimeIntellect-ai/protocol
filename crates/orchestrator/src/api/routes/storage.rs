@@ -172,9 +172,13 @@ async fn request_upload(
             0
         }
     };
+    let file_number = upload_count.saturating_sub(1);
 
     if file_name.contains("${upload_count}") {
         file_name = file_name.replace("${upload_count}", &upload_count.to_string());
+    }
+    if file_name.contains("${file_number}") {
+        file_name = file_name.replace("${file_number}", &file_number.to_string());
     }
 
     let file_size = &request_upload.file_size;
@@ -435,7 +439,7 @@ mod tests {
             name: "test-task".to_string(),
             storage_config: Some(StorageConfig {
                 file_name_template: Some(
-                    "model_xyz/dataset_1/${node_group_id}-${node_group_size}-${node_group_index}-${upload_count}.parquet".to_string(),
+                    "model_xyz/dataset_1/${node_group_id}-${node_group_size}-${node_group_index}-${upload_count}-${file_number}.parquet".to_string(),
                 ),
             }),
             ..Default::default()
@@ -472,11 +476,12 @@ mod tests {
         assert_eq!(
             json["file_name"],
             serde_json::Value::String(format!(
-                "model_xyz/dataset_1/{}-{}-{}-{}.parquet",
+                "model_xyz/dataset_1/{}-{}-{}-{}-{}.parquet",
                 group.id,
                 group.nodes.len(),
                 0,
-                1
+                1,
+                0
             ))
         );
 
@@ -500,11 +505,12 @@ mod tests {
         assert_eq!(
             json["file_name"],
             serde_json::Value::String(format!(
-                "model_xyz/dataset_1/{}-{}-{}-{}.parquet",
+                "model_xyz/dataset_1/{}-{}-{}-{}-{}.parquet",
                 group.id,
                 group.nodes.len(),
                 0,
-                1
+                1,
+                0
             ))
         );
 
@@ -528,11 +534,12 @@ mod tests {
         assert_eq!(
             json["file_name"],
             serde_json::Value::String(format!(
-                "model_xyz/dataset_1/{}-{}-{}-{}.parquet",
+                "model_xyz/dataset_1/{}-{}-{}-{}-{}.parquet",
                 group.id,
                 group.nodes.len(),
                 0,
-                2
+                2,
+                1
             ))
         );
     }
@@ -564,7 +571,7 @@ mod tests {
             image: "test-image".to_string(),
             name: "test-task".to_string(),
             storage_config: Some(StorageConfig {
-                file_name_template: Some("model_xyz/dataset_1/${upload_count}.parquet".to_string()),
+                file_name_template: Some("model_xyz/dataset_1/${upload_count}-${file_number}.parquet".to_string()),
             }),
             ..Default::default()
         };
@@ -597,9 +604,12 @@ mod tests {
         let body = test::read_body(resp).await;
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["success"], serde_json::Value::Bool(true));
+
+        // As defined in the storage template: model_xyz/dataset_1/${upload_count}-${file_number}.parquet
+        // Upload count var is 1 while file number is 0
         assert_eq!(
             json["file_name"],
-            serde_json::Value::String("model_xyz/dataset_1/1.parquet".to_string())
+            serde_json::Value::String("model_xyz/dataset_1/1-0.parquet".to_string())
         );
 
         // Second request with same file name - should not increment count
@@ -619,9 +629,11 @@ mod tests {
         let body = test::read_body(resp).await;
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["success"], serde_json::Value::Bool(true));
+
+        // Upload count var is 1 while file number is 0
         assert_eq!(
             json["file_name"],
-            serde_json::Value::String("model_xyz/dataset_1/1.parquet".to_string())
+            serde_json::Value::String("model_xyz/dataset_1/1-0.parquet".to_string())
         );
 
         // Third request with different file name - should increment count
@@ -643,7 +655,7 @@ mod tests {
         assert_eq!(json["success"], serde_json::Value::Bool(true));
         assert_eq!(
             json["file_name"],
-            serde_json::Value::String("model_xyz/dataset_1/2.parquet".to_string())
+            serde_json::Value::String("model_xyz/dataset_1/2-1.parquet".to_string())
         );
     }
 }

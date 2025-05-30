@@ -92,6 +92,7 @@ struct GroupInformation {
     /// The group size from the filename
     group_size: u32,
     /// The file number from the filename
+    /// This is not the file upload count! The first file starts with 0
     file_number: u32,
     /// The index number from the filename
     idx: String,
@@ -102,7 +103,7 @@ impl FromStr for GroupInformation {
     /// Parse a filename into GroupInformation
     /// Expected format: "prefix-groupid-groupsize-filenumber-idx.parquet"
     fn from_str(file_name: &str) -> Result<Self, Self::Err> {
-        let re = regex::Regex::new(r".*?-(\d+)-(\d+)-(\d+)-(\d+)(\.[^.]+)$")
+        let re = regex::Regex::new(r".*?-([0-9a-fA-F]+)-(\d+)-(\d+)-(\d+)(\.[^.]+)$")
             .map_err(|e| Error::msg(format!("Failed to compile regex: {}", e)))?;
 
         let caps = re
@@ -497,9 +498,13 @@ impl SyntheticDataValidator {
     async fn get_group(&self, work_key: &str) -> Result<Option<ToplocGroup>, Error> {
         let group_key = match self.build_group_for_key(work_key).await {
             Ok(key) => key,
-            Err(_) => return Ok(None),
+            Err(e) => {
+                error!("Failed to build group key for work key {}: {}", work_key, e);
+                return Ok(None);
+            }
         };
         let ready_for_validation = self.is_group_ready_for_validation(&group_key).await?;
+        debug!("Group for key {:?} ready for validation: {:?}", work_key, ready_for_validation);
         if ready_for_validation {
             let mut redis: redis::Connection = self.redis_store.client.get_connection()?;
             let group_entries: HashMap<String, String> = redis.hgetall(&group_key)?;
@@ -617,9 +622,13 @@ impl SyntheticDataValidator {
                 Some(_) | None => {
                     // Needs triggering (covers Pending, Invalidated, and None cases)
                     if self.with_node_grouping {
+                        debug!("Checking group for work key: {:?}", work_key);
                         let check_group = self.get_group(&work_key).await?;
                         if let Some(group) = check_group {
+                            debug!("Group found for work key: {:?}", work_key);
                             group_trigger_tasks.push(group);
+                        } else {
+                            debug!("Could not build a final group for work key: {:?}", work_key);
                         }
                     } else {
                         single_trigger_tasks.push((work_key.clone(), work_info));
@@ -1129,22 +1138,22 @@ mod tests {
 
         let mock_storage = MockStorageProvider::new();
         mock_storage.add_file(
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-9-1.parquet", group_id),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", group_id),
             "file1",
         );
         mock_storage.add_mapping_file(
             file_sha,
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-9-1.parquet", group_id),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", group_id),
         );
         server
             .mock(
                 "POST",
-                "/validategroup/dataset/samplingn-3450756714426841564-1-9.parquet",
+                "/validategroup/dataset/samplingn-3450756714426841564-1-0.parquet",
             )
             .match_body(mockito::Matcher::Json(serde_json::json!({
                 "file_shas": [file_sha],
                 "group_id": group_id,
-                "file_number": 9,
+                "file_number": 0,
                 "group_size": 1
             })))
             .with_status(200)
@@ -1153,7 +1162,7 @@ mod tests {
         server
             .mock(
                 "GET",
-                "/statusgroup/dataset/samplingn-3450756714426841564-1-9.parquet",
+                "/statusgroup/dataset/samplingn-3450756714426841564-1-0.parquet",
             )
             .with_status(200)
             .with_body(r#"{"status": "accept"}"#)
@@ -1201,7 +1210,7 @@ mod tests {
         let group = group.unwrap();
         assert_eq!(group.group_id, group_id);
         assert_eq!(group.group_size, 1);
-        assert_eq!(group.file_number, 9);
+        assert_eq!(group.file_number, 0);
 
         let result = validator.process_group_task(group).await;
         assert!(result.is_ok());
@@ -1300,6 +1309,14 @@ mod tests {
             .await?;
         assert!(work_info.is_none(), "Work should be invalidated");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_group_information_from_prod_string() -> Result<(), Error> {
+        let file = "Qwen/Qwen3-14B/PrimeIntellect/INTELLECT-2-RL-Dataset/1-d4eb155339fc64e-1-20-0.parquet";
+        let group_info = GroupInformation::from_str(file)?;
+        println!("group_info: {:?}", group_info);
         Ok(())
     }
 }
