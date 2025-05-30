@@ -244,6 +244,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         std::process::exit(1);
                     }
                 };
+                info!("Toploc configs: {}", toploc_configs);
 
                 let configs = match serde_json::from_str(&toploc_configs) {
                     Ok(configs) => configs,
