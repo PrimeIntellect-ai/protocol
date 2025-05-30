@@ -93,9 +93,41 @@ pub struct StorageConfig {
     pub file_name_template: Option<String>,
 }
 
-impl From<TaskRequest> for Task {
-    fn from(request: TaskRequest) -> Self {
-        Task {
+impl StorageConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(template) = &self.file_name_template {
+            let valid_vars = [
+                "${ORIGINAL_NAME}",
+                "${NODE_GROUP_ID}",
+                "${NODE_GROUP_SIZE}",
+                "${NODE_GROUP_INDEX}",
+                "${TOTAL_UPLOAD_COUNT_AFTER}",
+                "${CURRENT_FILE_INDEX}",
+            ];
+
+            let re = regex::Regex::new(r"\$\{[^}]+\}").unwrap();
+            for cap in re.find_iter(template) {
+                let var = cap.as_str();
+                if !valid_vars.contains(&var) {
+                    return Err(format!(
+                        "Storage config template contains invalid variable: {}",
+                        var
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+impl TryFrom<TaskRequest> for Task {
+    type Error = String;
+
+    fn try_from(request: TaskRequest) -> Result<Self, Self::Error> {
+        if let Some(storage_config) = &request.storage_config {
+            storage_config.validate()?;
+        }
+
+        Ok(Task {
             id: Uuid::new_v4(),
             image: request.image,
             name: request.name,
@@ -107,7 +139,7 @@ impl From<TaskRequest> for Task {
             updated_at: None,
             scheduling_config: request.scheduling_config,
             storage_config: request.storage_config,
-        }
+        })
     }
 }
 

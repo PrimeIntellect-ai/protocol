@@ -141,7 +141,11 @@ mod tests {
             name: "test".to_string(),
             ..Default::default()
         };
-        app_state.store_context.task_store.add_task(task.into());
+        let task = match task.try_into() {
+            Ok(task) => task,
+            Err(e) => panic!("Failed to convert TaskRequest to Task: {}", e),
+        };
+        app_state.store_context.task_store.add_task(task);
 
         let req = test::TestRequest::post()
             .uri("/heartbeat")
