@@ -458,7 +458,7 @@ async fn test_group_scheduling() {
         async { plugin.filter_tasks(&tasks_clone, &node2.address) }
     );
 
-        // Check both nodes get assigned valid and different indexes
+    // Check both nodes get assigned valid and different indexes
     // Also ensure both nodes get the same task
     assert_eq!(filtered_tasks_1.len(), 1);
     let task_node_1 = &filtered_tasks_1[0];
