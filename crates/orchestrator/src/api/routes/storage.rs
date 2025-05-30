@@ -571,7 +571,9 @@ mod tests {
             image: "test-image".to_string(),
             name: "test-task".to_string(),
             storage_config: Some(StorageConfig {
-                file_name_template: Some("model_xyz/dataset_1/${upload_count}-${file_number}.parquet".to_string()),
+                file_name_template: Some(
+                    "model_xyz/dataset_1/${upload_count}-${file_number}.parquet".to_string(),
+                ),
             }),
             ..Default::default()
         };

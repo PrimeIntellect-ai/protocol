@@ -504,7 +504,10 @@ impl SyntheticDataValidator {
             }
         };
         let ready_for_validation = self.is_group_ready_for_validation(&group_key).await?;
-        debug!("Group for key {:?} ready for validation: {:?}", work_key, ready_for_validation);
+        debug!(
+            "Group for key {:?} ready for validation: {:?}",
+            work_key, ready_for_validation
+        );
         if ready_for_validation {
             let mut redis: redis::Connection = self.redis_store.client.get_connection()?;
             let group_entries: HashMap<String, String> = redis.hgetall(&group_key)?;
@@ -1314,7 +1317,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_group_information_from_prod_string() -> Result<(), Error> {
-        let file = "Qwen/Qwen3-14B/PrimeIntellect/INTELLECT-2-RL-Dataset/1-d4eb155339fc64e-1-20-0.parquet";
+        let file =
+            "Qwen/Qwen3-14B/PrimeIntellect/INTELLECT-2-RL-Dataset/1-d4eb155339fc64e-1-20-0.parquet";
         let group_info = GroupInformation::from_str(file)?;
         println!("group_info: {:?}", group_info);
         Ok(())
