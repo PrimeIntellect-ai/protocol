@@ -274,7 +274,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     args.toploc_work_validation_unknown_status_expiry_seconds,
                     args.toploc_grace_interval,
                     args.use_grouping,
-                    !args.disable_toploc_invalidation,
+                    args.disable_toploc_invalidation,
                 ))
             }
             None => {
