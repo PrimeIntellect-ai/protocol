@@ -1346,3 +1346,134 @@ async fn test_task_observer() {
     println!("Group 3: {:?}", group_3);
     assert!(group_3.is_none());
 }
+
+#[tokio::test]
+async fn test_building_largest_possible_groups() {
+    let store = Arc::new(RedisStore::new_test());
+    let context_store = store.clone();
+    let store_context = Arc::new(StoreContext::new(context_store));
+
+    let plugin_store = store.clone();
+    let plugin_store_context = store_context.clone();
+
+    // Create configurations with different group sizes
+    let config_small = NodeGroupConfiguration {
+        name: "test-config-small".to_string(),
+        min_group_size: 1,
+        max_group_size: 1,
+        compute_requirements: None,
+    };
+    let config_medium = NodeGroupConfiguration {
+        name: "test-config-medium".to_string(),
+        min_group_size: 2,
+        max_group_size: 2,
+        compute_requirements: None,
+    };
+    let config_large = NodeGroupConfiguration {
+        name: "test-config-large".to_string(),
+        min_group_size: 3,
+        max_group_size: 3,
+        compute_requirements: None,
+    };
+
+    let plugin = NodeGroupsPlugin::new(
+        vec![config_small, config_medium, config_large],
+        plugin_store,
+        plugin_store_context,
+    );
+
+    // Create and add 3 nodes
+    let node1 = create_test_node(
+        "0x1234567890123456789012345678901234567890",
+        NodeStatus::Healthy,
+        None,
+    );
+    let node2 = create_test_node(
+        "0x2234567890123456789012345678901234567890",
+        NodeStatus::Healthy,
+        None,
+    );
+    let node3 = create_test_node(
+        "0x3234567890123456789012345678901234567890",
+        NodeStatus::Healthy,
+        None,
+    );
+
+    plugin.store_context.node_store.add_node(node1.clone());
+    plugin.store_context.node_store.add_node(node2.clone());
+    plugin.store_context.node_store.add_node(node3.clone());
+
+    // Make all nodes healthy
+    let _ = plugin
+        .handle_status_change(&node1, &NodeStatus::Healthy)
+        .await;
+    let _ = plugin
+        .handle_status_change(&node2, &NodeStatus::Healthy)
+        .await;
+    let _ = plugin
+        .handle_status_change(&node3, &NodeStatus::Healthy)
+        .await;
+
+    // Create a task that can use any configuration
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec![
+                        "test-config-small".to_string(),
+                        "test-config-medium".to_string(),
+                        "test-config-large".to_string(),
+                    ],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+
+    plugin.store_context.task_store.add_task(task.clone());
+
+    // Verify that nodes are assigned to the largest possible group
+    let group1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
+    let group2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
+    let group3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
+
+    assert!(group1.is_some(), "Node1 should be in a group");
+    assert!(group2.is_some(), "Node2 should be in a group");
+    assert!(group3.is_some(), "Node3 should be in a group");
+    let g2_clone = group2.unwrap().clone();
+    assert_eq!(
+        group1.unwrap().id,
+        g2_clone.id,
+        "Nodes 1 and 2 should be in the same group"
+    );
+    assert_eq!(
+        g2_clone.id,
+        group3.unwrap().id,
+        "Nodes 2 and 3 should be in the same group"
+    );
+
+    plugin
+        .store_context
+        .task_store
+        .delete_task(task.id.to_string());
+
+    // Verify nodes are removed from groups after task deletion
+    let group1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
+    let group2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
+    let group3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
+
+    assert!(
+        group1.is_none(),
+        "Node1 should not be in a group after task deletion"
+    );
+    assert!(
+        group2.is_none(),
+        "Node2 should not be in a group after task deletion"
+    );
+    assert!(
+        group3.is_none(),
+        "Node3 should not be in a group after task deletion"
+    );
+}

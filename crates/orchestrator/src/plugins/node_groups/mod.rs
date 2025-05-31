@@ -134,7 +134,9 @@ impl NodeGroupsPlugin {
             Err(_) => return vec![],
         };
 
-        let available_configs: HashSet<String> = conn.smembers("available_node_group_configs").unwrap_or_default();
+        let available_configs: HashSet<String> = conn
+            .smembers("available_node_group_configs")
+            .unwrap_or_default();
 
         self.configuration_templates
             .iter()
