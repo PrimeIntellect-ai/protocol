@@ -104,6 +104,19 @@ async fn test_group_formation_and_dissolution() {
     };
 
     let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
 
     // Add first healthy node
     let node1 = create_test_node(
@@ -177,6 +190,19 @@ async fn test_group_formation_with_multiple_configs() {
     };
 
     let plugin = NodeGroupsPlugin::new(vec![config_s, config_xs], store.clone(), store_context);
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config-s".to_string(), "test-config-xs".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
 
     // Add first healthy node
     let node1 = create_test_node(
@@ -252,7 +278,19 @@ async fn test_group_formation_with_requirements_and_single_node() {
     };
 
     let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
-
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config-with-requirements".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
         NodeStatus::Healthy,
@@ -306,6 +344,19 @@ async fn test_group_formation_with_requirements_and_multiple_nodes() {
     };
 
     let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config-with-requirements".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
 
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
@@ -382,6 +433,21 @@ async fn test_group_scheduling() {
     };
 
     let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
+
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
+
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
         NodeStatus::Healthy,
@@ -548,6 +614,19 @@ async fn test_group_formation_with_max_size() {
         compute_requirements: None,
     };
     let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
 
     // Create three healthy nodes
     let node1 = create_test_node(
@@ -768,6 +847,20 @@ async fn test_node_cannot_be_in_multiple_groups() {
     plugin.store_context.node_store.add_node(node2.clone());
     plugin.store_context.node_store.add_node(node3.clone());
 
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
+
     // Add nodes to groups through the normal flow
     let _ = plugin
         .handle_status_change(&node1, &NodeStatus::Healthy)
@@ -935,6 +1028,19 @@ async fn test_reformation_on_death() {
         compute_requirements: None,
     };
     let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
 
     let all_nodes = plugin.store_context.node_store.get_nodes();
     assert_eq!(all_nodes.len(), 0, "No nodes should be in the store");
@@ -1126,4 +1232,117 @@ async fn test_get_idx_in_group_not_found() {
 
     let result = plugin.get_idx_in_group(&group, "0x2234567890123456789012345678901234567890");
     assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_task_observer() {
+    let store = Arc::new(RedisStore::new_test());
+    let context_store = store.clone();
+    let store_context = Arc::new(StoreContext::new(context_store));
+
+    let plugin_store = store.clone();
+    let plugin_store_context = store_context.clone();
+    let node_group_config = NodeGroupConfiguration {
+        name: "test-config".to_string(),
+        min_group_size: 1,
+        max_group_size: 1,
+        compute_requirements: None,
+    };
+    let plugin = NodeGroupsPlugin::new(vec![node_group_config], plugin_store, plugin_store_context);
+
+    let node = create_test_node(
+        "0x1234567890123456789012345678901234567890",
+        NodeStatus::Healthy,
+        None,
+    );
+    plugin.store_context.node_store.add_node(node.clone());
+    let node2 = create_test_node(
+        "0x2234567890123456789012345678901234567890",
+        NodeStatus::Healthy,
+        None,
+    );
+    plugin.store_context.node_store.add_node(node2.clone());
+
+    let _ = plugin
+        .handle_status_change(&node, &NodeStatus::Healthy)
+        .await;
+    let _ = plugin
+        .handle_status_change(&node2, &NodeStatus::Healthy)
+        .await;
+
+    let group = plugin.get_node_group(&node.address.to_string()).unwrap();
+    assert!(group.is_none());
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    let task2 = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config".to_string(), "test-config2".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    store_context.task_store.add_task(task.clone());
+    store_context.task_store.add_task(task2.clone());
+    let all_tasks = store_context.task_store.get_all_tasks();
+    println!("All tasks: {:?}", all_tasks);
+    assert_eq!(all_tasks.len(), 2);
+    assert!(all_tasks[0].id != all_tasks[1].id);
+    let topologies = plugin.get_task_topologies(&task).unwrap();
+    assert_eq!(topologies.len(), 1);
+    assert_eq!(topologies[0], "test-config");
+    let topologies = plugin.get_task_topologies(&task2).unwrap();
+    assert_eq!(topologies.len(), 2);
+    assert_eq!(topologies[0], "test-config");
+    assert_eq!(topologies[1], "test-config2");
+
+    let available_configs = plugin.get_available_configurations();
+    assert_eq!(available_configs.len(), 1);
+    assert_eq!(available_configs[0].name, "test-config");
+    let group = plugin.get_node_group(&node.address.to_string()).unwrap();
+    let group_2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
+    assert!(group.is_some());
+    assert!(group_2.is_some());
+    assert_ne!(group.unwrap().id, group_2.unwrap().id);
+
+    let node_3 = create_test_node(
+        "0x3234567890123456789012345678901234567890",
+        NodeStatus::Healthy,
+        None,
+    );
+    plugin.store_context.node_store.add_node(node_3.clone());
+
+    let _ = plugin
+        .handle_status_change(&node_3, &NodeStatus::Healthy)
+        .await;
+
+    let group_3 = plugin.get_node_group(&node_3.address.to_string()).unwrap();
+    assert!(group_3.is_some());
+    let all_tasks = store_context.task_store.get_all_tasks();
+    println!("All tasks: {:?}", all_tasks);
+    assert_eq!(all_tasks.len(), 2);
+    store_context.task_store.delete_task(task.id.to_string());
+
+    let group_3 = plugin.get_node_group(&node_3.address.to_string()).unwrap();
+    println!("Group 3: {:?}", group_3);
+    assert!(group_3.is_some());
+    store_context.task_store.delete_task(task2.id.to_string());
+
+    let group_3 = plugin.get_node_group(&node_3.address.to_string()).unwrap();
+    println!("Group 3: {:?}", group_3);
+    assert!(group_3.is_none());
 }

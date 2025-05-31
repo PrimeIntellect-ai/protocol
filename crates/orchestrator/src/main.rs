@@ -1,5 +1,6 @@
 mod api;
 mod discovery;
+mod events;
 mod models;
 mod node;
 mod plugins;
@@ -186,7 +187,6 @@ async fn main() -> Result<()> {
             return Ok(());
         }
     };
-
     let group_store_context = store_context.clone();
     let mut scheduler_plugins: Vec<Box<dyn SchedulerPlugin>> = Vec::new();
     let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
@@ -198,7 +198,7 @@ async fn main() -> Result<()> {
             Ok(configs) if !configs.is_empty() => {
                 println!("configs for node groups: {:?}", configs);
                 let group_plugin =
-                    NodeGroupsPlugin::new(configs, store.clone(), group_store_context);
+                    NodeGroupsPlugin::new(configs, store.clone(), group_store_context.clone());
                 let status_group_plugin = group_plugin.clone();
                 let group_plugin_for_server = group_plugin.clone();
                 node_groups_plugin = Some(Arc::new(group_plugin_for_server));
