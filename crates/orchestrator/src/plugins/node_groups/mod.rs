@@ -338,6 +338,11 @@ impl NodeGroupsPlugin {
         Ok(formed_groups)
     }
 
+    #[cfg(test)]
+    pub fn test_try_form_new_groups(&self) -> Result<Vec<NodeGroup>, Error> {
+        self.try_form_new_groups()
+    }
+
     pub async fn run_group_management_loop(&self, duration: u64) -> Result<(), Error> {
         let mut interval = tokio::time::interval(Duration::from_secs(duration));
 
