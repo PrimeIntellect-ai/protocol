@@ -1,5 +1,6 @@
 mod api;
 mod discovery;
+mod events;
 mod models;
 mod node;
 mod plugins;
@@ -112,6 +113,10 @@ struct Args {
     /// Webhook urls (comma-separated string)
     #[arg(long, default_value = "")]
     webhook_urls: Option<String>,
+
+    /// Node group management interval
+    #[arg(long, default_value = "10")]
+    node_group_management_interval: u64,
 }
 
 #[tokio::main]
@@ -186,7 +191,6 @@ async fn main() -> Result<()> {
             return Ok(());
         }
     };
-
     let group_store_context = store_context.clone();
     let mut scheduler_plugins: Vec<Box<dyn SchedulerPlugin>> = Vec::new();
     let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
@@ -196,14 +200,19 @@ async fn main() -> Result<()> {
     if let Ok(configs_json) = std::env::var("NODE_GROUP_CONFIGS") {
         match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&configs_json) {
             Ok(configs) if !configs.is_empty() => {
-                println!("configs for node groups: {:?}", configs);
-                let group_plugin =
-                    NodeGroupsPlugin::new(configs, store.clone(), group_store_context);
+                let node_groups_heartbeats = heartbeats.clone();
+                let group_plugin = NodeGroupsPlugin::new(
+                    configs,
+                    store.clone(),
+                    group_store_context.clone(),
+                    Some(node_groups_heartbeats.clone()),
+                );
                 let status_group_plugin = group_plugin.clone();
                 let group_plugin_for_server = group_plugin.clone();
                 node_groups_plugin = Some(Arc::new(group_plugin_for_server));
                 scheduler_plugins.push(Box::new(group_plugin));
                 status_update_plugins.push(Box::new(status_group_plugin));
+                info!("Node group plugin initialized",);
             }
             Ok(_) => {
                 info!(
@@ -223,6 +232,14 @@ async fn main() -> Result<()> {
 
     // Only spawn processor tasks if in ProcessorOnly or Full mode
     if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+        if let Some(group_plugin) = node_groups_plugin.clone() {
+            tasks.spawn(async move {
+                group_plugin
+                    .run_group_management_loop(args.node_group_management_interval)
+                    .await
+            });
+        }
+
         let discovery_store_context = store_context.clone();
         let discovery_heartbeats = heartbeats.clone();
         tasks.spawn(async move {

@@ -69,8 +69,9 @@ pub struct TaskRequest {
     pub storage_config: Option<StorageConfig>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Task {
+    #[serde(default = "Uuid::new_v4")]
     pub id: Uuid,
     pub image: String,
     pub name: String,
@@ -86,6 +87,24 @@ pub struct Task {
     pub scheduling_config: Option<SchedulingConfig>,
     #[serde(default)]
     pub storage_config: Option<StorageConfig>,
+}
+
+impl Default for Task {
+    fn default() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            image: String::new(),
+            name: String::new(),
+            env_vars: None,
+            command: None,
+            args: None,
+            state: TaskState::default(),
+            created_at: 0,
+            updated_at: None,
+            scheduling_config: None,
+            storage_config: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

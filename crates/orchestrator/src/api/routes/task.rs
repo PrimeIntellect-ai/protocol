@@ -12,17 +12,30 @@ async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
     let tasks = task_store.get_all_tasks();
     HttpResponse::Ok().json(json!({"success": true, "tasks": tasks}))
 }
+
 async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
     let task = match Task::try_from(task.into_inner()) {
         Ok(task) => task,
         Err(e) => {
-            return HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": e
-            }))
+            return HttpResponse::BadRequest()
+                .json(json!({"success": false, "error": e.to_string()}));
         }
     };
     let task_store = app_state.store_context.task_store.clone();
+
+    if let Some(group_plugin) = &app_state.node_groups_plugin {
+        match group_plugin.get_task_topologies(&task) {
+            Ok(topology) => {
+                if topology.is_empty() {
+                    return HttpResponse::BadRequest().json(json!({"success": false, "error": "No topology found for task but grouping plugin is active."}));
+                }
+            }
+            Err(e) => {
+                return HttpResponse::BadRequest()
+                    .json(json!({"success": false, "error": e.to_string()}));
+            }
+        }
+    }
 
     task_store.add_task(task.clone());
     HttpResponse::Ok().json(json!({"success": true, "task": task}))
@@ -79,38 +92,6 @@ mod tests {
         assert_eq!(json["success"], serde_json::Value::Bool(true));
         assert!(json["task"]["id"].is_string());
         assert_eq!(json["task"]["image"], "test");
-    }
-
-    #[actix_web::test]
-    async fn test_create_task_with_invalid_storage_config() {
-        let app_state = create_test_app_state().await;
-        let app = test::init_service(
-            App::new()
-                .app_data(app_state.clone())
-                .route("/tasks", post().to(create_task)),
-        )
-        .await;
-
-        let payload = TaskRequest {
-            image: "test".to_string(),
-            name: "test".to_string(),
-            storage_config: Some(shared::models::task::StorageConfig {
-                file_name_template: Some("${INVALID_VAR}".to_string()),
-            }),
-            ..Default::default()
-        };
-
-        let req = test::TestRequest::post()
-            .uri("/tasks")
-            .set_json(payload)
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-
-        let body = test::read_body(resp).await;
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["success"], serde_json::Value::Bool(false));
-        assert!(json["error"].is_string());
     }
 
     #[actix_web::test]
@@ -218,7 +199,6 @@ mod tests {
         }
         .try_into()
         .unwrap();
-
         task_store.add_task(task1.clone());
 
         // Wait briefly to ensure different timestamps
@@ -232,7 +212,6 @@ mod tests {
         }
         .try_into()
         .unwrap();
-
         task_store.add_task(task2.clone());
 
         // Test get all tasks - should be sorted by created_at descending

@@ -294,6 +294,8 @@ fn generate_file_name(template: &str, original_name: &str) -> String {
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashMap;
+
     use super::*;
     use crate::plugins::StatusUpdatePlugin;
     use crate::{
@@ -303,7 +305,7 @@ mod tests {
     };
     use actix_web::{test, web::post, App};
     use alloy::primitives::Address;
-    use shared::models::task::{StorageConfig, Task};
+    use shared::models::task::{SchedulingConfig, StorageConfig, Task};
     use uuid::Uuid;
 
     #[tokio::test]
@@ -423,15 +425,12 @@ mod tests {
             vec![config],
             app_state.redis_store.clone(),
             app_state.store_context.clone(),
+            None,
         );
 
         let _ = plugin
             .handle_status_change(&node, &NodeStatus::Healthy)
             .await;
-
-        let group = plugin.get_node_group(&node.address.to_string()).unwrap();
-        assert!(group.is_some());
-        let group = group.unwrap();
 
         let task = Task {
             id: Uuid::new_v4(),
@@ -442,11 +441,25 @@ mod tests {
                     "model_xyz/dataset_1/${NODE_GROUP_ID}-${NODE_GROUP_SIZE}-${NODE_GROUP_INDEX}-${TOTAL_UPLOAD_COUNT_AFTER}-${CURRENT_FILE_INDEX}.parquet".to_string(),
                 ),
             }),
+            scheduling_config: Some(SchedulingConfig {
+                plugins: Some(HashMap::from([(
+                    "node_groups".to_string(),
+                    HashMap::from([(
+                        "allowed_topologies".to_string(),
+                        vec!["test-config".to_string()],
+                    )]),
+                )])),
+            }),
             ..Default::default()
         };
 
         let task_store = app_state.store_context.task_store.clone();
         task_store.add_task(task.clone());
+        let _ = plugin.test_try_form_new_groups();
+
+        let group = plugin.get_node_group(&node.address.to_string()).unwrap();
+        assert!(group.is_some());
+        let group = group.unwrap();
 
         assert!(task_store.get_task(&task.id.to_string()).is_some());
 
