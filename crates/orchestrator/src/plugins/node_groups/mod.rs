@@ -4,11 +4,12 @@ use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::store::core::{RedisStore, StoreContext};
 use anyhow::Error;
 use anyhow::Result;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use redis::{Commands, Script};
 use serde::{Deserialize, Serialize};
 use shared::models::node::ComputeRequirements;
 use shared::models::task::Task;
+use std::time::Duration;
 use std::{collections::BTreeSet, sync::Arc};
 use std::{collections::HashSet, str::FromStr};
 
@@ -213,18 +214,10 @@ impl NodeGroupsPlugin {
 
     fn try_form_new_groups(
         &self,
-        new_healthy_node: Option<&OrchestratorNode>,
     ) -> Result<Vec<NodeGroup>, Error> {
         let mut conn = self.store.client.get_connection()?;
-        let mut formed_groups = Vec::new();
 
-        if let Some(node) = new_healthy_node {
-            let existing_group: Option<String> =
-                conn.hget(NODE_GROUP_MAP_KEY, node.address.to_string())?;
-            if existing_group.is_some() {
-                return Ok(formed_groups);
-            }
-        }
+        let mut formed_groups = Vec::new();
 
         let available_configurations = self.get_available_configurations();
         debug!("Available configurations: {:?}", available_configurations);
@@ -242,40 +235,19 @@ impl NodeGroupsPlugin {
             .filter(|node| !assigned_nodes.contains_key(&node.address.to_string()))
             .collect::<Vec<&OrchestratorNode>>();
 
-        if let Some(new_node) = new_healthy_node {
-            healthy_nodes.retain(|node| node.address.to_string() != new_node.address.to_string());
-        }
-
         info!(
             "Found {} healthy nodes for potential group formation",
             healthy_nodes.len()
         );
 
-        let mut total_available =
-            healthy_nodes.len() + if new_healthy_node.is_some() { 1 } else { 0 };
+        let mut total_available = healthy_nodes.len();
 
         for config in &available_configurations {
             while total_available >= config.min_group_size {
                 let initial_available = total_available;
-                if let Some(compute_reqs) = &config.compute_requirements {
-                    if let Some(node) = new_healthy_node {
-                        if let Some(compute_specs) = &node.compute_specs {
-                            if !compute_specs.meets(compute_reqs) {
-                                break;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
 
                 let mut available_nodes = BTreeSet::new();
                 let mut nodes_to_remove = Vec::new();
-
-                // Add the provided node first if any
-                if let Some(node) = new_healthy_node {
-                    available_nodes.insert(node.address.to_string());
-                }
 
                 for node in &healthy_nodes {
                     let should_add_node = match (&config.compute_requirements, &node.compute_specs)
@@ -360,6 +332,19 @@ impl NodeGroupsPlugin {
             info!("No suitable configuration found for group formation");
         }
         Ok(formed_groups)
+    }
+
+    // TODO: Heartbeat?
+    pub async fn run_group_management_loop(&self) -> Result<(), Error> {
+        let mut interval = tokio::time::interval(Duration::from_secs(30));
+
+        loop {
+            interval.tick().await;
+            if let Err(e) = self.try_form_new_groups() {
+                error!("Error in group management: {}", e);
+            }
+            log::info!("Group management loop completed");
+        }
     }
 
     fn dissolve_group(&self, group_id: &str) -> Result<(), Error> {
@@ -455,21 +440,14 @@ impl Plugin for NodeGroupsPlugin {}
 impl TaskObserver for NodeGroupsPlugin {
     fn on_task_created(&self, task: &Task) -> Result<()> {
         debug!("Task created event received: {:?}", task);
-        let mut should_build_group = false;
         let topologies = self.get_task_topologies(task)?;
         debug!("Found {} topologies for new task", topologies.len());
 
         for topology in topologies {
             debug!("Enabling configuration for topology: {}", topology);
             self.enable_configuration(&topology)?;
-            should_build_group = true;
         }
 
-        if should_build_group {
-            debug!("Attempting to form new groups after task creation");
-            let plugin = self.clone();
-            let _ = plugin.try_form_new_groups(None);
-        }
         Ok(())
     }
 

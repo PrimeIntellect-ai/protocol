@@ -20,14 +20,6 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
         );
 
         match node.status {
-            NodeStatus::Healthy => {
-                // Try to form new group with healthy nodes
-                info!(
-                    "Node {} is healthy, attempting to form new group",
-                    node_addr
-                );
-                let _ = self.try_form_new_groups(Some(node))?;
-            }
             NodeStatus::Dead => {
                 // Dissolve entire group if node becomes unhealthy
                 if let Some(group) = self.get_node_group(&node_addr)? {
@@ -39,7 +31,6 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
                         group.nodes.len()
                     );
                     self.dissolve_group(&group.id)?;
-                    self.try_form_new_groups(None)?;
                 }
             }
             _ => {
