@@ -1477,3 +1477,197 @@ async fn test_building_largest_possible_groups() {
         "Node3 should not be in a group after task deletion"
     );
 }
+
+#[tokio::test]
+async fn test_group_formation_priority() {
+    let store = Arc::new(RedisStore::new_test());
+    let context_store = store.clone();
+    let store_context = Arc::new(StoreContext::new(context_store));
+
+    // Create configs: small groups should be formed AFTER large groups
+    // (since configs are sorted by min_group_size descending)
+    let config_large = NodeGroupConfiguration {
+        name: "large-group".to_string(),
+        min_group_size: 3,
+        max_group_size: 3,
+        compute_requirements: None,
+    };
+    let config_small = NodeGroupConfiguration {
+        name: "small-group".to_string(),
+        min_group_size: 1,
+        max_group_size: 1,
+        compute_requirements: None,
+    };
+
+    let plugin = NodeGroupsPlugin::new(
+        vec![config_large, config_small],
+        store.clone(),
+        store_context,
+    );
+
+    // Add 4 healthy nodes
+    let nodes: Vec<_> = (1..=4)
+        .map(|i| {
+            create_test_node(
+                &format!("0x{}234567890123456789012345678901234567890", i),
+                NodeStatus::Healthy,
+                None,
+            )
+        })
+        .collect();
+
+    for node in &nodes {
+        plugin.store_context.node_store.add_node(node.clone());
+        let _ = plugin
+            .handle_status_change(node, &NodeStatus::Healthy)
+            .await;
+    }
+    // Create task that enables both configurations
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["large-group".to_string(), "small-group".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
+
+    // Verify: Should form one 3-node group + one 1-node group
+    // NOT four 1-node groups
+    let mut conn = plugin.store.client.get_connection().unwrap();
+    let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
+    assert_eq!(group_keys.len(), 2, "Should form exactly 2 groups");
+
+    // Check group compositions
+    let mut group_sizes = Vec::new();
+    for key in group_keys {
+        let group_data: String = conn.get(&key).unwrap();
+        let group: NodeGroup = serde_json::from_str(&group_data).unwrap();
+        group_sizes.push(group.nodes.len());
+    }
+    group_sizes.sort();
+    assert_eq!(
+        group_sizes,
+        vec![1, 3],
+        "Should have one 1-node group and one 3-node group"
+    );
+
+    // Verify no node is in multiple groups
+    let mut assigned_nodes = std::collections::HashSet::new();
+    for node in &nodes {
+        if plugin.get_node_group(&node.address.to_string()).unwrap().is_some() {
+            assert!(
+                assigned_nodes.insert(node.address.to_string()),
+                "Node {} appears in multiple groups",
+                node.address
+            );
+        }
+    }
+    assert_eq!(
+        assigned_nodes.len(),
+        4,
+        "All 4 nodes should be assigned to groups"
+    );
+}
+
+#[tokio::test]
+async fn test_multiple_groups_same_configuration() {
+    let store = Arc::new(RedisStore::new_test());
+    let context_store = store.clone();
+    let store_context = Arc::new(StoreContext::new(context_store));
+
+    let config = NodeGroupConfiguration {
+        name: "test-config".to_string(),
+        min_group_size: 2,
+        max_group_size: 2, // Force exactly 2 nodes per group
+        compute_requirements: None,
+    };
+
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context);
+
+    // Create task that requires this configuration
+    let task = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["test-config".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    plugin.store_context.task_store.add_task(task.clone());
+
+    // Add 6 healthy nodes
+    let nodes: Vec<_> = (1..=6)
+        .map(|i| {
+            create_test_node(
+                &format!("0x{}234567890123456789012345678901234567890", i),
+                NodeStatus::Healthy,
+                None,
+            )
+        })
+        .collect();
+
+    for node in &nodes {
+        plugin.store_context.node_store.add_node(node.clone());
+        let _ = plugin
+            .handle_status_change(node, &NodeStatus::Healthy)
+            .await;
+    }
+
+    // Verify: Should create 3 groups of 2 nodes each
+    let mut conn = plugin.store.client.get_connection().unwrap();
+    let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
+    assert_eq!(group_keys.len(), 3, "Should form exactly 3 groups");
+
+    // Verify all groups have exactly 2 nodes and same configuration
+    let mut total_nodes_in_groups = 0;
+    for key in group_keys {
+        let group_data: String = conn.get(&key).unwrap();
+        let group: NodeGroup = serde_json::from_str(&group_data).unwrap();
+
+        assert_eq!(
+            group.nodes.len(),
+            2,
+            "Each group should have exactly 2 nodes"
+        );
+        assert_eq!(
+            group.configuration_name, "test-config",
+            "All groups should use test-config"
+        );
+        total_nodes_in_groups += group.nodes.len();
+    }
+
+    assert_eq!(total_nodes_in_groups, 6, "All 6 nodes should be in groups");
+
+    // Verify each node is in exactly one group
+    for node in &nodes {
+        let group = plugin.get_node_group(&node.address.to_string()).unwrap();
+        assert!(
+            group.is_some(),
+            "Node {} should be in a group",
+            node.address
+        );
+    }
+
+    // Verify no node appears in multiple groups by checking Redis directly
+    let node_mappings: std::collections::HashMap<String, String> =
+        conn.hgetall(NODE_GROUP_MAP_KEY).unwrap();
+    assert_eq!(
+        node_mappings.len(),
+        6,
+        "Should have 6 node-to-group mappings"
+    );
+
+    // All group IDs should be different (no duplicate assignments)
+    let group_ids: std::collections::HashSet<_> = node_mappings.values().collect();
+    assert_eq!(group_ids.len(), 3, "Should have 3 distinct group IDs");
+}

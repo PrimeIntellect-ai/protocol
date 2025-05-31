@@ -138,11 +138,15 @@ impl NodeGroupsPlugin {
             .smembers("available_node_group_configs")
             .unwrap_or_default();
 
-        self.configuration_templates
+        let mut configs: Vec<NodeGroupConfiguration> = self
+            .configuration_templates
             .iter()
             .filter(|config| available_configs.contains(&config.name))
             .cloned()
-            .collect()
+            .collect();
+
+        configs.sort_by(|a, b| b.min_group_size.cmp(&a.min_group_size));
+        configs
     }
 
     pub fn enable_configuration(&self, configuration_name: &str) -> Result<(), Error> {
@@ -252,6 +256,7 @@ impl NodeGroupsPlugin {
 
         for config in &available_configurations {
             while total_available >= config.min_group_size {
+                let initial_available = total_available;
                 if let Some(compute_reqs) = &config.compute_requirements {
                     if let Some(node) = new_healthy_node {
                         if let Some(compute_specs) = &node.compute_specs {
@@ -345,6 +350,9 @@ impl NodeGroupsPlugin {
                 );
                 debug!("Group details: {:?}", group);
                 formed_groups.push(group);
+                if total_available == initial_available {
+                    break; // No progress made, exit this config
+                }
             }
         }
 
