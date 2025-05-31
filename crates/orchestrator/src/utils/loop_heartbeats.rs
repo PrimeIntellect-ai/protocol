@@ -11,12 +11,14 @@ pub struct HealthStatus {
     pub inviter_last_run_seconds_ago: i64,
     pub monitor_last_run_seconds_ago: i64,
     pub status_updater_last_run_seconds_ago: i64,
+    pub node_groups_last_run_seconds_ago: i64,
 }
 
 pub struct LoopHeartbeats {
     last_inviter_iteration: Arc<AtomicI64>,
     last_monitor_iteration: Arc<AtomicI64>,
     last_status_updater_iteration: Arc<AtomicI64>,
+    last_node_groups_iteration: Arc<AtomicI64>,
     server_mode: ServerMode,
 }
 
@@ -26,6 +28,7 @@ impl LoopHeartbeats {
             last_inviter_iteration: Arc::new(AtomicI64::new(-1)),
             last_monitor_iteration: Arc::new(AtomicI64::new(-1)),
             last_status_updater_iteration: Arc::new(AtomicI64::new(-1)),
+            last_node_groups_iteration: Arc::new(AtomicI64::new(-1)),
             server_mode: *server_mode,
         }
     }
@@ -60,7 +63,17 @@ impl LoopHeartbeats {
         );
     }
 
-    pub fn health_status(&self) -> HealthStatus {
+    pub fn update_node_groups(&self) {
+        self.last_node_groups_iteration.store(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            Ordering::SeqCst,
+        );
+    }
+
+    pub fn health_status(&self, with_node_groups: bool) -> HealthStatus {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -70,6 +83,7 @@ impl LoopHeartbeats {
         let inviter_last = self.last_inviter_iteration.load(Ordering::SeqCst);
         let monitor_last = self.last_monitor_iteration.load(Ordering::SeqCst);
         let status_updater_last = self.last_status_updater_iteration.load(Ordering::SeqCst);
+        let node_groups_last = self.last_node_groups_iteration.load(Ordering::SeqCst);
 
         // Calculate seconds ago for each operation
         let inviter_seconds_ago = if inviter_last > 0 {
@@ -87,13 +101,24 @@ impl LoopHeartbeats {
         } else {
             -1
         };
+        let node_groups_seconds_ago = if node_groups_last > 0 {
+            now - node_groups_last
+        } else {
+            -1
+        };
 
-        let processes_healthy = inviter_seconds_ago < _two_minutes
+        let mut processes_healthy = inviter_seconds_ago < _two_minutes
             && inviter_seconds_ago != -1
             && monitor_seconds_ago < _two_minutes
             && monitor_seconds_ago != -1
             && status_updater_seconds_ago < _two_minutes
             && status_updater_seconds_ago != -1;
+
+        if with_node_groups {
+            processes_healthy = processes_healthy
+                && node_groups_seconds_ago < _two_minutes
+                && node_groups_seconds_ago != -1;
+        }
 
         let healthy = match self.server_mode {
             // TODO: in the future we might want to check if the redis connection is healthy
@@ -106,6 +131,7 @@ impl LoopHeartbeats {
             inviter_last_run_seconds_ago: inviter_seconds_ago,
             monitor_last_run_seconds_ago: monitor_seconds_ago,
             status_updater_last_run_seconds_ago: status_updater_seconds_ago,
+            node_groups_last_run_seconds_ago: node_groups_seconds_ago,
         }
     }
 }

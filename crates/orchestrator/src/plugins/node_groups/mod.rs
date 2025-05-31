@@ -2,6 +2,7 @@ use super::{Plugin, SchedulerPlugin};
 use crate::events::TaskObserver;
 use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::store::core::{RedisStore, StoreContext};
+use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Error;
 use anyhow::Result;
 use log::{debug, error, info, warn};
@@ -68,6 +69,7 @@ pub struct NodeGroupsPlugin {
     configuration_templates: Vec<NodeGroupConfiguration>,
     store: Arc<RedisStore>,
     store_context: Arc<StoreContext>,
+    node_groups_heartbeats: Option<Arc<LoopHeartbeats>>,
 }
 
 impl NodeGroupsPlugin {
@@ -75,6 +77,7 @@ impl NodeGroupsPlugin {
         configuration_templates: Vec<NodeGroupConfiguration>,
         store: Arc<RedisStore>,
         store_context: Arc<StoreContext>,
+        node_groups_heartbeats: Option<Arc<LoopHeartbeats>>,
     ) -> Self {
         let mut sorted_configs = configuration_templates;
 
@@ -94,6 +97,7 @@ impl NodeGroupsPlugin {
             configuration_templates: sorted_configs,
             store,
             store_context,
+            node_groups_heartbeats,
         };
 
         plugin
@@ -212,9 +216,7 @@ impl NodeGroupsPlugin {
         Ok(result)
     }
 
-    fn try_form_new_groups(
-        &self,
-    ) -> Result<Vec<NodeGroup>, Error> {
+    fn try_form_new_groups(&self) -> Result<Vec<NodeGroup>, Error> {
         let mut conn = self.store.client.get_connection()?;
 
         let mut formed_groups = Vec::new();
@@ -234,7 +236,10 @@ impl NodeGroupsPlugin {
             .filter(|node| node.p2p_id.is_some())
             .filter(|node| !assigned_nodes.contains_key(&node.address.to_string()))
             .collect::<Vec<&OrchestratorNode>>();
-
+        println!(
+            "Found {} healthy nodes for potential group formation",
+            healthy_nodes.len()
+        );
         info!(
             "Found {} healthy nodes for potential group formation",
             healthy_nodes.len()
@@ -243,6 +248,7 @@ impl NodeGroupsPlugin {
         let mut total_available = healthy_nodes.len();
 
         for config in &available_configurations {
+            println!("Checking configuration: {:?}", config);
             while total_available >= config.min_group_size {
                 let initial_available = total_available;
 
@@ -266,6 +272,7 @@ impl NodeGroupsPlugin {
                     }
                 }
 
+                println!("Available nodes: {:?}", available_nodes);
                 // Not enough nodes to form a group
                 if available_nodes.len() < config.min_group_size {
                     break;
@@ -328,20 +335,19 @@ impl NodeGroupsPlugin {
             }
         }
 
-        if formed_groups.is_empty() {
-            info!("No suitable configuration found for group formation");
-        }
         Ok(formed_groups)
     }
 
-    // TODO: Heartbeat?
-    pub async fn run_group_management_loop(&self) -> Result<(), Error> {
-        let mut interval = tokio::time::interval(Duration::from_secs(30));
+    pub async fn run_group_management_loop(&self, duration: u64) -> Result<(), Error> {
+        let mut interval = tokio::time::interval(Duration::from_secs(duration));
 
         loop {
             interval.tick().await;
             if let Err(e) = self.try_form_new_groups() {
                 error!("Error in group management: {}", e);
+            }
+            if let Some(heartbeats) = &self.node_groups_heartbeats {
+                heartbeats.update_node_groups();
             }
             log::info!("Group management loop completed");
         }

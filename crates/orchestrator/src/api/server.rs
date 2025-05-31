@@ -85,7 +85,9 @@ pub async fn start_server(
             .app_data(web::PayloadConfig::default().limit(2_097_152))
             .service(web::resource("/health").route(web::get().to(
                 |data: web::Data<AppState>| async move {
-                    let health_status = data.heartbeats.health_status();
+                    let health_status = data
+                        .heartbeats
+                        .health_status(data.node_groups_plugin.is_some());
                     if health_status.healthy {
                         HttpResponse::Ok().json(health_status)
                     } else {

@@ -423,6 +423,7 @@ mod tests {
             vec![config],
             app_state.redis_store.clone(),
             app_state.store_context.clone(),
+            None,
         );
 
         let _ = plugin

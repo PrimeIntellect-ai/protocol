@@ -113,6 +113,10 @@ struct Args {
     /// Webhook urls (comma-separated string)
     #[arg(long, default_value = "")]
     webhook_urls: Option<String>,
+
+    /// Node group management interval
+    #[arg(long, default_value = "10")]
+    node_group_management_interval: u64,
 }
 
 #[tokio::main]
@@ -196,8 +200,13 @@ async fn main() -> Result<()> {
     if let Ok(configs_json) = std::env::var("NODE_GROUP_CONFIGS") {
         match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&configs_json) {
             Ok(configs) if !configs.is_empty() => {
-                let group_plugin =
-                    NodeGroupsPlugin::new(configs, store.clone(), group_store_context.clone());
+                let node_groups_heartbeats = heartbeats.clone();
+                let group_plugin = NodeGroupsPlugin::new(
+                    configs,
+                    store.clone(),
+                    group_store_context.clone(),
+                    Some(node_groups_heartbeats.clone()),
+                );
                 let status_group_plugin = group_plugin.clone();
                 let group_plugin_for_server = group_plugin.clone();
                 node_groups_plugin = Some(Arc::new(group_plugin_for_server));
@@ -224,7 +233,11 @@ async fn main() -> Result<()> {
     // Only spawn processor tasks if in ProcessorOnly or Full mode
     if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
         if let Some(group_plugin) = node_groups_plugin.clone() {
-            tasks.spawn(async move { group_plugin.run_group_management_loop().await });
+            tasks.spawn(async move {
+                group_plugin
+                    .run_group_management_loop(args.node_group_management_interval)
+                    .await
+            });
         }
 
         let discovery_store_context = store_context.clone();
