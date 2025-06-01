@@ -2,8 +2,8 @@ name: prime-dev
 root: .
 enable_pane_titles: true
 on_project_start: |
-  docker compose up -d anvil redis
-  docker compose wait --timeout 180 anvil redis
+  docker compose up -d reth redis
+  docker compose wait --timeout 180 reth redis
   cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd ..
   make setup
 windows:
