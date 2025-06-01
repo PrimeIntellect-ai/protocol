@@ -10,7 +10,7 @@ windows:
   - services:
       layout: even-horizontal 
       panes:
-        - Worker: clear
+        - Worker:
         - Discovery: make watch-discovery
         - Validator: make watch-validator
         - Orchestrator: make watch-orchestrator
