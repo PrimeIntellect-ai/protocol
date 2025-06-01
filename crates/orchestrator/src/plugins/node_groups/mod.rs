@@ -248,7 +248,7 @@ impl NodeGroupsPlugin {
         let mut total_available = healthy_nodes.len();
 
         for config in &available_configurations {
-            println!("Checking configuration: {:?}", config);
+            debug!("Checking configuration: {:?}", config);
             while total_available >= config.min_group_size {
                 let initial_available = total_available;
 
@@ -347,14 +347,18 @@ impl NodeGroupsPlugin {
         let mut interval = tokio::time::interval(Duration::from_secs(duration));
 
         loop {
+            let start = std::time::Instant::now();
             interval.tick().await;
+
             if let Err(e) = self.try_form_new_groups() {
                 error!("Error in group management: {}", e);
             }
             if let Some(heartbeats) = &self.node_groups_heartbeats {
                 heartbeats.update_node_groups();
             }
-            log::info!("Group management loop completed");
+
+            let elapsed = start.elapsed();
+            log::info!("Group management loop completed in {:?}", elapsed);
         }
     }
 

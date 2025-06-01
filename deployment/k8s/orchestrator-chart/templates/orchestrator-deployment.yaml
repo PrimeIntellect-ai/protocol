@@ -1,7 +1,6 @@
 {{- define "orchestrator.container" }}
 - name: {{ .root.Values.name | default "orchestrator" }}
   image: {{ .root.Values.image }}
-  {{- if .api }}
   ports:
     - containerPort: 8090
   readinessProbe:
@@ -16,7 +15,6 @@
       port: 8090
     initialDelaySeconds: 15
     periodSeconds: 20
-  {{- end }}
   resources:
     requests:
       memory: "256Mi"
