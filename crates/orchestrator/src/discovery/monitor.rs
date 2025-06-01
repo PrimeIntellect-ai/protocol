@@ -225,7 +225,7 @@ impl<'b> DiscoveryMonitor<'b> {
 #[cfg(test)]
 mod tests {
     use alloy::primitives::Address;
-    use shared::models::node::Node;
+    use shared::models::node::{ComputeSpecs, Node};
     use url::Url;
 
     use super::*;
@@ -246,7 +246,13 @@ mod tests {
                 ip_address: "127.0.0.1".to_string(),
                 port: 8080,
                 compute_pool_id: 1,
-                compute_specs: None,
+                compute_specs: Some(ComputeSpecs {
+                    gpu: None,
+                    cpu: None,
+                    ram_mb: Some(1024),
+                    storage_gb: Some(10),
+                    storage_path: None,
+                }),
             },
             is_blacklisted: false,
             last_updated: None,
@@ -256,7 +262,13 @@ mod tests {
         let mut orchestrator_node = OrchestratorNode::from(discovery_node.clone());
         orchestrator_node.status = NodeStatus::Ejected;
         orchestrator_node.address = discovery_node.node.id.parse::<Address>().unwrap();
-
+        orchestrator_node.compute_specs = Some(ComputeSpecs {
+            gpu: None,
+            cpu: None,
+            ram_mb: Some(1024),
+            storage_gb: Some(10),
+            storage_path: None,
+        });
         let store = Arc::new(RedisStore::new_test());
         let mut con = store
             .client

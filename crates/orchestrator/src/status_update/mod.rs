@@ -1,10 +1,9 @@
-pub mod plugins;
 use crate::models::node::{NodeStatus, OrchestratorNode};
+use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Ok;
 use log::{debug, error, info};
-use plugins::StatusUpdatePlugin;
 use shared::web3::contracts::core::builder::Contracts;
 use std::result::Result;
 use std::sync::Arc;
@@ -307,6 +306,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -361,6 +361,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -408,6 +409,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -460,6 +462,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -512,6 +515,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
         let _: () = app_state
             .store_context
@@ -579,6 +583,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
         let _: () = app_state
             .store_context
@@ -596,6 +601,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node2.clone());
@@ -660,6 +666,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -731,6 +738,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
 
         let _: () = app_state.store_context.node_store.add_node(node.clone());
@@ -785,6 +793,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
         let counter = app_state
             .store_context

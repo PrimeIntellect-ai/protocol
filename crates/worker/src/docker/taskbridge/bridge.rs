@@ -168,7 +168,7 @@ impl TaskBridge {
                                     extract_next_json(&data[current_pos..])
                                 {
                                     debug!("Extracted JSON object: {}", json_str);
-                                    if json_str.contains("file_name") {
+                                    if json_str.contains("output/save_path") {
                                         debug!("Processing file_name message");
                                         if let Some(storage_path) = storage_path_clone.clone() {
                                             if let Ok(file_info) =
@@ -221,7 +221,7 @@ impl TaskBridge {
                                         } else {
                                             error!("No storage path set");
                                         }
-                                    } else if json_str.contains("file_sha") {
+                                    } else if json_str.contains("output/sha256") {
                                         debug!("Processing file_sha message");
                                         if let Ok(file_info) =
                                             serde_json::from_str::<serde_json::Value>(json_str)

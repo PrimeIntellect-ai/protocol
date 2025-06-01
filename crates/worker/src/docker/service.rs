@@ -192,7 +192,13 @@ impl DockerService {
                                         let cmd = match cmd_full {
                                             (Some(c), Some(a)) => {
                                                 let mut cmd = vec![c];
-                                                cmd.extend(a);
+                                                cmd.extend(a.into_iter().map(|arg| {
+                                                    if let Some(seed) = p2p_seed {
+                                                        arg.replace("${WORKER_P2P_SEED}", &seed.to_string())
+                                                    } else {
+                                                        arg
+                                                    }
+                                                }));
                                                 cmd
                                             }
                                             (Some(c), None) => vec![c],
@@ -205,7 +211,7 @@ impl DockerService {
                                         }
 
                                         env_vars.insert("NODE_ADDRESS".to_string(), node_address);
-                                        env_vars.insert("PRIME_TASK_BRIDGE_SOCKET".to_string(), task_bridge_socket_path.to_string());
+                                        env_vars.insert("PRIME_SOCKET_PATH".to_string(), task_bridge_socket_path.to_string());
                                         env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
                                         if let Some(p2p_seed) = p2p_seed {
                                             env_vars.insert("IROH_SEED".to_string(), p2p_seed.to_string());
@@ -371,7 +377,7 @@ mod tests {
             args: Some(vec!["100".to_string()]),
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
-            updated_at: None,
+            ..Default::default()
         };
         let task_clone = task.clone();
         let state_clone = docker_service.state.clone();
@@ -419,10 +425,9 @@ mod tests {
             id: Uuid::new_v4(),
             env_vars: None,
             command: Some("invalid_command".to_string()),
-            args: None,
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
-            updated_at: None,
+            ..Default::default()
         };
 
         let task_clone = task.clone();

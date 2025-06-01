@@ -139,11 +139,13 @@ mod tests {
         let task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
-            command: None,
-            args: None,
-            env_vars: None,
+            ..Default::default()
         };
-        app_state.store_context.task_store.add_task(task.into());
+        let task = match task.try_into() {
+            Ok(task) => task,
+            Err(e) => panic!("Failed to convert TaskRequest to Task: {}", e),
+        };
+        app_state.store_context.task_store.add_task(task);
 
         let req = test::TestRequest::post()
             .uri("/heartbeat")
@@ -171,12 +173,7 @@ mod tests {
         let value = value.unwrap();
         let heartbeat = HeartbeatRequest {
             address: "0x0000000000000000000000000000000000000000".to_string(),
-            task_id: None,
-            task_state: None,
-            metrics: None,
-            version: None,
-            timestamp: None,
-            p2p_id: None,
+            ..Default::default()
         };
         assert_eq!(value, heartbeat);
     }

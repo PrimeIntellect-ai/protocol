@@ -1,8 +1,9 @@
 mod api;
 mod discovery;
+mod events;
 mod models;
 mod node;
-mod prelude;
+mod plugins;
 mod scheduler;
 mod status_update;
 mod store;
@@ -11,7 +12,6 @@ use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
 use crate::scheduler::Scheduler;
-use crate::status_update::plugins::webhook::WebhookPlugin;
 use crate::status_update::NodeStatusUpdater;
 use crate::store::core::RedisStore;
 use crate::store::core::StoreContext;
@@ -24,12 +24,15 @@ use log::debug;
 use log::error;
 use log::info;
 use log::LevelFilter;
-use scheduler::plugins::SchedulerPlugin;
+use plugins::node_groups::NodeGroupConfiguration;
+use plugins::node_groups::NodeGroupsPlugin;
+use plugins::webhook::WebhookPlugin;
+use plugins::SchedulerPlugin;
+use plugins::StatusUpdatePlugin;
+use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
-use status_update::plugins::node_groups::NodeGroupsPlugin;
-use status_update::plugins::StatusUpdatePlugin;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
@@ -95,10 +98,6 @@ struct Args {
     #[arg(long)]
     disable_ejection: bool,
 
-    /// S3 credentials
-    #[arg(long)]
-    s3_credentials: Option<String>,
-
     /// Hourly s3 upload limit
     #[arg(long, default_value = "2")]
     hourly_s3_upload_limit: i64,
@@ -115,14 +114,9 @@ struct Args {
     #[arg(long, default_value = "")]
     webhook_urls: Option<String>,
 
-    /// With basic group plugin
-    /// Only temporary setting - will be moved to proper plugin config
-    #[arg(long)]
-    with_basic_group_plugin: bool,
-
-    /// Group size
-    #[arg(long, default_value = "4")]
-    group_size: u32,
+    /// Node group management interval
+    #[arg(long, default_value = "10")]
+    node_group_management_interval: u64,
 }
 
 #[tokio::main]
@@ -197,28 +191,55 @@ async fn main() -> Result<()> {
             return Ok(());
         }
     };
-
     let group_store_context = store_context.clone();
     let mut scheduler_plugins: Vec<Box<dyn SchedulerPlugin>> = Vec::new();
     let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
     let mut node_groups_plugin: Option<Arc<NodeGroupsPlugin>> = None;
 
-    // Add group plugin if enabled
-    if args.with_basic_group_plugin {
-        let group_size: usize = args.group_size as usize;
-        let group_plugin =
-            NodeGroupsPlugin::new(group_size, group_size, store.clone(), group_store_context);
-        let status_group_plugin = group_plugin.clone();
-        let group_plugin_for_server = group_plugin.clone();
-        node_groups_plugin = Some(Arc::new(group_plugin_for_server));
-        scheduler_plugins.push(Box::new(group_plugin));
-        status_update_plugins.push(Box::new(status_group_plugin));
+    // Load node group configurations from environment variable
+    if let Ok(configs_json) = std::env::var("NODE_GROUP_CONFIGS") {
+        match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&configs_json) {
+            Ok(configs) if !configs.is_empty() => {
+                let node_groups_heartbeats = heartbeats.clone();
+                let group_plugin = NodeGroupsPlugin::new(
+                    configs,
+                    store.clone(),
+                    group_store_context.clone(),
+                    Some(node_groups_heartbeats.clone()),
+                );
+                let status_group_plugin = group_plugin.clone();
+                let group_plugin_for_server = group_plugin.clone();
+                node_groups_plugin = Some(Arc::new(group_plugin_for_server));
+                scheduler_plugins.push(Box::new(group_plugin));
+                status_update_plugins.push(Box::new(status_group_plugin));
+                info!("Node group plugin initialized",);
+            }
+            Ok(_) => {
+                info!(
+                    "No node group configurations provided in environment, skipping plugin setup"
+                );
+            }
+            Err(e) => {
+                error!(
+                    "Failed to parse node group configurations from environment: {}",
+                    e
+                );
+            }
+        }
     }
 
     let scheduler = Scheduler::new(store_context.clone(), scheduler_plugins);
 
     // Only spawn processor tasks if in ProcessorOnly or Full mode
     if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+        if let Some(group_plugin) = node_groups_plugin.clone() {
+            tasks.spawn(async move {
+                group_plugin
+                    .run_group_management_loop(args.node_group_management_interval)
+                    .await
+            });
+        }
+
         let discovery_store_context = store_context.clone();
         let discovery_heartbeats = heartbeats.clone();
         tasks.spawn(async move {
@@ -281,6 +302,14 @@ async fn main() -> Result<()> {
 
     let port = args.port;
     let server_store_context = store_context.clone();
+
+    let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+
+    let gcs_storage = GcsStorageProvider::new(&args.bucket_name.unwrap(), &s3_credentials.unwrap())
+        .await
+        .unwrap();
+    let storage_provider = Arc::new(gcs_storage);
+
     // Always start server regardless of mode
     tokio::select! {
         res = start_server(
@@ -289,8 +318,7 @@ async fn main() -> Result<()> {
             server_store_context.clone(),
             server_wallet,
             args.admin_api_key,
-            args.s3_credentials,
-            args.bucket_name,
+            storage_provider,
             heartbeats.clone(),
             store.clone(),
             args.hourly_s3_upload_limit,

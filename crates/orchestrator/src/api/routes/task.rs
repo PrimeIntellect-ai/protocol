@@ -14,8 +14,29 @@ async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
 }
 
 async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
-    let task = Task::from(task.into_inner());
+    let task = match Task::try_from(task.into_inner()) {
+        Ok(task) => task,
+        Err(e) => {
+            return HttpResponse::BadRequest()
+                .json(json!({"success": false, "error": e.to_string()}));
+        }
+    };
     let task_store = app_state.store_context.task_store.clone();
+
+    if let Some(group_plugin) = &app_state.node_groups_plugin {
+        match group_plugin.get_task_topologies(&task) {
+            Ok(topology) => {
+                if topology.is_empty() {
+                    return HttpResponse::BadRequest().json(json!({"success": false, "error": "No topology found for task but grouping plugin is active."}));
+                }
+            }
+            Err(e) => {
+                return HttpResponse::BadRequest()
+                    .json(json!({"success": false, "error": e.to_string()}));
+            }
+        }
+    }
+
     task_store.add_task(task.clone());
     HttpResponse::Ok().json(json!({"success": true, "task": task}))
 }
@@ -57,9 +78,7 @@ mod tests {
         let payload = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
-            command: None,
-            args: None,
-            env_vars: None,
+            ..Default::default()
         };
         let req = test::TestRequest::post()
             .uri("/tasks")
@@ -101,11 +120,10 @@ mod tests {
         let task: Task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
-            command: None,
-            args: None,
-            env_vars: None,
+            ..Default::default()
         }
-        .into();
+        .try_into()
+        .unwrap();
 
         let task_store = app_state.store_context.task_store.clone();
         task_store.add_task(task);
@@ -136,11 +154,10 @@ mod tests {
         let task: Task = TaskRequest {
             image: "test".to_string(),
             name: "test".to_string(),
-            command: None,
-            args: None,
-            env_vars: None,
+            ..Default::default()
         }
-        .into();
+        .try_into()
+        .unwrap();
 
         let task_store = app_state.store_context.task_store.clone();
         task_store.add_task(task.clone());
@@ -178,11 +195,10 @@ mod tests {
         let task1: Task = TaskRequest {
             image: "test1".to_string(),
             name: "test1".to_string(),
-            command: None,
-            args: None,
-            env_vars: None,
+            ..Default::default()
         }
-        .into();
+        .try_into()
+        .unwrap();
         task_store.add_task(task1.clone());
 
         // Wait briefly to ensure different timestamps
@@ -192,11 +208,10 @@ mod tests {
         let task2: Task = TaskRequest {
             image: "test2".to_string(),
             name: "test2".to_string(),
-            command: None,
-            args: None,
-            env_vars: None,
+            ..Default::default()
         }
-        .into();
+        .try_into()
+        .unwrap();
         task_store.add_task(task2.clone());
 
         // Test get all tasks - should be sorted by created_at descending
@@ -223,11 +238,10 @@ mod tests {
             let task: Task = TaskRequest {
                 image: format!("test{}", i),
                 name: format!("test{}", i),
-                command: None,
-                args: None,
-                env_vars: None,
+                ..Default::default()
             }
-            .into();
+            .try_into()
+            .unwrap();
             task_store.add_task(task);
             thread::sleep(Duration::from_millis(10));
         }

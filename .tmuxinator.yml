@@ -1,14 +1,20 @@
 name: prime-dev
 root: .
+enable_pane_titles: true
+on_project_start: |
+  docker compose up -d anvil redis
+  docker compose wait --timeout 180 anvil redis
+  cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd ..
+  make setup
 windows:
   - services:
       layout: even-horizontal 
       panes:
-        - bash -c 'tmux select-pane -T "Worker" && sleep 5 && cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd .. && make setup && clear' 
-        - bash -c 'tmux select-pane -T "Discovery" && sleep 20 && make watch-discovery'
-        - bash -c 'tmux select-pane -T "Validator" && sleep 25 && make watch-validator' 
-        - bash -c 'tmux select-pane -T "Orchestrator" && sleep 30 && make watch-orchestrator'
+        - Worker:
+        - Discovery: make watch-discovery
+        - Validator: make watch-validator
+        - Orchestrator: make watch-orchestrator
   - background:
       layout: even-horizontal
       panes:
-        - bash -c 'tmux rename-window "Prime Dev Services" && docker compose up reth redis'
+        - "Prime Dev Services": docker compose logs -f reth redis

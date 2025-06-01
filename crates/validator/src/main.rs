@@ -11,6 +11,7 @@ use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 use shared::security::request_signer::sign_request;
+use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
@@ -23,7 +24,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tokio_util::sync::CancellationToken;
 use url::Url;
 use validators::hardware::HardwareValidator;
-use validators::synthetic_data::{SyntheticDataValidator, ToplocConfig};
+use validators::synthetic_data::SyntheticDataValidator;
 
 // Track the last time the validation loop ran
 static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
@@ -31,7 +32,6 @@ static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 const MAX_VALIDATION_INTERVAL_SECS: i64 = 120;
 // Track the last loop duration in milliseconds
 static LAST_LOOP_DURATION_MS: AtomicI64 = AtomicI64::new(0);
-
 async fn health_check() -> impl Responder {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -88,19 +88,11 @@ struct Args {
     #[arg(long, default_value = None)]
     pool_id: Option<String>,
 
-    /// Optional: Toploc Server URL for work validation
-    #[arg(long, default_value = None)]
-    toploc_server_url: Option<String>,
-
-    /// Optional: Toploc Auth Token
-    #[arg(long, default_value = None)]
-    toploc_auth_token: Option<String>,
-
     /// Optional: Toploc Grace Interval in seconds between work validation requests
     #[arg(long, default_value = "15")]
     toploc_grace_interval: u64,
 
-    // Optional: interval in minutes of max age of work on chain
+    /// Optional: interval in minutes of max age of work on chain
     #[arg(long, default_value = "15")]
     toploc_work_validation_interval: u64,
 
@@ -108,14 +100,19 @@ struct Args {
     #[arg(long, default_value = "120")]
     toploc_work_validation_unknown_status_expiry_seconds: u64,
 
+    /// Disable toploc ejection
+    /// If true, the validator will not invalidate work on toploc
+    #[arg(long, default_value = "false")]
+    disable_toploc_invalidation: bool,
+
+    /// Grouping
+    #[arg(long, default_value = "false")]
+    use_grouping: bool,
+
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
     #[arg(long, default_value = "200")]
     validator_penalty: u64,
-
-    /// Temporary: S3 credentials
-    #[arg(long, default_value = None)]
-    s3_credentials: Option<String>,
 
     /// Temporary: S3 bucket name
     #[arg(long, default_value = None)]
@@ -235,29 +232,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
-                let toploc_config = ToplocConfig {
-                    server_url: args.toploc_server_url.unwrap(),
-                    auth_token: args.toploc_auth_token,
-                    grace_interval: args.toploc_grace_interval,
-                    work_validation_interval: args.toploc_work_validation_interval,
-                    unknown_status_expiry_seconds: args
-                        .toploc_work_validation_unknown_status_expiry_seconds,
-                };
                 info!(
                     "Synthetic validator has penalty: {} ({})",
                     penalty, args.validator_penalty
                 );
 
+                let toploc_configs = match std::env::var("TOPLOC_CONFIGS") {
+                    Ok(configs) => configs,
+                    Err(_) => {
+                        error!("Toploc configs are required but not provided in environment");
+                        std::process::exit(1);
+                    }
+                };
+                info!("Toploc configs: {}", toploc_configs);
+
+                let configs = match serde_json::from_str(&toploc_configs) {
+                    Ok(configs) => configs,
+                    Err(e) => {
+                        error!("Failed to parse toploc configs: {}", e);
+                        std::process::exit(1);
+                    }
+                };
+
+                let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+                let gcs_storage =
+                    GcsStorageProvider::new(&args.bucket_name.unwrap(), &s3_credentials.unwrap())
+                        .await
+                        .unwrap();
+                let storage_provider = Arc::new(gcs_storage);
+
                 Some(SyntheticDataValidator::new(
                     pool_id,
                     validator,
                     contracts.prime_network.clone(),
-                    toploc_config,
+                    configs,
                     penalty,
-                    args.s3_credentials,
-                    args.bucket_name,
+                    storage_provider,
                     redis_store,
                     cancellation_token,
+                    args.toploc_work_validation_interval,
+                    args.toploc_work_validation_unknown_status_expiry_seconds,
+                    args.toploc_grace_interval,
+                    args.use_grouping,
+                    args.disable_toploc_invalidation,
                 ))
             }
             None => {

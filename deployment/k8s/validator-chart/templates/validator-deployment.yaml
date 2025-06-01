@@ -49,16 +49,12 @@ spec:
               value: {{ .Values.env.DISCOVERY_URL }}
             - name: REDIS_URL
               value: "redis://{{ include "validator.redisName" . }}:6379"
-            {{- if .Values.env.TOPLOC_SERVER_URL }}
-            - name: TOPLOC_SERVER_URL
-              value: {{ .Values.env.TOPLOC_SERVER_URL }}
-            {{- end }}
-            {{- if .Values.secrets.toplocAuthToken }}
-            - name: TOPLOC_AUTH_TOKEN
+            {{- if .Values.secrets.toplocConfigs }}
+            - name: TOPLOC_CONFIGS
               valueFrom:
                 secretKeyRef:
                   name: {{ include "validator.secretName" . }}
-                  key: toplocAuthToken
+                  key: toplocConfigs
             {{- end }}
             - name: LOG_LEVEL
               value: "{{ .Values.env.LOG_LEVEL }}"
@@ -87,4 +83,12 @@ spec:
             {{- if .Values.computePoolId }}
             - name: POOL_ID
               value: "{{ .Values.computePoolId }}"
+            {{- end }}
+            {{- if .Values.env.USE_GROUPING }}
+            - name: USE_GROUPING
+              value: "{{ .Values.env.USE_GROUPING }}"
+            {{- end }}
+            {{- if .Values.env.DISABLE_TOPLOC_INVALIDATION }}
+            - name: DISABLE_TOPLOC_INVALIDATION
+              value: "{{ .Values.env.DISABLE_TOPLOC_INVALIDATION }}"
             {{- end }}

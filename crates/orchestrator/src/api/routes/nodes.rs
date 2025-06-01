@@ -45,7 +45,8 @@ async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
                 node_json["group"] = json!({
                     "id": group.id,
                     "size": group.nodes.len(),
-                    "created_at": group.created_at
+                    "created_at": group.created_at,
+                    "topology_config": group.configuration_name
                 });
             }
 
@@ -293,6 +294,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            compute_specs: None,
         };
         app_state.store_context.node_store.add_node(node.clone());
 

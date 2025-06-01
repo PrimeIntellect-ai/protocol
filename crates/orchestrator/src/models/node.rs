@@ -1,11 +1,11 @@
 use alloy::primitives::Address;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use shared::models::node::DiscoveryNode;
+use shared::models::node::{ComputeSpecs, DiscoveryNode};
 use shared::models::task::TaskState;
 use std::fmt::{self, Display};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OrchestratorNode {
     #[serde(serialize_with = "serialize_address")]
     pub address: Address,
@@ -18,6 +18,9 @@ pub struct OrchestratorNode {
     pub version: Option<String>,
     pub p2p_id: Option<String>,
     pub last_status_change: Option<DateTime<Utc>>,
+
+    #[serde(default)]
+    pub compute_specs: Option<ComputeSpecs>,
 }
 
 fn serialize_address<S>(address: &Address, serializer: S) -> Result<S::Ok, S::Error>
@@ -39,6 +42,7 @@ impl From<DiscoveryNode> for OrchestratorNode {
             version: None,
             p2p_id: None,
             last_status_change: None,
+            compute_specs: discovery_node.compute_specs.clone(),
         }
     }
 }
@@ -59,8 +63,9 @@ impl fmt::Display for OrchestratorNode {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum NodeStatus {
+    #[default]
     Discovered,
     WaitingForHeartbeat,
     Healthy,

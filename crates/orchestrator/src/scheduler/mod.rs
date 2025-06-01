@@ -1,10 +1,8 @@
-pub mod plugins;
-
 use alloy::primitives::Address;
-use plugins::{newest_task::NewestTaskPlugin, SchedulerPlugin};
 use shared::models::task::Task;
 use std::sync::Arc;
 
+use crate::plugins::{newest_task::NewestTaskPlugin, SchedulerPlugin};
 use crate::store::core::StoreContext;
 use anyhow::Result;
 
@@ -60,12 +58,9 @@ mod tests {
             id: Uuid::new_v4(),
             image: "image".to_string(),
             name: "name".to_string(),
-            env_vars: None,
-            command: None,
-            args: None,
             state: TaskState::PENDING,
             created_at: 1,
-            updated_at: None,
+            ..Default::default()
         };
 
         state.store_context.task_store.add_task(task.clone());

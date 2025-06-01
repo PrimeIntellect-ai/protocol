@@ -5,7 +5,7 @@ networks:
     attachable: true
   app-network:
     driver: bridge
-    external: true 
+    attachable: true
 
 volumes:
   redis-data:

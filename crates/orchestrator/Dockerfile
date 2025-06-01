@@ -23,8 +23,8 @@ ENV LOG_LEVEL=""
 ENV HOURLY_S3_UPLOAD_LIMIT="2"
 ENV WEBHOOK_URLS=""
 ENV MODE="full"
-ENV WITH_BASIC_GROUP_PLUGIN="false"
-ENV GROUP_SIZE="4"
+ENV NODE_GROUP_CONFIGS=""
+ENV NODE_GROUP_MANAGEMENT_INTERVAL="10"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/orchestrator \
@@ -41,13 +41,11 @@ $([ ! -z "$HOST" ] && echo "--host $HOST") \
 --admin-api-key "$ADMIN_API_KEY" \
 --mode "$MODE" \
 $([ "$DISABLE_EJECTION" = "true" ] && echo "--disable-ejection") \
-$([ ! -z "$S3_CREDENTIALS" ] && echo "--s3-credentials $S3_CREDENTIALS") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 $([ ! -z "$HOURLY_S3_UPLOAD_LIMIT" ] && echo "--hourly-s3-upload-limit $HOURLY_S3_UPLOAD_LIMIT") \
 $([ ! -z "$WEBHOOK_URLS" ] && echo "--webhook-urls $WEBHOOK_URLS") \
-$([ "$WITH_BASIC_GROUP_PLUGIN" = "true" ] && echo "--with-basic-group-plugin") \
-$([ ! -z "$GROUP_SIZE" ] && echo "--group-size $GROUP_SIZE") \
+$([ ! -z "$NODE_GROUP_MANAGEMENT_INTERVAL" ] && echo "--node-group-management-interval $NODE_GROUP_MANAGEMENT_INTERVAL") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 
