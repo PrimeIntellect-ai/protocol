@@ -13,22 +13,9 @@ permissions:
   packages: write
 
 jobs:
-  cleanup-old-releases:
-    name: Cleanup Old Development Releases
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Delete old development releases
-        uses: dev-drprasad/delete-older-releases@v0.3.2
-        with:
-          keep_latest: 5
-          delete_tags: true
-          delete_tag_pattern: ^dev-
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-and-release:
     name: Build and Create Development Release
-    needs: cleanup-old-releases
     runs-on: ubuntu-22.04
     
     steps:
@@ -98,33 +85,12 @@ jobs:
 
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.next_version.outputs.tag_name }}
-          name: Development Build ${{ steps.next_version.outputs.tag_name }}
-          body: |
-            ⚠️ Development Build (Not for Production Use)
-            
-            Branch: develop
-            Commit: ${{ github.sha }}
-            Build Date: ${{ steps.next_version.outputs.tag_name }}
-            
-            Platform:
-            - Linux x86_64
-            
-            Components:
-            - worker
-            - Validator
-            - Orchestrator
-            - Discovery svc 
-            
-            Note: This is an automated development build. For stable releases, please use builds from the master branch.
-          files: release-artifacts/*
-          prerelease: true
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create development tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.next_version.outputs.tag_name }}
+          git push origin ${{ steps.next_version.outputs.tag_name }}
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
