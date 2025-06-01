@@ -1,15 +1,20 @@
 name: prime-dev
 root: .
 enable_pane_titles: true
+on_project_start: |
+  docker compose up -d anvil redis
+  docker compose wait --timeout 180 anvil redis
+  cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd ..
+  make setup
 windows:
   - services:
       layout: even-horizontal 
       panes:
-        - Worker: bash -c 'sleep 5 && cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd .. && make setup && clear'
-        - Discovery: bash -c 'sleep 20 && make watch-discovery'
-        - Validator: bash -c 'sleep 25 && make watch-validator'
-        - Orchestrator: bash -c 'sleep 30 && make watch-orchestrator'
+        - Worker: clear
+        - Discovery: make watch-discovery
+        - Validator: make watch-validator
+        - Orchestrator: make watch-orchestrator
   - background:
       layout: even-horizontal
       panes:
-        - "Prime Dev Services": bash -c 'docker compose up anvil redis'
+        - "Prime Dev Services": docker compose logs -f anvil redis
