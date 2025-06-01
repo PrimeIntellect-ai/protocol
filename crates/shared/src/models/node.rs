@@ -306,7 +306,7 @@ impl FromStr for ComputeRequirements {
         Ok(requirements)
     }
 }
-use log::info;
+use log::{debug, info};
 
 impl ComputeSpecs {
     /// Checks if the current compute specs meet the given requirements.
@@ -354,7 +354,7 @@ impl ComputeSpecs {
         if !requirements.gpu.is_empty() {
             // Requirements specify GPUs, so the node must have a GPU spec...
             let Some(spec_gpu) = &self.gpu else {
-                info!("GPU requirements not met: GPU required but none available");
+                debug!("GPU requirements not met: GPU required but none available");
                 return false;
             };
             // ...and that GPU spec must meet *at least one* of the requirement options.
@@ -363,7 +363,7 @@ impl ComputeSpecs {
                 .iter()
                 .any(|req_gpu| spec_gpu.meets(req_gpu))
             {
-                info!("GPU requirements not met");
+                debug!("GPU requirements not met");
                 return false;
             }
         }
