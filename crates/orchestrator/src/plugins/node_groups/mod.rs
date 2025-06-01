@@ -349,14 +349,14 @@ impl NodeGroupsPlugin {
         loop {
             let start = std::time::Instant::now();
             interval.tick().await;
-            
+
             if let Err(e) = self.try_form_new_groups() {
                 error!("Error in group management: {}", e);
             }
             if let Some(heartbeats) = &self.node_groups_heartbeats {
                 heartbeats.update_node_groups();
             }
-            
+
             let elapsed = start.elapsed();
             log::info!("Group management loop completed in {:?}", elapsed);
         }
