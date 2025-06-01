@@ -14,7 +14,7 @@ services:
   reth:
     image: ghcr.io/paradigmxyz/reth:latest
     platform: linux/amd64
-    entrypoint: ["reth", "node", "--dev", "--dev.block-time", "2sec", "--chain", "dev",  "--http", "--ws", "--http.addr", "0.0.0.0", "--ws.addr", "0.0.0.0", "--metrics", "0.0.0.0:9001"]
+    entrypoint: ["reth", "node", "--dev", "--chain", "dev", "--dev.block-time", "2sec", "--http", "--ws", "--http.addr", "0.0.0.0", "--ws.addr", "0.0.0.0", "--metrics", "0.0.0.0:9001"]
     ports:
       - "8545:8545"
       - "9001:9001"
