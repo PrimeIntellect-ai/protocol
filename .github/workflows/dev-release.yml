@@ -89,8 +89,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.next_version.outputs.tag_name }}
-          git push origin ${{ steps.next_version.outputs.tag_name }}
+          TAG_NAME=${{ steps.next_version.outputs.tag_name }}
+          if git tag --list "$TAG_NAME" | grep -q "$TAG_NAME"; then
+            echo "Tag $TAG_NAME already exists. Skipping tag creation."
+          else
+            git tag "$TAG_NAME"
+            git push origin "$TAG_NAME"
+          fi
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
