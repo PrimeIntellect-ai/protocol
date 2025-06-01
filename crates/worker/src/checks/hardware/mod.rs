@@ -1,4 +1,4 @@
-mod gpu;
+pub mod gpu;
 pub mod hardware_check;
 mod interconnect;
 mod memory;

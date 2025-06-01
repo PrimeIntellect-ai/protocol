@@ -160,11 +160,37 @@ impl DockerManager {
 
         self.pull_image(image).await?;
 
-        let env = env_vars.map(|vars| {
-            vars.iter()
+        // Prepare environment variables
+        let mut final_env = env_vars.unwrap_or_default();
+        
+        // Check if we have AMD GPUs and add ROCm environment variables
+        let is_amd_gpu = if let Some(ref gpu_spec) = gpu {
+            gpu_spec.model.as_ref()
+                .map(|m| m.to_lowercase().contains("amd") || m.to_lowercase().contains("radeon"))
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        
+        if is_amd_gpu {
+            // Add ROCm environment variables
+            final_env.insert("HSA_ENABLE_SDMA".to_string(), "0".to_string());
+            final_env.insert("ROCR_VISIBLE_DEVICES".to_string(), 
+                gpu.as_ref()
+                    .and_then(|g| g.indices.as_ref())
+                    .map(|indices| indices.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","))
+                    .unwrap_or_else(|| "all".to_string())
+            );
+        }
+
+        let env = if !final_env.is_empty() {
+            Some(final_env.iter()
                 .map(|(k, v)| format!("{}={}", k, v))
-                .collect::<Vec<String>>()
-        });
+                .collect::<Vec<String>>())
+        } else {
+            None
+        };
+        
         let volume_binds = {
             let mut binds = final_volumes
                 .iter()
@@ -192,30 +218,80 @@ impl DockerManager {
 
         let host_config = if gpu.is_some() {
             let gpu = gpu.unwrap();
-            let device_ids = match &gpu.indices {
-                Some(indices) if !indices.is_empty() => {
-                    // Use specific GPU indices if available
-                    indices.iter().map(|i| i.to_string()).collect()
+            
+            // Determine GPU vendor from model name
+            let gpu_driver = if let Some(model) = &gpu.model {
+                if model.to_lowercase().contains("nvidia") {
+                    "nvidia"
+                } else if model.to_lowercase().contains("amd") || model.to_lowercase().contains("radeon") {
+                    // For AMD GPUs, we need to bind device files instead of using device requests
+                    // AMD GPUs with ROCm use a different approach
+                    "amd"
+                } else {
+                    // Default to nvidia for backwards compatibility
+                    "nvidia"
                 }
-                _ => {
-                    // Request all available GPUs if no specific indices
-                    vec!["all".to_string()]
-                }
+            } else {
+                "nvidia"
             };
+            
+            if gpu_driver == "nvidia" {
+                let device_ids = match &gpu.indices {
+                    Some(indices) if !indices.is_empty() => {
+                        // Use specific GPU indices if available
+                        indices.iter().map(|i| i.to_string()).collect()
+                    }
+                    _ => {
+                        // Request all available GPUs if no specific indices
+                        vec!["all".to_string()]
+                    }
+                };
 
-            Some(HostConfig {
-                extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
-                device_requests: Some(vec![DeviceRequest {
-                    driver: Some("nvidia".into()),
-                    count: None,
-                    device_ids: Some(device_ids),
-                    capabilities: Some(vec![vec!["gpu".into()]]),
-                    options: Some(HashMap::new()),
-                }]),
-                binds: volume_binds,
-                shm_size: shm_size.map(|s| s as i64),
-                ..Default::default()
-            })
+                Some(HostConfig {
+                    extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
+                    device_requests: Some(vec![DeviceRequest {
+                        driver: Some("nvidia".into()),
+                        count: None,
+                        device_ids: Some(device_ids),
+                        capabilities: Some(vec![vec!["gpu".into()]]),
+                        options: Some(HashMap::new()),
+                    }]),
+                    binds: volume_binds,
+                    shm_size: shm_size.map(|s| s as i64),
+                    ..Default::default()
+                })
+            } else {
+                // AMD GPU configuration
+                // ROCm requires binding the device files and setting specific environment variables
+                let mut amd_binds = volume_binds.unwrap_or_default();
+                
+                // Add ROCm device bindings
+                amd_binds.push("/dev/kfd:/dev/kfd".to_string());
+                amd_binds.push("/dev/dri:/dev/dri".to_string());
+                
+                // For specific GPU indices, we might need to bind specific renderD* devices
+                // This is a simplified approach - in production you might want more fine-grained control
+                
+                Some(HostConfig {
+                    extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
+                    binds: Some(amd_binds),
+                    devices: Some(vec![
+                        bollard::models::DeviceMapping {
+                            path_on_host: Some("/dev/kfd".to_string()),
+                            path_in_container: Some("/dev/kfd".to_string()),
+                            cgroup_permissions: Some("rwm".to_string()),
+                        },
+                        bollard::models::DeviceMapping {
+                            path_on_host: Some("/dev/dri".to_string()),
+                            path_in_container: Some("/dev/dri".to_string()),
+                            cgroup_permissions: Some("rwm".to_string()),
+                        },
+                    ]),
+                    group_add: Some(vec!["video".to_string(), "render".to_string()]),
+                    shm_size: shm_size.map(|s| s as i64),
+                    ..Default::default()
+                })
+            }
         } else {
             Some(HostConfig {
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),

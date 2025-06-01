@@ -1,11 +1,8 @@
 use crate::console::Console;
 use lazy_static::lazy_static;
 use nvml_wrapper::Nvml;
-use shared::models::node::GpuSpecs;
 use std::sync::Mutex;
-
-#[allow(dead_code)]
-const BYTES_TO_MB: u64 = 1024 * 1024;
+use super::{GpuDevice, GpuDetector, GpuVendor};
 
 // Use lazy_static to initialize NVML once and reuse it
 lazy_static! {
@@ -13,36 +10,47 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
-struct GpuDevice {
-    name: String,
-    memory: u64,
-    driver_version: String,
-    count: u32,
-    indices: Vec<u32>,
-}
+pub struct NvidiaGpuDetector;
 
-pub fn detect_gpu() -> Vec<GpuSpecs> {
-    Console::title("GPU Detection");
-
-    let gpu_devices = get_gpu_status();
-    if gpu_devices.is_empty() {
-        Console::user_error("No GPU devices detected");
-        return vec![];
+impl NvidiaGpuDetector {
+    pub fn new() -> Self {
+        Self
     }
-
-    gpu_devices
-        .into_iter()
-        .map(|device| GpuSpecs {
-            count: Some(device.count),
-            model: Some(device.name.to_lowercase()),
-            memory_mb: Some((device.memory / BYTES_TO_MB) as u32),
-            indices: Some(device.indices),
-        })
-        .collect()
 }
 
-fn get_gpu_status() -> Vec<GpuDevice> {
+impl GpuDetector for NvidiaGpuDetector {
+    fn is_available(&self) -> bool {
+        // Check if NVML can be initialized
+        let mut nvml_guard = NVML.lock().unwrap();
+        
+        if nvml_guard.is_none() {
+            match Nvml::builder()
+                .lib_path(std::ffi::OsStr::new(
+                    "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1",
+                ))
+                .init()
+            {
+                Ok(nvml) => {
+                    *nvml_guard = Some(nvml);
+                    true
+                }
+                Err(_) => false,
+            }
+        } else {
+            true
+        }
+    }
+    
+    fn detect(&self) -> Vec<GpuDevice> {
+        get_nvidia_gpu_status()
+    }
+    
+    fn vendor(&self) -> GpuVendor {
+        GpuVendor::Nvidia
+    }
+}
+
+fn get_nvidia_gpu_status() -> Vec<GpuDevice> {
     let mut nvml_guard = NVML.lock().unwrap();
 
     // Initialize NVML if not already initialized
@@ -73,7 +81,6 @@ fn get_gpu_status() -> Vec<GpuDevice> {
     };
 
     if device_count == 0 {
-        Console::user_error("No GPU devices detected");
         return vec![];
     }
 
@@ -101,6 +108,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
                             driver_version,
                             count: 1,
                             indices: vec![i as u32],
+                            vendor: GpuVendor::Nvidia,
                         },
                     );
                 }

@@ -6676,6 +6676,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rocm_smi_lib"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7afba914d5346b116ac94329117bc3604bda9904ab76989f5252059dd9819178"
+dependencies = [
+ "libc",
+ "rocm_smi_lib_sys",
+]
+
+[[package]]
+name = "rocm_smi_lib_sys"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "057955e1d842a15812bd32a72424f15eef819d6d0fb005bb0133da44eacd8d8a"
+dependencies = [
+ "bindgen",
+ "libc",
+]
+
+[[package]]
 name = "rtnetlink"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9286,6 +9306,7 @@ dependencies = [
  "rand_core 0.6.4",
  "regex",
  "reqwest",
+ "rocm_smi_lib",
  "serde",
  "serde_json",
  "serial_test",

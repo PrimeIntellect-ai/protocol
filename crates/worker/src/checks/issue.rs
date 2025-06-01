@@ -13,6 +13,8 @@ pub enum IssueType {
     NoGpu,                        // GPU required for compute
     DockerNotInstalled,           // Docker required for containers
     ContainerToolkitNotInstalled, // Container toolkit required for GPU
+    RocmNotInstalled,             // ROCm required for AMD GPUs
+    AmdContainerRuntimeNotInstalled, // AMD container runtime required for AMD GPUs
     InsufficientStorage,          // Minimum storage needed
     InsufficientMemory,           // Minimum RAM needed
     InsufficientCpu,              // Minimum CPU cores needed
