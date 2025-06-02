@@ -1,3 +1,4 @@
+use crate::metrics::MetricsContext;
 use crate::store::redis::RedisStore;
 use crate::validators::Validator;
 use alloy::primitives::U256;
@@ -28,6 +29,19 @@ pub enum ValidationResult {
     Pending,
     Unknown,
     Invalidated,
+}
+
+impl fmt::Display for ValidationResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ValidationResult::Accept => write!(f, "accept"),
+            ValidationResult::Reject => write!(f, "reject"),
+            ValidationResult::Crashed => write!(f, "crashed"),
+            ValidationResult::Pending => write!(f, "pending"),
+            ValidationResult::Unknown => write!(f, "unknown"),
+            ValidationResult::Invalidated => write!(f, "invalidated"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -210,6 +224,7 @@ pub struct SyntheticDataValidator {
     // Whether to use node grouping
     with_node_grouping: bool,
     disable_chain_invalidation: bool,
+    metrics: Option<MetricsContext>,
 }
 
 impl Validator for SyntheticDataValidator {
@@ -244,12 +259,13 @@ impl SyntheticDataValidator {
         grace_interval: u64,
         with_node_grouping: bool,
         disable_chain_invalidation: bool,
+        metrics: Option<MetricsContext>,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
 
         let mut toploc = Vec::new();
         for config in toploc_configs {
-            toploc.push(Toploc::new(config));
+            toploc.push(Toploc::new(config, metrics.clone()));
         }
 
         Self {
@@ -266,6 +282,7 @@ impl SyntheticDataValidator {
             grace_interval,
             with_node_grouping,
             disable_chain_invalidation,
+            metrics,
         }
     }
 
@@ -277,6 +294,10 @@ impl SyntheticDataValidator {
         if self.disable_chain_invalidation {
             info!("Chain invalidation is disabled, skipping work invalidation");
             return Ok(());
+        }
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_work_key_invalidation();
         }
 
         match self
@@ -401,6 +422,9 @@ impl SyntheticDataValidator {
                 "Failed to resolve original file name for work key: {}",
                 work_key
             );
+            if let Some(metrics) = &self.metrics {
+                metrics.record_work_key_error("file_name_resolution_failed");
+            }
             return Err(ProcessWorkKeyError::FileNameResolutionError(format!(
                 "Failed to resolve original file name for work key: {}",
                 work_key
@@ -550,6 +574,10 @@ impl SyntheticDataValidator {
             .get_work_since(self.pool_id, max_age_ago)
             .await
             .context("Failed to get work keys from the last 24 hours")?;
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_work_keys_to_process(work_keys.len() as f64);
+        }
 
         if !work_keys.is_empty() {
             info!(
@@ -718,6 +746,10 @@ impl SyntheticDataValidator {
             .await?;
 
         info!("Group {} toploc status: {:?}", group.group_id, status);
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_group_validation_status(&group.group_id, &status.status.to_string());
+        }
 
         if status.status == ValidationResult::Reject {
             let indices = status.failing_indices;
@@ -948,6 +980,7 @@ mod tests {
             1,
             true,
             false,
+            None,
         );
 
         let work_keys = vec![
@@ -1001,6 +1034,7 @@ mod tests {
             1,
             false,
             false,
+            None,
         );
         validator
             .update_work_validation_status(
@@ -1105,6 +1139,7 @@ mod tests {
             1,
             false,
             false,
+            None,
         );
 
         let group = validator
@@ -1187,6 +1222,7 @@ mod tests {
             1,
             true,
             false,
+            None,
         );
 
         let work_keys: Vec<String> = vec![file_sha.to_string()];
@@ -1293,6 +1329,7 @@ mod tests {
             1,
             true,
             true,
+            None,
         );
 
         let group = validator

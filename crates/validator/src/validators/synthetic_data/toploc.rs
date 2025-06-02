@@ -1,3 +1,5 @@
+use crate::metrics::MetricsContext;
+
 use super::ValidationResult;
 use anyhow::Error;
 use log::debug;
@@ -15,6 +17,7 @@ pub struct ToplocConfig {
 pub struct Toploc {
     config: ToplocConfig,
     client: reqwest::Client,
+    metrics: Option<MetricsContext>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -26,7 +29,7 @@ pub struct GroupValidationResult {
 }
 
 impl Toploc {
-    pub fn new(config: ToplocConfig) -> Self {
+    pub fn new(config: ToplocConfig, metrics: Option<MetricsContext>) -> Self {
         let client = reqwest::Client::builder()
             .default_headers({
                 let mut headers = reqwest::header::HeaderMap::new();
@@ -42,7 +45,11 @@ impl Toploc {
             .build()
             .expect("Failed to build HTTP client");
 
-        Self { config, client }
+        Self {
+            config,
+            client,
+            metrics,
+        }
     }
 
     fn normalize_path(&self, path: &str) -> String {
@@ -92,18 +99,29 @@ impl Toploc {
         let start_time = std::time::Instant::now();
         match &self.client.post(&validate_url).json(&body).send().await {
             Ok(response) => {
-                if !response.status().is_success() {
-                    error!(
-                        "Server returned error status {} for {}",
-                        response.status(),
-                        file_name
-                    );
+                let status = response.status();
+                if !status.is_success() {
+                    error!("Server returned error status {} for {}", status, file_name);
+                    if let Some(metrics) = &self.metrics {
+                        metrics.record_api_request(
+                            "toploc_single_file_validation",
+                            &status.to_string(),
+                        );
+                    }
                     return Err(Error::msg(format!(
                         "Server returned error status: {}",
-                        response.status()
+                        status
                     )));
                 }
                 let trigger_duration = start_time.elapsed();
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_api_duration(
+                        "toploc_single_file_validation",
+                        trigger_duration.as_secs_f64(),
+                    );
+                    metrics
+                        .record_api_request("toploc_single_file_validation", &status.to_string());
+                }
                 info!(
                     "Remote toploc validation triggered for {} in {:?}",
                     file_name, trigger_duration
@@ -116,6 +134,9 @@ impl Toploc {
                     "Failed to trigger remote toploc validation for {}: {}",
                     file_name, e
                 );
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_api_request("toploc_single_file_validation", "0");
+                }
                 Err(Error::msg(format!("Failed to trigger validation: {}", e)))
             }
         }
@@ -150,18 +171,28 @@ impl Toploc {
         let start_time = std::time::Instant::now();
         match &self.client.post(&validate_url).json(&body).send().await {
             Ok(response) => {
-                if !response.status().is_success() {
-                    error!(
-                        "Server returned error status {} for {}",
-                        response.status(),
-                        file_name
-                    );
+                let status = response.status();
+                if !status.is_success() {
+                    error!("Server returned error status {} for {}", status, file_name);
+                    if let Some(metrics) = &self.metrics {
+                        metrics.record_api_request(
+                            "toploc_group_file_validation",
+                            &status.to_string(),
+                        );
+                    }
                     return Err(Error::msg(format!(
                         "Server returned error status: {}",
-                        response.status()
+                        status
                     )));
                 }
                 let trigger_duration = start_time.elapsed();
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_api_duration(
+                        "toploc_group_file_validation",
+                        trigger_duration.as_secs_f64(),
+                    );
+                    metrics.record_api_request("toploc_group_file_validation", &status.to_string());
+                }
                 info!(
                     "Remote toploc group validation triggered for {} in {:?}",
                     file_name, trigger_duration
@@ -174,6 +205,9 @@ impl Toploc {
                     "Failed to trigger remote toploc group validation for {}: {}",
                     file_name, e
                 );
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_api_request("toploc_group_file_validation", "0");
+                }
                 Err(Error::msg(format!(
                     "Failed to trigger group validation: {}",
                     e
@@ -194,23 +228,27 @@ impl Toploc {
         );
         debug!("Processing URL: {}", url);
 
+        let start_time = std::time::Instant::now();
         match self.client.get(&url).send().await {
             Ok(response) => {
-                if response.status() != reqwest::StatusCode::OK {
-                    error!(
-                        "Unexpected status code {} for {}",
-                        response.status(),
-                        file_name
-                    );
-                    return Err(Error::msg(format!(
-                        "Unexpected status code: {}",
-                        response.status()
-                    )));
+                let status = response.status();
+                if status != reqwest::StatusCode::OK {
+                    error!("Unexpected status code {} for {}", status, file_name);
+                    if let Some(metrics) = &self.metrics {
+                        metrics.record_api_request("toploc_get_group_status", &status.to_string());
+                    }
+                    return Err(Error::msg(format!("Unexpected status code: {}", status)));
                 }
                 let status_json: serde_json::Value = response.json().await.map_err(|e| {
                     error!("Failed to parse JSON response for {}: {}", file_name, e);
                     Error::msg(format!("Failed to parse JSON response: {}", e))
                 })?;
+
+                let duration = start_time.elapsed();
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_api_duration("toploc_get_group_status", duration.as_secs_f64());
+                    metrics.record_api_request("toploc_get_group_status", &status.to_string());
+                }
 
                 if status_json.get("status").is_none() {
                     error!("No status found for {}", file_name);
@@ -352,7 +390,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .trigger_single_file_validation("abc123", "0x456", "test-file.parquet")
@@ -382,7 +420,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .trigger_group_file_validation(
@@ -412,7 +450,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .trigger_group_file_validation(
@@ -447,7 +485,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .get_single_file_validation_status("test-file.parquet")
@@ -473,7 +511,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .get_single_file_validation_status("test-file.parquet")
@@ -499,7 +537,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .get_group_file_validation_status("test-group.parquet")
@@ -528,7 +566,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .get_group_file_validation_status("test-group.parquet")
@@ -549,7 +587,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: Some("Qwen3".to_string()),
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         assert!(toploc.matches_file_name("Qwen3-model-data.parquet"));
         assert!(toploc.matches_file_name("Qwen3"));
@@ -564,7 +602,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: Some("Qwen/Qwen0.6".to_string()),
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         assert!(toploc.matches_file_name("/Qwen/Qwen0.6/-model-data.parquet"));
         assert!(toploc.matches_file_name("Qwen/Qwen0.6"));
@@ -579,7 +617,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         // Should match everything when no filter is set
         assert!(toploc.matches_file_name("Qwen3-model-data.parquet"));
@@ -603,7 +641,7 @@ mod tests {
             auth_token: Some("secret-token".to_string()),
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .trigger_single_file_validation("abc123", "0x456", "test.parquet")
@@ -621,7 +659,7 @@ mod tests {
             auth_token: None,
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .trigger_single_file_validation("abc123", "0x456", "test.parquet")
@@ -649,7 +687,7 @@ mod tests {
             auth_token: Some("group-token".to_string()),
             file_prefix_filter: None,
         };
-        let toploc = Toploc::new(config);
+        let toploc = Toploc::new(config, None);
 
         let result = toploc
             .trigger_group_file_validation(

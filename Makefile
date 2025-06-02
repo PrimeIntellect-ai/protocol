@@ -54,6 +54,7 @@ setup-dev-env:
 	make create-training-domain
 	make create-synth-data-domain
 	make mint-ai-tokens-to-federator
+	make transfer-eth-to-pool-owner
 
 
 up:

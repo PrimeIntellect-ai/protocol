@@ -1,3 +1,4 @@
+pub mod metrics;
 pub mod store;
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
@@ -7,6 +8,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, LevelFilter};
 use log::{error, info};
+use metrics::MetricsContext;
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
@@ -180,11 +182,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     tokio::spawn(async {
-        if let Err(e) = HttpServer::new(|| App::new().route("/health", web::get().to(health_check)))
-            .bind("0.0.0.0:9879")
-            .expect("Failed to bind health check server")
-            .run()
-            .await
+        if let Err(e) = HttpServer::new(|| {
+            App::new()
+                .route("/health", web::get().to(health_check))
+                .route(
+                    "/metrics",
+                    web::get().to(|| async {
+                        match metrics::export_metrics() {
+                            Ok(metrics) => {
+                                HttpResponse::Ok().content_type("text/plain").body(metrics)
+                            }
+                            Err(e) => {
+                                error!("Error exporting metrics: {:?}", e);
+                                HttpResponse::InternalServerError().finish()
+                            }
+                        }
+                    }),
+                )
+        })
+        .bind("0.0.0.0:9879")
+        .expect("Failed to bind health check server")
+        .run()
+        .await
         {
             error!("Actix server error: {:?}", e);
         }
@@ -199,6 +218,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_stake_manager();
 
     let contracts = contract_builder.build_partial().unwrap();
+
+    let metrics_ctx =
+        MetricsContext::new(validator_wallet.address().to_string(), args.pool_id.clone());
 
     if let Some(pool_id) = args.pool_id.clone() {
         let pool = match contracts
@@ -275,6 +297,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     args.toploc_grace_interval,
                     args.use_grouping,
                     args.disable_toploc_invalidation,
+                    Some(metrics_ctx.clone()),
                 ))
             }
             None => {
@@ -447,6 +470,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let loop_duration_ms = loop_duration.as_millis() as i64;
         LAST_LOOP_DURATION_MS.store(loop_duration_ms, Ordering::Relaxed);
 
+        metrics_ctx.record_validation_loop_duration(loop_duration.as_secs_f64());
         info!("Validation loop completed in {}ms", loop_duration_ms);
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
     }
