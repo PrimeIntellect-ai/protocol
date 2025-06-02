@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 actix-web = { workspace = true }
+actix-web-prometheus = "0.1.2"
 alloy = { workspace = true }
 anyhow = { workspace = true }
 async-trait = "0.1.88"

@@ -26,14 +26,13 @@ pub struct TaskBridge {
     pub node_wallet: Option<Arc<Wallet>>,
     pub docker_storage_path: Option<String>,
     pub state: Arc<SystemState>,
-    pub silence_metrics: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 struct MetricInput {
     task_id: String,
-    label: String,
-    value: f64,
+    #[serde(flatten)]
+    metrics: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl TaskBridge {
@@ -46,7 +45,6 @@ impl TaskBridge {
         node_wallet: Option<Arc<Wallet>>,
         docker_storage_path: Option<String>,
         state: Arc<SystemState>,
-        silence_metrics: bool,
     ) -> Self {
         let path = match socket_path {
             Some(path) => path.to_string(),
@@ -67,7 +65,6 @@ impl TaskBridge {
             node_wallet,
             docker_storage_path,
             state,
-            silence_metrics,
         }
     }
 
@@ -127,7 +124,6 @@ impl TaskBridge {
             let wallet = self.node_wallet.clone();
             let storage_path_clone = self.docker_storage_path.clone();
             let state_clone = self.state.clone();
-            let silence_metrics = self.silence_metrics;
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     tokio::spawn(async move {
@@ -276,16 +272,19 @@ impl TaskBridge {
                                         match serde_json::from_str::<MetricInput>(json_str) {
                                             Ok(input) => {
                                                 debug!(
-                                                    "Received metric - Task: {}, Label: {}, Value: {}",
-                                                    input.task_id, input.label, input.value
+                                                    "Received metric - Task: {}, Metrics: {:?}",
+                                                    input.task_id, input.metrics
                                                 );
-                                                if !silence_metrics {
-                                                    debug!("Updating metric store");
+                                                for (key, value) in input.metrics.iter() {
+                                                    debug!(
+                                                        "Metric - Key: {}, Value: {}",
+                                                        key, value
+                                                    );
                                                     let _ = store
                                                         .update_metric(
-                                                            input.task_id,
-                                                            input.label,
-                                                            input.value,
+                                                            input.task_id.clone(),
+                                                            key.to_string(),
+                                                            value.as_f64().unwrap_or(0.0),
                                                         )
                                                         .await;
                                                 }
@@ -401,6 +400,7 @@ impl TaskBridge {
 mod tests {
     use super::*;
     use crate::metrics::store::MetricsStore;
+    use serde_json::json;
     use shared::models::metric::MetricKey;
     use std::sync::Arc;
     use std::time::Duration;
@@ -422,7 +422,6 @@ mod tests {
             None,
             None,
             state,
-            false,
         );
 
         // Run the bridge in background
@@ -454,7 +453,6 @@ mod tests {
             None,
             None,
             state,
-            false,
         );
 
         // Run bridge in background
@@ -488,7 +486,6 @@ mod tests {
             None,
             None,
             state,
-            false,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -496,12 +493,12 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let mut stream = UnixStream::connect(&socket_path).await?;
-        let sample_metric = MetricInput {
-            task_id: "1234".to_string(),
-            label: "test_label".to_string(),
-            value: 10.0,
-        };
-        let sample_metric = serde_json::to_string(&sample_metric)?;
+        let data = json!({
+            "task_id": "1234",
+            "test_label": 10.0,
+            "test_label2": 20.0,
+        });
+        let sample_metric = serde_json::to_string(&data)?;
         debug!("Sending {:?}", sample_metric);
         let msg = format!("{}{}", sample_metric, "\n");
         stream.write_all(msg.as_bytes()).await?;
@@ -523,6 +520,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_file_submission() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let socket_path = temp_dir.path().join("test.sock");
+        let metrics_store = Arc::new(MetricsStore::new());
+        let state = Arc::new(SystemState::new(None, false, None));
+        let bridge = TaskBridge::new(
+            Some(socket_path.to_str().unwrap()),
+            metrics_store.clone(),
+            None,
+            None,
+            None,
+            None,
+            state,
+        );
+
+        let bridge_handle = tokio::spawn(async move { bridge.run().await });
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let mut stream = UnixStream::connect(&socket_path).await?;
+        let json = json!({
+            "task_id": "1234",
+            "output/save_path": "test.txt",
+            "output/sha256": "1234567890",
+            "output/output_flops": 1500.0,
+            "output/input_flops": 2500.0,
+        });
+        let sample_metric = serde_json::to_string(&json)?;
+        debug!("Sending {:?}", sample_metric);
+        let msg = format!("{}{}", sample_metric, "\n");
+        stream.write_all(msg.as_bytes()).await?;
+        stream.flush().await?;
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let all_metrics = metrics_store.get_all_metrics().await;
+        assert!(
+            all_metrics.is_empty(),
+            "Expected metrics to be empty but found: {:?}",
+            all_metrics
+        );
+
+        bridge_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_multiple_clients() -> Result<()> {
         let temp_dir = tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
@@ -536,7 +580,6 @@ mod tests {
             None,
             None,
             state,
-            false,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
