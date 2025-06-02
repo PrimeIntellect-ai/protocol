@@ -5571,6 +5571,7 @@ dependencies = [
  "google-cloud-storage",
  "hex",
  "log",
+ "prometheus",
  "rand 0.9.1",
  "redis",
  "redis-test",

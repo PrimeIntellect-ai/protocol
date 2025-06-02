@@ -19,7 +19,10 @@ use url::Url;
 pub async fn create_test_app_state() -> Data<AppState> {
     use shared::utils::MockStorageProvider;
 
-    use crate::{scheduler::Scheduler, utils::loop_heartbeats::LoopHeartbeats, ServerMode};
+    use crate::{
+        metrics::MetricsContext, scheduler::Scheduler, utils::loop_heartbeats::LoopHeartbeats,
+        ServerMode,
+    };
 
     let store = Arc::new(RedisStore::new_test());
     let mut con = store
@@ -40,6 +43,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
 
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
+    let metrics = Arc::new(MetricsContext::new(1.to_string()));
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -58,6 +62,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
         redis_store: store.clone(),
         scheduler,
         node_groups_plugin: None,
+        metrics,
     })
 }
 
@@ -66,6 +71,7 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
     use shared::utils::MockStorageProvider;
 
     use crate::{
+        metrics::MetricsContext,
         plugins::node_groups::{NodeGroupConfiguration, NodeGroupsPlugin},
         scheduler::Scheduler,
         utils::loop_heartbeats::LoopHeartbeats,
@@ -105,6 +111,7 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
 
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
+    let metrics = Arc::new(MetricsContext::new(1.to_string()));
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -123,6 +130,7 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
         redis_store: store.clone(),
         scheduler,
         node_groups_plugin,
+        metrics,
     })
 }
 

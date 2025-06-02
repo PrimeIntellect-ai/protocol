@@ -1,6 +1,7 @@
 mod api;
 mod discovery;
 mod events;
+mod metrics;
 mod models;
 mod node;
 mod plugins;
@@ -24,6 +25,7 @@ use log::debug;
 use log::error;
 use log::info;
 use log::LevelFilter;
+use metrics::MetricsContext;
 use plugins::node_groups::NodeGroupConfiguration;
 use plugins::node_groups::NodeGroupsPlugin;
 use plugins::webhook::WebhookPlugin;
@@ -144,6 +146,8 @@ async fn main() -> Result<()> {
 
     debug!("Log level: {}", log_level);
     debug!("Server mode: {:?}", server_mode);
+
+    let metrics_context = Arc::new(MetricsContext::new(args.compute_pool_id.to_string()));
 
     let heartbeats = Arc::new(LoopHeartbeats::new(&server_mode));
 
@@ -327,6 +331,7 @@ async fn main() -> Result<()> {
             server_mode,
             scheduler,
             node_groups_plugin,
+            metrics_context,
         ) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
