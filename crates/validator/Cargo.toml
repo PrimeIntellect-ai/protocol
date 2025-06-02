@@ -13,9 +13,11 @@ directories = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
+lazy_static = "1.5.0"
 log = { workspace = true }
 mockito = "1.7.0"
 nalgebra = { workspace = true }
+prometheus = "0.14.0"
 rand = "0.9.0"
 redis = { workspace = true }
 redis-test = { workspace = true }
