@@ -2,6 +2,7 @@ use crate::api::routes::nodes::nodes_routes;
 use crate::api::routes::storage::storage_routes;
 use crate::api::routes::task::tasks_routes;
 use crate::api::routes::{heartbeat::heartbeat_routes, metrics::metrics_routes};
+use crate::metrics::MetricsContext;
 use crate::models::node::NodeStatus;
 use crate::plugins::node_groups::NodeGroupsPlugin;
 use crate::scheduler::Scheduler;
@@ -32,6 +33,7 @@ pub struct AppState {
     pub pool_id: u32,
     pub scheduler: Scheduler,
     pub node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
+    pub metrics: Arc<MetricsContext>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -50,6 +52,7 @@ pub async fn start_server(
     server_mode: ServerMode,
     scheduler: Scheduler,
     node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
+    metrics: Arc<MetricsContext>,
 ) -> Result<(), Error> {
     info!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
@@ -63,6 +66,7 @@ pub async fn start_server(
         pool_id,
         scheduler,
         node_groups_plugin,
+        metrics,
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
