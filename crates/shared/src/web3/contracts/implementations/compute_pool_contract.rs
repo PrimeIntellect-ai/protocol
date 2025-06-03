@@ -113,7 +113,14 @@ impl ComputePool {
         );
         let call = self.instance.instance().function_from_selector(
             &join_compute_pool_selector,
-            &[pool_id.into(), provider_address.into(), address, nonces, expirations, signatures],
+            &[
+                pool_id.into(),
+                provider_address.into(),
+                address,
+                nonces,
+                expirations,
+                signatures,
+            ],
         )?;
         Ok(call)
     }
