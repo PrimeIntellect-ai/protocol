@@ -107,12 +107,11 @@ EXTERNAL_IP ?= 0.0.0.0
 PORT = 8091
 
 # Remote setup
-# Remote setup
 .PHONY: setup-remote
 setup-remote:
 	$(SSH_CONNECTION) '\
 		sudo apt-get update; \
-		sudo apt-get install pkg-config libssl-dev; \
+		sudo apt-get install -y pkg-config libssl-dev; \
 		if ! command -v rustc > /dev/null; then \
 			curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; \
 			. "$$HOME/.cargo/env"; \
@@ -124,6 +123,12 @@ setup-remote:
 		if ! groups | grep -q docker; then \
 			sudo usermod -aG docker $$USER; \
 		fi'
+
+# AMD-specific remote setup
+.PHONY: setup-remote-amd
+setup-remote-amd: setup-remote
+	$(SSH_CONNECTION) '\
+		sudo apt-get install -y libclang-dev'
 
 # Setup SSH tunnel
 .PHONY: setup-tunnel
@@ -176,6 +181,26 @@ watch-worker-remote-two: setup-remote setup-tunnel sync-remote
 				--private-key-node \$$PRIVATE_KEY_NODE_2 \
 				2>&1 | tee worker.log\"'"
 
+# Run worker on remote AMD GPU
+.PHONY: watch-worker-remote-amd
+watch-worker-remote-amd: setup-remote-amd setup-tunnel sync-remote
+	$(SSH_CONNECTION) -t "cd ~/$(notdir $(CURDIR)) && \
+		export PATH=\"\$$HOME/.cargo/bin:\$$PATH\" && \
+		. \"\$$HOME/.cargo/env\" && \
+		export TERM=xterm-256color && \
+		bash --login -i -c '\
+			set -a && source .env && set +a && \
+			export EXTERNAL_IP=$(EXTERNAL_IP) && \
+			export LD_LIBRARY_PATH=/opt/rocm-6.4.0/lib:\$$LD_LIBRARY_PATH && \
+			export ROCM_PATH=/opt/rocm && \
+			export RUSTFLAGS=\"-L /opt/rocm-6.4.0/lib\" && \
+			clear && \
+			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w crates/worker/src -x \"run --features amd-gpu --bin worker -- run \
+				--port $(PORT) \
+				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
+				--auto-accept \
+				2>&1 | tee worker.log\"'"
+
 # Kill SSH tunnel
 .PHONY: kill-tunnel
 kill-tunnel:
@@ -193,6 +218,10 @@ remote-worker-two:
 	@trap 'make kill-tunnel' EXIT; \
 	make watch-worker-remote-two
 
+.PHONY: remote-worker-amd
+remote-worker-amd:
+	@trap 'make kill-tunnel' EXIT; \
+	make watch-worker-remote-amd
 
 # testing:
 eject-node:

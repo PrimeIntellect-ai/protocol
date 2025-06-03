@@ -1,7 +1,7 @@
 use super::{GpuDevice, GpuDetector, GpuVendor};
 
 #[cfg(feature = "amd-gpu")]
-use rocm_smi_lib::{RocmSmi, RocmErr};
+use rocm_smi_lib::RocmSmi;
 
 #[derive(Debug)]
 pub struct AmdGpuDetector;
@@ -48,7 +48,7 @@ impl GpuDetector for AmdGpuDetector {
 
 #[cfg(feature = "amd-gpu")]
 fn get_amd_gpu_status() -> Vec<GpuDevice> {
-    let rocm = match RocmSmi::init() {
+    let mut rocm = match RocmSmi::init() {
         Ok(smi) => smi,
         Err(e) => {
             Console::user_error(&format!("Failed to initialize ROCm SMI: {:?}", e));
@@ -56,14 +56,8 @@ fn get_amd_gpu_status() -> Vec<GpuDevice> {
         }
     };
 
-    // Get device count
-    let device_count = match rocm.get_device_count() {
-        Ok(count) => count as usize,
-        Err(e) => {
-            Console::user_error(&format!("Failed to get AMD device count: {:?}", e));
-            return vec![];
-        }
-    };
+    // Get device count - it returns u32 directly, not a Result
+    let device_count = rocm.get_device_count() as usize;
 
     if device_count == 0 {
         return vec![];
@@ -82,19 +76,26 @@ fn get_amd_gpu_status() -> Vec<GpuDevice> {
             }
         };
 
-        // Get memory info
-        let memory = match rocm.get_device_memory_total(i as u32) {
-            Ok(mem) => mem,
+        // Get memory info using get_device_memory_data
+        let memory = match rocm.get_device_memory_data(i as u32) {
+            Ok(mem_data) => mem_data.vram_total,
             Err(_) => 0,
         };
 
-        // Get driver version - for AMD this could be the ROCm version
-        let driver_version = match rocm.get_version() {
-            Ok(version) => format!("ROCm {}.{}.{}", version.major, version.minor, version.patch),
+        // Get driver version - use get_rsmi_version which returns a String
+        let driver_version = match rocm.get_rsmi_version() {
+            Ok(version) => format!("ROCm {}", version),
             Err(_) => "Unknown".to_string(),
         };
 
-        let name = identifiers.name;
+        // The name from identifiers is a Result<String, RocmErr>
+        let name = match identifiers.name {
+            Ok(n) => n,
+            Err(e) => {
+                Console::user_error(&format!("Failed to get device {} name: {:?}", i, e));
+                continue;
+            }
+        };
 
         if let Some(existing_device) = device_map.get_mut(&name) {
             existing_device.count += 1;

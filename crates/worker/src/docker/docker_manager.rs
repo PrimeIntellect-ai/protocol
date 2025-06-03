@@ -263,6 +263,7 @@ impl DockerManager {
             } else {
                 // AMD GPU configuration
                 // ROCm requires binding the device files and setting specific environment variables
+                // Unlike Nvidia, no specific Container Toolkit is required. AMD GPUs can be accessed using standard Docker flags
                 let mut amd_binds = volume_binds.unwrap_or_default();
                 
                 // Add ROCm device bindings
