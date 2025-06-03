@@ -107,6 +107,7 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
         store.clone(),
         store_context.clone(),
         None,
+        None,
     )));
 
     let mock_storage = MockStorageProvider::new();

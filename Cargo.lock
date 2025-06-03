@@ -5620,7 +5620,12 @@ dependencies = [
  "google-cloud-storage",
  "hex",
  "log",
+<<<<<<< HEAD
  "prometheus 0.14.0",
+=======
+ "mockito",
+ "prometheus",
+>>>>>>> 162ff69 (introduce advanced webhook plugin)
  "rand 0.9.1",
  "redis",
  "redis-test",

@@ -1,3 +1,4 @@
+use super::webhook::WebhookPlugin;
 use super::{Plugin, SchedulerPlugin};
 use crate::events::TaskObserver;
 use crate::models::node::{NodeStatus, OrchestratorNode};
@@ -70,6 +71,7 @@ pub struct NodeGroupsPlugin {
     store: Arc<RedisStore>,
     store_context: Arc<StoreContext>,
     node_groups_heartbeats: Option<Arc<LoopHeartbeats>>,
+    webhook_plugins: Option<Vec<WebhookPlugin>>,
 }
 
 impl NodeGroupsPlugin {
@@ -78,6 +80,7 @@ impl NodeGroupsPlugin {
         store: Arc<RedisStore>,
         store_context: Arc<StoreContext>,
         node_groups_heartbeats: Option<Arc<LoopHeartbeats>>,
+        webhook_plugins: Option<Vec<WebhookPlugin>>,
     ) -> Self {
         let mut sorted_configs = configuration_templates;
 
@@ -98,6 +101,7 @@ impl NodeGroupsPlugin {
             store,
             store_context,
             node_groups_heartbeats,
+            webhook_plugins,
         };
 
         plugin
@@ -334,6 +338,27 @@ impl NodeGroupsPlugin {
                 }
             }
         }
+        let webhook_groups = formed_groups.clone();
+        for group in webhook_groups {
+            if let Some(plugins) = &self.webhook_plugins {
+                for plugin in plugins.iter() {
+                    let group_clone = group.clone();
+                    let plugin_clone = plugin.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = plugin_clone
+                            .send_group_created(
+                                group_clone.id.to_string(),
+                                group_clone.configuration_name.to_string(),
+                                group_clone.nodes.iter().cloned().collect(),
+                            )
+                            .await
+                        {
+                            error!("Failed to send group created webhook: {}", e);
+                        }
+                    });
+                }
+            }
+        }
 
         Ok(formed_groups)
     }
@@ -388,6 +413,24 @@ impl NodeGroupsPlugin {
                 group_id,
                 group.nodes.len()
             );
+            if let Some(plugins) = &self.webhook_plugins {
+                for plugin in plugins.iter() {
+                    let plugin_clone = plugin.clone();
+                    let group_clone = group.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = plugin_clone
+                            .send_group_destroyed(
+                                group_clone.id.to_string(),
+                                group_clone.configuration_name.to_string(),
+                                group_clone.nodes.iter().cloned().collect(),
+                            )
+                            .await
+                        {
+                            error!("Failed to send group dissolved webhook: {}", e);
+                        }
+                    });
+                }
+            }
         } else {
             debug!("No group found with ID: {}", group_id);
         }
