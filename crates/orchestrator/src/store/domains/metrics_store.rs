@@ -150,7 +150,6 @@ impl MetricsStore {
             }
         }
 
-        println!("result {:?}", result);
         result
     }
 

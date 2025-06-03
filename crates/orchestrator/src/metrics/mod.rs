@@ -1,4 +1,5 @@
 use prometheus::{GaugeVec, Opts, Registry, TextEncoder};
+pub mod webhook_sender;
 
 pub struct MetricsContext {
     pub compute_task_gauges: GaugeVec,

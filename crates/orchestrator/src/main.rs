@@ -25,9 +25,11 @@ use log::debug;
 use log::error;
 use log::info;
 use log::LevelFilter;
+use metrics::webhook_sender::MetricsWebhookSender;
 use metrics::MetricsContext;
 use plugins::node_groups::NodeGroupConfiguration;
 use plugins::node_groups::NodeGroupsPlugin;
+use plugins::webhook::WebhookConfig;
 use plugins::webhook::WebhookPlugin;
 use plugins::SchedulerPlugin;
 use plugins::StatusUpdatePlugin;
@@ -112,10 +114,6 @@ struct Args {
     #[arg(short = 'l', long, default_value = "info")]
     log_level: String,
 
-    /// Webhook urls (comma-separated string)
-    #[arg(long, default_value = "")]
-    webhook_urls: Option<String>,
-
     /// Node group management interval
     #[arg(long, default_value = "10")]
     node_group_management_interval: u64,
@@ -199,6 +197,40 @@ async fn main() -> Result<()> {
     let mut scheduler_plugins: Vec<Box<dyn SchedulerPlugin>> = Vec::new();
     let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
     let mut node_groups_plugin: Option<Arc<NodeGroupsPlugin>> = None;
+    let mut webhook_plugins: Vec<WebhookPlugin> = vec![];
+
+    let configs = std::env::var("WEBHOOK_CONFIGS").unwrap_or_default();
+    match serde_json::from_str::<Vec<WebhookConfig>>(&configs) {
+        Ok(configs) if !configs.is_empty() => {
+            for config in configs {
+                let plugin = WebhookPlugin::new(config);
+                let plugin_clone = plugin.clone();
+                webhook_plugins.push(plugin_clone);
+                status_update_plugins.push(Box::new(plugin));
+            }
+        }
+        Ok(_) => {
+            info!("No webhook configurations provided");
+        }
+        Err(e) => {
+            error!("Failed to parse webhook configs from environment: {}", e);
+        }
+    }
+
+    let webhook_sender_store = store_context.clone();
+    let webhook_plugins_clone = webhook_plugins.clone();
+    if !webhook_plugins_clone.is_empty() {
+        tasks.spawn(async move {
+            let mut webhook_sender = MetricsWebhookSender::new(
+                webhook_sender_store.clone(),
+                webhook_plugins_clone.clone(),
+            );
+            if let Err(e) = webhook_sender.run().await {
+                error!("Error running webhook sender: {}", e);
+            }
+            Ok(())
+        });
+    }
 
     // Load node group configurations from environment variable
     if let Ok(configs_json) = std::env::var("NODE_GROUP_CONFIGS") {
@@ -210,13 +242,14 @@ async fn main() -> Result<()> {
                     store.clone(),
                     group_store_context.clone(),
                     Some(node_groups_heartbeats.clone()),
+                    Some(webhook_plugins.clone()),
                 );
                 let status_group_plugin = group_plugin.clone();
                 let group_plugin_for_server = group_plugin.clone();
                 node_groups_plugin = Some(Arc::new(group_plugin_for_server));
                 scheduler_plugins.push(Box::new(group_plugin));
                 status_update_plugins.push(Box::new(status_group_plugin));
-                info!("Node group plugin initialized",);
+                info!("Node group plugin initialized");
             }
             Ok(_) => {
                 info!(
@@ -277,17 +310,6 @@ async fn main() -> Result<()> {
         let status_update_store_context = store_context.clone();
         let status_update_heartbeats = heartbeats.clone();
         let status_update_contracts = contracts.clone();
-        let webhook_urls: Vec<String> = args
-            .webhook_urls
-            .clone()
-            .unwrap_or_default()
-            .split(',')
-            .map(|s| s.to_string())
-            .collect();
-
-        for url in webhook_urls {
-            status_update_plugins.push(Box::new(WebhookPlugin::new(url.to_string())));
-        }
 
         tasks.spawn(async move {
             let status_updater = NodeStatusUpdater::new(

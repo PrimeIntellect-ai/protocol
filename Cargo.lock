@@ -5620,6 +5620,7 @@ dependencies = [
  "google-cloud-storage",
  "hex",
  "log",
+ "mockito",
  "prometheus 0.14.0",
  "rand 0.9.1",
  "redis",
