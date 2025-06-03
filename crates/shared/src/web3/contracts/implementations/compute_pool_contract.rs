@@ -81,14 +81,28 @@ impl ComputePool {
         pool_id: U256,
         provider_address: Address,
         nodes: Vec<Address>,
+        nonces: Vec<[u8; 32]>,
+        expirations: Vec<[u8; 32]>,
         signatures: Vec<FixedBytes<65>>,
     ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
         let join_compute_pool_selector =
-            get_selector("joinComputePool(uint256,address,address[],bytes[])");
+            get_selector("joinComputePool(uint256,address,address[],uint256[],uint256[],bytes[])");
         let address = DynSolValue::from(
             nodes
                 .iter()
                 .map(|addr| DynSolValue::from(*addr))
+                .collect::<Vec<_>>(),
+        );
+        let nonces = DynSolValue::from(
+            nonces
+                .iter()
+                .map(|nonce| DynSolValue::from(U256::from_be_bytes(*nonce)))
+                .collect::<Vec<_>>(),
+        );
+        let expirations = DynSolValue::from(
+            expirations
+                .iter()
+                .map(|exp| DynSolValue::from(U256::from_be_bytes(*exp)))
                 .collect::<Vec<_>>(),
         );
         let signatures = DynSolValue::from(
@@ -99,7 +113,7 @@ impl ComputePool {
         );
         let call = self.instance.instance().function_from_selector(
             &join_compute_pool_selector,
-            &[pool_id.into(), provider_address.into(), address, signatures],
+            &[pool_id.into(), provider_address.into(), address, nonces, expirations, signatures],
         )?;
         Ok(call)
     }
