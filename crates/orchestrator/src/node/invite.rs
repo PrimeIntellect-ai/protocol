@@ -91,9 +91,9 @@ impl<'a> NodeInviter<'a> {
             [
                 &domain_id,
                 &pool_id,
+                node.address.as_slice(),
                 &nonce,
                 &expiration,
-                node.address.as_slice(),
             ]
             .concat(),
         );
