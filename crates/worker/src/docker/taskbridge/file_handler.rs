@@ -315,6 +315,7 @@ pub async fn handle_file_validation(
     contracts: &Arc<Contracts>,
     node: &Node,
     provider: &WalletProvider,
+    work_units: f64,
 ) -> Result<()> {
     info!("📄 Received file SHA for validation: {}", file_sha);
     info!(
@@ -347,7 +348,12 @@ pub async fn handle_file_validation(
 
     let call = contracts
         .compute_pool
-        .build_work_submission_call(pool_id_u256, node_addr, decoded_sha.to_vec())
+        .build_work_submission_call(
+            pool_id_u256,
+            node_addr,
+            decoded_sha.to_vec(),
+            U256::from(work_units),
+        )
         .await
         .unwrap();
 

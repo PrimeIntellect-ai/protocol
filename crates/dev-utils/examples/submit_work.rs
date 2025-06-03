@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
 
     let call = contracts
         .compute_pool
-        .build_work_submission_call(pool_id, node, work_key)
+        .build_work_submission_call(pool_id, node, work_key, U256::from(1))
         .await
         .map_err(|e| eyre::eyre!("Failed to build work submission call: {}", e))?;
 

@@ -97,10 +97,6 @@ pub enum Commands {
         #[arg(long, default_value = "false")]
         skip_system_checks: bool,
 
-        /// Silence metrics logging
-        #[arg(long, default_value = "false")]
-        silence_metrics: bool,
-
         /// Loki URL
         #[arg(long)]
         loki_url: Option<String>,
@@ -184,7 +180,6 @@ pub async fn execute_command(
             auto_accept,
             funding_retry_count,
             skip_system_checks,
-            silence_metrics,
             loki_url: _,
             log_level: _,
         } => {
@@ -401,7 +396,7 @@ pub async fn execute_command(
                 Some(specs) => specs.storage_path.clone(),
                 None => None,
             };
-            let task_bridge = Arc::new(TaskBridge::new(
+            let task_bridge = TaskBridge::new(
                 None,
                 metrics_store,
                 Some(bridge_contracts),
@@ -409,8 +404,7 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
-                *silence_metrics,
-            ));
+            );
 
             let system_memory = node_config
                 .compute_specs
@@ -437,10 +431,11 @@ pub async fn execute_command(
 
             let bridge_cancellation_token = cancellation_token.clone();
             tokio::spawn(async move {
+                let bridge_clone = task_bridge.clone();
                 tokio::select! {
                     _ = bridge_cancellation_token.cancelled() => {
                     }
-                    _ = task_bridge.run() => {
+                    _ = bridge_clone.run() => {
                     }
                 }
             });
