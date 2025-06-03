@@ -192,6 +192,16 @@
         "internalType": "address[]"
       },
       {
+        "name": "nonces",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "expirations",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
         "name": "signatures",
         "type": "bytes[]",
         "internalType": "bytes[]"
@@ -759,13 +769,23 @@
       },
       {
         "name": "nodekey",
-        "type": "address",
-        "internalType": "address"
+        "type": "address[]",
+        "internalType": "address[]"
       },
       {
-        "name": "signature",
-        "type": "bytes",
-        "internalType": "bytes"
+        "name": "nonces",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "expirations",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "signatures",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
       }
     ],
     "outputs": [],
@@ -787,13 +807,23 @@
       },
       {
         "name": "nodekey",
-        "type": "address[]",
-        "internalType": "address[]"
+        "type": "address",
+        "internalType": "address"
       },
       {
-        "name": "signatures",
-        "type": "bytes[]",
-        "internalType": "bytes[]"
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "expiration",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "signature",
+        "type": "bytes",
+        "internalType": "bytes"
       }
     ],
     "outputs": [],
