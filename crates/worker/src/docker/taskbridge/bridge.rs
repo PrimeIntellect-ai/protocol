@@ -91,7 +91,6 @@ impl TaskBridge {
 
             // Handle file upload if save_path is present
             if let Some(file_name) = file_info["output/save_path"].as_str() {
-                println!("handling file upload with save path: {}", file_name);
                 if let Some(storage_path) = self.docker_storage_path.clone() {
                     info!(
                         "Handling file upload for task_id: {}, file: {}",
@@ -125,7 +124,6 @@ impl TaskBridge {
             }
 
             // Handle file validation if sha256 is present
-            println!("file_info: {}", file_info);
             if let Some(file_sha) = file_info["output/sha256"].as_str() {
                 debug!("Processing file validation message");
                 let output_flops: f64 = file_info["output/output_flops"].as_f64().unwrap_or(0.0);
@@ -136,7 +134,6 @@ impl TaskBridge {
                     task_id, file_sha, output_flops, input_flops
                 );
 
-                println!("file_sha: {:?}", self.node_config);
                 if let (Some(contracts_ref), Some(node_ref)) =
                     (self.contracts.clone(), self.node_config.clone())
                 {
@@ -151,14 +148,11 @@ impl TaskBridge {
                         }
                     };
 
-                    let mut work_units = 1.0;
+                    #[allow(clippy::assign_op_pattern)]
+                    let work_units = 1.0;
                     if output_flops > 0.0 {
-                        println!("output_flops: {}", output_flops);
-                        work_units = output_flops;
+                        // work_units = output_flops;
                     }
-
-                    println!("work_units: {}", work_units);
-                    println!("file_sha_inner: {}", file_sha_inner);
 
                     tokio::spawn(async move {
                         if let Err(e) = file_handler::handle_file_validation(
@@ -174,7 +168,6 @@ impl TaskBridge {
                         }
                     });
                 } else {
-                    println!("missing contracts or node configuration for file validation");
                     error!("Missing contracts or node configuration for file validation");
                 }
             }
@@ -186,9 +179,7 @@ impl TaskBridge {
 
     async fn handle_message(self: Arc<Self>, json_str: &str) -> Result<()> {
         debug!("Extracted JSON object: {}", json_str);
-        println!("handling_msg: {}", json_str);
         if json_str.contains("output/save_path") {
-            println!("handling_file_upload");
             if let Err(e) = self.handle_file_upload(json_str).await {
                 error!("Failed to handle file upload: {}", e);
             }
@@ -300,7 +291,6 @@ impl TaskBridge {
                                     json_helper::extract_next_json(&data[current_pos..])
                                 {
                                     let json_str = json_str.to_string();
-                                    println!("json_str: {}", json_str);
                                     let bridge_clone = bridge.clone();
                                     if let Err(e) = bridge_clone.handle_message(&json_str).await {
                                         error!("Error handling message: {}", e);
