@@ -396,7 +396,7 @@ pub async fn execute_command(
                 Some(specs) => specs.storage_path.clone(),
                 None => None,
             };
-            let task_bridge = Arc::new(TaskBridge::new(
+            let task_bridge = TaskBridge::new(
                 None,
                 metrics_store,
                 Some(bridge_contracts),
@@ -404,7 +404,7 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
-            ));
+            );
 
             let system_memory = node_config
                 .compute_specs
@@ -431,10 +431,11 @@ pub async fn execute_command(
 
             let bridge_cancellation_token = cancellation_token.clone();
             tokio::spawn(async move {
+                let bridge_clone = task_bridge.clone();
                 tokio::select! {
                     _ = bridge_cancellation_token.cancelled() => {
                     }
-                    _ = task_bridge.run() => {
+                    _ = bridge_clone.run() => {
                     }
                 }
             });

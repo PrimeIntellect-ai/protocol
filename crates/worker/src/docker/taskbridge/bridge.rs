@@ -1,4 +1,5 @@
 use crate::docker::taskbridge::file_handler;
+use crate::docker::taskbridge::json_helper;
 use crate::metrics::store::MetricsStore;
 use crate::state::system_state::SystemState;
 use anyhow::Result;
@@ -45,7 +46,7 @@ impl TaskBridge {
         node_wallet: Option<Arc<Wallet>>,
         docker_storage_path: Option<String>,
         state: Arc<SystemState>,
-    ) -> Self {
+    ) -> Arc<Self> {
         let path = match socket_path {
             Some(path) => path.to_string(),
             None => {
@@ -57,7 +58,7 @@ impl TaskBridge {
             }
         };
 
-        Self {
+        Arc::new(Self {
             socket_path: path,
             metrics_store,
             contracts,
@@ -65,10 +66,150 @@ impl TaskBridge {
             node_wallet,
             docker_storage_path,
             state,
-        }
+        })
     }
 
-    pub async fn run(&self) -> Result<()> {
+    async fn handle_metric(self: Arc<Self>, input: &MetricInput) -> Result<()> {
+        debug!("Processing metric message");
+        for (key, value) in input.metrics.iter() {
+            debug!("Metric - Key: {}, Value: {}", key, value);
+            let _ = self
+                .metrics_store
+                .update_metric(
+                    input.task_id.clone(),
+                    key.to_string(),
+                    value.as_f64().unwrap_or(0.0),
+                )
+                .await;
+        }
+        Ok(())
+    }
+    async fn handle_file_upload(self: Arc<Self>, json_str: &str) -> Result<()> {
+        debug!("Handling file upload");
+        if let Ok(file_info) = serde_json::from_str::<serde_json::Value>(json_str) {
+            let task_id = file_info["task_id"].as_str().unwrap_or("unknown");
+
+            // Handle file upload if save_path is present
+            if let Some(file_name) = file_info["output/save_path"].as_str() {
+                println!("handling file upload with save path: {}", file_name);
+                if let Some(storage_path) = self.docker_storage_path.clone() {
+                    info!(
+                        "Handling file upload for task_id: {}, file: {}",
+                        task_id, file_name
+                    );
+
+                    let storage_path_inner = storage_path.clone();
+                    let task_id_inner = task_id.to_string();
+                    let file_name_inner = file_name.to_string();
+                    let wallet_inner = self.node_wallet.as_ref().unwrap().clone();
+                    let state_inner = self.state.clone();
+
+                    tokio::spawn(async move {
+                        if let Err(e) = file_handler::handle_file_upload(
+                            &storage_path_inner,
+                            &task_id_inner,
+                            &file_name_inner,
+                            &wallet_inner,
+                            &state_inner,
+                        )
+                        .await
+                        {
+                            error!("Failed to handle file upload: {}", e);
+                        } else {
+                            info!("File upload handled successfully");
+                        }
+                    });
+                } else {
+                    error!("No storage path set");
+                }
+            }
+
+            // Handle file validation if sha256 is present
+            println!("file_info: {}", file_info);
+            if let Some(file_sha) = file_info["output/sha256"].as_str() {
+                debug!("Processing file validation message");
+                let output_flops: f64 = file_info["output/output_flops"].as_f64().unwrap_or(0.0);
+                let input_flops: f64 = file_info["output/input_flops"].as_f64().unwrap_or(0.0);
+
+                info!(
+                    "Handling file validation for task_id: {}, sha: {}, output_flops: {}, input_flops: {}",
+                    task_id, file_sha, output_flops, input_flops
+                );
+
+                println!("file_sha: {:?}", self.node_config);
+                if let (Some(contracts_ref), Some(node_ref)) =
+                    (self.contracts.clone(), self.node_config.clone())
+                {
+                    let file_sha_inner = file_sha.to_string();
+                    let contracts_inner = contracts_ref.clone();
+                    let node_inner = node_ref.clone();
+                    let provider = match self.node_wallet.as_ref() {
+                        Some(wallet) => wallet.provider.clone(),
+                        None => {
+                            error!("No wallet provider found");
+                            return Err(anyhow::anyhow!("No wallet provider found"));
+                        }
+                    };
+
+                    let mut work_units = 1.0;
+                    if output_flops > 0.0 {
+                        println!("output_flops: {}", output_flops);
+                        work_units = output_flops;
+                    }
+
+                    println!("work_units: {}", work_units);
+                    println!("file_sha_inner: {}", file_sha_inner);
+
+                    tokio::spawn(async move {
+                        if let Err(e) = file_handler::handle_file_validation(
+                            &file_sha_inner,
+                            &contracts_inner,
+                            &node_inner,
+                            &provider,
+                            work_units,
+                        )
+                        .await
+                        {
+                            error!("Failed to handle file validation: {}", e);
+                        }
+                    });
+                } else {
+                    println!("missing contracts or node configuration for file validation");
+                    error!("Missing contracts or node configuration for file validation");
+                }
+            }
+        } else {
+            error!("Failed to parse JSON: {}", json_str);
+        }
+        Ok(())
+    }
+
+    async fn handle_message(self: Arc<Self>, json_str: &str) -> Result<()> {
+        debug!("Extracted JSON object: {}", json_str);
+        println!("handling_msg: {}", json_str);
+        if json_str.contains("output/save_path") {
+            println!("handling_file_upload");
+            if let Err(e) = self.handle_file_upload(json_str).await {
+                error!("Failed to handle file upload: {}", e);
+            }
+        } else {
+            debug!("Processing metric message");
+            match serde_json::from_str::<MetricInput>(json_str) {
+                Ok(input) => {
+                    if let Err(e) = self.handle_metric(&input).await {
+                        error!("Failed to handle metric: {}", e);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to parse metric input: {} {}", json_str, e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn run(self: Arc<Self>) -> Result<()> {
         let socket_path = Path::new(&self.socket_path);
         debug!("Setting up TaskBridge socket at: {}", socket_path.display());
 
@@ -118,12 +259,7 @@ impl TaskBridge {
         }
         info!("TaskBridge socket created at: {}", socket_path.display());
         loop {
-            let store = self.metrics_store.clone();
-            let node = self.node_config.clone();
-            let contracts = self.contracts.clone();
-            let wallet = self.node_wallet.clone();
-            let storage_path_clone = self.docker_storage_path.clone();
-            let state_clone = self.state.clone();
+            let bridge = self.clone();
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     tokio::spawn(async move {
@@ -161,142 +297,15 @@ impl TaskBridge {
                             while current_pos < data.len() {
                                 // Try to find a complete JSON object
                                 if let Some((json_str, byte_length)) =
-                                    extract_next_json(&data[current_pos..])
+                                    json_helper::extract_next_json(&data[current_pos..])
                                 {
-                                    debug!("Extracted JSON object: {}", json_str);
-                                    if json_str.contains("output/save_path") {
-                                        debug!("Processing file_name message");
-                                        if let Some(storage_path) = storage_path_clone.clone() {
-                                            if let Ok(file_info) =
-                                                serde_json::from_str::<serde_json::Value>(json_str)
-                                            {
-                                                if let Some(file_name) = file_info["value"].as_str()
-                                                {
-                                                    let task_id = file_info["task_id"]
-                                                        .as_str()
-                                                        .unwrap_or("unknown");
-                                                    info!("Handling file upload for task_id: {}, file: {}", task_id, file_name);
-
-                                                    let storage_path_inner = storage_path.clone();
-                                                    let task_id_inner = task_id.to_string();
-                                                    let file_name_inner = file_name.to_string();
-                                                    let wallet_inner =
-                                                        wallet.as_ref().unwrap().clone();
-                                                    let state_inner = state_clone.clone();
-
-                                                    tokio::spawn(async move {
-                                                        if let Err(e) =
-                                                            file_handler::handle_file_upload(
-                                                                &storage_path_inner,
-                                                                &task_id_inner,
-                                                                &file_name_inner,
-                                                                &wallet_inner,
-                                                                &state_inner,
-                                                            )
-                                                            .await
-                                                        {
-                                                            error!(
-                                                                "Failed to handle file upload: {}",
-                                                                e
-                                                            );
-                                                        } else {
-                                                            info!(
-                                                                "File upload handled successfully"
-                                                            );
-                                                        }
-                                                    });
-                                                } else {
-                                                    error!("Missing file_name value in JSON");
-                                                }
-                                            } else {
-                                                error!(
-                                                    "Failed to parse file_name JSON: {}",
-                                                    json_str
-                                                );
-                                            }
-                                        } else {
-                                            error!("No storage path set");
-                                        }
-                                    } else if json_str.contains("output/sha256") {
-                                        debug!("Processing file_sha message");
-                                        if let Ok(file_info) =
-                                            serde_json::from_str::<serde_json::Value>(json_str)
-                                        {
-                                            if let Some(file_sha) = file_info["value"].as_str() {
-                                                let task_id = file_info["task_id"]
-                                                    .as_str()
-                                                    .unwrap_or("unknown");
-                                                info!("Handling file validation for task_id: {}, sha: {}", task_id, file_sha);
-
-                                                if let (Some(contracts_ref), Some(node_ref)) =
-                                                    (contracts.clone(), node.clone())
-                                                {
-                                                    let file_sha_inner = file_sha.to_string();
-                                                    let contracts_inner = contracts_ref.clone();
-                                                    let node_inner = node_ref.clone();
-                                                    let provider = match wallet.as_ref() {
-                                                        Some(wallet) => wallet.provider.clone(),
-                                                        None => {
-                                                            error!("No wallet provider found");
-                                                            return;
-                                                        }
-                                                    };
-
-                                                    tokio::spawn(async move {
-                                                        if let Err(e) =
-                                                            file_handler::handle_file_validation(
-                                                                &file_sha_inner,
-                                                                &contracts_inner,
-                                                                &node_inner,
-                                                                &provider,
-                                                            )
-                                                            .await
-                                                        {
-                                                            error!(
-                                                                "Failed to handle file validation: {}",
-                                                                e
-                                                            );
-                                                        }
-                                                    });
-                                                } else {
-                                                    error!("Missing contracts or node configuration for file validation");
-                                                }
-                                            } else {
-                                                error!("Missing file_sha value in JSON");
-                                            }
-                                        } else {
-                                            error!("Failed to parse file_sha JSON: {}", json_str);
-                                        }
-                                    } else {
-                                        debug!("Processing metric message");
-                                        match serde_json::from_str::<MetricInput>(json_str) {
-                                            Ok(input) => {
-                                                debug!(
-                                                    "Received metric - Task: {}, Metrics: {:?}",
-                                                    input.task_id, input.metrics
-                                                );
-                                                for (key, value) in input.metrics.iter() {
-                                                    debug!(
-                                                        "Metric - Key: {}, Value: {}",
-                                                        key, value
-                                                    );
-                                                    let _ = store
-                                                        .update_metric(
-                                                            input.task_id.clone(),
-                                                            key.to_string(),
-                                                            value.as_f64().unwrap_or(0.0),
-                                                        )
-                                                        .await;
-                                                }
-                                            }
-                                            Err(e) => {
-                                                error!(
-                                                    "Failed to parse metric input: {} {}",
-                                                    json_str, e
-                                                );
-                                            }
-                                        }
+                                    let json_str = json_str.to_string();
+                                    println!("json_str: {}", json_str);
+                                    let bridge_clone = bridge.clone();
+                                    if let Err(e) = bridge_clone.handle_message(&json_str).await {
+                                        error!("Error handling message: {}", e);
                                     }
+
                                     current_pos += byte_length;
                                     debug!(
                                         "Advanced position to {} after processing JSON",
@@ -329,64 +338,6 @@ impl TaskBridge {
                                     break;
                                 }
                             }
-                        }
-
-                        // Helper function to extract the next complete JSON object from a string
-                        fn extract_next_json(input: &[u8]) -> Option<(&str, usize)> {
-                            // Skip any leading whitespace (including newlines)
-                            let mut start_pos = 0;
-                            while start_pos < input.len() && (input[start_pos] <= 32) {
-                                // ASCII space and below includes all whitespace
-                                start_pos += 1;
-                            }
-
-                            if start_pos >= input.len() {
-                                return None; // No content left
-                            }
-
-                            // If we find an opening brace, look for the matching closing brace
-                            if input[start_pos] == b'{' {
-                                let mut brace_count = 1;
-                                let mut pos = start_pos + 1;
-
-                                while pos < input.len() && brace_count > 0 {
-                                    match input[pos] {
-                                        b'{' => brace_count += 1,
-                                        b'}' => brace_count -= 1,
-                                        _ => {}
-                                    }
-                                    pos += 1;
-                                }
-
-                                if brace_count == 0 {
-                                    // Found a complete JSON object
-                                    if let Ok(json_str) =
-                                        std::str::from_utf8(&input[start_pos..pos])
-                                    {
-                                        return Some((json_str, pos));
-                                    }
-                                }
-                            }
-
-                            // Alternatively, look for a newline-terminated JSON object
-                            if let Some(newline_pos) =
-                                input[start_pos..].iter().position(|&c| c == b'\n')
-                            {
-                                let end_pos = start_pos + newline_pos;
-                                // Check if we have a complete JSON object in this line
-                                if let Ok(line) = std::str::from_utf8(&input[start_pos..end_pos]) {
-                                    let trimmed = line.trim();
-                                    if trimmed.starts_with('{') && trimmed.ends_with('}') {
-                                        return Some((trimmed, end_pos + 1)); // +1 to consume the newline
-                                    }
-                                }
-
-                                // If not a complete JSON object, skip this line and try the next
-                                return extract_next_json(&input[end_pos + 1..])
-                                    .map(|(json, len)| (json, len + end_pos + 1));
-                            }
-
-                            None
                         }
                     });
                 }
