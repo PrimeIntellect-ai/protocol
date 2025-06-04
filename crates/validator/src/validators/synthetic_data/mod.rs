@@ -732,7 +732,6 @@ impl SyntheticDataValidator {
 
         Ok(())
     }
-
     pub async fn process_group_status_check(&self, group: ToplocGroup) -> Result<(), Error> {
         let toploc_config = self
             .find_matching_toploc_config(&group.prefix)
@@ -745,39 +744,56 @@ impl SyntheticDataValidator {
             .get_group_file_validation_status(&group.group_file_name)
             .await?;
 
-        info!("Group {} toploc status: {:?}", group.group_id, status);
-
         if let Some(metrics) = &self.metrics {
             metrics.record_group_validation_status(&group.group_id, &status.status.to_string());
         }
 
+        // Calculate total claimed units
+        let mut total_claimed_units: U256 = U256::from(0);
+        for work_key in &group.sorted_work_keys {
+            if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
+                total_claimed_units += work_info.work_units;
+            }
+        }
+
+        // Log basic info for all cases
+        info!(
+            "Group {} ({}) - Status: {:?}, Claimed: {}, Toploc: {} flops (input: {} flops)",
+            group.group_id,
+            group.group_file_name,
+            status.status,
+            total_claimed_units,
+            status.output_flops,
+            status.input_flops
+        );
+
+        // Handle rejection case
         if status.status == ValidationResult::Reject {
             let indices = status.failing_indices;
-            let mut work_keys_to_invalidate: Vec<String> = Vec::new();
-            for index in indices {
-                let work_key = group.sorted_work_keys[index as usize].clone();
-                work_keys_to_invalidate.push(work_key);
-            }
+            let work_keys_to_invalidate: Vec<String> = indices
+                .iter()
+                .map(|&idx| group.sorted_work_keys[idx as usize].clone())
+                .collect();
+
+            warn!(
+                "Group {} rejected - Invalidating keys: {:?}",
+                group.group_id, work_keys_to_invalidate
+            );
 
             for work_key in work_keys_to_invalidate {
                 self.invalidate_work(&work_key).await?;
             }
         }
 
-        let mut total_claimed_units: U256 = U256::from(0);
-        for work_key in &group.sorted_work_keys {
-            let work_info = self.get_work_info_from_redis(work_key).await?;
-            if let Some(work_info) = work_info {
-                total_claimed_units += work_info.work_units;
-            }
+        // Handle mismatched units case
+        if total_claimed_units != U256::from(status.output_flops as u64) {
+            warn!(
+                "Group {} units mismatch - Claimed: {}, Toploc: {}, Keys: {:?}",
+                group.group_id, total_claimed_units, status.output_flops, group.sorted_work_keys
+            );
         }
-        let toploc_units = status.flops;
-        info!(
-            "Group {} total claimed units: {:?} - toploc units: {:?}",
-            group.group_id, total_claimed_units, toploc_units
-        );
-        // TODO: We need to invalidate work that has claimed too many units
 
+        // Update validation status for all work keys
         for work_key in &group.sorted_work_keys {
             self.update_work_validation_status(work_key, &status.status)
                 .await?;
@@ -833,7 +849,7 @@ impl SyntheticDataValidator {
                 {
                     error!("Failed to process group task: {}", e);
                 }
-                info!(
+                debug!(
                     "waiting before next task: {}",
                     validator_clone_group_trigger.grace_interval
                 );
