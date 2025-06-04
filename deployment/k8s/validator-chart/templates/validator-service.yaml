@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: {{ include "validator.fullname" . }}
   namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ include "validator.fullname" . }}
   annotations:
     cloud.google.com/backend-config: '{"default": "{{ include "validator.backendConfigName" . }}"}'
 spec:

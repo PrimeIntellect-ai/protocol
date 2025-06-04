@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: {{ include "orchestrator.fullname" . }}
   namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ include "orchestrator.fullname" . }}
   annotations:
     cloud.google.com/backend-config: '{"default": "{{ include "orchestrator.backendConfigName" . }}"}'
 spec:
