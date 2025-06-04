@@ -1,9 +1,9 @@
+use super::{GpuDetector, GpuDevice};
 use crate::console::Console;
 use lazy_static::lazy_static;
 use nvml_wrapper::Nvml;
-use std::sync::Mutex;
-use super::{GpuDevice, GpuDetector};
 use shared::models::node::GpuVendor;
+use std::sync::Mutex;
 
 // Use lazy_static to initialize NVML once and reuse it
 lazy_static! {
@@ -23,7 +23,7 @@ impl GpuDetector for NvidiaGpuDetector {
     fn is_available(&self) -> bool {
         // Check if NVML can be initialized
         let mut nvml_guard = NVML.lock().unwrap();
-        
+
         if nvml_guard.is_none() {
             match Nvml::builder()
                 .lib_path(std::ffi::OsStr::new(
@@ -41,7 +41,7 @@ impl GpuDetector for NvidiaGpuDetector {
             true
         }
     }
-    
+
     fn detect(&self) -> Vec<GpuDevice> {
         get_nvidia_gpu_status()
     }

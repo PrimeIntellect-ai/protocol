@@ -983,7 +983,7 @@ mod tests {
         // Test with MI300X
         let req_str_mi = "gpu:count=2;gpu:model=mi300x;gpu:memory_mb=196000";
         let requirements_mi = ComputeRequirements::from_str(req_str_mi).unwrap();
-        
+
         let specs_mi = create_compute_specs(
             Some(2),
             Some("amd aqua vanjaram [instinct mi300x vf]"),
@@ -995,10 +995,11 @@ mod tests {
         assert!(specs_mi.meets(&requirements_mi));
 
         // Test mixed vendor
-        let req_str_mixed = "gpu:count=8;gpu:model=a100,h100;gpu:count=4;gpu:model=mi250x,mi300x;ram_mb=196000";
+        let req_str_mixed =
+            "gpu:count=8;gpu:model=a100,h100;gpu:count=4;gpu:model=mi250x,mi300x;ram_mb=196000";
         let requirements_mixed = ComputeRequirements::from_str(req_str_mixed).unwrap();
         assert_eq!(requirements_mixed.gpu.len(), 2);
-        
+
         // AMD node should meet the second option
         let specs_amd = create_compute_specs(
             Some(4),

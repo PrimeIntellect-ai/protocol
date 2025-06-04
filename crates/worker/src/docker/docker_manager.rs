@@ -192,9 +192,9 @@ impl DockerManager {
 
         let host_config = if gpu.is_some() {
             let gpu = gpu.unwrap();
-            
+
             let gpu_vendor = gpu.vendor.unwrap_or(GpuVendor::Nvidia); // Default to Nvidia for backwards compatibility
-            
+
             match gpu_vendor {
                 GpuVendor::Nvidia => {
                     let device_ids = match &gpu.indices {
@@ -227,11 +227,11 @@ impl DockerManager {
                     // ROCm requires binding the device files and setting specific environment variables
                     // Unlike Nvidia, no specific Container Toolkit is required. AMD GPUs can be accessed using standard Docker flags
                     let mut amd_binds = volume_binds.unwrap_or_default();
-                    
+
                     // Add ROCm device bindings
                     amd_binds.push("/dev/kfd:/dev/kfd".to_string());
                     amd_binds.push("/dev/dri:/dev/dri".to_string());
-                    
+
                     Some(HostConfig {
                         extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                         binds: Some(amd_binds),

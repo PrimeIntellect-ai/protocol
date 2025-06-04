@@ -1,10 +1,6 @@
-use super::{GpuDevice, GpuDetector};
+use super::{GpuDetector, GpuDevice};
 #[cfg(feature = "amd-gpu")]
-use {
-    crate::console::Console,
-    rocm_smi_lib::RocmSmi,
-    shared::models::node::GpuVendor,
-};
+use {crate::console::Console, rocm_smi_lib::RocmSmi, shared::models::node::GpuVendor};
 
 #[derive(Debug)]
 pub struct AmdGpuDetector;
@@ -25,19 +21,19 @@ impl GpuDetector for AmdGpuDetector {
                 Err(_) => false,
             }
         }
-        
+
         #[cfg(not(feature = "amd-gpu"))]
         {
             false
         }
     }
-    
+
     fn detect(&self) -> Vec<GpuDevice> {
         #[cfg(feature = "amd-gpu")]
         {
             get_amd_gpu_status()
         }
-        
+
         #[cfg(not(feature = "amd-gpu"))]
         {
             vec![]
@@ -70,7 +66,10 @@ fn get_amd_gpu_status() -> Vec<GpuDevice> {
         let identifiers = match rocm.get_device_identifiers(i as u32) {
             Ok(id) => id,
             Err(e) => {
-                Console::user_error(&format!("Failed to get AMD device {} identifiers: {:?}", i, e));
+                Console::user_error(&format!(
+                    "Failed to get AMD device {} identifiers: {:?}",
+                    i, e
+                ));
                 continue;
             }
         };

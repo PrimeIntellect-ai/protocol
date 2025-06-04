@@ -2,9 +2,9 @@ use crate::checks::issue::{IssueReport, IssueType};
 use crate::console::Console;
 use bollard::container::ListContainersOptions;
 use bollard::Docker;
+use shared::models::node::GpuVendor;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use shared::models::node::GpuVendor;
 
 pub async fn check_docker_installed(
     issues: &Arc<RwLock<IssueReport>>,

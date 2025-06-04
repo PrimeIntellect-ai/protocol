@@ -1,8 +1,8 @@
 use shared::models::node::{GpuSpecs, GpuVendor};
 use std::fmt::Debug;
 
-pub mod nvidia;
 pub mod amd;
+pub mod nvidia;
 
 pub const BYTES_TO_MB: u64 = 1024 * 1024;
 
@@ -21,7 +21,7 @@ pub struct GpuDevice {
 pub trait GpuDetector: Debug {
     /// Check if this detector is available on the system
     fn is_available(&self) -> bool;
-    
+
     /// Detect GPUs using this implementation
     fn detect(&self) -> Vec<GpuDevice>;
 }
@@ -29,11 +29,11 @@ pub trait GpuDetector: Debug {
 /// Main function to detect GPUs from any vendor
 pub fn detect_gpu() -> Vec<GpuSpecs> {
     use crate::console::Console;
-    
+
     Console::title("GPU Detection");
-    
+
     let mut all_devices = Vec::new();
-    
+
     // Try Nvidia detection
     let nvidia_detector = nvidia::NvidiaGpuDetector::new();
     if nvidia_detector.is_available() {
@@ -42,7 +42,7 @@ pub fn detect_gpu() -> Vec<GpuSpecs> {
         Console::info("NVIDIA GPUs found", &nvidia_devices.len().to_string());
         all_devices.extend(nvidia_devices);
     }
-    
+
     // Try AMD detection only if no NVIDIA GPUs were found
     if all_devices.is_empty() {
         let amd_detector = amd::AmdGpuDetector::new();
@@ -53,12 +53,12 @@ pub fn detect_gpu() -> Vec<GpuSpecs> {
             all_devices.extend(amd_devices);
         }
     }
-    
+
     if all_devices.is_empty() {
         Console::user_error("No GPU devices detected from any vendor");
         return vec![];
     }
-    
+
     // Convert to GpuSpecs
     all_devices
         .into_iter()
@@ -70,4 +70,4 @@ pub fn detect_gpu() -> Vec<GpuSpecs> {
             vendor: Some(device.vendor),
         })
         .collect()
-} 
+}
