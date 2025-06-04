@@ -52,6 +52,22 @@ pub struct GpuSpecs {
     pub model: Option<String>,
     pub memory_mb: Option<u32>,
     pub indices: Option<Vec<u32>>,
+    pub vendor: Option<GpuVendor>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum GpuVendor {
+    Nvidia,
+    Amd,
+}
+
+impl std::fmt::Display for GpuVendor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GpuVendor::Nvidia => write!(f, "nvidia"),
+            GpuVendor::Amd => write!(f, "amd"),
+        }
+    }
 }
 
 impl fmt::Display for ComputeRequirements {
@@ -517,6 +533,7 @@ mod tests {
                     count: gpu_count,
                     model: gpu_model.map(String::from),
                     memory_mb: gpu_mem,
+                    vendor: None, // For test purposes, can be None
                     ..Default::default()
                 })
             } else {
@@ -816,6 +833,7 @@ mod tests {
             gpu: Some(GpuSpecs {
                 count: Some(4),
                 model: Some("A100".to_string()),
+                vendor: None, // For test purposes
                 ..Default::default()
             }),
             cpu: Some(CpuSpecs {
@@ -844,6 +862,7 @@ mod tests {
                 count: Some(4),
                 model: Some("A100".to_string()),
                 memory_mb: Some(40000),
+                vendor: None, // For test purposes
                 ..Default::default()
             }),
             cpu: Some(CpuSpecs {

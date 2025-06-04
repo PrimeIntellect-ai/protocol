@@ -1,7 +1,8 @@
-use super::{GpuDevice, GpuDetector, GpuVendor};
+use super::{GpuDevice, GpuDetector};
+use shared::models::node::GpuVendor;
+
 #[cfg(feature = "amd-gpu")]
 use crate::console::Console;
-
 #[cfg(feature = "amd-gpu")]
 use rocm_smi_lib::RocmSmi;
 
@@ -118,4 +119,4 @@ fn get_amd_gpu_status() -> Vec<GpuDevice> {
     }
 
     device_map.into_values().collect()
-} 
+}

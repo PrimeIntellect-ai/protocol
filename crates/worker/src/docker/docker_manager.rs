@@ -11,7 +11,7 @@ use bollard::volume::CreateVolumeOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
 use log::{debug, error, info};
-use shared::models::node::GpuSpecs;
+use shared::models::node::{GpuSpecs, GpuVendor};
 use std::collections::HashMap;
 use std::time::Duration;
 use strip_ansi_escapes::strip;
@@ -165,9 +165,7 @@ impl DockerManager {
         
         // Check if we have AMD GPUs and add ROCm environment variables
         let is_amd_gpu = if let Some(ref gpu_spec) = gpu {
-            gpu_spec.model.as_ref()
-                .map(|m| m.to_lowercase().contains("amd") || m.to_lowercase().contains("radeon"))
-                .unwrap_or(false)
+            matches!(gpu_spec.vendor, Some(GpuVendor::Amd))
         } else {
             false
         };
@@ -219,79 +217,69 @@ impl DockerManager {
         let host_config = if gpu.is_some() {
             let gpu = gpu.unwrap();
             
-            // Determine GPU vendor from model name
-            let gpu_driver = if let Some(model) = &gpu.model {
-                if model.to_lowercase().contains("nvidia") {
-                    "nvidia"
-                } else if model.to_lowercase().contains("amd") || model.to_lowercase().contains("radeon") {
-                    // For AMD GPUs, we need to bind device files instead of using device requests
-                    // AMD GPUs with ROCm use a different approach
-                    "amd"
-                } else {
-                    // Default to nvidia for backwards compatibility
-                    "nvidia"
-                }
-            } else {
-                "nvidia"
-            };
+            // Use vendor field directly instead of parsing model string
+            let gpu_vendor = gpu.vendor.unwrap_or(GpuVendor::Nvidia); // Default to Nvidia for backwards compatibility
             
-            if gpu_driver == "nvidia" {
-                let device_ids = match &gpu.indices {
-                    Some(indices) if !indices.is_empty() => {
-                        // Use specific GPU indices if available
-                        indices.iter().map(|i| i.to_string()).collect()
-                    }
-                    _ => {
-                        // Request all available GPUs if no specific indices
-                        vec!["all".to_string()]
-                    }
-                };
+            match gpu_vendor {
+                GpuVendor::Nvidia => {
+                    let device_ids = match &gpu.indices {
+                        Some(indices) if !indices.is_empty() => {
+                            // Use specific GPU indices if available
+                            indices.iter().map(|i| i.to_string()).collect()
+                        }
+                        _ => {
+                            // Request all available GPUs if no specific indices
+                            vec!["all".to_string()]
+                        }
+                    };
 
-                Some(HostConfig {
-                    extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
-                    device_requests: Some(vec![DeviceRequest {
-                        driver: Some("nvidia".into()),
-                        count: None,
-                        device_ids: Some(device_ids),
-                        capabilities: Some(vec![vec!["gpu".into()]]),
-                        options: Some(HashMap::new()),
-                    }]),
-                    binds: volume_binds,
-                    shm_size: shm_size.map(|s| s as i64),
-                    ..Default::default()
-                })
-            } else {
-                // AMD GPU configuration
-                // ROCm requires binding the device files and setting specific environment variables
-                // Unlike Nvidia, no specific Container Toolkit is required. AMD GPUs can be accessed using standard Docker flags
-                let mut amd_binds = volume_binds.unwrap_or_default();
-                
-                // Add ROCm device bindings
-                amd_binds.push("/dev/kfd:/dev/kfd".to_string());
-                amd_binds.push("/dev/dri:/dev/dri".to_string());
-                
-                // For specific GPU indices, we might need to bind specific renderD* devices
-                // This is a simplified approach - in production you might want more fine-grained control
-                
-                Some(HostConfig {
-                    extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
-                    binds: Some(amd_binds),
-                    devices: Some(vec![
-                        bollard::models::DeviceMapping {
-                            path_on_host: Some("/dev/kfd".to_string()),
-                            path_in_container: Some("/dev/kfd".to_string()),
-                            cgroup_permissions: Some("rwm".to_string()),
-                        },
-                        bollard::models::DeviceMapping {
-                            path_on_host: Some("/dev/dri".to_string()),
-                            path_in_container: Some("/dev/dri".to_string()),
-                            cgroup_permissions: Some("rwm".to_string()),
-                        },
-                    ]),
-                    group_add: Some(vec!["video".to_string(), "render".to_string()]),
-                    shm_size: shm_size.map(|s| s as i64),
-                    ..Default::default()
-                })
+                    Some(HostConfig {
+                        extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
+                        device_requests: Some(vec![DeviceRequest {
+                            driver: Some("nvidia".into()),
+                            count: None,
+                            device_ids: Some(device_ids),
+                            capabilities: Some(vec![vec!["gpu".into()]]),
+                            options: Some(HashMap::new()),
+                        }]),
+                        binds: volume_binds,
+                        shm_size: shm_size.map(|s| s as i64),
+                        ..Default::default()
+                    })
+                }
+                GpuVendor::Amd => {
+                    // AMD GPU configuration
+                    // ROCm requires binding the device files and setting specific environment variables
+                    // Unlike Nvidia, no specific Container Toolkit is required. AMD GPUs can be accessed using standard Docker flags
+                    let mut amd_binds = volume_binds.unwrap_or_default();
+                    
+                    // Add ROCm device bindings
+                    amd_binds.push("/dev/kfd:/dev/kfd".to_string());
+                    amd_binds.push("/dev/dri:/dev/dri".to_string());
+                    
+                    // For specific GPU indices, we might need to bind specific renderD* devices
+                    // This is a simplified approach - in production you might want more fine-grained control
+                    
+                    Some(HostConfig {
+                        extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
+                        binds: Some(amd_binds),
+                        devices: Some(vec![
+                            bollard::models::DeviceMapping {
+                                path_on_host: Some("/dev/kfd".to_string()),
+                                path_in_container: Some("/dev/kfd".to_string()),
+                                cgroup_permissions: Some("rwm".to_string()),
+                            },
+                            bollard::models::DeviceMapping {
+                                path_on_host: Some("/dev/dri".to_string()),
+                                path_in_container: Some("/dev/dri".to_string()),
+                                cgroup_permissions: Some("rwm".to_string()),
+                            },
+                        ]),
+                        group_add: Some(vec!["video".to_string()]),
+                        shm_size: shm_size.map(|s| s as i64),
+                        ..Default::default()
+                    })
+                }
             }
         } else {
             Some(HostConfig {

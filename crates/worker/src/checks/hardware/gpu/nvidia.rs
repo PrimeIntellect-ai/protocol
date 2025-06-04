@@ -2,7 +2,8 @@ use crate::console::Console;
 use lazy_static::lazy_static;
 use nvml_wrapper::Nvml;
 use std::sync::Mutex;
-use super::{GpuDevice, GpuDetector, GpuVendor};
+use super::{GpuDevice, GpuDetector};
+use shared::models::node::GpuVendor;
 
 // Use lazy_static to initialize NVML once and reuse it
 lazy_static! {

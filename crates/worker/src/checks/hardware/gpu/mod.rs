@@ -1,4 +1,4 @@
-use shared::models::node::GpuSpecs;
+use shared::models::node::{GpuSpecs, GpuVendor};
 use std::fmt::Debug;
 
 pub mod nvidia;
@@ -15,21 +15,6 @@ pub struct GpuDevice {
     pub count: u32,
     pub indices: Vec<u32>,
     pub vendor: GpuVendor,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GpuVendor {
-    Nvidia,
-    Amd,
-}
-
-impl std::fmt::Display for GpuVendor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            GpuVendor::Nvidia => write!(f, "nvidia"),
-            GpuVendor::Amd => write!(f, "amd"),
-        }
-    }
 }
 
 /// Trait for GPU detection implementations
@@ -83,9 +68,10 @@ pub fn detect_gpu() -> Vec<GpuSpecs> {
         .into_iter()
         .map(|device| GpuSpecs {
             count: Some(device.count),
-            model: Some(format!("{} {}", device.vendor, device.name.to_lowercase())),
+            model: Some(device.name.to_lowercase()),
             memory_mb: Some((device.memory / BYTES_TO_MB) as u32),
             indices: Some(device.indices),
+            vendor: Some(device.vendor),
         })
         .collect()
 } 
