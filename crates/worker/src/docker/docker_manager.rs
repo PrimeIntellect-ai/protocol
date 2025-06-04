@@ -193,7 +193,6 @@ impl DockerManager {
         let host_config = if gpu.is_some() {
             let gpu = gpu.unwrap();
             
-            // Use vendor field directly instead of parsing model string
             let gpu_vendor = gpu.vendor.unwrap_or(GpuVendor::Nvidia); // Default to Nvidia for backwards compatibility
             
             match gpu_vendor {
