@@ -186,10 +186,7 @@ impl WebhookPlugin {
         pool_id: u32,
         metrics: std::collections::HashMap<String, f64>,
     ) -> Result<(), Error> {
-        let event = WebhookEvent::MetricsUpdated {
-            pool_id,
-            metrics,
-        };
+        let event = WebhookEvent::MetricsUpdated { pool_id, metrics };
 
         self.send_event(event).await
     }
