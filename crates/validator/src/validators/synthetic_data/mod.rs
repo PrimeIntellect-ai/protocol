@@ -669,7 +669,10 @@ impl SyntheticDataValidator {
         }
 
         if let Some(metrics) = &self.metrics {
+            println!("recording metrics for keys to process: {}", keys_to_process);
             metrics.record_work_keys_to_process(keys_to_process as f64);
+        } else {
+            println!("no metrics");
         }
 
         Ok(ValidationPlan {
@@ -891,6 +894,8 @@ impl SyntheticDataValidator {
 
 #[cfg(test)]
 mod tests {
+    use crate::metrics::export_metrics;
+
     use super::*;
     use alloy::primitives::Address;
     use anyhow::Ok;
@@ -946,6 +951,7 @@ mod tests {
         // Add test to build validation plan
         // Since we do not have blockchain access add task infos to redis first
         let (store, contracts) = setup_test_env()?;
+        let metrics_context = MetricsContext::new("0".to_string(), Some("0".to_string()));
         let mock_storage = MockStorageProvider::new();
 
         // single group
@@ -1000,7 +1006,7 @@ mod tests {
             1,
             true,
             false,
-            None,
+            Some(metrics_context),
         );
 
         let work_keys = vec![
@@ -1028,6 +1034,10 @@ mod tests {
         assert_eq!(validation_plan.group_trigger_tasks.len(), 2);
         assert_eq!(validation_plan.status_check_tasks.len(), 0);
         assert_eq!(validation_plan.group_status_check_tasks.len(), 1);
+
+        let metrics = export_metrics().unwrap();
+        assert!(metrics.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 4"));
+
         Ok(())
     }
 
