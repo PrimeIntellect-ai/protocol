@@ -78,11 +78,25 @@ impl<'a> NodeInviter<'a> {
         }
     }
 
-    async fn _generate_invite(&self, node: &OrchestratorNode) -> Result<[u8; 65]> {
+    async fn _generate_invite(
+        &self,
+        node: &OrchestratorNode,
+        nonce: [u8; 32],
+        expiration: [u8; 32],
+    ) -> Result<[u8; 65]> {
         let domain_id: [u8; 32] = U256::from(self.domain_id).to_be_bytes();
         let pool_id: [u8; 32] = U256::from(self.pool_id).to_be_bytes();
 
-        let digest = keccak([&domain_id, &pool_id, node.address.as_slice()].concat());
+        let digest = keccak(
+            [
+                &domain_id,
+                &pool_id,
+                node.address.as_slice(),
+                &nonce,
+                &expiration,
+            ]
+            .concat(),
+        );
 
         let signature = self
             .wallet
@@ -100,7 +114,18 @@ impl<'a> NodeInviter<'a> {
         let invite_path = "/invite".to_string();
         let invite_url = format!("{}{}", node_url, invite_path);
 
-        let invite_signature = self._generate_invite(node).await?;
+        // Generate random nonce and expiration
+        let nonce: [u8; 32] = rand::random();
+        let expiration: [u8; 32] = U256::from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 1000,
+        )
+        .to_be_bytes();
+
+        let invite_signature = self._generate_invite(node, nonce, expiration).await?;
         let payload = InviteRequest {
             invite: hex::encode(invite_signature),
             pool_id: self.pool_id,
@@ -119,6 +144,8 @@ impl<'a> NodeInviter<'a> {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            expiration,
+            nonce,
         };
         let payload_json = serde_json::to_value(&payload).unwrap();
 

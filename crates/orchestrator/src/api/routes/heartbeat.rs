@@ -41,10 +41,21 @@ async fn heartbeat(
     }
 
     app_state.store_context.heartbeat_store.beat(&heartbeat);
-    app_state
-        .store_context
-        .metrics_store
-        .store_metrics(heartbeat.metrics.clone(), node_address);
+    if let Some(metrics) = heartbeat.metrics.clone() {
+        app_state
+            .store_context
+            .metrics_store
+            .store_metrics(Some(metrics.clone()), node_address);
+
+        for metric in metrics {
+            app_state.metrics.record_compute_task_gauge(
+                &node_address.to_string(),
+                &metric.key.task_id,
+                &metric.key.label,
+                metric.value,
+            );
+        }
+    }
 
     let current_task = app_state.scheduler.get_task_for_node(node_address);
     match current_task {
@@ -73,10 +84,13 @@ pub fn heartbeat_routes() -> Scope {
 mod tests {
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
+
     use actix_web::http::StatusCode;
     use actix_web::test;
     use actix_web::App;
     use serde_json::json;
+    use shared::models::metric::MetricEntry;
+    use shared::models::metric::MetricKey;
     use shared::models::task::TaskRequest;
 
     #[actix_web::test]
@@ -90,7 +104,10 @@ mod tests {
         .await;
 
         let address = "0x0000000000000000000000000000000000000000".to_string();
-        let req_payload = json!({"address": address});
+        let req_payload = json!({"address": address, "metrics": [
+            {"key": {"task_id": "long-task-1234", "label": "performance/batch_avg_seq_length"}, "value": 1.0},
+            {"key": {"task_id": "long-task-1234", "label": "performance/batch_min_seq_length"}, "value": 5.0}
+        ]});
 
         let req = test::TestRequest::post()
             .uri("/heartbeat")
@@ -116,12 +133,31 @@ mod tests {
                 address: "0x0000000000000000000000000000000000000000".to_string(),
                 task_id: None,
                 task_state: None,
-                metrics: None,
+                metrics: Some(vec![
+                    MetricEntry {
+                        key: MetricKey {
+                            task_id: "long-task-1234".to_string(),
+                            label: "performance/batch_avg_seq_length".to_string(),
+                        },
+                        value: 1.0,
+                    },
+                    MetricEntry {
+                        key: MetricKey {
+                            task_id: "long-task-1234".to_string(),
+                            label: "performance/batch_min_seq_length".to_string(),
+                        },
+                        value: 5.0,
+                    }
+                ]),
                 version: None,
                 timestamp: None,
                 p2p_id: None,
             })
         );
+
+        let metrics = app_state.metrics.export_metrics().unwrap();
+        assert!(metrics.contains("performance/batch_avg_seq_length"));
+        assert!(metrics.contains("performance/batch_min_seq_length"));
     }
 
     #[actix_web::test]

@@ -103,7 +103,7 @@ async fn test_group_formation_and_dissolution() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
 
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
@@ -195,6 +195,7 @@ async fn test_group_formation_with_multiple_configs() {
         store.clone(),
         store_context,
         None,
+        None,
     );
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
@@ -275,7 +276,7 @@ async fn test_group_formation_with_requirements_and_single_node() {
         compute_requirements: Some(requirements),
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
@@ -337,7 +338,7 @@ async fn test_group_formation_with_requirements_and_multiple_nodes() {
         compute_requirements: Some(requirements),
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
@@ -420,7 +421,7 @@ async fn test_group_scheduling() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
 
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
@@ -557,7 +558,7 @@ async fn test_group_scheduling_without_tasks() {
         max_group_size: 5,
         compute_requirements: None,
     };
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
         NodeStatus::Healthy,
@@ -597,7 +598,7 @@ async fn test_group_formation_with_max_size() {
         max_group_size: 2,
         compute_requirements: None,
     };
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
@@ -715,7 +716,7 @@ async fn test_node_groups_with_allowed_topologies() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
 
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
@@ -796,7 +797,7 @@ async fn test_node_cannot_be_in_multiple_groups() {
     };
 
     // Set max_group_size to 2, so groups can only have 2 nodes
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
 
     let all_nodes = plugin.store_context.node_store.get_nodes();
     assert_eq!(all_nodes.len(), 0, "No nodes should be in the store");
@@ -993,7 +994,7 @@ async fn test_reformation_on_death() {
         max_group_size: 2,
         compute_requirements: None,
     };
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
@@ -1101,7 +1102,13 @@ async fn ensure_config_names_are_unique() {
         compute_requirements: None,
     };
 
-    let _plugin = NodeGroupsPlugin::new(vec![config1, config2], store.clone(), store_context, None);
+    let _plugin = NodeGroupsPlugin::new(
+        vec![config1, config2],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    );
 }
 
 #[tokio::test]
@@ -1118,7 +1125,7 @@ async fn ensure_config_validation() {
         compute_requirements: None,
     };
 
-    let _plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let _plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
 }
 
 #[tokio::test]
@@ -1127,7 +1134,7 @@ async fn test_get_idx_in_group() {
     let context_store = store.clone();
     let store_context = Arc::new(StoreContext::new(context_store));
 
-    let plugin = NodeGroupsPlugin::new(vec![], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![], store.clone(), store_context, None, None);
 
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
@@ -1182,7 +1189,7 @@ async fn test_get_idx_in_group_not_found() {
     let context_store = store.clone();
     let store_context = Arc::new(StoreContext::new(context_store));
 
-    let plugin = NodeGroupsPlugin::new(vec![], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![], store.clone(), store_context, None, None);
 
     let group = NodeGroup {
         id: "test-group".to_string(),
@@ -1213,6 +1220,7 @@ async fn test_task_observer() {
         vec![node_group_config],
         plugin_store,
         plugin_store_context,
+        None,
         None,
     );
 
@@ -1340,6 +1348,7 @@ async fn test_building_largest_possible_groups() {
         plugin_store,
         plugin_store_context,
         None,
+        None,
     );
 
     // Create and add 3 nodes
@@ -1457,6 +1466,7 @@ async fn test_group_formation_priority() {
         store.clone(),
         store_context,
         None,
+        None,
     );
 
     // Add 4 healthy nodes
@@ -1545,7 +1555,7 @@ async fn test_multiple_groups_same_configuration() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None);
+    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
 
     // Create task that requires this configuration
     let task = Task {

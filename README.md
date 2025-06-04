@@ -41,7 +41,7 @@ The Prime Protocol follows a modular architecture designed for decentralized AI 
   - NVIDIA: CUDA-capable GPU(s) with appropriate drivers
   - AMD: ROCm-compatible GPU(s) with ROCm drivers installed
     - Additional build requirement: `libclang-dev` package
-- Docker Desktop and Git installed
+- Docker (version 28.1.1 or later) and Docker Compose (version v2.35.1 or later)
 
 For complete setup instructions, refer to our [Development Setup Guide](docs/development-setup.md).
 

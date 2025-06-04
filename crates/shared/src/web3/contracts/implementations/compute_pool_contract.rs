@@ -81,14 +81,28 @@ impl ComputePool {
         pool_id: U256,
         provider_address: Address,
         nodes: Vec<Address>,
+        nonces: Vec<[u8; 32]>,
+        expirations: Vec<[u8; 32]>,
         signatures: Vec<FixedBytes<65>>,
     ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
         let join_compute_pool_selector =
-            get_selector("joinComputePool(uint256,address,address[],bytes[])");
+            get_selector("joinComputePool(uint256,address,address[],uint256[],uint256[],bytes[])");
         let address = DynSolValue::from(
             nodes
                 .iter()
                 .map(|addr| DynSolValue::from(*addr))
+                .collect::<Vec<_>>(),
+        );
+        let nonces = DynSolValue::from(
+            nonces
+                .iter()
+                .map(|nonce| DynSolValue::from(U256::from_be_bytes(*nonce)))
+                .collect::<Vec<_>>(),
+        );
+        let expirations = DynSolValue::from(
+            expirations
+                .iter()
+                .map(|exp| DynSolValue::from(U256::from_be_bytes(*exp)))
                 .collect::<Vec<_>>(),
         );
         let signatures = DynSolValue::from(
@@ -99,7 +113,14 @@ impl ComputePool {
         );
         let call = self.instance.instance().function_from_selector(
             &join_compute_pool_selector,
-            &[pool_id.into(), provider_address.into(), address, signatures],
+            &[
+                pool_id.into(),
+                provider_address.into(),
+                address,
+                nonces,
+                expirations,
+                signatures,
+            ],
         )?;
         Ok(call)
     }
@@ -131,14 +152,12 @@ impl ComputePool {
         pool_id: U256,
         node: Address,
         data: Vec<u8>,
+        work_units: U256,
     ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
         // Extract the work key from the first 32 bytes
         // Create a new data vector with work key and work units (set to 1)
         let mut submit_data = Vec::with_capacity(64);
         submit_data.extend_from_slice(&data[0..32]); // Work key
-
-        // We leave work units simple for now and only set this to 1 (1 file = 1 work unit)
-        let work_units = U256::from(1);
         submit_data.extend_from_slice(&work_units.to_be_bytes::<32>());
 
         let call = self.instance.instance().function(
