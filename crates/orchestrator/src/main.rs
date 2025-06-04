@@ -200,22 +200,23 @@ async fn main() -> Result<()> {
     let mut webhook_plugins: Vec<WebhookPlugin> = vec![];
 
     let configs = std::env::var("WEBHOOK_CONFIGS").unwrap_or_default();
-    match serde_json::from_str::<Vec<WebhookConfig>>(&configs) {
-        Ok(configs) if !configs.is_empty() => {
-            for config in configs {
-                let plugin = WebhookPlugin::new(config);
-                let plugin_clone = plugin.clone();
-                webhook_plugins.push(plugin_clone);
-                status_update_plugins.push(Box::new(plugin));
+    if !configs.is_empty() {
+        match serde_json::from_str::<Vec<WebhookConfig>>(&configs) {
+            Ok(configs) => {
+                for config in configs {
+                    let plugin = WebhookPlugin::new(config);
+                    let plugin_clone = plugin.clone();
+                    webhook_plugins.push(plugin_clone);
+                    status_update_plugins.push(Box::new(plugin));
+                    info!("Plugin: Webhook plugin initialized");
+                }
+            }
+            Err(e) => {
+                error!("Failed to parse webhook configs from environment: {}", e);
             }
         }
-        Ok(_) => {
-            info!("No webhook configurations provided");
-        }
-        Err(e) => {
-            error!("Failed to parse webhook configs from environment: {}", e);
-            std::process::exit(1);
-        }
+    } else {
+        info!("No webhook configurations provided");
     }
 
     let webhook_sender_store = store_context.clone();
@@ -234,8 +235,9 @@ async fn main() -> Result<()> {
     }
 
     // Load node group configurations from environment variable
-    if let Ok(configs_json) = std::env::var("NODE_GROUP_CONFIGS") {
-        match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&configs_json) {
+    let node_group_configs = std::env::var("NODE_GROUP_CONFIGS").unwrap_or_default();
+    if !node_group_configs.is_empty() {
+        match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&node_group_configs) {
             Ok(configs) if !configs.is_empty() => {
                 let node_groups_heartbeats = heartbeats.clone();
                 let group_plugin = NodeGroupsPlugin::new(
@@ -250,7 +252,7 @@ async fn main() -> Result<()> {
                 node_groups_plugin = Some(Arc::new(group_plugin_for_server));
                 scheduler_plugins.push(Box::new(group_plugin));
                 status_update_plugins.push(Box::new(status_group_plugin));
-                info!("Node group plugin initialized");
+                info!("Plugin: Node group plugin initialized");
             }
             Ok(_) => {
                 info!(
