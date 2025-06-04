@@ -208,6 +208,7 @@ async fn main() -> Result<()> {
                     let plugin_clone = plugin.clone();
                     webhook_plugins.push(plugin_clone);
                     status_update_plugins.push(Box::new(plugin));
+                    info!("Plugin: Webhook plugin initialized");
                 }
             }
             Err(e) => {
@@ -251,7 +252,7 @@ async fn main() -> Result<()> {
                 node_groups_plugin = Some(Arc::new(group_plugin_for_server));
                 scheduler_plugins.push(Box::new(group_plugin));
                 status_update_plugins.push(Box::new(status_group_plugin));
-                info!("Node group plugin initialized");
+                info!("Plugin: Node group plugin initialized");
             }
             Ok(_) => {
                 info!(
