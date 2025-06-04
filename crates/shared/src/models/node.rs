@@ -960,6 +960,39 @@ mod tests {
     }
 
     #[test]
+    fn test_amd_gpu_model_parsing_and_matching() {
+        // Test with MI250X (datacenter GPU)
+        let req_str_mi = "gpu:count=2;gpu:model=mi300x;gpu:memory_mb=196000";
+        let requirements_mi = ComputeRequirements::from_str(req_str_mi).unwrap();
+        
+        let specs_mi = create_compute_specs(
+            Some(2),
+            Some("amd aqua vanjaram [instinct mi300x vf]"),
+            Some(196000),
+            None,
+            None,
+            None,
+        );
+        assert!(specs_mi.meets(&requirements_mi));
+
+        // Test mixed vendor OR logic
+        let req_str_mixed = "gpu:count=8;gpu:model=a100,h100;gpu:count=4;gpu:model=mi250x,mi300x;ram_mb=196000";
+        let requirements_mixed = ComputeRequirements::from_str(req_str_mixed).unwrap();
+        assert_eq!(requirements_mixed.gpu.len(), 2);
+        
+        // AMD node should meet the second option
+        let specs_amd = create_compute_specs(
+            Some(4),
+            Some("AMD MI300X"),
+            Some(196000),
+            None,
+            Some(256000),
+            None,
+        );
+        assert!(specs_amd.meets(&requirements_mixed));
+    }
+
+    #[test]
     fn test_gpu_memory_min_max_validation() {
         // Test that min > max is rejected
         let req_str = "gpu:memory_mb_min=40000;gpu:memory_mb_max=20000";
