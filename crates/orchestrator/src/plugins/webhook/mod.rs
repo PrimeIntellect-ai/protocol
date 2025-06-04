@@ -33,6 +33,7 @@ pub enum WebhookEvent {
     },
     #[serde(rename = "metrics.updated")]
     MetricsUpdated {
+        pool_id: u32,
         #[serde(flatten)]
         metrics: std::collections::HashMap<String, f64>,
     },
@@ -182,9 +183,13 @@ impl WebhookPlugin {
 
     pub async fn send_metrics_updated(
         &self,
+        pool_id: u32,
         metrics: std::collections::HashMap<String, f64>,
     ) -> Result<(), Error> {
-        let event = WebhookEvent::MetricsUpdated { metrics };
+        let event = WebhookEvent::MetricsUpdated {
+            pool_id,
+            metrics,
+        };
 
         self.send_event(event).await
     }
@@ -302,6 +307,7 @@ mod tests {
             .match_body(mockito::Matcher::Json(serde_json::json!({
                 "event": "metrics.updated",
                 "data": {
+                        "pool_id": 1,
                         "test_metric": 1.0,
                         "metric_2": 2.0
                 },
@@ -316,7 +322,7 @@ mod tests {
         let mut metrics = std::collections::HashMap::new();
         metrics.insert("test_metric".to_string(), 1.0);
         metrics.insert("metric_2".to_string(), 2.0);
-        let result = plugin.send_metrics_updated(metrics).await;
+        let result = plugin.send_metrics_updated(1, metrics).await;
         assert!(result.is_ok());
 
         mock.assert_async().await;
@@ -333,6 +339,7 @@ mod tests {
             .match_body(mockito::Matcher::Json(serde_json::json!({
                 "event": "metrics.updated",
                 "data": {
+                    "pool_id": 1,
                     "metric_2": 2.0,
                     "test_metric": 1.0
                 },
@@ -347,7 +354,7 @@ mod tests {
         let mut metrics = std::collections::HashMap::new();
         metrics.insert("test_metric".to_string(), 1.0);
         metrics.insert("metric_2".to_string(), 2.0);
-        let result = plugin.send_metrics_updated(metrics).await;
+        let result = plugin.send_metrics_updated(1, metrics).await;
         assert!(result.is_ok());
         mock.assert_async().await;
         Ok(())
