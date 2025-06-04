@@ -1,4 +1,6 @@
 use super::{GpuDevice, GpuDetector, GpuVendor};
+#[cfg(feature = "amd-gpu")]
+use crate::console::Console;
 
 #[cfg(feature = "amd-gpu")]
 use rocm_smi_lib::RocmSmi;

@@ -41,6 +41,7 @@ pub trait GpuDetector: Debug {
     fn detect(&self) -> Vec<GpuDevice>;
     
     /// Get the vendor for this detector
+    #[allow(dead_code)]
     fn vendor(&self) -> GpuVendor;
 }
 

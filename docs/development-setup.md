@@ -148,6 +148,8 @@ Set up your remote GPU worker:
    SSH_CONNECTION="ssh your-ssh-conn string"
    EXTERNAL_IP="your-external-ip"
    make remote-worker
+   # or if you have an AMD GPU
+   # make remote-worker-amd
    ```
 
 ## Stopping Services
