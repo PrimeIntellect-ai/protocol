@@ -214,6 +214,7 @@ async fn main() -> Result<()> {
         }
         Err(e) => {
             error!("Failed to parse webhook configs from environment: {}", e);
+            std::process::exit(1);
         }
     }
 
@@ -261,6 +262,7 @@ async fn main() -> Result<()> {
                     "Failed to parse node group configurations from environment: {}",
                     e
                 );
+                std::process::exit(1);
             }
         }
     }
