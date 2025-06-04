@@ -23,7 +23,8 @@ pub struct Toploc {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct GroupValidationResult {
     pub status: ValidationResult,
-    pub flops: f64,
+    pub input_flops: f64,
+    pub output_flops: f64,
     // This tells us which node(s) in a group actually failed the toploc validation
     pub failing_indices: Vec<i64>,
 }
@@ -86,7 +87,7 @@ impl Toploc {
             "{}/validate/{}",
             self.config.server_url, processed_file_name
         );
-        info!(
+        debug!(
             "Triggering remote toploc validation for {} {}",
             file_name, validate_url
         );
@@ -266,10 +267,15 @@ impl Toploc {
                                 _ => ValidationResult::Unknown,
                             };
 
-                            let flops = status_json
-                                .get("flops")
+                            let input_flops = status_json
+                                .get("input_flops")
                                 .and_then(|f| f.as_f64())
                                 .unwrap_or(0.0);
+                            let output_flops = status_json
+                                .get("output_flops")
+                                .and_then(|f| f.as_f64())
+                                .unwrap_or(0.0);
+
                             let failing_indices = status_json
                                 .get("failing_indices")
                                 .and_then(|f| f.as_array())
@@ -280,7 +286,8 @@ impl Toploc {
 
                             Ok(GroupValidationResult {
                                 status: validation_result,
-                                flops,
+                                input_flops,
+                                output_flops,
                                 failing_indices,
                             })
                         }
@@ -529,7 +536,7 @@ mod tests {
         let _status_mock = server
             .mock("GET", "/statusgroup/test-group.parquet")
             .with_status(200)
-            .with_body(r#"{"status": "accept", "flops": 12345.67, "failing_indices": []}"#)
+            .with_body(r#"{"status": "accept", "input_flops": 12345.67, "output_flops": 12345.67, "failing_indices": []}"#)
             .create();
 
         let config = ToplocConfig {
@@ -546,7 +553,8 @@ mod tests {
         assert!(result.is_ok());
         let group_result = result.unwrap();
         assert_eq!(group_result.status, ValidationResult::Accept);
-        assert_eq!(group_result.flops, 12345.67);
+        assert_eq!(group_result.input_flops, 12345.67);
+        assert_eq!(group_result.output_flops, 12345.67);
         assert!(group_result.failing_indices.is_empty());
         Ok(())
     }
@@ -558,7 +566,7 @@ mod tests {
         let _status_mock = server
             .mock("GET", "/statusgroup/test-group.parquet")
             .with_status(200)
-            .with_body(r#"{"status": "reject", "flops": 0.0, "failing_indices": [1, 3, 5]}"#)
+            .with_body(r#"{"status": "reject", "input_flops": 0.0, "output_flops": 0.0, "failing_indices": [1, 3, 5]}"#)
             .create();
 
         let config = ToplocConfig {
@@ -575,7 +583,8 @@ mod tests {
         assert!(result.is_ok());
         let group_result = result.unwrap();
         assert_eq!(group_result.status, ValidationResult::Reject);
-        assert_eq!(group_result.flops, 0.0);
+        assert_eq!(group_result.input_flops, 0.0);
+        assert_eq!(group_result.output_flops, 0.0);
         assert_eq!(group_result.failing_indices, vec![1, 3, 5]);
         Ok(())
     }
