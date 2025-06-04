@@ -106,6 +106,18 @@ jobs:
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
       
+      - name: Upload binaries to GCS
+        run: |
+          # Upload binaries to versioned folder
+          gsutil -m cp release-artifacts/* gs://protocol-repo-assets/builds/${{ steps.next_version.outputs.tag_name }}/
+    
+          # Also upload to 'latest' for easy access to newest dev build
+          gsutil -m cp release-artifacts/* gs://protocol-repo-assets/builds/latest/
+    
+          echo "Binaries uploaded to:"
+          echo "- gs://protocol-repo-assets/builds/${{ steps.next_version.outputs.tag_name }}/"
+          echo "- gs://protocol-repo-assets/builds/latest/"
+      
       - name: Generate Docker metadata
         id: meta
         run: |
