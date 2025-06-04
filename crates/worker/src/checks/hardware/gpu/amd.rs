@@ -1,10 +1,9 @@
 use super::{GpuDevice, GpuDetector};
-use shared::models::node::GpuVendor;
-
 #[cfg(feature = "amd-gpu")]
 use {
     crate::console::Console,
     rocm_smi_lib::RocmSmi,
+    shared::models::node::GpuVendor,
 };
 
 #[derive(Debug)]
