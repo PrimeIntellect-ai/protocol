@@ -81,10 +81,14 @@ pub async fn invite_node(
 
     let node_address = vec![wallet.wallet.default_signer().address()];
     let signatures = vec![FixedBytes::from(&bytes_array)];
+    let nonces = vec![invite.nonce];
+    let expirations = vec![invite.expiration];
     let call = match contracts.compute_pool.build_join_compute_pool_call(
         pool_id,
         provider_address,
         node_address,
+        nonces,
+        expirations,
         signatures,
     ) {
         Ok(call) => call,
