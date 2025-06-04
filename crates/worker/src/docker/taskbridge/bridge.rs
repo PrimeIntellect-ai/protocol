@@ -148,10 +148,9 @@ impl TaskBridge {
                         }
                     };
 
-                    #[allow(clippy::assign_op_pattern)]
-                    let work_units = 1.0;
+                    let mut work_units = 1.0;
                     if output_flops > 0.0 {
-                        // work_units = output_flops;
+                        work_units = output_flops;
                     }
 
                     tokio::spawn(async move {
