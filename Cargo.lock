@@ -2751,6 +2751,7 @@ dependencies = [
  "anyhow",
  "clap 4.5.37",
  "env_logger",
+ "futures",
  "log",
  "redis",
  "redis-test",
