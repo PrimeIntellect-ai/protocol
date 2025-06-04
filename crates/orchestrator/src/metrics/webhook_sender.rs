@@ -11,14 +11,20 @@ pub struct MetricsWebhookSender {
     store_context: Arc<StoreContext>,
     webhook_plugins: Vec<WebhookPlugin>,
     last_sent_metrics: HashMap<String, f64>,
+    pool_id: u32,
 }
 
 impl MetricsWebhookSender {
-    pub fn new(store_context: Arc<StoreContext>, webhook_plugins: Vec<WebhookPlugin>) -> Self {
+    pub fn new(
+        store_context: Arc<StoreContext>,
+        webhook_plugins: Vec<WebhookPlugin>,
+        pool_id: u32,
+    ) -> Self {
         Self {
             store_context,
             webhook_plugins,
             last_sent_metrics: HashMap::new(),
+            pool_id,
         }
     }
 
@@ -34,7 +40,9 @@ impl MetricsWebhookSender {
             if metrics != self.last_sent_metrics {
                 info!("Sending {} metrics via webhook", metrics.len());
                 for plugin in &self.webhook_plugins {
-                    let _ = plugin.send_metrics_updated(metrics.clone()).await;
+                    let _ = plugin
+                        .send_metrics_updated(self.pool_id, metrics.clone())
+                        .await;
                 }
                 // Update last sent metrics
                 self.last_sent_metrics = metrics.clone();

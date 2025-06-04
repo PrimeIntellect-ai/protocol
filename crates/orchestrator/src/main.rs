@@ -226,6 +226,7 @@ async fn main() -> Result<()> {
             let mut webhook_sender = MetricsWebhookSender::new(
                 webhook_sender_store.clone(),
                 webhook_plugins_clone.clone(),
+                compute_pool_id,
             );
             if let Err(e) = webhook_sender.run().await {
                 error!("Error running webhook sender: {}", e);
