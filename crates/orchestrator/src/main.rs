@@ -41,7 +41,7 @@ use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
 
-#[derive(Parser, Clone, Copy, ValueEnum, Debug)]
+#[derive(Parser, Clone, Copy, ValueEnum, Debug, PartialEq)]
 pub enum ServerMode {
     ApiOnly,
     ProcessorOnly,
@@ -219,7 +219,7 @@ async fn main() -> Result<()> {
 
     let webhook_sender_store = store_context.clone();
     let webhook_plugins_clone = webhook_plugins.clone();
-    if !webhook_plugins_clone.is_empty() {
+    if !webhook_plugins_clone.is_empty() && server_mode != ServerMode::ApiOnly {
         tasks.spawn(async move {
             let mut webhook_sender = MetricsWebhookSender::new(
                 webhook_sender_store.clone(),
