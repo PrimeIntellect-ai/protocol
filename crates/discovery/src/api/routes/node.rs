@@ -511,7 +511,7 @@ mod tests {
                     count: Some(4),
                     model: Some("A100".to_string()),
                     memory_mb: Some(40000),
-                    indices: Some(vec![0, 1, 2, 3]),
+                    indices: None,
                     vendor: None,
                 }),
                 cpu: Some(CpuSpecs {

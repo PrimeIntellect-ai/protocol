@@ -160,35 +160,11 @@ impl DockerManager {
 
         self.pull_image(image).await?;
 
-        // Prepare environment variables
-        let mut final_env = env_vars.unwrap_or_default();
-        
-        // Check if we have AMD GPUs and add ROCm environment variables
-        let is_amd_gpu = if let Some(ref gpu_spec) = gpu {
-            matches!(gpu_spec.vendor, Some(GpuVendor::Amd))
-        } else {
-            false
-        };
-        
-        if is_amd_gpu {
-            // Add ROCm environment variables
-            final_env.insert("HSA_ENABLE_SDMA".to_string(), "0".to_string());
-            final_env.insert("ROCR_VISIBLE_DEVICES".to_string(), 
-                gpu.as_ref()
-                    .and_then(|g| g.indices.as_ref())
-                    .map(|indices| indices.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","))
-                    .unwrap_or_else(|| "all".to_string())
-            );
-        }
-
-        let env = if !final_env.is_empty() {
-            Some(final_env.iter()
+        let env = env_vars.map(|vars| {
+            vars.iter()
                 .map(|(k, v)| format!("{}={}", k, v))
-                .collect::<Vec<String>>())
-        } else {
-            None
-        };
-        
+                .collect::<Vec<String>>()
+        });
         let volume_binds = {
             let mut binds = final_volumes
                 .iter()
@@ -256,9 +232,6 @@ impl DockerManager {
                     // Add ROCm device bindings
                     amd_binds.push("/dev/kfd:/dev/kfd".to_string());
                     amd_binds.push("/dev/dri:/dev/dri".to_string());
-                    
-                    // For specific GPU indices, we might need to bind specific renderD* devices
-                    // This is a simplified approach - in production you might want more fine-grained control
                     
                     Some(HostConfig {
                         extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),

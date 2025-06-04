@@ -5,6 +5,7 @@ use crate::console::Console;
 use bollard::models::ContainerStateStatusEnum;
 use chrono::{DateTime, Utc};
 use shared::models::node::GpuSpecs;
+use shared::models::node::GpuVendor;
 use shared::models::task::Task;
 use shared::models::task::TaskState;
 use std::collections::HashMap;
@@ -208,6 +209,19 @@ impl DockerService {
                                         let mut env_vars: HashMap<String, String> = HashMap::new();
                                         if let Some(env) = &payload.env_vars {
                                             env_vars.extend(env.clone());
+                                        }
+
+                                        // Add AMD GPU-specific environment variables if AMD GPU is detected
+                                        if let Some(ref gpu_spec) = gpu {
+                                            if matches!(gpu_spec.vendor, Some(GpuVendor::Amd)) {
+                                                // Add ROCm environment variables
+                                                env_vars.insert("HSA_ENABLE_SDMA".to_string(), "0".to_string());
+                                                env_vars.insert("ROCR_VISIBLE_DEVICES".to_string(), 
+                                                    gpu_spec.indices.as_ref()
+                                                        .map(|indices| indices.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","))
+                                                        .unwrap_or_else(|| "all".to_string())
+                                                );
+                                            }
                                         }
 
                                         env_vars.insert("NODE_ADDRESS".to_string(), node_address);

@@ -45,10 +45,6 @@ impl GpuDetector for NvidiaGpuDetector {
     fn detect(&self) -> Vec<GpuDevice> {
         get_nvidia_gpu_status()
     }
-    
-    fn vendor(&self) -> GpuVendor {
-        GpuVendor::Nvidia
-    }
 }
 
 fn get_nvidia_gpu_status() -> Vec<GpuDevice> {

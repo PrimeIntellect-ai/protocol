@@ -4,10 +4,11 @@ use bollard::container::ListContainersOptions;
 use bollard::Docker;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use super::super::hardware::gpu::detect_gpu;
+use shared::models::node::GpuVendor;
 
 pub async fn check_docker_installed(
     issues: &Arc<RwLock<IssueReport>>,
+    gpu_vendors: &[GpuVendor],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let issue_tracker = issues.read().await;
     let docker_path = std::process::Command::new("which")
@@ -75,21 +76,8 @@ pub async fn check_docker_installed(
 
     Console::success("Docker ready");
 
-    // Detect which GPU vendor is present
-    let gpu_specs = detect_gpu();
-    
-    let mut has_nvidia = false;
-    let mut has_amd = false;
-    
-    for gpu in &gpu_specs {
-        if let Some(model) = &gpu.model {
-            if model.contains("nvidia") {
-                has_nvidia = true;
-            } else if model.contains("amd") {
-                has_amd = true;
-            }
-        }
-    }
+    // Check which GPU vendors are present
+    let has_nvidia = gpu_vendors.contains(&GpuVendor::Nvidia);
 
     // Check for NVIDIA Container Toolkit if NVIDIA GPUs are present
     if has_nvidia {
@@ -129,54 +117,6 @@ pub async fn check_docker_installed(
             issue_tracker.add_issue(
                 IssueType::ContainerToolkitNotInstalled,
                 "NVIDIA toolkit not found",
-            );
-        }
-    }
-
-    // Check for AMD ROCm runtime if AMD GPUs are present
-    if has_amd {
-        let rocm_smi = std::process::Command::new("which")
-            .arg("rocm-smi")
-            .output()
-            .map_err(|e| {
-                issue_tracker.add_issue(
-                    IssueType::RocmNotInstalled,
-                    format!("Failed to check for rocm-smi: {}", e),
-                );
-                e
-            })?;
-
-        if rocm_smi.status.success() {
-            // Check if ROCm is working properly
-            let version_check = std::process::Command::new("rocm-smi")
-                .arg("--version")
-                .output()
-                .map_err(|e| {
-                    issue_tracker.add_issue(
-                        IssueType::RocmNotInstalled,
-                        format!("Failed to run rocm-smi: {}", e),
-                    );
-                    e
-                })?;
-
-            if version_check.status.success() {
-                Console::success("ROCm ready");
-                
-                // Check for AMD container runtime
-                // This could be checking for docker plugin or runtime configuration
-                // ROCm doesn't have a direct equivalent to nvidia-ctk, but we can check
-                // if the docker daemon has the ROCm devices configured
-                Console::info("AMD GPU support", "Checking Docker AMD GPU configuration");
-            } else {
-                issue_tracker.add_issue(
-                    IssueType::RocmNotInstalled,
-                    "ROCm not configured properly",
-                );
-            }
-        } else {
-            issue_tracker.add_issue(
-                IssueType::RocmNotInstalled,
-                "ROCm not found - required for AMD GPU support",
             );
         }
     }

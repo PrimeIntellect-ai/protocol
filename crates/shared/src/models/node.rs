@@ -533,7 +533,7 @@ mod tests {
                     count: gpu_count,
                     model: gpu_model.map(String::from),
                     memory_mb: gpu_mem,
-                    vendor: None, // For test purposes, can be None
+                    vendor: None,
                     ..Default::default()
                 })
             } else {
@@ -980,7 +980,7 @@ mod tests {
 
     #[test]
     fn test_amd_gpu_model_parsing_and_matching() {
-        // Test with MI250X (datacenter GPU)
+        // Test with MI300X
         let req_str_mi = "gpu:count=2;gpu:model=mi300x;gpu:memory_mb=196000";
         let requirements_mi = ComputeRequirements::from_str(req_str_mi).unwrap();
         
@@ -994,7 +994,7 @@ mod tests {
         );
         assert!(specs_mi.meets(&requirements_mi));
 
-        // Test mixed vendor OR logic
+        // Test mixed vendor
         let req_str_mixed = "gpu:count=8;gpu:model=a100,h100;gpu:count=4;gpu:model=mi250x,mi300x;ram_mb=196000";
         let requirements_mixed = ComputeRequirements::from_str(req_str_mixed).unwrap();
         assert_eq!(requirements_mixed.gpu.len(), 2);

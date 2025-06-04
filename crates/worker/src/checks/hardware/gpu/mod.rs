@@ -24,10 +24,6 @@ pub trait GpuDetector: Debug {
     
     /// Detect GPUs using this implementation
     fn detect(&self) -> Vec<GpuDevice>;
-    
-    /// Get the vendor for this detector
-    #[allow(dead_code)]
-    fn vendor(&self) -> GpuVendor;
 }
 
 /// Main function to detect GPUs from any vendor

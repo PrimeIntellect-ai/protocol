@@ -2,9 +2,10 @@ use super::{GpuDevice, GpuDetector};
 use shared::models::node::GpuVendor;
 
 #[cfg(feature = "amd-gpu")]
-use crate::console::Console;
-#[cfg(feature = "amd-gpu")]
-use rocm_smi_lib::RocmSmi;
+use {
+    crate::console::Console,
+    rocm_smi_lib::RocmSmi,
+};
 
 #[derive(Debug)]
 pub struct AmdGpuDetector;
@@ -42,10 +43,6 @@ impl GpuDetector for AmdGpuDetector {
         {
             vec![]
         }
-    }
-    
-    fn vendor(&self) -> GpuVendor {
-        GpuVendor::Amd
     }
 }
 

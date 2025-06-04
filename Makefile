@@ -1,5 +1,6 @@
 SHELL := /bin/bash
 ENV_FILE ?= .env
+ROCM_VERSION ?= 6.4.0
 .PHONY: setup pool domain fund
 
 mint-ai-tokens-to-provider:
@@ -192,9 +193,9 @@ watch-worker-remote-amd: setup-remote-amd setup-tunnel sync-remote
 		bash --login -i -c '\
 			set -a && source .env && set +a && \
 			export EXTERNAL_IP=$(EXTERNAL_IP) && \
-			export LD_LIBRARY_PATH=/opt/rocm-6.4.0/lib:\$$LD_LIBRARY_PATH && \
+			export LD_LIBRARY_PATH=/opt/rocm-$(ROCM_VERSION)/lib:\$$LD_LIBRARY_PATH && \
 			export ROCM_PATH=/opt/rocm && \
-			export RUSTFLAGS=\"-L /opt/rocm-6.4.0/lib\" && \
+			export RUSTFLAGS=\"-L /opt/rocm-$(ROCM_VERSION)/lib\" && \
 			clear && \
 			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w crates/worker/src -x \"run --features amd-gpu --bin worker -- run \
 				--port $(PORT) \
