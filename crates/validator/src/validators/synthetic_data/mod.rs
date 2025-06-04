@@ -1036,7 +1036,9 @@ mod tests {
         assert_eq!(validation_plan.group_status_check_tasks.len(), 1);
 
         let metrics = export_metrics().unwrap();
-        assert!(metrics.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 4"));
+        assert!(
+            metrics.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 4")
+        );
 
         Ok(())
     }
