@@ -668,6 +668,10 @@ impl SyntheticDataValidator {
             }
         }
 
+        info!(
+            "keys_to_process: {} (including keys with no status or pending status)",
+            keys_to_process
+        );
         if let Some(metrics) = &self.metrics {
             metrics.record_work_keys_to_process(keys_to_process as f64);
         }
@@ -1236,6 +1240,7 @@ mod tests {
             .create();
 
         let storage_provider = Arc::new(mock_storage);
+        let metrics_context = MetricsContext::new("0".to_string(), Some("0".to_string()));
 
         let validator = SyntheticDataValidator::new(
             "0".to_string(),
@@ -1251,7 +1256,7 @@ mod tests {
             1,
             true,
             false,
-            None,
+            Some(metrics_context),
         );
 
         let work_keys: Vec<String> = vec![file_sha.to_string()];
@@ -1269,8 +1274,11 @@ mod tests {
         }
 
         let plan = validator.build_validation_plan(work_keys).await?;
+        println!("plan: {:?}", plan);
         assert_eq!(plan.group_trigger_tasks.len(), 1);
         assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
+        let metrics_0 = export_metrics().unwrap();
+        assert!(metrics_0.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 1"));
 
         let group = validator.get_group(file_sha).await?;
         assert!(group.is_some());
@@ -1290,6 +1298,10 @@ mod tests {
         let plan_2 = validator.build_validation_plan(work_keys_2).await?;
         assert_eq!(plan_2.group_trigger_tasks.len(), 0);
         assert_eq!(plan_2.group_status_check_tasks.len(), 1);
+        println!("plan_2: {:?}", plan_2);
+
+        let metrics = export_metrics().unwrap();
+        assert!(metrics.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 1"));
 
         let result = validator
             .process_group_status_check(plan_2.group_status_check_tasks[0].clone())
@@ -1304,6 +1316,8 @@ mod tests {
         let plan_3 = validator.build_validation_plan(work_keys_3).await?;
         assert_eq!(plan_3.group_trigger_tasks.len(), 0);
         assert_eq!(plan_3.group_status_check_tasks.len(), 0);
+        let metrics_2 = export_metrics().unwrap();
+        assert!(metrics_2.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
 
         Ok(())
     }
