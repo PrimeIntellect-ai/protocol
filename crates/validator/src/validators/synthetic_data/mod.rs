@@ -669,10 +669,7 @@ impl SyntheticDataValidator {
         }
 
         if let Some(metrics) = &self.metrics {
-            println!("recording metrics for keys to process: {}", keys_to_process);
             metrics.record_work_keys_to_process(keys_to_process as f64);
-        } else {
-            println!("no metrics");
         }
 
         Ok(ValidationPlan {
@@ -1276,7 +1273,6 @@ mod tests {
         assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
 
         let group = validator.get_group(file_sha).await?;
-        println!("group: {:?}", group);
         assert!(group.is_some());
         let group = group.unwrap();
         assert_eq!(group.group_id, group_id);
