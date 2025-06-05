@@ -1274,7 +1274,6 @@ mod tests {
         }
 
         let plan = validator.build_validation_plan(work_keys).await?;
-        println!("plan: {:?}", plan);
         assert_eq!(plan.group_trigger_tasks.len(), 1);
         assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
         let metrics_0 = export_metrics().unwrap();
@@ -1299,7 +1298,6 @@ mod tests {
         let plan_2 = validator.build_validation_plan(work_keys_2).await?;
         assert_eq!(plan_2.group_trigger_tasks.len(), 0);
         assert_eq!(plan_2.group_status_check_tasks.len(), 1);
-        println!("plan_2: {:?}", plan_2);
 
         let metrics = export_metrics().unwrap();
         assert!(
@@ -1403,7 +1401,6 @@ mod tests {
         let file =
             "Qwen/Qwen3-14B/PrimeIntellect/INTELLECT-2-RL-Dataset/1-d4eb155339fc64e-1-20-0.parquet";
         let group_info = GroupInformation::from_str(file)?;
-        println!("group_info: {:?}", group_info);
         Ok(())
     }
 }
