@@ -71,7 +71,12 @@ impl Toploc {
     pub fn matches_file_name(&self, file_name: &str) -> bool {
         let normalized_name = self.normalize_path(file_name);
         match &self.config.file_prefix_filter {
-            Some(prefix) => normalized_name.starts_with(prefix),
+            Some(prefix) => {
+                normalized_name == *prefix || {
+                    normalized_name.starts_with(prefix)
+                        && normalized_name[prefix.len()..].starts_with('/')
+                }
+            }
             None => true,
         }
     }
@@ -594,14 +599,17 @@ mod tests {
         let config = ToplocConfig {
             server_url: "http://test".to_string(),
             auth_token: None,
-            file_prefix_filter: Some("Qwen3".to_string()),
+            file_prefix_filter: Some("deepseek-ai/DeepSeek-R1-0528".to_string()),
         };
         let toploc = Toploc::new(config, None);
 
-        assert!(toploc.matches_file_name("Qwen3-model-data.parquet"));
-        assert!(toploc.matches_file_name("Qwen3"));
-        assert!(!toploc.matches_file_name("GPT4-model-data.parquet"));
-        assert!(!toploc.matches_file_name("qwen3-lowercase.parquet")); // Case sensitive
+        // Should not match paths that have additional components after the prefix
+        assert!(!toploc.matches_file_name("deepseek-ai/DeepSeek-R1-0528-Qwen3-8B/data.parquet"));
+        assert!(toploc.matches_file_name("deepseek-ai/DeepSeek-R1-0528/data.parquet"));
+        assert!(toploc.matches_file_name("deepseek-ai/DeepSeek-R1-0528"));
+        assert!(!toploc.matches_file_name("deepseek-ai/DeepSeek-R1-0529/data.parquet"));
+        assert!(!toploc.matches_file_name("deepseek-ai/deepseek-r1-0528/data.parquet"));
+        // Case sensitive
     }
 
     #[tokio::test]
