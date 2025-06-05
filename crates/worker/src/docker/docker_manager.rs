@@ -33,6 +33,7 @@ pub struct ContainerDetails {
     #[allow(unused)]
     pub image: String,
     pub status: Option<ContainerStateStatusEnum>,
+    pub status_code: Option<i64>,
     #[allow(unused)]
     pub names: Vec<String>,
     #[allow(unused)]
@@ -454,10 +455,13 @@ impl DockerManager {
     ) -> Result<ContainerDetails, DockerError> {
         debug!("Getting details for container: {}", container_id);
         let container = self.docker.inspect_container(container_id, None).await?;
+        let state = container.state.clone();
+
         let info = ContainerDetails {
             id: container.id.unwrap_or_default(),
             image: container.image.unwrap_or_default(),
-            status: container.state.and_then(|s| s.status),
+            status: state.as_ref().and_then(|s| s.status),
+            status_code: state.as_ref().and_then(|s| s.exit_code),
             names: vec![container.name.unwrap_or_default()],
             created: container
                 .created
