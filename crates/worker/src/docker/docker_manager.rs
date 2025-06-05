@@ -124,6 +124,15 @@ impl DockerManager {
             );
             std::fs::create_dir_all(&path)?;
 
+            // Set permissions to allow container user to write to data directory
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&path)?.permissions();
+                perms.set_mode(0o777);
+                std::fs::set_permissions(&path, perms)?;
+            }
+
             self.docker
                 .create_volume(CreateVolumeOptions {
                     name: volume_name.clone(),
@@ -142,6 +151,14 @@ impl DockerManager {
             // Create shared volume if it doesn't exist
             let shared_path = format!("{}/shared", self.storage_path.clone().unwrap());
             std::fs::create_dir_all(&shared_path)?;
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&shared_path)?.permissions();
+                perms.set_mode(0o777);
+                std::fs::set_permissions(&shared_path, perms)?;
+            }
 
             self.docker
                 .create_volume(CreateVolumeOptions {
