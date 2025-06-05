@@ -575,10 +575,6 @@ impl SyntheticDataValidator {
             .await
             .context("Failed to get work keys from the last 24 hours")?;
 
-        if let Some(metrics) = &self.metrics {
-            metrics.record_work_keys_to_process(work_keys.len() as f64);
-        }
-
         if !work_keys.is_empty() {
             info!(
                 "Found {} work keys to validate in the last {} seconds creation time",
@@ -602,6 +598,8 @@ impl SyntheticDataValidator {
         let mut group_trigger_tasks: Vec<ToplocGroup> = Vec::new();
         let mut status_check_tasks: Vec<String> = Vec::new();
         let mut group_status_check_tasks: Vec<ToplocGroup> = Vec::new();
+
+        let mut keys_to_process = 0;
 
         for work_key in work_keys {
             // Get work info from cache or fetch
@@ -634,6 +632,7 @@ impl SyntheticDataValidator {
                     continue; // Already processed
                 }
                 Some(ValidationResult::Unknown) => {
+                    keys_to_process += 1;
                     if self.with_node_grouping {
                         let check_group = self.get_group(&work_key).await?;
                         debug!("Group for work key: {:?} | {:?}", work_key, check_group);
@@ -651,6 +650,7 @@ impl SyntheticDataValidator {
                     }
                 }
                 Some(_) | None => {
+                    keys_to_process += 1;
                     // Needs triggering (covers Pending, Invalidated, and None cases)
                     if self.with_node_grouping {
                         debug!("Checking group for work key: {:?}", work_key);
@@ -666,6 +666,10 @@ impl SyntheticDataValidator {
                     }
                 }
             }
+        }
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_work_keys_to_process(keys_to_process as f64);
         }
 
         Ok(ValidationPlan {
@@ -887,6 +891,8 @@ impl SyntheticDataValidator {
 
 #[cfg(test)]
 mod tests {
+    use crate::metrics::export_metrics;
+
     use super::*;
     use alloy::primitives::Address;
     use anyhow::Ok;
@@ -942,6 +948,7 @@ mod tests {
         // Add test to build validation plan
         // Since we do not have blockchain access add task infos to redis first
         let (store, contracts) = setup_test_env()?;
+        let metrics_context = MetricsContext::new("0".to_string(), Some("0".to_string()));
         let mock_storage = MockStorageProvider::new();
 
         // single group
@@ -996,7 +1003,7 @@ mod tests {
             1,
             true,
             false,
-            None,
+            Some(metrics_context),
         );
 
         let work_keys = vec![
@@ -1024,6 +1031,12 @@ mod tests {
         assert_eq!(validation_plan.group_trigger_tasks.len(), 2);
         assert_eq!(validation_plan.status_check_tasks.len(), 0);
         assert_eq!(validation_plan.group_status_check_tasks.len(), 1);
+
+        let metrics = export_metrics().unwrap();
+        assert!(
+            metrics.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 4")
+        );
+
         Ok(())
     }
 
@@ -1260,7 +1273,6 @@ mod tests {
         assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
 
         let group = validator.get_group(file_sha).await?;
-        println!("group: {:?}", group);
         assert!(group.is_some());
         let group = group.unwrap();
         assert_eq!(group.group_id, group_id);
