@@ -1278,7 +1278,8 @@ mod tests {
         assert_eq!(plan.group_trigger_tasks.len(), 1);
         assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
         let metrics_0 = export_metrics().unwrap();
-        assert!(metrics_0.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 1"));
+        assert!(metrics_0
+            .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 1"));
 
         let group = validator.get_group(file_sha).await?;
         assert!(group.is_some());
@@ -1301,7 +1302,9 @@ mod tests {
         println!("plan_2: {:?}", plan_2);
 
         let metrics = export_metrics().unwrap();
-        assert!(metrics.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 1"));
+        assert!(
+            metrics.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 1")
+        );
 
         let result = validator
             .process_group_status_check(plan_2.group_status_check_tasks[0].clone())
@@ -1317,7 +1320,8 @@ mod tests {
         assert_eq!(plan_3.group_trigger_tasks.len(), 0);
         assert_eq!(plan_3.group_status_check_tasks.len(), 0);
         let metrics_2 = export_metrics().unwrap();
-        assert!(metrics_2.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
+        assert!(metrics_2
+            .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
 
         Ok(())
     }
