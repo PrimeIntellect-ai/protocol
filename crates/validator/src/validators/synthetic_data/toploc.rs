@@ -71,7 +71,12 @@ impl Toploc {
     pub fn matches_file_name(&self, file_name: &str) -> bool {
         let normalized_name = self.normalize_path(file_name);
         match &self.config.file_prefix_filter {
-            Some(prefix) => normalized_name.starts_with(prefix),
+            Some(prefix) => {
+                normalized_name == *prefix || {
+                    normalized_name.starts_with(prefix)
+                        && normalized_name[prefix.len()..].starts_with('/')
+                }
+            }
             None => true,
         }
     }
@@ -588,20 +593,101 @@ mod tests {
         assert_eq!(group_result.failing_indices, vec![1, 3, 5]);
         Ok(())
     }
-
     #[tokio::test]
     async fn test_file_prefix_filter_matching() {
-        let config = ToplocConfig {
-            server_url: "http://test".to_string(),
-            auth_token: None,
-            file_prefix_filter: Some("Qwen3".to_string()),
-        };
-        let toploc = Toploc::new(config, None);
+        let configs = vec![
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("Qwen/Qwen3-235B-A22B".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("Qwen/Qwen3-32B".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("Qwen/Qwen3-30B-A3B".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("Qwen/Qwen3-14B".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("deepseek-ai/DeepSeek-R1-0528".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("deepseek-ai/DeepSeek-R1-0528-Qwen3-8B".to_string()),
+            },
+        ];
 
-        assert!(toploc.matches_file_name("Qwen3-model-data.parquet"));
-        assert!(toploc.matches_file_name("Qwen3"));
-        assert!(!toploc.matches_file_name("GPT4-model-data.parquet"));
-        assert!(!toploc.matches_file_name("qwen3-lowercase.parquet")); // Case sensitive
+        let test_cases = vec![
+            // Test Qwen 235B model
+            ("Qwen/Qwen3-235B-A22B/data.parquet", Some(0)),
+            ("Qwen/Qwen3-235B-A22B", Some(0)),
+            ("Qwen/Qwen3-235B-A22B-extra/data.parquet", None),
+            ("qwen/qwen3-235b-a22b/data.parquet", None), // Case sensitive
+            // Test Qwen 32B model
+            ("Qwen/Qwen3-32B/data.parquet", Some(1)),
+            ("Qwen/Qwen3-32B", Some(1)),
+            ("Qwen/Qwen3-32B-extra/data.parquet", None),
+            // Test Qwen 30B model
+            ("Qwen/Qwen3-30B-A3B/data.parquet", Some(2)),
+            ("Qwen/Qwen3-30B-A3B", Some(2)),
+            ("Qwen/Qwen3-30B-A3B-extra/data.parquet", None),
+            // Test Qwen 14B model
+            ("Qwen/Qwen3-14B/data.parquet", Some(3)),
+            ("Qwen/Qwen3-14B", Some(3)),
+            ("Qwen/Qwen3-14B-extra/data.parquet", None),
+            // Test DeepSeek base model
+            ("deepseek-ai/DeepSeek-R1-0528/data.parquet", Some(4)),
+            ("deepseek-ai/DeepSeek-R1-0528", Some(4)),
+            (
+                "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B/data.parquet",
+                Some(5),
+            ),
+            ("deepseek-ai/deepseek-r1-0528/data.parquet", None), // Case sensitive
+        ];
+
+        for (test_file, expected_match) in test_cases {
+            let mut matched = false;
+            let mut matched_idx = None;
+
+            for (idx, config) in configs.iter().enumerate() {
+                let toploc = Toploc::new(config.clone(), None);
+                if toploc.matches_file_name(test_file) {
+                    matched = true;
+                    matched_idx = Some(idx);
+                    break;
+                }
+            }
+
+            match expected_match {
+                Some(expected_idx) => {
+                    assert!(
+                        matched,
+                        "Expected file {} to match config {}",
+                        test_file, expected_idx
+                    );
+                    assert_eq!(
+                        matched_idx,
+                        Some(expected_idx),
+                        "File {} matched config {} but expected {}",
+                        test_file,
+                        matched_idx.unwrap(),
+                        expected_idx
+                    );
+                }
+                None => assert!(!matched, "File {} should not match any config", test_file),
+            }
+        }
     }
 
     #[tokio::test]
