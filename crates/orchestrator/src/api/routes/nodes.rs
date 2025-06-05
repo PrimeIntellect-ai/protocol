@@ -1,18 +1,31 @@
 use crate::api::server::AppState;
 use actix_web::{
-    web::{self, get, post, Data},
+    web::{self, get, post, Data, Query},
     HttpResponse, Scope,
 };
 use alloy::primitives::Address;
 use log::info;
+use serde::Deserialize;
 use serde_json::json;
 use shared::security::request_signer::sign_request;
 use std::str::FromStr;
 use std::time::Duration;
+
 // Timeout for node operations in seconds
 const NODE_REQUEST_TIMEOUT: u64 = 30;
-async fn get_nodes(app_state: Data<AppState>) -> HttpResponse {
-    let nodes = app_state.store_context.node_store.get_nodes();
+
+#[derive(Deserialize)]
+struct NodeQuery {
+    include_dead: Option<bool>,
+}
+
+async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpResponse {
+    let mut nodes = app_state.store_context.node_store.get_nodes();
+
+    // Filter out dead nodes unless include_dead is true
+    if !query.include_dead.unwrap_or(false) {
+        nodes.retain(|node| node.status != crate::models::node::NodeStatus::Dead);
+    }
 
     let mut status_counts = json!({});
     for node in &nodes {
