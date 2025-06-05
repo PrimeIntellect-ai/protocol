@@ -7,7 +7,6 @@ use serde_json::json;
 
 async fn get_logs(app_state: Data<AppState>) -> HttpResponse {
     let logs = app_state.docker_service.get_logs().await;
-    println!("logs: {:?}", logs);
     match logs {
         Ok(logs) => HttpResponse::Ok().json(json!({
             "success": true,

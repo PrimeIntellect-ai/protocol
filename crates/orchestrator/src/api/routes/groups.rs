@@ -104,21 +104,23 @@ async fn get_group_logs(group_id: web::Path<String>, app_state: Data<AppState>) 
                     })
                     .collect();
 
-                // Execute all requests in parallel
                 let log_results = join_all(log_futures).await;
 
-                // Combine results
+                let mut nodes = serde_json::Map::new();
+                for (i, node_address) in node_addresses.iter().enumerate() {
+                    let node_str = node_address.to_string();
+                    nodes.insert(node_str, log_results[i].clone());
+                }
+
                 let mut all_logs = json!({
                     "success": true,
                     "group_id": group.id,
                     "configuration": group.configuration_name,
                     "created_at": group.created_at,
-                    "nodes": {}
                 });
 
-                for (i, node_address) in node_addresses.iter().enumerate() {
-                    let node_str = node_address.to_string();
-                    all_logs["nodes"][&node_str] = log_results[i].clone();
+                if let Some(obj) = all_logs.as_object_mut() {
+                    obj.insert("nodes".to_string(), serde_json::Value::Object(nodes));
                 }
 
                 HttpResponse::Ok().json(all_logs)
