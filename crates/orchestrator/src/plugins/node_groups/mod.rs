@@ -158,6 +158,10 @@ impl NodeGroupsPlugin {
         configs
     }
 
+    pub fn get_all_configuration_templates(&self) -> Vec<NodeGroupConfiguration> {
+        self.configuration_templates.clone()
+    }
+
     pub fn enable_configuration(&self, configuration_name: &str) -> Result<(), Error> {
         let mut conn = self.store.client.get_connection()?;
         conn.sadd::<_, _, ()>("available_node_group_configs", configuration_name)?;
@@ -490,6 +494,37 @@ impl NodeGroupsPlugin {
         }
         debug!("Found {} groups for topology {}", groups.len(), topology);
         Ok(groups)
+    }
+
+    pub fn get_all_groups(&self) -> Result<Vec<NodeGroup>, Error> {
+        debug!("Getting all groups");
+        let mut conn = self.store.client.get_connection()?;
+
+        let pattern = format!("{}*", GROUP_KEY_PREFIX);
+        let group_keys: Vec<String> = conn.keys(&pattern)?;
+        debug!("Found {} potential group keys", group_keys.len());
+
+        let mut groups = Vec::new();
+        for group_key in group_keys {
+            if let Some(group_data) = conn.get::<_, Option<String>>(&group_key)? {
+                if let Ok(group) = serde_json::from_str::<NodeGroup>(&group_data) {
+                    groups.push(group);
+                }
+            }
+        }
+        debug!("Found {} total groups", groups.len());
+        Ok(groups)
+    }
+
+    pub fn get_group_by_id(&self, group_id: &str) -> Result<Option<NodeGroup>, Error> {
+        let mut conn = self.store.client.get_connection()?;
+        let group_key = Self::get_group_key(group_id);
+
+        if let Some(group_data) = conn.get::<_, Option<String>>(&group_key)? {
+            Ok(Some(serde_json::from_str(&group_data)?))
+        } else {
+            Ok(None)
+        }
     }
 }
 

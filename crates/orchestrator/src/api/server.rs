@@ -1,3 +1,4 @@
+use crate::api::routes::groups::groups_routes;
 use crate::api::routes::nodes::nodes_routes;
 use crate::api::routes::storage::storage_routes;
 use crate::api::routes::task::tasks_routes;
@@ -107,6 +108,7 @@ pub async fn start_server(
                 .service(nodes_routes().wrap(api_key_middleware.clone()))
                 .service(tasks_routes().wrap(api_key_middleware.clone()))
                 .service(metrics_routes().wrap(api_key_middleware.clone()))
+                .service(groups_routes().wrap(api_key_middleware.clone()))
                 .default_service(web::route().to(|| async {
                     HttpResponse::NotFound().json(json!({
                         "success": false,
