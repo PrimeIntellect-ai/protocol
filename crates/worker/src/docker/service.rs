@@ -4,6 +4,7 @@ use super::DockerState;
 use crate::console::Console;
 use bollard::models::ContainerStateStatusEnum;
 use chrono::{DateTime, Utc};
+use log::debug;
 use shared::models::node::GpuSpecs;
 use shared::models::task::Task;
 use shared::models::task::TaskState;
@@ -267,14 +268,16 @@ impl DockerService {
                             if status.status == Some(ContainerStateStatusEnum::CREATED) && task_state_current == TaskState::FAILED {
                                 Console::info("DockerService", "Task failed, waiting for new command from manager ...");
                             } else {
-                                let task_state_live = match status.status {
-                                    Some(ContainerStateStatusEnum::RUNNING) => TaskState::RUNNING,
-                                    Some(ContainerStateStatusEnum::CREATED) => TaskState::PENDING,
-                                    Some(ContainerStateStatusEnum::EXITED) => TaskState::COMPLETED,
-                                    Some(ContainerStateStatusEnum::DEAD) => TaskState::FAILED,
-                                    Some(ContainerStateStatusEnum::PAUSED) => TaskState::PAUSED,
-                                    Some(ContainerStateStatusEnum::RESTARTING) => TaskState::RESTARTING,
-                                    Some(ContainerStateStatusEnum::REMOVING) => TaskState::UNKNOWN,
+                                debug!("docker container status: {:?}, status_code: {:?}", status.status, status.status_code);
+                                let task_state_live = match (status.status, status.status_code) {
+                                    (Some(ContainerStateStatusEnum::RUNNING), Some(0)) => TaskState::RUNNING,
+                                    (Some(ContainerStateStatusEnum::CREATED), _) => TaskState::PENDING,
+                                    (Some(ContainerStateStatusEnum::EXITED), Some(0)) => TaskState::COMPLETED,
+                                    (Some(ContainerStateStatusEnum::EXITED), Some(code)) if code != 0 => TaskState::FAILED,
+                                    (Some(ContainerStateStatusEnum::DEAD), _) => TaskState::FAILED,
+                                    (Some(ContainerStateStatusEnum::PAUSED), _) => TaskState::PAUSED,
+                                    (Some(ContainerStateStatusEnum::RESTARTING), _) => TaskState::RESTARTING,
+                                    (Some(ContainerStateStatusEnum::REMOVING), _) => TaskState::UNKNOWN,
                                     _ => TaskState::UNKNOWN,
                                 };
 
