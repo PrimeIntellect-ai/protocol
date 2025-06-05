@@ -12,10 +12,19 @@ async fn get_logs(app_state: Data<AppState>) -> HttpResponse {
             "success": true,
             "logs": logs
         })),
-        Err(e) => HttpResponse::InternalServerError().json(json!({
-            "success": false,
-            "error": e.to_string()
-        })),
+        Err(e) => {
+            if e.to_string().contains("No such container") {
+                HttpResponse::NotFound().json(json!({
+                    "success": false,
+                    "error": "No task container found"
+                }))
+            } else {
+                HttpResponse::InternalServerError().json(json!({
+                    "success": false,
+                    "error": e.to_string()
+                }))
+            }
+        }
     }
 }
 
