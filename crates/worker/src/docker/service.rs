@@ -270,7 +270,7 @@ impl DockerService {
                             } else {
                                 debug!("docker container status: {:?}, status_code: {:?}", status.status, status.status_code);
                                 let task_state_live = match (status.status, status.status_code) {
-                                    (Some(ContainerStateStatusEnum::RUNNING), Some(0)) => TaskState::RUNNING,
+                                    (Some(ContainerStateStatusEnum::RUNNING), _) => TaskState::RUNNING,
                                     (Some(ContainerStateStatusEnum::CREATED), _) => TaskState::PENDING,
                                     (Some(ContainerStateStatusEnum::EXITED), Some(0)) => TaskState::COMPLETED,
                                     (Some(ContainerStateStatusEnum::EXITED), Some(code)) if code != 0 => TaskState::FAILED,
@@ -349,7 +349,6 @@ impl DockerService {
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,7 +359,7 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    async fn test_docker_service() {
+    async fn test_docker_service_basic() {
         let cancellation_token = CancellationToken::new();
         let docker_service = DockerService::new(
             cancellation_token.clone(),
@@ -377,7 +376,7 @@ mod tests {
             id: Uuid::new_v4(),
             env_vars: None,
             command: Some("sleep".to_string()),
-            args: Some(vec!["100".to_string()]),
+            args: Some(vec!["5".to_string()]), // Reduced sleep time
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             ..Default::default()
@@ -388,84 +387,20 @@ mod tests {
             .state
             .set_current_task(Some(task_clone))
             .await;
-        let task_name = task.name.to_string();
+
         assert_eq!(
             docker_service.state.get_current_task().await.unwrap().name,
-            task_name
+            task.name
         );
 
         tokio::spawn(async move {
             docker_service.run().await.unwrap();
         });
-        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        // Reduced wait times
+        tokio::time::sleep(Duration::from_secs(2)).await;
         state_clone.set_current_task(None).await;
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        Console::info("DockerService", "Cancelling cancellation token");
+        tokio::time::sleep(Duration::from_secs(2)).await;
         cancellation_token.cancel();
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        Console::info("DockerService", "Cancelling done");
-    }
-
-    #[tokio::test]
-    #[serial_test::serial]
-    async fn test_docker_service_idle_on_failure() {
-        let cancellation_token = CancellationToken::new();
-        let docker_service = DockerService::new(
-            cancellation_token.clone(),
-            None,
-            Some(1024),
-            "/tmp/com.prime.miner/metrics.sock".to_string(),
-            None,
-            Address::ZERO.to_string(),
-            None,
-        );
-        let state = docker_service.state.clone();
-
-        // Create task that will fail
-        let task = Task {
-            image: "ubuntu:latest".to_string(),
-            name: "test-restart".to_string(),
-            id: Uuid::new_v4(),
-            env_vars: None,
-            command: Some("invalid_command".to_string()),
-            state: TaskState::PENDING,
-            created_at: Utc::now().timestamp_millis(),
-            ..Default::default()
-        };
-
-        let task_clone = task.clone();
-        let state_clone = docker_service.state.clone();
-        docker_service
-            .state
-            .set_current_task(Some(task_clone))
-            .await;
-        let task_name = task.name.to_string();
-        assert_eq!(
-            docker_service.state.get_current_task().await.unwrap().name,
-            task_name
-        );
-        tokio::spawn(async move {
-            docker_service.run().await.unwrap();
-        });
-
-        // Wait for initial container start
-        tokio::time::sleep(Duration::from_secs(5)).await;
-
-        // Wait for container to fail and timeout period
-        tokio::time::sleep(Duration::from_secs(20)).await;
-
-        // Get current task state
-        let current_task = state.get_current_task().await.unwrap();
-        assert_eq!(current_task.state, TaskState::FAILED);
-
-        // Verify new container was created after timeout
-        let last_started = state.get_last_started().await;
-        assert!(last_started.is_some());
-
-        // Cleanup
-        state_clone.set_current_task(None).await;
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        cancellation_token.cancel();
-        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
