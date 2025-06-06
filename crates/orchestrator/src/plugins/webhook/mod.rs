@@ -119,6 +119,10 @@ impl WebhookPlugin {
 
         #[cfg(test)]
         {
+            debug!(
+                "Sending webhook to {} with payload: {:?}",
+                webhook_url, payload
+            );
             if let Err(e) = client
                 .post(&webhook_url)
                 .json(&payload)
