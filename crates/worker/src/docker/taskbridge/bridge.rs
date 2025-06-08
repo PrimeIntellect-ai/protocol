@@ -240,8 +240,8 @@ impl TaskBridge {
         };
 
         // allow both owner and group to read/write
-        match fs::set_permissions(socket_path, fs::Permissions::from_mode(0o660)) {
-            Ok(_) => debug!("Set socket permissions to 0o660"),
+        match fs::set_permissions(socket_path, fs::Permissions::from_mode(0o666)) {
+            Ok(_) => debug!("Set socket permissions to 0o666"),
             Err(e) => {
                 error!("Failed to set socket permissions: {}", e);
                 return Err(e.into());
@@ -372,7 +372,7 @@ mod tests {
         assert!(socket_path.exists());
         let metadata = fs::metadata(&socket_path)?;
         let permissions = metadata.permissions();
-        assert_eq!(permissions.mode() & 0o777, 0o660);
+        assert_eq!(permissions.mode() & 0o777, 0o666);
 
         // Cleanup
         bridge_handle.abort();
