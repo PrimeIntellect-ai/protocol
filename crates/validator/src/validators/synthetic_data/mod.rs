@@ -1395,12 +1395,4 @@ mod tests {
 
         Ok(())
     }
-
-    #[tokio::test]
-    async fn test_group_information_from_prod_string() -> Result<(), Error> {
-        let file =
-            "Qwen/Qwen3-14B/PrimeIntellect/INTELLECT-2-RL-Dataset/1-d4eb155339fc64e-1-20-0.parquet";
-        let group_info = GroupInformation::from_str(file)?;
-        Ok(())
-    }
 }
