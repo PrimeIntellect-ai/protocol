@@ -41,6 +41,60 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
         }
     }
 
+    // Create simplified node responses
+    let mut simplified_nodes = Vec::new();
+    for node in &nodes {
+        let mut simple_node = json!({
+            "address": node.address.to_string(),
+            "status": format!("{:?}", node.status),
+            "task_id": node.task_id
+        });
+
+        // If node groups plugin exists, add group information
+        if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
+            if let Ok(Some(group)) = node_groups_plugin.get_node_group(&node.address.to_string()) {
+                simple_node["group_id"] = json!(group.id);
+            } else {
+                simple_node["group_id"] = json!(null);
+            }
+        } else {
+            simple_node["group_id"] = json!(null);
+        }
+
+        simplified_nodes.push(simple_node);
+    }
+
+    let response = json!({
+        "success": true,
+        "nodes": simplified_nodes,
+        "counts": status_counts
+    });
+
+    HttpResponse::Ok().json(response)
+}
+
+async fn get_nodes_detail(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpResponse {
+    let mut nodes = app_state.store_context.node_store.get_nodes();
+
+    // Filter out dead nodes unless include_dead is true
+    if !query.include_dead.unwrap_or(false) {
+        nodes.retain(|node| node.status != crate::models::node::NodeStatus::Dead);
+    }
+
+    let mut status_counts = json!({});
+    for node in &nodes {
+        let status_str = format!("{:?}", node.status);
+        if let Some(count) = status_counts.get(&status_str) {
+            if let Some(count_value) = count.as_u64() {
+                status_counts[status_str] = json!(count_value + 1);
+            } else {
+                status_counts[status_str] = json!(1);
+            }
+        } else {
+            status_counts[status_str] = json!(1);
+        }
+    }
+
     let mut response = json!({
         "success": true,
         "nodes": nodes,
@@ -270,6 +324,7 @@ async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> Http
 pub fn nodes_routes() -> Scope {
     web::scope("/nodes")
         .route("", get().to(get_nodes))
+        .route("/detail", get().to(get_nodes_detail))
         .route("/{node_id}/restart", post().to(restart_node_task))
         .route("/{node_id}/logs", get().to(get_node_logs))
         .route("/{node_id}/metrics", get().to(get_node_metrics))
