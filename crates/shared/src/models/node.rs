@@ -1182,4 +1182,17 @@ mod tests {
             "Should meet the third GPU option with total memory range"
         );
     }
+    #[test]
+    fn test_multiple_gpu_counts() {
+        let requirements = ComputeRequirements::from_str("gpu:count=1;gpu:memory_mb_min=24000;gpu:memory_mb_max=24999;gpu:count=2;gpu:count=3;gpu:count=4;").unwrap();
+        assert_eq!(requirements.gpu.len(), 4);
+        assert_eq!(requirements.gpu[0].count, Some(1));
+        assert_eq!(requirements.gpu[0].memory_mb_min, Some(24000));
+        assert_eq!(requirements.gpu[0].memory_mb_max, Some(24999));
+        assert_eq!(requirements.gpu[1].count, Some(2));
+        assert_eq!(requirements.gpu[1].memory_mb_min, None);
+        assert_eq!(requirements.gpu[1].memory_mb_max, None);
+        assert_eq!(requirements.gpu[2].count, Some(3));
+        assert_eq!(requirements.gpu[3].count, Some(4));
+    }
 }
