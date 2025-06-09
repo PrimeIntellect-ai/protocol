@@ -63,7 +63,7 @@ impl NodeStatusUpdater {
 
     #[cfg(test)]
     async fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
-        true
+        false
     }
 
     #[cfg(not(test))]
@@ -782,12 +782,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::WaitingForHeartbeat,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            compute_specs: None,
+            ..Default::default()
         };
         let counter = app_state
             .store_context
@@ -828,5 +823,73 @@ mod tests {
             .get_unhealthy_counter(&node.address);
         assert_eq!(counter, 1);
         assert_eq!(node.status, NodeStatus::WaitingForHeartbeat);
+    }
+
+    #[tokio::test]
+    async fn test_dead_node_with_new_heartbeat_and_unhealthy_counter_reset() {
+        let app_state = create_test_app_state().await;
+        let contracts = setup_contract();
+
+        let node = OrchestratorNode {
+            address: Address::from_str("0x98dBe56Cac21e07693c558E4f27E7de4073e2aF3").unwrap(),
+            ip_address: "127.0.0.1".to_string(),
+            port: 8080,
+            status: NodeStatus::Dead,
+            ..Default::default()
+        };
+        let _: () = app_state.store_context.node_store.add_node(node.clone());
+        let _: () = app_state
+            .store_context
+            .heartbeat_store
+            .set_unhealthy_counter(&node.address, 100);
+
+        let mode = ServerMode::Full;
+        let updater = NodeStatusUpdater::new(
+            app_state.store_context.clone(),
+            5,
+            None,
+            Arc::new(contracts),
+            0,
+            false,
+            Arc::new(LoopHeartbeats::new(&mode)),
+            vec![],
+        );
+
+        updater.process_nodes().await.unwrap();
+
+        let counter = app_state
+            .store_context
+            .heartbeat_store
+            .get_unhealthy_counter(&node.address);
+        println!("counter: {:?}", counter);
+        assert_eq!(counter, 101);
+
+        let heartbeat = HeartbeatRequest {
+            address: node.address.to_string(),
+            task_id: None,
+            task_state: None,
+            metrics: None,
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            timestamp: None,
+            p2p_id: None,
+        };
+        let _: () = app_state.store_context.heartbeat_store.beat(&heartbeat);
+
+        updater.process_nodes().await.unwrap();
+
+        let counter = app_state
+            .store_context
+            .heartbeat_store
+            .get_unhealthy_counter(&node.address);
+        println!("counter: {:?}", counter);
+
+        let node_status = app_state
+            .store_context
+            .node_store
+            .get_node(&node.address)
+            .unwrap()
+            .status;
+        println!("node_status: {:?}", node_status);
+        assert_eq!(node_status, NodeStatus::Discovered);
     }
 }

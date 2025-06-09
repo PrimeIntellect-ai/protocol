@@ -107,6 +107,10 @@ struct Args {
     #[arg(long, default_value = "false")]
     disable_toploc_invalidation: bool,
 
+    /// Optional: batch trigger size
+    #[arg(long, default_value = "10")]
+    batch_trigger_size: usize,
+
     /// Grouping
     #[arg(long, default_value = "false")]
     use_grouping: bool,
@@ -295,6 +299,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     args.toploc_work_validation_interval,
                     args.toploc_work_validation_unknown_status_expiry_seconds,
                     args.toploc_grace_interval,
+                    args.batch_trigger_size,
                     args.use_grouping,
                     args.disable_toploc_invalidation,
                     Some(metrics_ctx.clone()),
@@ -472,7 +477,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         metrics_ctx.record_validation_loop_duration(loop_duration.as_secs_f64());
         info!("Validation loop completed in {}ms", loop_duration_ms);
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
     Ok(())
 }

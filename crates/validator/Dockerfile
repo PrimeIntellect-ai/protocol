@@ -20,6 +20,7 @@ ENV DISABLE_HARDWARE_VALIDATION="false"
 ENV DISABLE_TOPLOC_INVALIDATION="false"
 ENV VALIDATOR_PENALTY="1"
 ENV USE_GROUPING="false"
+ENV BATCH_TRIGGER_SIZE="10"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/validator \
@@ -31,6 +32,7 @@ $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 $([ ! -z "$REDIS_URL" ] && echo "--redis-url $REDIS_URL") \
 $([ ! -z "$TOPLOC_GRACE_INTERVAL" ] && echo "--toploc-grace-interval $TOPLOC_GRACE_INTERVAL") \
+$([ ! -z "$BATCH_TRIGGER_SIZE" ] && echo "--batch-trigger-size $BATCH_TRIGGER_SIZE") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_INTERVAL" ] && echo "--toploc-work-validation-interval $TOPLOC_WORK_VALIDATION_INTERVAL") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS" ] && echo "--toploc-work-validation-unknown-status-expiry-seconds $TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS") \
 $([ ! -z "$USE_GROUPING" ] && echo "--use-grouping") \
