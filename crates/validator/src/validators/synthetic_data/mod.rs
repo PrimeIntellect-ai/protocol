@@ -820,7 +820,22 @@ impl SyntheticDataValidator {
     pub async fn process_work_keys(self, work_keys: Vec<String>) -> Result<(), Error> {
         debug!("Processing work keys: {:?}", work_keys);
         let validation_plan = self.build_validation_plan(work_keys).await?;
-        debug!("Validation plan: {:?}", validation_plan);
+        debug!(
+            "Number of single trigger tasks: {}",
+            validation_plan.single_trigger_tasks.len()
+        );
+        debug!(
+            "Number of group trigger tasks: {}",
+            validation_plan.group_trigger_tasks.len()
+        );
+        debug!(
+            "Number of status check tasks: {}",
+            validation_plan.status_check_tasks.len()
+        );
+        debug!(
+            "Number of group status check tasks: {}",
+            validation_plan.group_status_check_tasks.len()
+        );
 
         let self_arc = Arc::new(self);
         let cancellation_token = self_arc.cancellation_token.clone();
@@ -896,14 +911,35 @@ impl SyntheticDataValidator {
                 }
             }
         });
+        let all_tasks_future = async {
+            let (trigger_res, group_trigger_res, status_res, group_status_res) = tokio::join!(
+                trigger_handle,
+                group_trigger_handle,
+                status_handle,
+                group_status_handle
+            );
+
+            if let Err(e) = trigger_res {
+                error!("Single trigger task panicked: {:?}", e);
+            }
+            if let Err(e) = group_trigger_res {
+                error!("Group trigger task panicked: {:?}", e);
+            }
+            if let Err(e) = status_res {
+                error!("Single status task panicked: {:?}", e);
+            }
+            if let Err(e) = group_status_res {
+                error!("Group status task panicked: {:?}", e);
+            }
+        };
 
         tokio::select! {
-            _ = trigger_handle => (),
-            _ = group_trigger_handle => (),
-            _ = status_handle => (),
-            _ = group_status_handle => (),
+            _ = all_tasks_future => {
+                info!("All validation sub-tasks completed for this cycle.");
+            },
+
             _ = cancellation_token.cancelled() => {
-                warn!("Validation cancelled");
+                warn!("Validation processing was cancelled.");
             }
         }
 
