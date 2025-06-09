@@ -2,7 +2,7 @@ use crate::metrics::MetricsContext;
 
 use super::ValidationResult;
 use anyhow::Error;
-use log::debug;
+use log::{debug, warn};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 
@@ -363,7 +363,10 @@ impl Toploc {
                                 "reject" => ValidationResult::Reject,
                                 "crashed" => ValidationResult::Crashed,
                                 "pending" => ValidationResult::Pending,
-                                _ => ValidationResult::Unknown,
+                                _ => {
+                                    warn!("Unknown status found for {}: {}", file_name, status);
+                                    ValidationResult::Unknown
+                                }
                             };
                             Ok(validation_result)
                         }
