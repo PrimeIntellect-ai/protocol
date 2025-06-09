@@ -63,7 +63,7 @@ impl NodeStatusUpdater {
 
     #[cfg(test)]
     async fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
-        false
+        true
     }
 
     #[cfg(not(test))]
