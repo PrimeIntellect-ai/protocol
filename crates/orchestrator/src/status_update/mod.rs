@@ -68,18 +68,11 @@ impl NodeStatusUpdater {
 
     #[cfg(not(test))]
     async fn is_node_in_pool(&self, node: &OrchestratorNode) -> bool {
-        let node_in_pool: bool = match self
+        let node_in_pool: bool = (self
             .contracts
             .compute_pool
             .is_node_in_pool(self.pool_id, node.address)
-            .await
-        {
-            Result::Ok(result) => result,
-            Result::Err(e) => {
-                println!("Error checking if node is in pool: {}", e);
-                false
-            }
-        };
+            .await).unwrap_or(false);
         node_in_pool
     }
 
