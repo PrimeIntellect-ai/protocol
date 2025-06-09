@@ -9,6 +9,7 @@ use shared::models::{
     api::ApiResponse,
     heartbeat::{HeartbeatRequest, HeartbeatResponse},
 };
+use std::collections::HashSet;
 use std::str::FromStr;
 
 async fn heartbeat(
@@ -42,6 +43,40 @@ async fn heartbeat(
 
     app_state.store_context.heartbeat_store.beat(&heartbeat);
     if let Some(metrics) = heartbeat.metrics.clone() {
+        // Get all previously reported metrics for this node
+        let previous_metrics = app_state
+            .store_context
+            .metrics_store
+            .get_metrics_for_node(node_address);
+
+        // Create a HashSet of new metrics for efficient lookup
+        let new_metrics_set: HashSet<_> = metrics
+            .iter()
+            .map(|metric| (&metric.key.task_id, &metric.key.label))
+            .collect();
+
+        // Clean up stale metrics
+        for (task_id, task_metrics) in previous_metrics {
+            for (label, _value) in task_metrics {
+                let prev_key = (&task_id, &label);
+                if !new_metrics_set.contains(&prev_key) {
+                    // Remove from Prometheus metrics
+                    app_state.metrics.remove_compute_task_gauge(
+                        &node_address.to_string(),
+                        &task_id,
+                        &label,
+                    );
+                    // Remove from Redis metrics store
+                    app_state.store_context.metrics_store.delete_metric(
+                        &task_id,
+                        &label,
+                        &node_address.to_string(),
+                    );
+                }
+            }
+        }
+
+        // Store new metrics and update Prometheus
         app_state
             .store_context
             .metrics_store

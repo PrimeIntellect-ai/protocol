@@ -1,3 +1,4 @@
+use crate::metrics::MetricsContext;
 use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
@@ -19,6 +20,7 @@ pub struct NodeStatusUpdater {
     disable_ejection: bool,
     heartbeats: Arc<LoopHeartbeats>,
     plugins: Vec<Box<dyn StatusUpdatePlugin>>,
+    metrics_context: Arc<MetricsContext>,
 }
 
 impl NodeStatusUpdater {
@@ -32,6 +34,7 @@ impl NodeStatusUpdater {
         disable_ejection: bool,
         heartbeats: Arc<LoopHeartbeats>,
         plugins: Vec<Box<dyn StatusUpdatePlugin>>,
+        metrics_context: Arc<MetricsContext>,
     ) -> Self {
         Self {
             store_context,
@@ -42,6 +45,7 @@ impl NodeStatusUpdater {
             disable_ejection,
             heartbeats,
             plugins,
+            metrics_context,
         }
     }
 
@@ -246,6 +250,34 @@ impl NodeStatusUpdater {
             }
 
             if status_changed {
+                // Clean up metrics when node becomes Dead, Ejected, or Banned
+                if matches!(
+                    &new_status,
+                    NodeStatus::Dead | NodeStatus::Ejected | NodeStatus::Banned
+                ) {
+                    let node_metrics = self
+                        .store_context
+                        .metrics_store
+                        .get_metrics_for_node(node.address);
+
+                    for (task_id, task_metrics) in node_metrics {
+                        for (label, _value) in task_metrics {
+                            // Remove from Prometheus metrics
+                            self.metrics_context.remove_compute_task_gauge(
+                                &node.address.to_string(),
+                                &task_id,
+                                &label,
+                            );
+                            // Remove from Redis metrics store
+                            self.store_context.metrics_store.delete_metric(
+                                &task_id,
+                                &label,
+                                &node.address.to_string(),
+                            );
+                        }
+                    }
+                }
+
                 let _: () = self
                     .store_context
                     .node_store
@@ -270,7 +302,7 @@ impl NodeStatusUpdater {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::tests::helper::create_test_app_state;
+    use crate::api::tests::helper::create_test_app_state_with_metrics;
     use crate::api::tests::helper::setup_contract;
     use crate::models::node::NodeStatus;
     use crate::models::node::OrchestratorNode;
@@ -283,7 +315,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_status_updater_runs() {
-        let app_state = create_test_app_state().await;
+        let app_state = create_test_app_state_with_metrics().await;
         let contracts = setup_contract();
         let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
@@ -295,6 +327,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -348,7 +381,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_status_updater_runs_with_unhealthy_node() {
-        let app_state = create_test_app_state().await;
+        let app_state = create_test_app_state_with_metrics().await;
         let contracts = setup_contract();
 
         let node = OrchestratorNode {
@@ -375,6 +408,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -396,7 +430,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_status_with_unhealthy_node_but_no_counter() {
-        let app_state = create_test_app_state().await;
+        let app_state = create_test_app_state_with_metrics().await;
         let contracts = setup_contract();
 
         let node = OrchestratorNode {
@@ -423,6 +457,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -449,7 +484,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_status_updater_runs_with_dead_node() {
-        let app_state = create_test_app_state().await;
+        let app_state = create_test_app_state_with_metrics().await;
         let contracts = setup_contract();
 
         let node = OrchestratorNode {
@@ -481,6 +516,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -502,7 +538,7 @@ mod tests {
 
     #[tokio::test]
     async fn transition_from_unhealthy_to_healthy() {
-        let app_state = create_test_app_state().await;
+        let app_state = create_test_app_state_with_metrics().await;
         let contracts = setup_contract();
 
         let node = OrchestratorNode {
@@ -544,6 +580,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -570,7 +607,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_nodes_with_diff_status() {
-        let app_state = create_test_app_state().await;
+        let app_state = create_test_app_state_with_metrics().await;
         let contracts = setup_contract();
 
         let node1 = OrchestratorNode {
@@ -616,6 +653,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -653,7 +691,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_rediscovery_after_death() {
-        let app_state = create_test_app_state().await;
+        let app_state = create_test_app_state_with_metrics().await;
         let contracts = setup_contract();
 
         let node = OrchestratorNode {
@@ -685,6 +723,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -725,7 +764,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_status_with_discovered_node() {
-        let app_state = create_test_app_state().await;
+        let app_state = create_test_app_state_with_metrics().await;
         let contracts = setup_contract();
 
         let node = OrchestratorNode {
@@ -752,6 +791,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -780,7 +820,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_status_with_waiting_for_heartbeat() {
-        let app_state = create_test_app_state().await;
+        let app_state = create_test_app_state_with_metrics().await;
         let contracts = setup_contract();
 
         let node = OrchestratorNode {
@@ -812,6 +852,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater

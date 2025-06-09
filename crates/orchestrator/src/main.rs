@@ -315,6 +315,7 @@ async fn main() -> Result<()> {
         let status_update_store_context = store_context.clone();
         let status_update_heartbeats = heartbeats.clone();
         let status_update_contracts = contracts.clone();
+        let status_update_metrics = metrics_context.clone();
 
         tasks.spawn(async move {
             let status_updater = NodeStatusUpdater::new(
@@ -326,6 +327,7 @@ async fn main() -> Result<()> {
                 args.disable_ejection,
                 status_update_heartbeats.clone(),
                 status_update_plugins,
+                status_update_metrics,
             );
             status_updater.run().await
         });

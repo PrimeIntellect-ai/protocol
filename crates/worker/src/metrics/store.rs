@@ -38,6 +38,11 @@ impl MetricsStore {
             .collect()
     }
 
+    pub async fn clear_metrics_for_task(&self, task_id: &str) {
+        let mut metrics = self.metrics.write().await;
+        metrics.retain(|key, _| key.task_id != task_id);
+    }
+
     #[allow(dead_code)]
     pub async fn get_all_metrics(&self) -> HashMap<MetricKey, f64> {
         let metrics = self.metrics.read().await;
