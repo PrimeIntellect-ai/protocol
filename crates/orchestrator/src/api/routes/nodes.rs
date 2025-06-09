@@ -73,7 +73,6 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
 }
 
 async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    println!("restart_node_task: {}", node_id);
     let node_address = Address::from_str(&node_id).unwrap();
     let node = app_state.store_context.node_store.get_node(&node_address);
     match node {
@@ -208,7 +207,6 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
 }
 
 async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    println!("get_node_metrics: {}", node_id);
     let node_address = Address::from_str(&node_id).unwrap();
     let metrics = app_state
         .store_context
@@ -360,7 +358,6 @@ mod tests {
 
         let body = test::read_body(resp).await;
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        println!("json {:?}", json);
         assert_eq!(
             json["success"], true,
             "Expected success to be true but got {:?}",

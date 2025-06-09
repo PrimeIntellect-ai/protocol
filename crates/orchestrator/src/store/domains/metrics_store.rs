@@ -122,7 +122,6 @@ impl MetricsStore {
             result.insert(clean_key.to_string(), total);
         }
 
-        println!("result {:?}", result);
         result
     }
 
@@ -131,7 +130,6 @@ impl MetricsStore {
         let all_keys: Vec<String> = con
             .keys(format!("{}:*:*", ORCHESTRATOR_METRICS_STORE))
             .unwrap();
-        println!("all_keys {:?}", all_keys);
 
         let tasks = all_keys
             .iter()
