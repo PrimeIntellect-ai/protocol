@@ -426,13 +426,17 @@ impl GpuSpecs {
     fn meets(&self, requirement: &GpuRequirements) -> bool {
         // Check count (if required)
         if let Some(req_count) = requirement.count {
-            // Node must have at least the required count. Node having 0 is okay only if req_count is 0 or None.
-            if self.count.is_none_or(|spec_count| spec_count < req_count) {
-                if self.count.is_none() && req_count > 0 {
-                    return false;
+            // Node must have exactly the required count. Node having None is okay only if req_count is 0.
+            match self.count {
+                None => {
+                    if req_count > 0 {
+                        return false;
+                    }
                 }
-                if self.count.is_none_or(|sc| sc < req_count) {
-                    return false;
+                Some(spec_count) => {
+                    if spec_count != req_count {
+                        return false;
+                    }
                 }
             }
         }
@@ -729,7 +733,7 @@ mod tests {
             Some(1000),
         );
         // Requirements are lower
-        let req_str = "gpu:count=4;gpu:model=A100;gpu:memory_mb=40000;cpu:cores=16;ram_mb=64000;storage_gb=500";
+        let req_str = "gpu:count=8;gpu:model=A100;gpu:memory_mb=40000;cpu:cores=16;ram_mb=64000;storage_gb=500";
         let requirements = ComputeRequirements::from_str(req_str).unwrap();
         assert!(specs.meets(&requirements));
     }
@@ -865,7 +869,7 @@ mod tests {
     fn test_meets_optional_fields_in_req() {
         // Node has specific specs
         let specs = create_compute_specs(
-            Some(8),
+            Some(4),
             Some("NVIDIA H100"),
             Some(80000),
             Some(64),
