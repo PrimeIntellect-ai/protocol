@@ -215,12 +215,12 @@ impl HeartbeatService {
         log::debug!("Heartbeat response: {:?}", heartbeat_response);
 
         // Get current task before updating
-        let current_task = docker_service.state.get_current_task().await;
+        let old_task = docker_service.state.get_current_task().await;
 
-        let task = match heartbeat_response.current_task {
+        let new_task = match heartbeat_response.current_task {
             Some(task) => {
                 // Only log if task image changed or there was no previous task
-                if current_task
+                if old_task
                     .as_ref()
                     .map(|t| t.image != task.image)
                     .unwrap_or(true)
@@ -232,7 +232,24 @@ impl HeartbeatService {
             None => None,
         };
 
-        docker_service.state.set_current_task(task).await;
+        // Clear metrics for old task if task ID changed
+        if let (Some(old), Some(new)) = (&old_task, &new_task) {
+            if old.id != new.id {
+                log::info!("Clearing metrics for old task: {}", old.id);
+                metrics_store
+                    .clear_metrics_for_task(&old.id.to_string())
+                    .await;
+            }
+        } else if old_task.is_some() && new_task.is_none() {
+            // Clear metrics when transitioning from having a task to no task
+            let old = old_task.as_ref().unwrap();
+            log::info!("Clearing metrics for completed task: {}", old.id);
+            metrics_store
+                .clear_metrics_for_task(&old.id.to_string())
+                .await;
+        }
+
+        docker_service.state.set_current_task(new_task).await;
         let is_running = docker_service.state.get_is_running().await;
         if !is_running {
             tokio::spawn(async move {

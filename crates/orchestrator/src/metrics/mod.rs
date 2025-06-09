@@ -37,6 +37,17 @@ impl MetricsContext {
             .set(value);
     }
 
+    pub fn remove_compute_task_gauge(&self, node_address: &str, task_id: &str, label: &str) {
+        if let Err(e) = self.compute_task_gauges.remove_label_values(&[
+            node_address,
+            task_id,
+            label,
+            &self.pool_id,
+        ]) {
+            println!("Error removing compute task gauge: {}", e);
+        }
+    }
+
     pub fn export_metrics(&self) -> Result<String, prometheus::Error> {
         let encoder = TextEncoder::new();
         let metric_families = self.registry.gather();
