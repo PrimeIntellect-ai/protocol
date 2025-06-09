@@ -54,7 +54,11 @@ impl Toploc {
     }
 
     pub fn name(&self) -> String {
-        let prefix = self.config.file_prefix_filter.clone().unwrap_or_default();
+        let prefix = self
+            .config
+            .file_prefix_filter
+            .clone()
+            .unwrap_or_else(|| "n/a".to_string());
         prefix.to_string() // e.g. Qwen/Qwen3-14B
     }
 

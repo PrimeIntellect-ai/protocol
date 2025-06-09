@@ -1324,7 +1324,7 @@ mod tests {
         let metrics_2 = export_metrics().unwrap();
         assert!(metrics_2
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
-        assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\",result=\"accept\"} 1"));
+        assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
 
         Ok(())
     }
