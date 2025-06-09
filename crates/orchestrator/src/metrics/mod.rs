@@ -32,9 +32,6 @@ impl MetricsContext {
         label: &str,
         value: f64,
     ) {
-        println!("record_compute_task_gauge: {:?}", node_address);
-        let vals = vec![node_address, task_id, label, &self.pool_id];
-        println!("vals: {:?}", vals);
         self.compute_task_gauges
             .with_label_values(&[node_address, task_id, label, &self.pool_id])
             .set(value);
