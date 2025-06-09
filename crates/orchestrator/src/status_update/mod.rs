@@ -782,12 +782,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::WaitingForHeartbeat,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            compute_specs: None,
+            ..Default::default()
         };
         let counter = app_state
             .store_context

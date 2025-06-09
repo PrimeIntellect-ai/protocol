@@ -9,6 +9,8 @@ env:
   LOG_LEVEL: "info"
   TOPLOC_GRACE_INTERVAL: "1"
   TOPLOC_WORK_VALIDATION_INTERVAL: "35"
+  # Number of triggers per validation iteration to toploc server
+  BATCH_TRIGGER_SIZE: "10"
   DISABLE_HARDWARE_VALIDATION: "true"
   VALIDATOR_PENALTY: "200"
 

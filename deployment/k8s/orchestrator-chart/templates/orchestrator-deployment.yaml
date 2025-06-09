@@ -76,7 +76,7 @@ metadata:
   name: {{ include "orchestrator.fullname" . }}-api
   namespace: {{ .Values.namespace }}
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: {{ include "orchestrator.fullname" . }}-api

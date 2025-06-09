@@ -221,6 +221,7 @@ pub struct SyntheticDataValidator {
     unknown_status_expiry_seconds: u64,
     // Interval between work validation requests to toploc server
     grace_interval: u64,
+    batch_trigger_size: usize,
     // Whether to use node grouping
     with_node_grouping: bool,
     disable_chain_invalidation: bool,
@@ -257,6 +258,7 @@ impl SyntheticDataValidator {
         work_validation_interval: u64,
         unknown_status_expiry_seconds: u64,
         grace_interval: u64,
+        batch_trigger_size: usize,
         with_node_grouping: bool,
         disable_chain_invalidation: bool,
         metrics: Option<MetricsContext>,
@@ -280,6 +282,7 @@ impl SyntheticDataValidator {
             work_validation_interval,
             unknown_status_expiry_seconds,
             grace_interval,
+            batch_trigger_size,
             with_node_grouping,
             disable_chain_invalidation,
             metrics,
@@ -826,8 +829,19 @@ impl SyntheticDataValidator {
         let validator_clone_group_status = self_arc.clone();
         let validator_clone_single_status = self_arc.clone();
 
+        let batch_single_trigger_task = validation_plan
+            .single_trigger_tasks
+            .into_iter()
+            .take(self_arc.batch_trigger_size)
+            .collect::<Vec<_>>();
+        let batch_group_trigger_task = validation_plan
+            .group_trigger_tasks
+            .into_iter()
+            .take(self_arc.batch_trigger_size)
+            .collect::<Vec<_>>();
+
         let trigger_handle = tokio::spawn(async move {
-            for work_info in validation_plan.single_trigger_tasks {
+            for work_info in batch_single_trigger_task {
                 if let Err(e) = validator_clone_trigger.process_single_task(work_info).await {
                     error!("Failed to process single task: {}", e);
                 }
@@ -854,7 +868,7 @@ impl SyntheticDataValidator {
         });
 
         let group_trigger_handle = tokio::spawn(async move {
-            for group in validation_plan.group_trigger_tasks {
+            for group in batch_group_trigger_task {
                 if let Err(e) = validator_clone_group_trigger
                     .process_group_task(group)
                     .await
@@ -1009,6 +1023,7 @@ mod tests {
             10,
             60,
             1,
+            10,
             true,
             false,
             Some(metrics_context),
@@ -1069,6 +1084,7 @@ mod tests {
             10,
             60,
             1,
+            10,
             false,
             false,
             None,
@@ -1174,6 +1190,7 @@ mod tests {
             10,
             60,
             1,
+            10,
             false,
             false,
             None,
@@ -1258,6 +1275,7 @@ mod tests {
             10,
             60,
             1,
+            10,
             true,
             false,
             Some(metrics_context),
@@ -1376,6 +1394,7 @@ mod tests {
             10,
             60,
             1,
+            10,
             true,
             true,
             None,
