@@ -72,7 +72,8 @@ impl NodeStatusUpdater {
             .contracts
             .compute_pool
             .is_node_in_pool(self.pool_id, node.address)
-            .await).unwrap_or(false);
+            .await)
+            .unwrap_or(false);
         node_in_pool
     }
 
