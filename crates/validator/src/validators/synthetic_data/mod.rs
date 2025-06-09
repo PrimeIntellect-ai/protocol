@@ -688,7 +688,6 @@ impl SyntheticDataValidator {
         self.toploc.iter().find(|t| t.matches_file_name(file_name))
     }
 
-
     pub async fn process_single_task(&self, work_info: (String, WorkInfo)) -> Result<(), Error> {
         let file_name = self
             .get_file_name_for_work_key(&work_info.0)
@@ -754,7 +753,11 @@ impl SyntheticDataValidator {
             .await?;
         let toploc_config_name = toploc_config.name();
         if let Some(metrics) = &self.metrics {
-            metrics.record_group_validation_status(&group.group_id, &toploc_config_name, &status.status.to_string());
+            metrics.record_group_validation_status(
+                &group.group_id,
+                &toploc_config_name,
+                &status.status.to_string(),
+            );
         }
 
         // Calculate total claimed units
