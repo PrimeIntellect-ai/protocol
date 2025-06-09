@@ -751,9 +751,13 @@ impl SyntheticDataValidator {
         let status = toploc_config
             .get_group_file_validation_status(&group.group_file_name)
             .await?;
-
+        let toploc_config_name = toploc_config.name();
         if let Some(metrics) = &self.metrics {
-            metrics.record_group_validation_status(&group.group_id, &status.status.to_string());
+            metrics.record_group_validation_status(
+                &group.group_id,
+                &toploc_config_name,
+                &status.status.to_string(),
+            );
         }
 
         // Calculate total claimed units
@@ -1320,6 +1324,7 @@ mod tests {
         let metrics_2 = export_metrics().unwrap();
         assert!(metrics_2
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
+        assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
 
         Ok(())
     }

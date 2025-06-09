@@ -53,6 +53,15 @@ impl Toploc {
         }
     }
 
+    pub fn name(&self) -> String {
+        let prefix = self
+            .config
+            .file_prefix_filter
+            .clone()
+            .unwrap_or_else(|| "n/a".to_string());
+        prefix.to_string() // e.g. Qwen/Qwen3-14B
+    }
+
     fn normalize_path(&self, path: &str) -> String {
         // Remove leading slashes and normalize any double slashes
         path.trim_start_matches('/').replace("//", "/")

@@ -52,7 +52,7 @@ lazy_static! {
     pub static ref GROUP_VALIDATIONS: CounterVec = register_counter_vec!(
         "validator_group_validations_total",
         "Total group validations by result",
-        &["validator_id", "pool_id", "group_id", "result"] // result: accept, reject, crashed, pending, unknown
+        &["validator_id", "pool_id", "group_id", "toploc_config_name", "result"] // result: accept, reject, crashed, pending, unknown
     ).unwrap();
 }
 
@@ -100,10 +100,21 @@ impl MetricsContext {
         }
     }
 
-    pub fn record_group_validation_status(&self, group_id: &str, result: &str) {
+    pub fn record_group_validation_status(
+        &self,
+        group_id: &str,
+        toploc_config_name: &str,
+        result: &str,
+    ) {
         if let Some(pool_id) = &self.pool_id {
             GROUP_VALIDATIONS
-                .with_label_values(&[&self.validator_id as &str, pool_id, group_id, result])
+                .with_label_values(&[
+                    &self.validator_id as &str,
+                    pool_id,
+                    group_id,
+                    toploc_config_name,
+                    result,
+                ])
                 .inc();
         }
     }
