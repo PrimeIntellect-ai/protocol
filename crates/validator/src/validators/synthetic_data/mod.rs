@@ -1281,7 +1281,6 @@ mod tests {
         assert_eq!(plan.group_trigger_tasks.len(), 1);
         assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
         let metrics_0 = export_metrics().unwrap();
-        println!("metrics_0: {}", metrics_0);
         assert!(metrics_0
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 1"));
 
@@ -1323,7 +1322,6 @@ mod tests {
         assert_eq!(plan_3.group_trigger_tasks.len(), 0);
         assert_eq!(plan_3.group_status_check_tasks.len(), 0);
         let metrics_2 = export_metrics().unwrap();
-        println!("metrics_2: {}", metrics_2);
         assert!(metrics_2
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
         assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\",result=\"accept\"} 1"));
