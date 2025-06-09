@@ -641,10 +641,9 @@ impl SyntheticDataValidator {
                         debug!("Group for work key: {:?} | {:?}", work_key, check_group);
                         if let Some(group) = check_group {
                             // Only add group if it's not already in the list
-                            if !group_status_check_tasks
-                                .iter()
-                                .any(|g| g.group_id == group.group_id)
-                            {
+                            if !group_status_check_tasks.iter().any(|g| {
+                                g.group_id == group.group_id && g.file_number == group.file_number
+                            }) {
                                 group_status_check_tasks.push(group);
                             }
                         }
