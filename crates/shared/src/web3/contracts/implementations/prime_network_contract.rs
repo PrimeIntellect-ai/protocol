@@ -1,22 +1,52 @@
 use crate::web3::contracts::constants::addresses::PRIME_NETWORK_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
-use crate::web3::wallet::Wallet;
+use crate::web3::wallet::WalletProvider;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{keccak256, Address, FixedBytes, U256};
-use alloy::providers::Provider;
+use alloy_provider::Provider as _;
 use anyhow::Error;
 
 #[derive(Clone)]
-pub struct PrimeNetworkContract {
-    pub instance: Contract,
+pub struct PrimeNetworkContract<P: alloy_provider::Provider> {
+    pub instance: Contract<P>,
 }
 
-impl PrimeNetworkContract {
-    pub fn new(wallet: &Wallet, abi_file_path: &str) -> Self {
-        let instance = Contract::new(PRIME_NETWORK_ADDRESS, wallet, abi_file_path);
+impl<P: alloy_provider::Provider> PrimeNetworkContract<P> {
+    pub fn new(provider: P, abi_file_path: &str) -> Self {
+        let instance = Contract::new(PRIME_NETWORK_ADDRESS, provider, abi_file_path);
         Self { instance }
     }
 
+    pub async fn get_validator_role(&self) -> Result<Vec<Address>, Error> {
+        let hash = keccak256(b"VALIDATOR_ROLE");
+        let value = DynSolValue::FixedBytes(hash, 32);
+        let members = self
+            .instance
+            .instance()
+            .function("getRoleMembers", &[value])?
+            .call()
+            .await?;
+
+        let mut members_vec = Vec::new();
+        for member in members {
+            if let Some(array) = member.as_array() {
+                for address in array {
+                    if let Some(addr) = address.as_address() {
+                        members_vec.push(addr);
+                    } else {
+                        return Err(Error::msg("Failed to convert member to address"));
+                    }
+                }
+            } else {
+                return Err(Error::msg("Member is not an array"));
+            }
+        }
+
+        Ok(members_vec)
+    }
+}
+
+impl PrimeNetworkContract<WalletProvider> {
     pub async fn register_provider(
         &self,
         stake: U256,
@@ -218,34 +248,6 @@ impl PrimeNetworkContract {
         Ok(invalidate_work_tx)
     }
 
-    pub async fn get_validator_role(&self) -> Result<Vec<Address>, Error> {
-        let hash = keccak256(b"VALIDATOR_ROLE");
-        let value = DynSolValue::FixedBytes(hash, 32);
-        let members = self
-            .instance
-            .instance()
-            .function("getRoleMembers", &[value])?
-            .call()
-            .await?;
-
-        let mut members_vec = Vec::new();
-        for member in members {
-            if let Some(array) = member.as_array() {
-                for address in array {
-                    if let Some(addr) = address.as_address() {
-                        members_vec.push(addr);
-                    } else {
-                        return Err(Error::msg("Failed to convert member to address"));
-                    }
-                }
-            } else {
-                return Err(Error::msg("Member is not an array"));
-            }
-        }
-
-        Ok(members_vec)
-    }
-
     pub async fn reclaim_stake(
         &self,
         amount: U256,
@@ -283,7 +285,8 @@ mod tests {
         )
         .unwrap();
 
-        let prime_network_contract = PrimeNetworkContract::new(&wallet, "prime_network.json");
+        let prime_network_contract =
+            PrimeNetworkContract::new(wallet.provider, "prime_network.json");
         let validators = prime_network_contract.get_validator_role().await.unwrap();
         assert_eq!(validators.len(), 1, "Expected exactly one validator");
     }

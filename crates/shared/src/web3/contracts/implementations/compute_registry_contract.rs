@@ -3,19 +3,18 @@ use super::{
     super::structs::compute_provider::ComputeProvider,
 };
 use crate::web3::contracts::helpers::utils::get_selector;
-use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, U256};
 use anyhow::Result;
 
 #[derive(Clone)]
-pub struct ComputeRegistryContract {
-    instance: Contract,
+pub struct ComputeRegistryContract<P: alloy_provider::Provider> {
+    instance: Contract<P>,
 }
 
-impl ComputeRegistryContract {
-    pub fn new(wallet: &Wallet, abi_path: &str) -> Self {
-        let instance = Contract::new(COMPUTE_REGISTRY_ADDRESS, wallet, abi_path);
+impl<P: alloy_provider::Provider> ComputeRegistryContract<P> {
+    pub fn new(provider: P, abi_path: &str) -> Self {
+        let instance = Contract::new(COMPUTE_REGISTRY_ADDRESS, provider, abi_path);
         Self { instance }
     }
 

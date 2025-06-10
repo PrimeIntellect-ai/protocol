@@ -9,6 +9,7 @@ use actix_web::{
     web::{self, get},
     App, HttpServer,
 };
+use alloy::providers::RootProvider;
 use log::{error, info, warn};
 use serde_json::json;
 use shared::security::api_key_middleware::ApiKeyMiddleware;
@@ -21,7 +22,7 @@ use tokio::sync::Mutex;
 #[derive(Clone)]
 pub struct AppState {
     pub node_store: Arc<NodeStore>,
-    pub contracts: Option<Arc<Contracts>>,
+    pub contracts: Option<Contracts<RootProvider>>,
     pub last_chain_sync: Arc<Mutex<Option<SystemTime>>>,
     pub only_one_node_per_ip: bool,
 }
@@ -74,7 +75,7 @@ pub async fn start_server(
     host: &str,
     port: u16,
     node_store: Arc<NodeStore>,
-    contracts: Arc<Contracts>,
+    contracts: Contracts<RootProvider>,
     platform_api_key: String,
     last_chain_sync: Arc<Mutex<Option<SystemTime>>>,
     only_one_node_per_ip: bool,
