@@ -43,7 +43,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
 
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
-    let metrics = Arc::new(MetricsContext::new(1.to_string()));
+    let metrics = Arc::new(MetricsContext::new(1.to_string(), store_context.clone()));
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -113,7 +113,7 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
 
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
-    let metrics = Arc::new(MetricsContext::new(1.to_string()));
+    let metrics = Arc::new(MetricsContext::new(1.to_string(), store_context.clone()));
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -181,7 +181,7 @@ pub async fn create_test_app_state_with_metrics() -> Data<AppState> {
 
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
-    let metrics = Arc::new(MetricsContext::new("0".to_string()));
+    let metrics = Arc::new(MetricsContext::new("0".to_string(), store_context.clone()));
 
     Data::new(AppState {
         store_context: store_context.clone(),

@@ -38,6 +38,7 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::task::JoinSet;
 use url::Url;
 
@@ -145,8 +146,6 @@ async fn main() -> Result<()> {
     debug!("Log level: {}", log_level);
     debug!("Server mode: {:?}", server_mode);
 
-    let metrics_context = Arc::new(MetricsContext::new(args.compute_pool_id.to_string()));
-
     let heartbeats = Arc::new(LoopHeartbeats::new(&server_mode));
 
     let compute_pool_id = args.compute_pool_id;
@@ -167,6 +166,22 @@ async fn main() -> Result<()> {
     let store_context = Arc::new(StoreContext::new(store.clone()));
     let wallet_clone = coordinator_wallet.clone();
     let server_wallet = coordinator_wallet.clone();
+
+    let metrics_store_context = store_context.clone();
+    let metrics_context = Arc::new(MetricsContext::new(
+        args.compute_pool_id.to_string(),
+        metrics_store_context,
+    ));
+
+    let metrics_loop_context = metrics_context.clone();
+    tasks.spawn(async move {
+        loop {
+            if let Err(e) = metrics_loop_context.fill_metrics_interval().await {
+                error!("Error filling metrics interval: {}", e);
+            }
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
+    });
 
     let contracts = Arc::new(
         ContractBuilder::new(&coordinator_wallet.clone())
