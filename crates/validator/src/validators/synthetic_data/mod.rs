@@ -1577,7 +1577,7 @@ mod tests {
         assert!(metrics_2
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
         assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
-        assert!(metrics_2.contains("validator_group_work_units_check{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
+        assert!(metrics_2.contains("validator_group_work_units_check_total{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
 
         Ok(())
     }
@@ -1743,8 +1743,8 @@ mod tests {
         assert!(metrics_2
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
         assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
-        assert!(metrics_2.contains("validator_group_work_units_check{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"mismatch\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
-        assert!(metrics_2.contains("validator_group_work_units_check{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
+        assert!(metrics_2.contains("validator_group_work_units_check_total{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"mismatch\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
+        assert!(metrics_2.contains("validator_group_work_units_check_total{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
 
         Ok(())
     }

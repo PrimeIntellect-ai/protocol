@@ -55,8 +55,8 @@ lazy_static! {
         &["validator_id", "pool_id", "group_id", "toploc_config_name", "result"] // result: accept, reject, crashed, pending, unknown
     ).unwrap();
 
-    pub static ref GROUP_WORK_UNITS_CHECK: CounterVec = register_counter_vec!(
-        "validator_group_work_units_check",
+    pub static ref GROUP_WORK_UNITS_CHECK_TOTAL: CounterVec = register_counter_vec!(
+        "validator_group_work_units_check_total",
         "Whether the work units match the group size",
         &["validator_id", "pool_id", "group_id", "toploc_config_name", "result"] // result: match, mismatch
     ).unwrap();
@@ -132,7 +132,7 @@ impl MetricsContext {
         result: &str,
     ) {
         if let Some(pool_id) = &self.pool_id {
-            GROUP_WORK_UNITS_CHECK
+            GROUP_WORK_UNITS_CHECK_TOTAL
                 .with_label_values(&[
                     &self.validator_id as &str,
                     pool_id,
