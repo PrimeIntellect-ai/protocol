@@ -24,11 +24,11 @@ impl Scheduler {
         }
     }
 
-    pub fn get_task_for_node(&self, node_address: Address) -> Result<Option<Task>> {
-        let mut all_tasks = self.store_context.task_store.get_all_tasks();
+    pub async fn get_task_for_node(&self, node_address: Address) -> Result<Option<Task>> {
+        let mut all_tasks = self.store_context.task_store.get_all_tasks().await?;
 
         for plugin in self.plugins.iter() {
-            let filtered_tasks = plugin.filter_tasks(&all_tasks, &node_address);
+            let filtered_tasks = plugin.filter_tasks(&all_tasks, &node_address).await?;
             all_tasks = filtered_tasks;
         }
 
@@ -63,9 +63,9 @@ mod tests {
             ..Default::default()
         };
 
-        state.store_context.task_store.add_task(task.clone());
+        let _ = state.store_context.task_store.add_task(task.clone()).await;
 
-        let task_for_node = scheduler.get_task_for_node(Address::ZERO).unwrap();
+        let task_for_node = scheduler.get_task_for_node(Address::ZERO).await.unwrap();
         assert_eq!(task_for_node, Some(task));
     }
 }

@@ -4,6 +4,7 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use alloy::primitives::Address;
+use log::error;
 use serde_json::json;
 use shared::models::{
     api::ApiResponse,
@@ -18,36 +19,70 @@ async fn heartbeat(
 ) -> HttpResponse {
     let task_info = heartbeat.clone();
     let node_address = Address::from_str(&heartbeat.address).unwrap();
-    let node = app_state.store_context.node_store.get_node(&node_address);
-    if let Some(node) = node {
-        if node.status == NodeStatus::Banned {
+
+    let node_opt = app_state
+        .store_context
+        .node_store
+        .get_node(&node_address)
+        .await;
+    match node_opt {
+        Ok(Some(node)) => {
+            if node.status == NodeStatus::Banned {
+                return HttpResponse::BadRequest().json(json!({
+                    "success": false,
+                    "error": "Node is banned"
+                }));
+            }
+        }
+        _ => {
             return HttpResponse::BadRequest().json(json!({
                 "success": false,
-                "error": "Node is banned"
+                "error": "Node not found"
             }));
         }
     }
-
-    app_state.store_context.node_store.update_node_task(
-        node_address,
-        task_info.task_id,
-        task_info.task_state,
-    );
-
-    if let Some(p2p_id) = &heartbeat.p2p_id {
-        app_state
-            .store_context
-            .node_store
-            .update_node_p2p_id(&node_address, p2p_id);
+    if let Err(e) = app_state
+        .store_context
+        .node_store
+        .update_node_task(node_address, task_info.task_id, task_info.task_state)
+        .await
+    {
+        error!("Error updating node task: {}", e);
     }
 
-    app_state.store_context.heartbeat_store.beat(&heartbeat);
+    if let Some(p2p_id) = &heartbeat.p2p_id {
+        if let Err(e) = app_state
+            .store_context
+            .node_store
+            .update_node_p2p_id(&node_address, p2p_id)
+            .await
+        {
+            error!("Error updating node p2p id: {}", e);
+        }
+    }
+
+    if let Err(e) = app_state
+        .store_context
+        .heartbeat_store
+        .beat(&heartbeat)
+        .await
+    {
+        error!("Heartbeat Error: {}", e);
+    }
     if let Some(metrics) = heartbeat.metrics.clone() {
         // Get all previously reported metrics for this node
-        let previous_metrics = app_state
+        let previous_metrics = match app_state
             .store_context
             .metrics_store
-            .get_metrics_for_node(node_address);
+            .get_metrics_for_node(node_address)
+            .await
+        {
+            Ok(metrics) => metrics,
+            Err(e) => {
+                error!("Error getting metrics for node: {}", e);
+                Default::default()
+            }
+        };
 
         // Create a HashSet of new metrics for efficient lookup
         let new_metrics_set: HashSet<_> = metrics
@@ -67,20 +102,27 @@ async fn heartbeat(
                         &label,
                     );
                     // Remove from Redis metrics store
-                    app_state.store_context.metrics_store.delete_metric(
-                        &task_id,
-                        &label,
-                        &node_address.to_string(),
-                    );
+                    if let Err(e) = app_state
+                        .store_context
+                        .metrics_store
+                        .delete_metric(&task_id, &label, &node_address.to_string())
+                        .await
+                    {
+                        error!("Error deleting metric: {}", e);
+                    }
                 }
             }
         }
 
         // Store new metrics and update Prometheus
-        app_state
+        if let Err(e) = app_state
             .store_context
             .metrics_store
-            .store_metrics(Some(metrics.clone()), node_address);
+            .store_metrics(Some(metrics.clone()), node_address)
+            .await
+        {
+            error!("Error storing metrics: {}", e);
+        }
 
         for metric in metrics {
             app_state.metrics.record_compute_task_gauge(
@@ -92,7 +134,7 @@ async fn heartbeat(
         }
     }
 
-    let current_task = app_state.scheduler.get_task_for_node(node_address);
+    let current_task = app_state.scheduler.get_task_for_node(node_address).await;
     match current_task {
         Ok(Some(task)) => {
             let resp: HttpResponse = ApiResponse::new(
@@ -121,6 +163,7 @@ mod tests {
 
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
+    use crate::models::node::OrchestratorNode;
 
     use actix_web::http::StatusCode;
     use actix_web::test;
@@ -141,6 +184,13 @@ mod tests {
         .await;
 
         let address = "0x0000000000000000000000000000000000000000".to_string();
+        let node_address = Address::from_str(&address).unwrap();
+        let node = OrchestratorNode {
+            address: node_address,
+            status: NodeStatus::Healthy,
+            ..Default::default()
+        };
+        let _ = app_state.store_context.node_store.add_node(node).await;
         let req_payload = json!({"address": address, "metrics": [
             {"key": {"task_id": "long-task-1234", "label": "performance/batch_avg_seq_length"}, "value": 1.0},
             {"key": {"task_id": "long-task-1234", "label": "performance/batch_min_seq_length"}, "value": 5.0}
@@ -160,10 +210,14 @@ mod tests {
         assert_eq!(json["current_task"], serde_json::Value::Null);
 
         let node_address = Address::from_str(&address).unwrap();
+
         let value = app_state
             .store_context
             .heartbeat_store
-            .get_heartbeat(&node_address);
+            .get_heartbeat(&node_address)
+            .await
+            .unwrap();
+
         assert_eq!(
             value,
             Some(HeartbeatRequest {
@@ -218,7 +272,9 @@ mod tests {
         let aggregated_metrics = app_state
             .store_context
             .metrics_store
-            .get_aggregate_metrics_for_all_tasks();
+            .get_aggregate_metrics_for_all_tasks()
+            .await
+            .unwrap();
         assert_eq!(aggregated_metrics.len(), 2);
         assert_eq!(aggregated_metrics.get("performance/batch_len"), Some(&10.0));
         assert_eq!(
@@ -245,7 +301,9 @@ mod tests {
         let aggregated_metrics = app_state
             .store_context
             .metrics_store
-            .get_aggregate_metrics_for_all_tasks();
+            .get_aggregate_metrics_for_all_tasks()
+            .await
+            .unwrap();
         assert_eq!(aggregated_metrics, HashMap::new());
         assert_eq!(metrics, "");
     }
@@ -267,11 +325,20 @@ mod tests {
             name: "test".to_string(),
             ..Default::default()
         };
+
+        let node = OrchestratorNode {
+            address: Address::from_str(&address).unwrap(),
+            status: NodeStatus::Healthy,
+            ..Default::default()
+        };
+
+        let _ = app_state.store_context.node_store.add_node(node).await;
+
         let task = match task.try_into() {
             Ok(task) => task,
             Err(e) => panic!("Failed to convert TaskRequest to Task: {}", e),
         };
-        app_state.store_context.task_store.add_task(task);
+        let _ = app_state.store_context.task_store.add_task(task).await;
 
         let req = test::TestRequest::post()
             .uri("/heartbeat")
@@ -279,8 +346,6 @@ mod tests {
             .to_request();
 
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-
         let body = test::read_body(resp).await;
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["success"], serde_json::Value::Bool(true));
@@ -293,14 +358,15 @@ mod tests {
         let value = app_state
             .store_context
             .heartbeat_store
-            .get_heartbeat(&node_address);
+            .get_heartbeat(&node_address)
+            .await
+            .unwrap();
         // Task has not started yet
 
-        let value = value.unwrap();
         let heartbeat = HeartbeatRequest {
             address: "0x0000000000000000000000000000000000000000".to_string(),
             ..Default::default()
         };
-        assert_eq!(value, heartbeat);
+        assert_eq!(value, Some(heartbeat));
     }
 }

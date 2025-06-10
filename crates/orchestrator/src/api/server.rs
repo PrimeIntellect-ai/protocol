@@ -35,6 +35,7 @@ pub struct AppState {
     pub scheduler: Scheduler,
     pub node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
     pub metrics: Arc<MetricsContext>,
+    pub http_client: reqwest::Client,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -68,16 +69,22 @@ pub async fn start_server(
         scheduler,
         node_groups_plugin,
         metrics,
+        http_client: reqwest::Client::new(),
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
-    let validator_state = Arc::new(ValidatorState::new(vec![]).with_validator(move |address| {
-        if let Some(node) = node_store_clone.get_node(address) {
-            node.status != NodeStatus::Ejected
-        } else {
-            false
-        }
-    }));
+    let validator_state = Arc::new(ValidatorState::new(vec![]).with_async_validator(
+        move |address| {
+            let address = *address;
+            let node_store = node_store_clone.clone();
+            Box::pin(async move {
+                match node_store.get_node(&address).await {
+                    Ok(Some(node)) => node.status != NodeStatus::Ejected,
+                    _ => false,
+                }
+            })
+        },
+    ));
 
     let api_key_middleware = Arc::new(ApiKeyMiddleware::new(admin_api_key));
 

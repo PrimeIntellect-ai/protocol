@@ -22,7 +22,7 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
         match node.status {
             NodeStatus::Dead => {
                 // Dissolve entire group if node becomes unhealthy
-                if let Some(group) = self.get_node_group(&node_addr)? {
+                if let Some(group) = self.get_node_group(&node_addr).await? {
                     info!(
                         "Node {} became {}, dissolving entire group {} with {} nodes",
                         node_addr,
@@ -30,7 +30,7 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
                         group.id,
                         group.nodes.len()
                     );
-                    self.dissolve_group(&group.id)?;
+                    self.dissolve_group(&group.id).await?;
                 }
             }
             _ => {

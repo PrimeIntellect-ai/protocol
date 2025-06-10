@@ -26,11 +26,13 @@ const MAX_BODY_SIZE: usize = 1024 * 1024 * 10; // 10MB
 const BODY_TIMEOUT_SECS: u64 = 20; // 20 seconds
 
 type SyncAddressValidator = Arc<dyn Fn(&Address) -> bool + Send + Sync>;
+type AsyncAddressValidator = Arc<dyn Fn(&Address) -> LocalBoxFuture<'static, bool> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct ValidatorState {
     allowed_addresses: Arc<DashSet<Address>>,
     external_validator: Option<SyncAddressValidator>,
+    async_validator: Option<AsyncAddressValidator>,
 }
 
 impl ValidatorState {
@@ -42,6 +44,7 @@ impl ValidatorState {
         Self {
             allowed_addresses: Arc::new(set),
             external_validator: None,
+            async_validator: None,
         }
     }
 
@@ -50,6 +53,14 @@ impl ValidatorState {
         F: Fn(&Address) -> bool + Send + Sync + 'static,
     {
         self.external_validator = Some(Arc::new(validator));
+        self
+    }
+
+    pub fn with_async_validator<F>(mut self, validator: F) -> Self
+    where
+        F: Fn(&Address) -> LocalBoxFuture<'static, bool> + Send + Sync + 'static,
+    {
+        self.async_validator = Some(Arc::new(validator));
         self
     }
 
@@ -76,6 +87,24 @@ impl ValidatorState {
 
         if let Some(validator) = &self.external_validator {
             return validator(address);
+        }
+
+        false
+    }
+
+    pub async fn is_address_allowed_async(&self, address: &Address) -> bool {
+        if self.allowed_addresses.contains(address) {
+            return true;
+        }
+
+        if let Some(validator) = &self.external_validator {
+            if validator(address) {
+                return true;
+            }
+        }
+
+        if let Some(async_validator) = &self.async_validator {
+            return async_validator(address).await;
         }
 
         false
@@ -261,7 +290,10 @@ where
                     return Err(ErrorBadRequest("Invalid signature"));
                 }
 
-                if !validator_state.is_address_allowed(&recovered_address) {
+                if !validator_state
+                    .is_address_allowed_async(&recovered_address)
+                    .await
+                {
                     warn!(
                         "Request with valid signature but not authorized. Allowed addresses: {:?}",
                         validator_state.get_allowed_addresses()

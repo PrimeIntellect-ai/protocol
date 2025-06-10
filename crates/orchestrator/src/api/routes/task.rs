@@ -9,8 +9,12 @@ use shared::models::task::TaskRequest;
 
 async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone();
-    let tasks = task_store.get_all_tasks();
-    HttpResponse::Ok().json(json!({"success": true, "tasks": tasks}))
+    let tasks = task_store.get_all_tasks().await;
+    match tasks {
+        Ok(tasks) => HttpResponse::Ok().json(json!({"success": true, "tasks": tasks})),
+        Err(e) => HttpResponse::InternalServerError()
+            .json(json!({"success": false, "error": e.to_string()})),
+    }
 }
 
 async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
@@ -37,13 +41,19 @@ async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) ->
         }
     }
 
-    task_store.add_task(task.clone());
+    if let Err(e) = task_store.add_task(task.clone()).await {
+        return HttpResponse::InternalServerError()
+            .json(json!({"success": false, "error": e.to_string()}));
+    }
     HttpResponse::Ok().json(json!({"success": true, "task": task}))
 }
 
 async fn delete_task(id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone();
-    task_store.delete_task(id.into_inner());
+    if let Err(e) = task_store.delete_task(id.into_inner()).await {
+        return HttpResponse::InternalServerError()
+            .json(json!({"success": false, "error": e.to_string()}));
+    }
     HttpResponse::Ok().json(json!({"success": true}))
 }
 
@@ -126,7 +136,7 @@ mod tests {
         .unwrap();
 
         let task_store = app_state.store_context.task_store.clone();
-        task_store.add_task(task);
+        let _ = task_store.add_task(task).await;
 
         let app = test::init_service(
             App::new()
@@ -160,7 +170,7 @@ mod tests {
         .unwrap();
 
         let task_store = app_state.store_context.task_store.clone();
-        task_store.add_task(task.clone());
+        let _ = task_store.add_task(task.clone()).await;
 
         let app = test::init_service(
             App::new()
@@ -175,7 +185,7 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let tasks = task_store.get_all_tasks();
+        let tasks = task_store.get_all_tasks().await.unwrap();
         assert_eq!(tasks.len(), 0);
     }
 
@@ -199,7 +209,7 @@ mod tests {
         }
         .try_into()
         .unwrap();
-        task_store.add_task(task1.clone());
+        let _ = task_store.add_task(task1.clone()).await;
 
         // Wait briefly to ensure different timestamps
         thread::sleep(Duration::from_millis(10));
@@ -212,7 +222,7 @@ mod tests {
         }
         .try_into()
         .unwrap();
-        task_store.add_task(task2.clone());
+        let _ = task_store.add_task(task2.clone()).await;
 
         // Test get all tasks - should be sorted by created_at descending
         let req = test::TestRequest::get().uri("/tasks").to_request();
@@ -242,11 +252,11 @@ mod tests {
             }
             .try_into()
             .unwrap();
-            task_store.add_task(task);
+            let _ = task_store.add_task(task).await;
             thread::sleep(Duration::from_millis(10));
         }
 
-        let tasks = task_store.get_all_tasks();
+        let tasks = task_store.get_all_tasks().await.unwrap();
 
         // Verify tasks are ordered by created_at descending
         assert_eq!(tasks.len(), 3);

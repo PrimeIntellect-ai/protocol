@@ -15,7 +15,7 @@ const NODE_REQUEST_TIMEOUT: u64 = 30;
 
 async fn get_groups(app_state: Data<AppState>) -> HttpResponse {
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
-        match node_groups_plugin.get_all_groups() {
+        match node_groups_plugin.get_all_groups().await {
             Ok(groups) => {
                 let groups_with_details: Vec<_> = groups
                     .into_iter()
@@ -52,7 +52,7 @@ async fn get_groups(app_state: Data<AppState>) -> HttpResponse {
 async fn get_configurations(app_state: Data<AppState>) -> HttpResponse {
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
         let all_configs = node_groups_plugin.get_all_configuration_templates();
-        let available_configs = node_groups_plugin.get_available_configurations();
+        let available_configs = node_groups_plugin.get_available_configurations().await;
 
         let available_names: std::collections::HashSet<String> =
             available_configs.iter().map(|c| c.name.clone()).collect();
@@ -85,7 +85,7 @@ async fn get_configurations(app_state: Data<AppState>) -> HttpResponse {
 
 async fn get_group_logs(group_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
-        match node_groups_plugin.get_group_by_id(&group_id) {
+        match node_groups_plugin.get_group_by_id(&group_id).await {
             Ok(Some(group)) => {
                 // Collect all node addresses
                 let node_addresses: Vec<Address> = group
@@ -143,7 +143,21 @@ async fn get_group_logs(group_id: web::Path<String>, app_state: Data<AppState>) 
 }
 
 async fn fetch_node_logs(node_address: Address, app_state: Data<AppState>) -> serde_json::Value {
-    let node = app_state.store_context.node_store.get_node(&node_address);
+    let node = match app_state
+        .store_context
+        .node_store
+        .get_node(&node_address)
+        .await
+    {
+        Ok(node) => node,
+        Err(e) => {
+            error!("Failed to get node {}: {}", node_address, e);
+            return json!({
+                "success": false,
+                "error": format!("Failed to get node: {}", e)
+            });
+        }
+    };
 
     match node {
         Some(node) => {
@@ -188,7 +202,8 @@ async fn fetch_node_logs(node_address: Address, app_state: Data<AppState>) -> se
             );
             headers.insert("x-signature", message_signature.parse().unwrap());
 
-            match reqwest::Client::new()
+            match app_state
+                .http_client
                 .get(logs_url)
                 .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
                 .headers(headers)
