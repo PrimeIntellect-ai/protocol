@@ -291,13 +291,13 @@ impl SyntheticDataValidator {
     pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
         info!("Invalidating work: {}", work_key);
 
+        if let Some(metrics) = &self.metrics {
+            metrics.record_work_key_invalidation();
+        }
+
         if self.disable_chain_invalidation {
             info!("Chain invalidation is disabled, skipping work invalidation");
             return Ok(());
-        }
-
-        if let Some(metrics) = &self.metrics {
-            metrics.record_work_key_invalidation();
         }
 
         // Special case for tests - skip actual blockchain interaction
