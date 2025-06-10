@@ -237,7 +237,7 @@ pub async fn execute_command(
             /*
              Initialize dependencies - services, contracts, operations
             */
-            let contracts = ContractBuilder::new(provider_wallet_instance.provider.clone())
+            let contracts = ContractBuilder::new(provider_wallet_instance.provider())
                 .with_compute_registry()
                 .with_ai_token()
                 .with_prime_network()
@@ -753,7 +753,7 @@ pub async fn execute_command(
 
             let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();
 
-            let contracts = ContractBuilder::new(provider_wallet.provider.clone())
+            let contracts = ContractBuilder::new(provider_wallet.provider())
                 .with_compute_registry()
                 .with_ai_token()
                 .with_prime_network()
@@ -852,7 +852,7 @@ pub async fn execute_command(
              Initialize dependencies - services, contracts, operations
             */
 
-            let contracts = ContractBuilder::new(provider_wallet_instance.provider.clone())
+            let contracts = ContractBuilder::new(provider_wallet_instance.provider())
                 .with_compute_registry()
                 .with_ai_token()
                 .with_prime_network()

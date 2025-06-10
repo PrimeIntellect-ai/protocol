@@ -125,7 +125,7 @@ mod tests {
 
         let coordinator_wallet = Arc::new(Wallet::new(coordinator_key, rpc_url).unwrap());
 
-        let contracts = ContractBuilder::new(coordinator_wallet.provider.clone())
+        let contracts = ContractBuilder::new(coordinator_wallet.provider())
             .with_compute_registry()
             .with_ai_token()
             .with_prime_network()

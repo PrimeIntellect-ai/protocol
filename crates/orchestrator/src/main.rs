@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
 
-    let contracts = ContractBuilder::new(wallet.provider.clone())
+    let contracts = ContractBuilder::new(wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()

@@ -213,7 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let mut contract_builder = ContractBuilder::new(validator_wallet.provider.clone())
+    let mut contract_builder = ContractBuilder::new(validator_wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()

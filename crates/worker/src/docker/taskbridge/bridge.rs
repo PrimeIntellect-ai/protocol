@@ -142,7 +142,7 @@ impl TaskBridge {
                     let contracts_inner = contracts_ref.clone();
                     let node_inner = node_ref.clone();
                     let provider = match self.node_wallet.as_ref() {
-                        Some(wallet) => wallet.provider.clone(),
+                        Some(wallet) => wallet.provider(),
                         None => {
                             error!("No wallet provider found");
                             return Err(anyhow::anyhow!("No wallet provider found"));

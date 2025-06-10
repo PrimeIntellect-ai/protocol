@@ -1180,7 +1180,7 @@ mod tests {
         )
         .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
 
-        let contracts = ContractBuilder::new(demo_wallet.provider.clone())
+        let contracts = ContractBuilder::new(demo_wallet.provider())
             .with_compute_registry()
             .with_ai_token()
             .with_prime_network()

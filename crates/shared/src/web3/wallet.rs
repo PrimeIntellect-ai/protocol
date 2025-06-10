@@ -61,4 +61,8 @@ impl Wallet {
 
         Ok(balance)
     }
+
+    pub fn provider(&self) -> WalletProvider {
+        self.provider.clone()
+    }
 }

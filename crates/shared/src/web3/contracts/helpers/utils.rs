@@ -121,21 +121,23 @@ mod tests {
                 .connect_anvil_with_wallet_and_config(|anvil| anvil.block_time(2))?,
         );
 
-        let provider_clone = provider.clone();
-        let contract = Counter::deploy(provider_clone).await?;
-
-        let provider_clone_1 = provider.clone();
-        let contract_clone_1 = contract.clone();
-        let handle_1 = tokio::spawn(async move {
-            let call = contract_clone_1.setNumber(U256::from(100));
-            retry_call(call, 3, provider_clone_1, None).await
+        let contract = Counter::deploy(provider.clone()).await?;
+        let handle_1 = tokio::spawn({
+            let contract = contract.clone();
+            let provider = provider.clone();
+            async move {
+                let call = contract.setNumber(U256::from(100));
+                retry_call(call, 3, provider, None).await
+            }
         });
 
-        let contract_clone_2 = contract.clone();
-        let provider_clone_2 = provider.clone();
-        let handle_2 = tokio::spawn(async move {
-            let call = contract_clone_2.setNumber(U256::from(100));
-            retry_call(call, 3, provider_clone_2, None).await
+        let handle_2 = tokio::spawn({
+            let contract = contract.clone();
+            let provider = provider.clone();
+            async move {
+                let call = contract.setNumber(U256::from(100));
+                retry_call(call, 3, provider, None).await
+            }
         });
 
         let tx_base = handle_1.await.unwrap();
@@ -161,11 +163,9 @@ mod tests {
             .get_transaction_count(wallet.default_signer().address())
             .await?;
 
-        let provider_clone = provider.clone();
         let _ = contract.increment().nonce(tx_count).send().await?;
-
         let call_two = contract.increment().nonce(tx_count);
-        let tx = retry_call(call_two, 3, provider_clone, Some(1)).await;
+        let tx = retry_call(call_two, 3, provider, Some(1)).await;
 
         assert!(tx.is_ok());
         Ok(())
