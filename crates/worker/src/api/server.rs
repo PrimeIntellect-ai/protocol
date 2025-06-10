@@ -9,14 +9,14 @@ use log::error;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::structs::compute_pool::PoolInfo;
-use shared::web3::wallet::Wallet;
+use shared::web3::wallet::{Wallet, WalletProvider};
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub contracts: Arc<Contracts>,
-    pub node_wallet: Arc<Wallet>,
-    pub provider_wallet: Arc<Wallet>,
+    pub contracts: Contracts<WalletProvider>,
+    pub node_wallet: Wallet,
+    pub provider_wallet: Wallet,
     pub heartbeat_service: Arc<HeartbeatService>,
     pub docker_service: Arc<DockerService>,
     pub system_state: Arc<SystemState>,
@@ -26,9 +26,9 @@ pub struct AppState {
 pub async fn start_server(
     host: &str,
     port: u16,
-    contracts: Arc<Contracts>,
-    node_wallet: Arc<Wallet>,
-    provider_wallet: Arc<Wallet>,
+    contracts: Contracts<WalletProvider>,
+    node_wallet: Wallet,
+    provider_wallet: Wallet,
     heartbeat_service: Arc<HeartbeatService>,
     docker_service: Arc<DockerService>,
     pool_info: Arc<PoolInfo>,

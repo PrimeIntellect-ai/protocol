@@ -19,7 +19,7 @@ pub async fn handle_file_upload(
     storage_path: &str,
     task_id: &str,
     file_name: &str,
-    wallet: &Arc<Wallet>,
+    wallet: &Wallet,
     state: &Arc<SystemState>,
 ) -> Result<()> {
     info!("📄 Received file upload request: {}", file_name);
@@ -312,7 +312,7 @@ pub async fn handle_file_upload(
 /// Handles a file validation request
 pub async fn handle_file_validation(
     file_sha: &str,
-    contracts: &Arc<Contracts>,
+    contracts: &Contracts<WalletProvider>,
     node: &Node,
     provider: &WalletProvider,
     work_units: f64,

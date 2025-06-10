@@ -1,16 +1,15 @@
 use shared::models::node::Node;
 use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
-use std::sync::Arc;
 
 pub struct DiscoveryService {
-    wallet: Arc<Wallet>,
+    wallet: Wallet,
     base_url: String,
     endpoint: String,
 }
 
 impl DiscoveryService {
-    pub fn new(wallet: Arc<Wallet>, base_url: Option<String>, endpoint: Option<String>) -> Self {
+    pub fn new(wallet: Wallet, base_url: Option<String>, endpoint: Option<String>) -> Self {
         Self {
             wallet,
             base_url: base_url.unwrap_or_else(|| "http://localhost:8089".to_string()),

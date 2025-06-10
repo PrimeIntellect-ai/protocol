@@ -4,7 +4,10 @@ use futures::future::join_all;
 use log::{debug, error, info};
 use shared::{
     models::node::DiscoveryNode,
-    web3::{contracts::core::builder::Contracts, wallet::Wallet},
+    web3::{
+        contracts::core::builder::Contracts,
+        wallet::{Wallet, WalletProvider},
+    },
 };
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -18,17 +21,17 @@ use crate::validators::hardware_challenge::HardwareChallenge;
 /// basic matrix multiplication challenges and does not verify actual hardware specs.
 pub struct HardwareValidator<'a> {
     wallet: &'a Wallet,
-    contracts: Arc<Contracts>,
+    contracts: Contracts<WalletProvider>,
 }
 
 impl<'a> HardwareValidator<'a> {
-    pub fn new(wallet: &'a Wallet, contracts: Arc<Contracts>) -> Self {
+    pub fn new(wallet: &'a Wallet, contracts: Contracts<WalletProvider>) -> Self {
         Self { wallet, contracts }
     }
 
     async fn validate_node(
         wallet: &'a Wallet,
-        contracts: Arc<Contracts>,
+        contracts: Contracts<WalletProvider>,
         node: DiscoveryNode,
     ) -> Result<()> {
         let node_address = match node.id.trim_start_matches("0x").parse::<Address>() {
@@ -122,7 +125,7 @@ mod tests {
 
         let coordinator_wallet = Arc::new(Wallet::new(coordinator_key, rpc_url).unwrap());
 
-        let contracts = ContractBuilder::new(&coordinator_wallet.clone())
+        let contracts = ContractBuilder::new(coordinator_wallet.provider.clone())
             .with_compute_registry()
             .with_ai_token()
             .with_prime_network()
@@ -130,7 +133,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let validator = HardwareValidator::new(&coordinator_wallet, Arc::new(contracts));
+        let validator = HardwareValidator::new(&coordinator_wallet, contracts);
 
         let fake_discovery_node1 = DiscoveryNode {
             is_validated: false,
