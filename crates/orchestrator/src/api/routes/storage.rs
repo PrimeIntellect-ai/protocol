@@ -3,7 +3,7 @@ use actix_web::{
     web::{self, post, Data},
     HttpRequest, HttpResponse, Scope,
 };
-use redis::{Commands, RedisResult};
+use redis::AsyncCommands;
 use shared::models::storage::RequestUploadRequest;
 use std::time::Duration;
 
@@ -22,7 +22,12 @@ async fn request_upload(
         }));
     }
 
-    let mut redis_con = match app_state.redis_store.client.get_connection() {
+    let mut redis_con = match app_state
+        .redis_store
+        .client
+        .get_multiplexed_async_connection()
+        .await
+    {
         Ok(con) => con,
         Err(e) => {
             return HttpResponse::InternalServerError().json(serde_json::json!({
@@ -47,7 +52,8 @@ async fn request_upload(
     let hourly_limit = app_state.hourly_upload_limit;
 
     // Check current request count
-    let current_count: RedisResult<Option<i64>> = redis_con.get(&rate_limit_key);
+    let current_count: Result<Option<i64>, redis::RedisError> =
+        redis_con.get(&rate_limit_key).await;
 
     match current_count {
         Ok(Some(count)) if count >= hourly_limit => {
@@ -77,12 +83,19 @@ async fn request_upload(
         .store_context
         .task_store
         .get_task(&request_upload.task_id)
+        .await
     {
-        Some(task) => task,
-        None => {
+        Ok(Some(task)) => task,
+        Ok(None) => {
             return HttpResponse::NotFound().json(serde_json::json!({
                 "success": false,
                 "error": format!("Task not found")
+            }));
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to retrieve task: {}", e)
             }));
         }
     };
@@ -110,7 +123,7 @@ async fn request_upload(
             if let Some(node_group_plugin) = &app_state.node_groups_plugin {
                 let plugin = node_group_plugin.clone();
 
-                match plugin.get_node_group(address) {
+                match plugin.get_node_group(address).await {
                     Ok(Some(group)) => {
                         group_id = Some(group.id.clone());
                         file_name = file_name.replace("${NODE_GROUP_ID}", &group.id);
@@ -141,9 +154,9 @@ async fn request_upload(
             address, "no-group", &request_upload.file_name
         ),
     };
-    let upload_exists: RedisResult<Option<String>> = redis_con.get(&upload_key);
+    let upload_exists: Result<Option<String>, redis::RedisError> = redis_con.get(&upload_key).await;
     if let Ok(None) = upload_exists {
-        if let Err(e) = redis_con.set::<_, _, ()>(&upload_key, "pending") {
+        if let Err(e) = redis_con.set::<_, _, ()>(&upload_key, "pending").await {
             log::error!("Failed to set upload status in Redis: {}", e);
         }
     }
@@ -152,11 +165,11 @@ async fn request_upload(
         None => format!("upload:{}:no-group:*", address),
     };
 
-    let total_uploads: RedisResult<Vec<String>> = {
+    let total_uploads: Result<Vec<String>, redis::RedisError> = {
         let mut keys = Vec::new();
-        match redis_con.scan_match(&pattern) {
-            Ok(iter) => {
-                for key in iter {
+        match redis_con.scan_match(&pattern).await {
+            Ok(mut iter) => {
+                while let Some(key) = iter.next_item().await {
                     keys.push(key);
                 }
                 Ok(keys)
@@ -234,13 +247,15 @@ async fn request_upload(
             let expiry_seconds = 3600; // 1 hour
 
             // Increment the counter or create it if it doesn't exist
-            let new_count: RedisResult<i64> = redis_con.incr(&rate_limit_key, 1);
+            let new_count: Result<i64, redis::RedisError> =
+                redis_con.incr(&rate_limit_key, 1).await;
 
             match new_count {
                 Ok(count) => {
                     // Set expiry if this is the first request (count == 1)
                     if count == 1 {
-                        let _: RedisResult<()> = redis_con.expire(&rate_limit_key, expiry_seconds);
+                        let _: Result<(), redis::RedisError> =
+                            redis_con.expire(&rate_limit_key, expiry_seconds).await;
                     }
                     log::info!(
                         "Rate limit count for {}: {}/{} per hour",
@@ -331,9 +346,13 @@ mod tests {
         };
 
         let task_store = app_state.store_context.task_store.clone();
-        task_store.add_task(task.clone());
+        let _ = task_store.add_task(task.clone()).await;
 
-        assert!(task_store.get_task(&task.id.to_string()).is_some());
+        assert!(task_store
+            .get_task(&task.id.to_string())
+            .await
+            .unwrap()
+            .is_some());
 
         let app =
             test::init_service(App::new().app_data(app_state.clone()).service(
@@ -405,14 +424,22 @@ mod tests {
             ..Default::default()
         };
 
-        app_state.store_context.node_store.add_node(node.clone());
+        let _ = app_state
+            .store_context
+            .node_store
+            .add_node(node.clone())
+            .await;
 
         let node_from_store = app_state
             .store_context
             .node_store
             .get_node(&node.address)
+            .await
             .unwrap();
-        assert_eq!(node_from_store.address, node.address);
+        assert!(node_from_store.is_some());
+        if let Some(node) = node_from_store {
+            assert_eq!(node.address, node.address);
+        }
 
         let config = NodeGroupConfiguration {
             name: "test-config".to_string(),
@@ -455,14 +482,21 @@ mod tests {
         };
 
         let task_store = app_state.store_context.task_store.clone();
-        task_store.add_task(task.clone());
-        let _ = plugin.test_try_form_new_groups();
+        let _ = task_store.add_task(task.clone()).await;
+        let _ = plugin.test_try_form_new_groups().await;
 
-        let group = plugin.get_node_group(&node.address.to_string()).unwrap();
+        let group = plugin
+            .get_node_group(&node.address.to_string())
+            .await
+            .unwrap();
         assert!(group.is_some());
         let group = group.unwrap();
 
-        assert!(task_store.get_task(&task.id.to_string()).is_some());
+        assert!(task_store
+            .get_task(&task.id.to_string())
+            .await
+            .unwrap()
+            .is_some());
 
         let app =
             test::init_service(App::new().app_data(app_state.clone()).service(
@@ -571,14 +605,22 @@ mod tests {
             ..Default::default()
         };
 
-        app_state.store_context.node_store.add_node(node.clone());
+        let _ = app_state
+            .store_context
+            .node_store
+            .add_node(node.clone())
+            .await;
 
         let node_from_store = app_state
             .store_context
             .node_store
             .get_node(&node.address)
+            .await
             .unwrap();
-        assert_eq!(node_from_store.address, node.address);
+        assert!(node_from_store.is_some());
+        if let Some(node) = node_from_store {
+            assert_eq!(node.address, node.address);
+        }
 
         let task = Task {
             id: Uuid::new_v4(),
@@ -594,9 +636,13 @@ mod tests {
         };
 
         let task_store = app_state.store_context.task_store.clone();
-        task_store.add_task(task.clone());
+        let _ = task_store.add_task(task.clone()).await;
 
-        assert!(task_store.get_task(&task.id.to_string()).is_some());
+        assert!(task_store
+            .get_task(&task.id.to_string())
+            .await
+            .unwrap()
+            .is_some());
 
         let app =
             test::init_service(App::new().app_data(app_state.clone()).service(

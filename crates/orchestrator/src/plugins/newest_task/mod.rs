@@ -1,4 +1,6 @@
 use alloy::primitives::Address;
+use anyhow::Result;
+use async_trait::async_trait;
 use shared::models::task::Task;
 
 use super::{Plugin, SchedulerPlugin};
@@ -7,18 +9,19 @@ pub struct NewestTaskPlugin;
 
 impl Plugin for NewestTaskPlugin {}
 
+#[async_trait]
 impl SchedulerPlugin for NewestTaskPlugin {
-    fn filter_tasks(&self, tasks: &[Task], _node_address: &Address) -> Vec<Task> {
+    async fn filter_tasks(&self, tasks: &[Task], _node_address: &Address) -> Result<Vec<Task>> {
         if tasks.is_empty() {
-            return vec![];
+            return Ok(vec![]);
         }
 
         // Find newest task based on created_at timestamp
-        tasks
+        Ok(tasks
             .iter()
             .max_by_key(|task| task.created_at)
             .map(|task| vec![task.clone()])
-            .unwrap_or_default()
+            .unwrap_or_default())
     }
 }
 
@@ -29,8 +32,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_filter_tasks() {
+    #[tokio::test]
+    async fn test_filter_tasks() {
         let plugin = NewestTaskPlugin;
         let tasks = vec![
             Task {
@@ -51,7 +54,7 @@ mod tests {
             },
         ];
 
-        let filtered_tasks = plugin.filter_tasks(&tasks, &Address::ZERO);
+        let filtered_tasks = plugin.filter_tasks(&tasks, &Address::ZERO).await.unwrap();
         assert_eq!(filtered_tasks.len(), 1);
         assert_eq!(filtered_tasks[0].id, tasks[1].id);
     }

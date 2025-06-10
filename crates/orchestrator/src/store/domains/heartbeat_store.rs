@@ -1,6 +1,7 @@
 use crate::store::core::RedisStore;
 use alloy::primitives::Address;
-use redis::Commands;
+use anyhow::{anyhow, Result};
+use redis::AsyncCommands;
 use shared::models::heartbeat::HeartbeatRequest;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -17,54 +18,95 @@ impl HeartbeatStore {
         Self { redis }
     }
 
-    pub fn beat(&self, payload: &HeartbeatRequest) {
-        let mut con = self.redis.client.get_connection().unwrap();
-        let address = Address::from_str(&payload.address).unwrap();
+    pub async fn beat(&self, payload: &HeartbeatRequest) -> Result<()> {
+        let address =
+            Address::from_str(&payload.address).map_err(|_| anyhow!("Failed to parse address"))?;
         let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, address);
 
-        let payload_string = serde_json::to_string(payload).unwrap();
-        let _: () = con
-            .set_options(
-                &key,
-                payload_string,
-                redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(60)),
-            )
-            .unwrap();
+        let payload_string =
+            serde_json::to_string(payload).map_err(|_| anyhow!("Failed to serialize payload"))?;
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+        con.set_options::<_, _, ()>(
+            &key,
+            payload_string,
+            redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(60)),
+        )
+        .await
+        .map_err(|_| anyhow!("Failed to set options"))?;
+
+        Ok(())
     }
 
-    pub fn get_heartbeat(&self, address: &Address) -> Option<HeartbeatRequest> {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn get_heartbeat(&self, address: &Address) -> Result<Option<HeartbeatRequest>> {
+        let mut con = self
+            .redis
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|_| anyhow!("Failed to get connection"))?;
         let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, address);
-        let value: Option<String> = con.get(key).unwrap();
-        value.and_then(|v| serde_json::from_str(&v).ok())
+        let value: Option<String> = con
+            .get(key)
+            .await
+            .map_err(|_| anyhow!("Failed to get value"))?;
+        Ok(value.and_then(|v| serde_json::from_str(&v).ok()))
     }
 
-    pub fn get_unhealthy_counter(&self, address: &Address) -> u32 {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn get_unhealthy_counter(&self, address: &Address) -> Result<u32> {
+        let mut con = self
+            .redis
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|_| anyhow!("Failed to get connection"))?;
         let key = format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, address);
-        let value: Option<String> = con.get(key).unwrap();
+        let value: Option<String> = con
+            .get(key)
+            .await
+            .map_err(|_| anyhow!("Failed to get value"))?;
         match value {
-            Some(value) => value.parse::<u32>().unwrap(),
-            None => 0,
+            Some(value) => Ok(value.parse::<u32>().unwrap()),
+            None => Ok(0),
         }
     }
 
     #[cfg(test)]
-    pub fn set_unhealthy_counter(&self, address: &Address, counter: u32) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn set_unhealthy_counter(&self, address: &Address, counter: u32) -> Result<()> {
+        let mut con = self
+            .redis
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|_| anyhow!("Failed to get connection"))?;
         let key = format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, address);
-        let _: () = con.set(key, counter.to_string()).unwrap();
+        con.set(key, counter.to_string())
+            .await
+            .map_err(|_| anyhow!("Failed to set value"))
     }
 
-    pub fn increment_unhealthy_counter(&self, address: &Address) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn increment_unhealthy_counter(&self, address: &Address) -> Result<()> {
+        let mut con = self
+            .redis
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|_| anyhow!("Failed to get connection"))?;
         let key = format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, address);
-        let _: () = con.incr(key, 1).unwrap();
+        con.incr(key, 1)
+            .await
+            .map_err(|_| anyhow!("Failed to increment value"))
     }
 
-    pub fn clear_unhealthy_counter(&self, address: &Address) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn clear_unhealthy_counter(&self, address: &Address) -> Result<()> {
+        let mut con = self
+            .redis
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|_| anyhow!("Failed to get connection"))?;
         let key = format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, address);
-        let _: () = con.del(key).unwrap();
+        con.del(key)
+            .await
+            .map_err(|_| anyhow!("Failed to delete value"))
     }
 }

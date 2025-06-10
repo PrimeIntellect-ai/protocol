@@ -63,6 +63,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
         scheduler,
         node_groups_plugin: None,
         metrics,
+        http_client: reqwest::Client::new(),
     })
 }
 
@@ -132,6 +133,7 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
         scheduler,
         node_groups_plugin,
         metrics,
+        http_client: reqwest::Client::new(),
     })
 }
 
@@ -199,5 +201,6 @@ pub async fn create_test_app_state_with_metrics() -> Data<AppState> {
         scheduler,
         node_groups_plugin: None,
         metrics,
+        http_client: reqwest::Client::new(),
     })
 }

@@ -1,7 +1,7 @@
 use crate::plugins::webhook::WebhookPlugin;
 use crate::store::core::StoreContext;
 use anyhow::Result;
-use log::info;
+use log::{error, info};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -54,10 +54,18 @@ impl MetricsWebhookSender {
         let mut interval = interval(Duration::from_secs(15));
         loop {
             interval.tick().await;
-            let metrics = self
+            let metrics = match self
                 .store_context
                 .metrics_store
-                .get_aggregate_metrics_for_all_tasks();
+                .get_aggregate_metrics_for_all_tasks()
+                .await
+            {
+                Ok(metrics) => metrics,
+                Err(e) => {
+                    error!("Error getting aggregate metrics for all tasks: {}", e);
+                    continue;
+                }
+            };
 
             if Self::metrics_changed(&metrics, &self.last_sent_metrics) {
                 info!("Sending {} metrics via webhook", metrics.len());

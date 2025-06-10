@@ -117,8 +117,8 @@ async fn test_group_formation_and_dissolution() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
+    let _ = plugin.try_form_new_groups().await;
 
     // Add first healthy node
     let node1 = create_test_node(
@@ -126,9 +126,13 @@ async fn test_group_formation_and_dissolution() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node1.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
 
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
 
     // Add second healthy node to form group
     let node2 = create_test_node(
@@ -136,11 +140,15 @@ async fn test_group_formation_and_dissolution() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node2.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
     // Verify group was created+
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
     let mut conn = plugin.store.client.get_connection().unwrap();
     let group_id: Option<String> = conn
         .hget(NODE_GROUP_MAP_KEY, node1.address.to_string())
@@ -153,15 +161,16 @@ async fn test_group_formation_and_dissolution() {
         NodeStatus::Dead,
         None,
     );
-    plugin
+    let _ = plugin
         .store_context
         .node_store
-        .update_node_status(&node1_dead.address, NodeStatus::Dead);
+        .update_node_status(&node1_dead.address, NodeStatus::Dead)
+        .await;
     let _ = plugin
         .handle_status_change(&node1_dead, &NodeStatus::Dead)
         .await;
 
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
 
     // Verify group was dissolved
     let group_id: Option<String> = conn
@@ -209,7 +218,7 @@ async fn test_group_formation_with_multiple_configs() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
 
     // Add first healthy node
     let node1 = create_test_node(
@@ -217,7 +226,11 @@ async fn test_group_formation_with_multiple_configs() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node1.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
 
     // Add second healthy node to form group
     let node2 = create_test_node(
@@ -225,16 +238,24 @@ async fn test_group_formation_with_multiple_configs() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node2.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
     let node3 = create_test_node(
         "0x3234567890123456789012345678901234567890",
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node3.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node3.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
     let mut conn = plugin.store.client.get_connection().unwrap();
     let groups: Vec<String> = conn
@@ -289,17 +310,24 @@ async fn test_group_formation_with_requirements_and_single_node() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node1.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
     // Ensure node is not in a group since it does not meet requirements
-    let group_id_node_1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
+    let group_id_node_1 = plugin
+        .get_node_group(&node1.address.to_string())
+        .await
+        .unwrap();
     assert!(group_id_node_1.is_none());
 
     let node_2 = create_test_node(
@@ -315,10 +343,17 @@ async fn test_group_formation_with_requirements_and_single_node() {
             ..Default::default()
         }),
     );
-    plugin.store_context.node_store.add_node(node_2.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node_2.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
-    let group_id_node_2 = plugin.get_node_group(&node_2.address.to_string()).unwrap();
+    let group_id_node_2 = plugin
+        .get_node_group(&node_2.address.to_string())
+        .await
+        .unwrap();
     assert!(group_id_node_2.is_some());
 }
 
@@ -351,15 +386,19 @@ async fn test_group_formation_with_requirements_and_multiple_nodes() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
 
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node1.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
     let node2 = create_test_node(
         "0x2234567890123456789012345678901234567890",
@@ -374,13 +413,23 @@ async fn test_group_formation_with_requirements_and_multiple_nodes() {
             ..Default::default()
         }),
     );
-    plugin.store_context.node_store.add_node(node2.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
-    let group_id_node_1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
+    let group_id_node_1 = plugin
+        .get_node_group(&node1.address.to_string())
+        .await
+        .unwrap();
     assert!(group_id_node_1.is_none());
 
-    let group_id_node_2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
+    let group_id_node_2 = plugin
+        .get_node_group(&node2.address.to_string())
+        .await
+        .unwrap();
     assert!(group_id_node_2.is_none());
 
     let node3 = create_test_node(
@@ -396,16 +445,29 @@ async fn test_group_formation_with_requirements_and_multiple_nodes() {
             ..Default::default()
         }),
     );
-    plugin.store_context.node_store.add_node(node3.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node3.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
-    let group_id_node_3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
+    let group_id_node_3 = plugin
+        .get_node_group(&node3.address.to_string())
+        .await
+        .unwrap();
     assert!(group_id_node_3.is_some());
-    let group_id_node_2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
+    let group_id_node_2 = plugin
+        .get_node_group(&node2.address.to_string())
+        .await
+        .unwrap();
     assert!(group_id_node_2.is_some());
 
     // Node 1 does not fullfill the requirements - hence it will not get added to the group
-    let group_id_node_1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
+    let group_id_node_1 = plugin
+        .get_node_group(&node1.address.to_string())
+        .await
+        .unwrap();
     assert!(group_id_node_1.is_none());
 }
 
@@ -435,20 +497,28 @@ async fn test_group_scheduling() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
 
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node1.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
     let node2 = create_test_node(
         "0x2234567890123456789012345678901234567890",
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node2.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
 
     let mut env_vars = HashMap::new();
     env_vars.insert("LOCAL_RANK".to_string(), "0".to_string());
@@ -485,27 +555,42 @@ async fn test_group_scheduling() {
         created_at: 0,
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task1.clone());
+    let _ = plugin
+        .store_context
+        .task_store
+        .add_task(task1.clone())
+        .await;
 
     let mut task2 = task1.clone();
     task2.id = Uuid::new_v4();
-    plugin.store_context.task_store.add_task(task2.clone());
+    let _ = plugin
+        .store_context
+        .task_store
+        .add_task(task2.clone())
+        .await;
 
     let mut task3 = task1.clone();
     task3.id = Uuid::new_v4();
-    plugin.store_context.task_store.add_task(task3.clone());
+    let _ = plugin
+        .store_context
+        .task_store
+        .add_task(task3.clone())
+        .await;
 
     let tasks = vec![task1, task2, task3];
 
-    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address).await.unwrap();
     assert_eq!(filtered_tasks.len(), 0);
 
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
     let mut tasks_clone = tasks.clone();
     tasks_clone.reverse();
     assert_ne!(tasks_clone[0].id, tasks[0].id);
 
-    let group = plugin.get_node_group(&node1.address.to_string()).unwrap();
+    let group = plugin
+        .get_node_group(&node1.address.to_string())
+        .await
+        .unwrap();
     assert!(group.is_some());
     let group = group.unwrap();
     let mut redis_con = plugin.store.client.get_connection().unwrap();
@@ -513,12 +598,14 @@ async fn test_group_scheduling() {
     let _: () = redis_con.set(&upload_key, "pending").unwrap();
 
     let (filtered_tasks_1, filtered_tasks_2) = tokio::join!(
-        async { plugin.filter_tasks(&tasks, &node1.address) },
-        async { plugin.filter_tasks(&tasks_clone, &node2.address) }
+        async { plugin.filter_tasks(&tasks, &node1.address).await },
+        async { plugin.filter_tasks(&tasks_clone, &node2.address).await }
     );
 
     // Check both nodes get assigned valid and different indexes
     // Also ensure both nodes get the same task
+    let filtered_tasks_1 = filtered_tasks_1.unwrap();
+    let filtered_tasks_2 = filtered_tasks_2.unwrap();
     assert_eq!(filtered_tasks_1.len(), 1);
     let task_node_1 = &filtered_tasks_1[0];
     let env_vars_1 = task_node_1.env_vars.as_ref().unwrap();
@@ -564,24 +651,32 @@ async fn test_group_scheduling_without_tasks() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node1.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
     let node2 = create_test_node(
         "0x2234567890123456789012345678901234567890",
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node2.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
     let tasks = vec![];
 
-    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address).await.unwrap();
     assert_eq!(filtered_tasks.len(), 0);
 
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
 
-    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address).await.unwrap();
     assert_eq!(filtered_tasks.len(), 0);
 
-    let filtered_tasks = plugin.filter_tasks(&tasks, &node2.address);
+    let filtered_tasks = plugin.filter_tasks(&tasks, &node2.address).await.unwrap();
     assert_eq!(filtered_tasks.len(), 0);
 }
 
@@ -611,7 +706,7 @@ async fn test_group_formation_with_max_size() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
 
     // Create three healthy nodes
     let node1 = create_test_node(
@@ -619,24 +714,36 @@ async fn test_group_formation_with_max_size() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node1.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
 
     let node2 = create_test_node(
         "0x2234567890123456789012345678901234567890",
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node2.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
 
     let node3 = create_test_node(
         "0x3234567890123456789012345678901234567890",
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node3.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node3.clone())
+        .await;
 
     // Handle status changes to trigger group formation
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
 
     // Create a test task
     let mut env_vars = HashMap::new();
@@ -654,16 +761,25 @@ async fn test_group_formation_with_max_size() {
         created_at: 0,
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
 
     let tasks = vec![task];
 
     // Check if node1 and node2 are in a group
-    let group1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
-    let group2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
+    let group1 = plugin
+        .get_node_group(&node1.address.to_string())
+        .await
+        .unwrap();
+    let group2 = plugin
+        .get_node_group(&node2.address.to_string())
+        .await
+        .unwrap();
 
     // Check if node3 is not in a group
-    let group3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
+    let group3 = plugin
+        .get_node_group(&node3.address.to_string())
+        .await
+        .unwrap();
 
     // Either node1 and node2 are in a group, or node2 and node3 are in a group
     // But all three cannot be in the same group due to max_group_size=2
@@ -684,8 +800,11 @@ async fn test_group_formation_with_max_size() {
 
     // Verify that tasks are only assigned to nodes in a group
     for node in [&node1, &node2, &node3] {
-        let filtered_tasks = plugin.filter_tasks(&tasks, &node.address);
-        let group = plugin.get_node_group(&node.address.to_string()).unwrap();
+        let filtered_tasks = plugin.filter_tasks(&tasks, &node.address).await.unwrap();
+        let group = plugin
+            .get_node_group(&node.address.to_string())
+            .await
+            .unwrap();
 
         if group.is_some() {
             assert_eq!(
@@ -723,8 +842,12 @@ async fn test_node_groups_with_allowed_topologies() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node1.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
     let task_no_match = Task {
         id: Uuid::new_v4(),
@@ -747,15 +870,16 @@ async fn test_node_groups_with_allowed_topologies() {
         updated_at: None,
         ..Default::default()
     };
-    plugin
+    let _ = plugin
         .store_context
         .task_store
-        .add_task(task_no_match.clone());
-    let _ = plugin.try_form_new_groups();
+        .add_task(task_no_match.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
     let mut tasks = vec![task_no_match];
 
-    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address).await.unwrap();
     assert_eq!(filtered_tasks.len(), 0);
 
     let task_match = Task {
@@ -777,10 +901,14 @@ async fn test_node_groups_with_allowed_topologies() {
         ..Default::default()
     };
 
-    plugin.store_context.task_store.add_task(task_match.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .task_store
+        .add_task(task_match.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
     tasks.push(task_match);
-    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address);
+    let filtered_tasks = plugin.filter_tasks(&tasks, &node1.address).await.unwrap();
     assert_eq!(filtered_tasks.len(), 1);
 }
 
@@ -799,7 +927,7 @@ async fn test_node_cannot_be_in_multiple_groups() {
     // Set max_group_size to 2, so groups can only have 2 nodes
     let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
 
-    let all_nodes = plugin.store_context.node_store.get_nodes();
+    let all_nodes = plugin.store_context.node_store.get_nodes().await.unwrap();
     assert_eq!(all_nodes.len(), 0, "No nodes should be in the store");
 
     // Create three nodes
@@ -820,9 +948,21 @@ async fn test_node_cannot_be_in_multiple_groups() {
     );
 
     // Add nodes to the store
-    plugin.store_context.node_store.add_node(node1.clone());
-    plugin.store_context.node_store.add_node(node2.clone());
-    plugin.store_context.node_store.add_node(node3.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node3.clone())
+        .await;
 
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
@@ -836,10 +976,10 @@ async fn test_node_cannot_be_in_multiple_groups() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
 
     // Add nodes to groups through the normal flow
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
 
     // Get connection to check Redis state
     let mut conn = plugin.store.client.get_connection().unwrap();
@@ -935,8 +1075,12 @@ async fn test_node_cannot_be_in_multiple_groups() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node4.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node4.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
     // Get updated group keys
     let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
@@ -1007,9 +1151,9 @@ async fn test_reformation_on_death() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
 
-    let all_nodes = plugin.store_context.node_store.get_nodes();
+    let all_nodes = plugin.store_context.node_store.get_nodes().await.unwrap();
     assert_eq!(all_nodes.len(), 0, "No nodes should be in the store");
 
     // Create three nodes
@@ -1025,11 +1169,19 @@ async fn test_reformation_on_death() {
     );
 
     // Add nodes to the store
-    plugin.store_context.node_store.add_node(node1.clone());
-    plugin.store_context.node_store.add_node(node2.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
 
     // Add nodes to groups through the normal flow
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
 
     // Get connection to check Redis state
     let mut conn = plugin.store.client.get_connection().unwrap();
@@ -1050,7 +1202,11 @@ async fn test_reformation_on_death() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node_3.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node_3.clone())
+        .await;
 
     let node_3_group_id: Option<String> = conn
         .hget(NODE_GROUP_MAP_KEY, node_3.address.to_string())
@@ -1059,13 +1215,14 @@ async fn test_reformation_on_death() {
     assert!(node_3_group_id.is_none(), "Node3 should not be in a group");
 
     node2.status = NodeStatus::Dead;
-    plugin
+    let _ = plugin
         .store_context
         .node_store
-        .update_node_status(&node2.address, NodeStatus::Dead);
+        .update_node_status(&node2.address, NodeStatus::Dead)
+        .await;
     let _ = plugin.handle_status_change(&node2, &NodeStatus::Dead).await;
 
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
 
     let node_2_group_id: Option<String> = conn
         .hget(NODE_GROUP_MAP_KEY, node2.address.to_string())
@@ -1152,9 +1309,21 @@ async fn test_get_idx_in_group() {
         None,
     );
 
-    plugin.store_context.node_store.add_node(node1.clone());
-    plugin.store_context.node_store.add_node(node2.clone());
-    plugin.store_context.node_store.add_node(node3.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node3.clone())
+        .await;
 
     let group = NodeGroup {
         id: "test-group".to_string(),
@@ -1229,17 +1398,24 @@ async fn test_task_observer() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node.clone());
+    let _ = plugin.store_context.node_store.add_node(node.clone()).await;
     let node2 = create_test_node(
         "0x2234567890123456789012345678901234567890",
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node2.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
 
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.test_try_form_new_groups().await;
 
-    let group = plugin.get_node_group(&node.address.to_string()).unwrap();
+    let group = plugin
+        .get_node_group(&node.address.to_string())
+        .await
+        .unwrap();
     assert!(group.is_none());
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
@@ -1265,10 +1441,10 @@ async fn test_task_observer() {
         }),
         ..Default::default()
     };
-    store_context.task_store.add_task(task.clone());
-    store_context.task_store.add_task(task2.clone());
-    let _ = plugin.try_form_new_groups();
-    let all_tasks = store_context.task_store.get_all_tasks();
+    let _ = store_context.task_store.add_task(task.clone()).await;
+    let _ = store_context.task_store.add_task(task2.clone()).await;
+    let _ = plugin.try_form_new_groups().await;
+    let all_tasks = store_context.task_store.get_all_tasks().await.unwrap();
     println!("All tasks: {:?}", all_tasks);
     assert_eq!(all_tasks.len(), 2);
     assert!(all_tasks[0].id != all_tasks[1].id);
@@ -1280,11 +1456,17 @@ async fn test_task_observer() {
     assert_eq!(topologies[0], "test-config");
     assert_eq!(topologies[1], "test-config2");
 
-    let available_configs = plugin.get_available_configurations();
+    let available_configs = plugin.get_available_configurations().await;
     assert_eq!(available_configs.len(), 1);
     assert_eq!(available_configs[0].name, "test-config");
-    let group = plugin.get_node_group(&node.address.to_string()).unwrap();
-    let group_2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
+    let group = plugin
+        .get_node_group(&node.address.to_string())
+        .await
+        .unwrap();
+    let group_2 = plugin
+        .get_node_group(&node2.address.to_string())
+        .await
+        .unwrap();
     assert!(group.is_some());
     assert!(group_2.is_some());
     assert_ne!(group.unwrap().id, group_2.unwrap().id);
@@ -1294,22 +1476,42 @@ async fn test_task_observer() {
         NodeStatus::Healthy,
         None,
     );
-    plugin.store_context.node_store.add_node(node_3.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node_3.clone())
+        .await;
+    let _ = plugin.try_form_new_groups().await;
 
-    let group_3 = plugin.get_node_group(&node_3.address.to_string()).unwrap();
+    let group_3 = plugin
+        .get_node_group(&node_3.address.to_string())
+        .await
+        .unwrap();
     assert!(group_3.is_some());
-    let all_tasks = store_context.task_store.get_all_tasks();
+    let all_tasks = store_context.task_store.get_all_tasks().await.unwrap();
     println!("All tasks: {:?}", all_tasks);
     assert_eq!(all_tasks.len(), 2);
-    store_context.task_store.delete_task(task.id.to_string());
+    let _ = store_context
+        .task_store
+        .delete_task(task.id.to_string())
+        .await;
 
-    let group_3 = plugin.get_node_group(&node_3.address.to_string()).unwrap();
+    let group_3 = plugin
+        .get_node_group(&node_3.address.to_string())
+        .await
+        .unwrap();
     println!("Group 3: {:?}", group_3);
     assert!(group_3.is_some());
-    store_context.task_store.delete_task(task2.id.to_string());
+    let _ = store_context
+        .task_store
+        .delete_task(task2.id.to_string())
+        .await;
 
-    let group_3 = plugin.get_node_group(&node_3.address.to_string()).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    let group_3 = plugin
+        .get_node_group(&node_3.address.to_string())
+        .await
+        .unwrap();
     println!("Group 3: {:?}", group_3);
     assert!(group_3.is_none());
 }
@@ -1368,12 +1570,24 @@ async fn test_building_largest_possible_groups() {
         None,
     );
 
-    plugin.store_context.node_store.add_node(node1.clone());
-    plugin.store_context.node_store.add_node(node2.clone());
-    plugin.store_context.node_store.add_node(node3.clone());
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node1.clone())
+        .await;
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node2.clone())
+        .await;
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(node3.clone())
+        .await;
 
     // Make all nodes healthy
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
 
     // Create a task that can use any configuration
     let task = Task {
@@ -1393,13 +1607,22 @@ async fn test_building_largest_possible_groups() {
         ..Default::default()
     };
 
-    plugin.store_context.task_store.add_task(task.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
+    let _ = plugin.try_form_new_groups().await;
 
     // Verify that nodes are assigned to the largest possible group
-    let group1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
-    let group2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
-    let group3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
+    let group1 = plugin
+        .get_node_group(&node1.address.to_string())
+        .await
+        .unwrap();
+    let group2 = plugin
+        .get_node_group(&node2.address.to_string())
+        .await
+        .unwrap();
+    let group3 = plugin
+        .get_node_group(&node3.address.to_string())
+        .await
+        .unwrap();
 
     assert!(group1.is_some(), "Node1 should be in a group");
     assert!(group2.is_some(), "Node2 should be in a group");
@@ -1416,15 +1639,27 @@ async fn test_building_largest_possible_groups() {
         "Nodes 2 and 3 should be in the same group"
     );
 
-    plugin
+    let _ = plugin
         .store_context
         .task_store
-        .delete_task(task.id.to_string());
+        .delete_task(task.id.to_string())
+        .await;
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // Verify nodes are removed from groups after task deletion
-    let group1 = plugin.get_node_group(&node1.address.to_string()).unwrap();
-    let group2 = plugin.get_node_group(&node2.address.to_string()).unwrap();
-    let group3 = plugin.get_node_group(&node3.address.to_string()).unwrap();
+    let group1 = plugin
+        .get_node_group(&node1.address.to_string())
+        .await
+        .unwrap();
+    let group2 = plugin
+        .get_node_group(&node2.address.to_string())
+        .await
+        .unwrap();
+    let group3 = plugin
+        .get_node_group(&node3.address.to_string())
+        .await
+        .unwrap();
 
     assert!(
         group1.is_none(),
@@ -1481,9 +1716,9 @@ async fn test_group_formation_priority() {
         .collect();
 
     for node in &nodes {
-        plugin.store_context.node_store.add_node(node.clone());
+        let _ = plugin.store_context.node_store.add_node(node.clone()).await;
     }
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
     // Create task that enables both configurations
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
@@ -1497,8 +1732,8 @@ async fn test_group_formation_priority() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
+    let _ = plugin.try_form_new_groups().await;
 
     // Verify: Should form one 3-node group + one 1-node group
     // NOT four 1-node groups
@@ -1525,6 +1760,7 @@ async fn test_group_formation_priority() {
     for node in &nodes {
         if plugin
             .get_node_group(&node.address.to_string())
+            .await
             .unwrap()
             .is_some()
         {
@@ -1570,7 +1806,7 @@ async fn test_multiple_groups_same_configuration() {
         }),
         ..Default::default()
     };
-    plugin.store_context.task_store.add_task(task.clone());
+    let _ = plugin.store_context.task_store.add_task(task.clone()).await;
 
     // Add 6 healthy nodes
     let nodes: Vec<_> = (1..=6)
@@ -1584,9 +1820,9 @@ async fn test_multiple_groups_same_configuration() {
         .collect();
 
     for node in &nodes {
-        plugin.store_context.node_store.add_node(node.clone());
+        let _ = plugin.store_context.node_store.add_node(node.clone()).await;
     }
-    let _ = plugin.try_form_new_groups();
+    let _ = plugin.try_form_new_groups().await;
 
     // Verify: Should create 3 groups of 2 nodes each
     let mut conn = plugin.store.client.get_connection().unwrap();
@@ -1615,7 +1851,10 @@ async fn test_multiple_groups_same_configuration() {
 
     // Verify each node is in exactly one group
     for node in &nodes {
-        let group = plugin.get_node_group(&node.address.to_string()).unwrap();
+        let group = plugin
+            .get_node_group(&node.address.to_string())
+            .await
+            .unwrap();
         assert!(
             group.is_some(),
             "Node {} should be in a group",

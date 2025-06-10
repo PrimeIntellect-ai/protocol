@@ -181,12 +181,22 @@ impl<'a> NodeInviter<'a> {
 
                 if status.is_success() {
                     info!("Successfully invited node");
-                    self.store_context
+                    if let Err(e) = self
+                        .store_context
                         .node_store
-                        .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat);
-                    self.store_context
+                        .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat)
+                        .await
+                    {
+                        error!("Error updating node status: {}", e);
+                    }
+                    if let Err(e) = self
+                        .store_context
                         .heartbeat_store
-                        .clear_unhealthy_counter(&node.address);
+                        .clear_unhealthy_counter(&node.address)
+                        .await
+                    {
+                        error!("Error clearing unhealthy counter: {}", e);
+                    }
                     Ok(())
                 } else {
                     let response_text = match response.text().await {
@@ -212,7 +222,7 @@ impl<'a> NodeInviter<'a> {
     }
 
     async fn process_uninvited_nodes(&self) -> Result<()> {
-        let nodes = self.store_context.node_store.get_uninvited_nodes();
+        let nodes = self.store_context.node_store.get_uninvited_nodes().await?;
 
         let invited_nodes = stream::iter(nodes.into_iter().map(|node| async move {
             info!("Processing node {:?}", node.address);

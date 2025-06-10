@@ -20,7 +20,7 @@ hex = { workspace = true }
 log = { workspace = true }
 prometheus = "0.14.0"
 rand = "0.9.0"
-redis = { workspace = true }
+redis = { workspace = true, features = ["tokio-comp"] }
 redis-test = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

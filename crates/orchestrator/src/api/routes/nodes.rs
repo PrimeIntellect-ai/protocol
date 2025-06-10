@@ -4,7 +4,7 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use alloy::primitives::Address;
-use log::info;
+use log::{error, info};
 use serde::Deserialize;
 use serde_json::json;
 use shared::security::request_signer::sign_request;
@@ -20,12 +20,22 @@ struct NodeQuery {
 }
 
 async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpResponse {
-    let mut nodes = app_state.store_context.node_store.get_nodes();
-
-    // Filter out dead nodes unless include_dead is true
-    if !query.include_dead.unwrap_or(false) {
-        nodes.retain(|node| node.status != crate::models::node::NodeStatus::Dead);
-    }
+    let nodes = match app_state.store_context.node_store.get_nodes().await {
+        Ok(mut nodes) => {
+            // Filter out dead nodes unless include_dead is true
+            if !query.include_dead.unwrap_or(false) {
+                nodes.retain(|node| node.status != crate::models::node::NodeStatus::Dead);
+            }
+            nodes
+        }
+        Err(e) => {
+            error!("Error getting nodes: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Failed to get nodes"
+            }));
+        }
+    };
 
     let mut status_counts = json!({});
     for node in &nodes {
@@ -54,7 +64,10 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
         for node in &nodes {
             let mut node_json = json!(node);
 
-            if let Ok(Some(group)) = node_groups_plugin.get_node_group(&node.address.to_string()) {
+            if let Ok(Some(group)) = node_groups_plugin
+                .get_node_group(&node.address.to_string())
+                .await
+            {
                 node_json["group"] = json!({
                     "id": group.id,
                     "size": group.nodes.len(),
@@ -73,145 +86,274 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
 }
 
 async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    let node_address = Address::from_str(&node_id).unwrap();
-    let node = app_state.store_context.node_store.get_node(&node_address);
-    match node {
-        Some(node) => {
-            let node_ip = node.ip_address;
-            let node_port = node.port;
+    let node_address = match Address::from_str(&node_id) {
+        Ok(address) => address,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "error": format!("Invalid node address: {}", node_id)
+            }));
+        }
+    };
 
-            let node_url = format!("http://{}:{}", node_ip, node_port);
-            let restart_path = "/task/restart".to_string();
-            let restart_url = format!("{}{}", node_url, restart_path);
-            let payload = json!({
-                "timestamp": std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-            });
+    let node = match app_state
+        .store_context
+        .node_store
+        .get_node(&node_address)
+        .await
+    {
+        Ok(Some(node)) => node,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(json!({
+                "success": false,
+                "error": format!("Node not found: {}", node_id)
+            }));
+        }
+        Err(e) => {
+            error!("Error getting node: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Failed to get node"
+            }));
+        }
+    };
 
-            let message_signature = sign_request(&restart_path, &app_state.wallet, Some(&payload))
-                .await
-                .unwrap();
+    let node_ip = node.ip_address;
+    let node_port = node.port;
 
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert(
-                "x-address",
-                app_state
-                    .wallet
-                    .wallet
-                    .default_signer()
-                    .address()
-                    .to_string()
-                    .parse()
-                    .unwrap(),
-            );
-            headers.insert("x-signature", message_signature.parse().unwrap());
+    let node_url = format!("http://{}:{}", node_ip, node_port);
+    let restart_path = "/task/restart".to_string();
+    let restart_url = format!("{}{}", node_url, restart_path);
+    let payload = json!({
+        "timestamp": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    });
 
-            match reqwest::Client::new()
-                .post(restart_url)
-                .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
-                .headers(headers)
-                .body(payload.to_string())
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        let result = response.json::<serde_json::Value>().await.unwrap();
-                        HttpResponse::Ok().json(result)
-                    } else {
+    let message_signature =
+        match sign_request(&restart_path, &app_state.wallet, Some(&payload)).await {
+            Ok(signature) => signature,
+            Err(e) => {
+                error!("Error signing request: {}", e);
+                return HttpResponse::InternalServerError().json(json!({
+                    "success": false,
+                    "error": "Failed to sign request"
+                }));
+            }
+        };
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    let address_header = match app_state
+        .wallet
+        .wallet
+        .default_signer()
+        .address()
+        .to_string()
+        .parse()
+    {
+        Ok(header) => header,
+        Err(e) => {
+            error!("Error parsing address header: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Failed to create address header"
+            }));
+        }
+    };
+    headers.insert("x-address", address_header);
+
+    let signature_header = match message_signature.parse() {
+        Ok(header) => header,
+        Err(e) => {
+            error!("Error parsing signature header: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Failed to create signature header"
+            }));
+        }
+    };
+    headers.insert("x-signature", signature_header);
+
+    match app_state
+        .http_client
+        .post(restart_url)
+        .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
+        .headers(headers)
+        .body(payload.to_string())
+        .send()
+        .await
+    {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.json::<serde_json::Value>().await {
+                    Ok(result) => HttpResponse::Ok().json(result),
+                    Err(e) => {
+                        error!("Error parsing response: {}", e);
                         HttpResponse::InternalServerError().json(json!({
                             "success": false,
-                            "error": format!("Failed to restart task: {}", response.status())
+                            "error": "Failed to parse response"
                         }))
                     }
                 }
-                Err(e) => HttpResponse::InternalServerError().json(json!({
+            } else {
+                HttpResponse::InternalServerError().json(json!({
                     "success": false,
-                    "error": format!("Failed to restart task: {}", e)
-                })),
+                    "error": format!("Failed to restart task: {}", response.status())
+                }))
             }
         }
-        None => HttpResponse::NotFound().json(json!({
+        Err(e) => HttpResponse::InternalServerError().json(json!({
             "success": false,
-            "error": format!("Node not found: {}", node_id)
+            "error": format!("Failed to restart task: {}", e)
         })),
     }
 }
 
 async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    let node_address = Address::from_str(&node_id).unwrap();
-    let node = app_state.store_context.node_store.get_node(&node_address);
-    match node {
-        Some(node) => {
-            let node_ip = node.ip_address;
-            let node_port = node.port;
+    let node_address = match Address::from_str(&node_id) {
+        Ok(address) => address,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "error": format!("Invalid node address: {}", node_id)
+            }));
+        }
+    };
 
-            let node_url = format!("http://{}:{}", node_ip, node_port);
-            let logs_path = "/task/logs".to_string();
-            let logs_url = format!(
-                "{}{}?timestamp={}",
-                node_url,
-                logs_path,
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-            );
+    let node = match app_state
+        .store_context
+        .node_store
+        .get_node(&node_address)
+        .await
+    {
+        Ok(Some(node)) => node,
+        Ok(None) => {
+            return HttpResponse::Ok().json(json!({"success": false, "logs": "Node not found"}));
+        }
+        Err(e) => {
+            error!("Error getting node: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Failed to get node"
+            }));
+        }
+    };
 
-            let message_signature = sign_request(&logs_path, &app_state.wallet, None)
-                .await
-                .unwrap();
+    let node_ip = node.ip_address;
+    let node_port = node.port;
 
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert(
-                "x-address",
-                app_state
-                    .wallet
-                    .wallet
-                    .default_signer()
-                    .address()
-                    .to_string()
-                    .parse()
-                    .unwrap(),
-            );
-            headers.insert("x-signature", message_signature.parse().unwrap());
+    let node_url = format!("http://{}:{}", node_ip, node_port);
+    let logs_path = "/task/logs".to_string();
+    let logs_url = format!(
+        "{}{}?timestamp={}",
+        node_url,
+        logs_path,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    );
 
-            match reqwest::Client::new()
-                .get(logs_url)
-                .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
-                .headers(headers)
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        let logs = response.json::<serde_json::Value>().await.unwrap();
-                        HttpResponse::Ok().json(logs)
-                    } else {
+    let message_signature = match sign_request(&logs_path, &app_state.wallet, None).await {
+        Ok(signature) => signature,
+        Err(e) => {
+            error!("Error signing request: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Failed to sign request"
+            }));
+        }
+    };
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    let address_header = match app_state
+        .wallet
+        .wallet
+        .default_signer()
+        .address()
+        .to_string()
+        .parse()
+    {
+        Ok(header) => header,
+        Err(e) => {
+            error!("Error parsing address header: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Failed to create address header"
+            }));
+        }
+    };
+    headers.insert("x-address", address_header);
+
+    let signature_header = match message_signature.parse() {
+        Ok(header) => header,
+        Err(e) => {
+            error!("Error parsing signature header: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Failed to create signature header"
+            }));
+        }
+    };
+    headers.insert("x-signature", signature_header);
+
+    match reqwest::Client::new()
+        .get(logs_url)
+        .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
+        .headers(headers)
+        .send()
+        .await
+    {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.json::<serde_json::Value>().await {
+                    Ok(logs) => HttpResponse::Ok().json(logs),
+                    Err(e) => {
+                        error!("Error parsing logs response: {}", e);
                         HttpResponse::InternalServerError().json(json!({
                             "success": false,
-                            "error": format!("Failed to get logs: {}", response.status())
+                            "error": "Failed to parse logs response"
                         }))
                     }
                 }
-                Err(e) => HttpResponse::InternalServerError().json(json!({
+            } else {
+                HttpResponse::InternalServerError().json(json!({
                     "success": false,
-                    "error": format!("Failed to get logs: {}", e)
-                })),
+                    "error": format!("Failed to get logs: {}", response.status())
+                }))
             }
         }
-        None => HttpResponse::Ok().json(json!({"success": false, "logs": "Node not found"})),
+        Err(e) => HttpResponse::InternalServerError().json(json!({
+            "success": false,
+            "error": format!("Failed to get logs: {}", e)
+        })),
     }
 }
 
 async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    let node_address = Address::from_str(&node_id).unwrap();
-    let metrics = app_state
+    let node_address = match Address::from_str(&node_id) {
+        Ok(address) => address,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "error": format!("Invalid node address: {}", node_id)
+            }));
+        }
+    };
+
+    let metrics = match app_state
         .store_context
         .metrics_store
-        .get_metrics_for_node(node_address);
+        .get_metrics_for_node(node_address)
+        .await
+    {
+        Ok(metrics) => metrics,
+        Err(e) => {
+            error!("Error getting metrics for node: {}", e);
+            Default::default()
+        }
+    };
     HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
 
@@ -227,41 +369,62 @@ async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> Http
         }
     };
 
-    let node = app_state.store_context.node_store.get_node(&node_address);
-    match node {
-        Some(node) => {
-            app_state
-                .store_context
-                .node_store
-                .update_node_status(&node.address, crate::models::node::NodeStatus::Banned);
-
-            // Attempt to eject from pool
-            if let Some(contracts) = &app_state.contracts {
-                match contracts
-                    .compute_pool
-                    .eject_node(app_state.pool_id, node.address)
-                    .await
-                {
-                    Ok(_) => HttpResponse::Ok().json(json!({
-                        "success": true,
-                        "message": format!("Node {} successfully ejected", node_id)
-                    })),
-                    Err(e) => HttpResponse::InternalServerError().json(json!({
-                        "success": false,
-                        "error": format!("Failed to eject node from pool: {}", e)
-                    })),
-                }
-            } else {
-                HttpResponse::InternalServerError().json(json!({
-                    "success": false,
-                    "error": "Contracts not found"
-                }))
-            }
+    let node = match app_state
+        .store_context
+        .node_store
+        .get_node(&node_address)
+        .await
+    {
+        Ok(Some(node)) => node,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(json!({
+                "success": false,
+                "error": format!("Node not found: {}", node_id)
+            }));
         }
-        None => HttpResponse::NotFound().json(json!({
+        Err(e) => {
+            error!("Error getting node: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Failed to get node"
+            }));
+        }
+    };
+
+    if let Err(e) = app_state
+        .store_context
+        .node_store
+        .update_node_status(&node.address, crate::models::node::NodeStatus::Banned)
+        .await
+    {
+        error!("Error updating node status: {}", e);
+        return HttpResponse::InternalServerError().json(json!({
             "success": false,
-            "error": format!("Node not found: {}", node_id)
-        })),
+            "error": "Failed to update node status"
+        }));
+    }
+
+    // Attempt to eject from pool
+    if let Some(contracts) = &app_state.contracts {
+        match contracts
+            .compute_pool
+            .eject_node(app_state.pool_id, node.address)
+            .await
+        {
+            Ok(_) => HttpResponse::Ok().json(json!({
+                "success": true,
+                "message": format!("Node {} successfully ejected", node_id)
+            })),
+            Err(e) => HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": format!("Failed to eject node from pool: {}", e)
+            })),
+        }
+    } else {
+        HttpResponse::InternalServerError().json(json!({
+            "success": false,
+            "error": "Contracts not found"
+        }))
     }
 }
 
@@ -307,7 +470,12 @@ mod tests {
             p2p_id: None,
             compute_specs: None,
         };
-        app_state.store_context.node_store.add_node(node.clone());
+        app_state
+            .store_context
+            .node_store
+            .add_node(node.clone())
+            .await
+            .unwrap();
 
         let req = test::TestRequest::get().uri("/nodes").to_request();
         let resp = test::call_service(&app, req).await;
