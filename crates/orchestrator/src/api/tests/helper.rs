@@ -11,6 +11,8 @@ use shared::web3::contracts::core::builder::{ContractBuilder, Contracts};
 #[cfg(test)]
 use shared::web3::wallet::Wallet;
 #[cfg(test)]
+use shared::web3::wallet::WalletProvider;
+#[cfg(test)]
 use std::sync::Arc;
 #[cfg(test)]
 use url::Url;
@@ -49,13 +51,12 @@ pub async fn create_test_app_state() -> Data<AppState> {
         store_context: store_context.clone(),
         contracts: None,
         pool_id: 1,
-        wallet: Arc::new(
-            Wallet::new(
-                "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-                Url::parse("http://localhost:8545").unwrap(),
-            )
-            .unwrap(),
-        ),
+        wallet: Wallet::new(
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .unwrap(),
+
         storage_provider,
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,
@@ -119,13 +120,12 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
         store_context: store_context.clone(),
         contracts: None,
         pool_id: 1,
-        wallet: Arc::new(
-            Wallet::new(
-                "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-                Url::parse("http://localhost:8545").unwrap(),
-            )
-            .unwrap(),
-        ),
+        wallet: Wallet::new(
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .unwrap(),
+
         storage_provider,
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,
@@ -138,13 +138,12 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
 }
 
 #[cfg(test)]
-pub fn setup_contract() -> Contracts {
+pub fn setup_contract() -> Contracts<WalletProvider> {
     let coordinator_key = "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97";
     let rpc_url: Url = Url::parse("http://localhost:8545").unwrap();
+    let wallet = Wallet::new(coordinator_key, rpc_url).unwrap();
 
-    let coordinator_wallet = Arc::new(Wallet::new(coordinator_key, rpc_url).unwrap());
-
-    ContractBuilder::new(&coordinator_wallet.clone())
+    ContractBuilder::new(wallet.provider)
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
@@ -187,13 +186,11 @@ pub async fn create_test_app_state_with_metrics() -> Data<AppState> {
         store_context: store_context.clone(),
         contracts: None,
         pool_id: 1,
-        wallet: Arc::new(
-            Wallet::new(
-                "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-                Url::parse("http://localhost:8545").unwrap(),
-            )
-            .unwrap(),
-        ),
+        wallet: Wallet::new(
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .unwrap(),
         storage_provider,
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,

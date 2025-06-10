@@ -34,6 +34,7 @@ use plugins::webhook::WebhookPlugin;
 use plugins::SchedulerPlugin;
 use plugins::StatusUpdatePlugin;
 use shared::utils::google_cloud::GcsStorageProvider;
+use shared::web3::contracts;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
@@ -156,27 +157,21 @@ async fn main() -> Result<()> {
 
     let mut tasks: JoinSet<Result<()>> = JoinSet::new();
 
-    let coordinator_wallet = Arc::new(Wallet::new(&coordinator_key, rpc_url).unwrap_or_else(
-        |err| {
-            error!("Error creating wallet: {:?}", err);
-            std::process::exit(1);
-        },
-    ));
+    let wallet = Wallet::new(&coordinator_key, rpc_url).unwrap_or_else(|err| {
+        error!("Error creating wallet: {:?}", err);
+        std::process::exit(1);
+    });
 
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
-    let wallet_clone = coordinator_wallet.clone();
-    let server_wallet = coordinator_wallet.clone();
 
-    let contracts = Arc::new(
-        ContractBuilder::new(&coordinator_wallet.clone())
-            .with_compute_registry()
-            .with_ai_token()
-            .with_prime_network()
-            .with_compute_pool()
-            .build()
-            .unwrap(),
-    );
+    let contracts = ContractBuilder::new(wallet.provider.clone())
+        .with_compute_registry()
+        .with_ai_token()
+        .with_prime_network()
+        .with_compute_pool()
+        .build()
+        .unwrap();
 
     match contracts
         .compute_pool
@@ -284,52 +279,60 @@ async fn main() -> Result<()> {
 
         let discovery_store_context = store_context.clone();
         let discovery_heartbeats = heartbeats.clone();
-        tasks.spawn(async move {
-            let monitor = DiscoveryMonitor::new(
-                wallet_clone.as_ref(),
-                compute_pool_id,
-                args.discovery_refresh_interval,
-                args.discovery_url,
-                discovery_store_context.clone(),
-                discovery_heartbeats.clone(),
-            );
-            monitor.run().await
+        tasks.spawn({
+            let wallet = wallet.clone();
+            async move {
+                let monitor = DiscoveryMonitor::new(
+                    wallet,
+                    compute_pool_id,
+                    args.discovery_refresh_interval,
+                    args.discovery_url,
+                    discovery_store_context.clone(),
+                    discovery_heartbeats.clone(),
+                );
+                monitor.run().await
+            }
         });
 
         let inviter_store_context = store_context.clone();
         let inviter_heartbeats = heartbeats.clone();
-        tasks.spawn(async move {
-            let inviter = NodeInviter::new(
-                coordinator_wallet.as_ref(),
-                compute_pool_id,
-                domain_id,
-                args.host.as_deref(),
-                Some(&args.port),
-                args.url.as_deref(),
-                inviter_store_context.clone(),
-                inviter_heartbeats.clone(),
-            );
-            inviter.run().await
+        tasks.spawn({
+            let wallet = wallet.clone();
+            async move {
+                let inviter = NodeInviter::new(
+                    wallet,
+                    compute_pool_id,
+                    domain_id,
+                    args.host.as_deref(),
+                    Some(&args.port),
+                    args.url.as_deref(),
+                    inviter_store_context.clone(),
+                    inviter_heartbeats.clone(),
+                );
+                inviter.run().await
+            }
         });
 
         let status_update_store_context = store_context.clone();
         let status_update_heartbeats = heartbeats.clone();
-        let status_update_contracts = contracts.clone();
         let status_update_metrics = metrics_context.clone();
 
-        tasks.spawn(async move {
-            let status_updater = NodeStatusUpdater::new(
-                status_update_store_context.clone(),
-                15,
-                None,
-                status_update_contracts.clone(),
-                compute_pool_id,
-                args.disable_ejection,
-                status_update_heartbeats.clone(),
-                status_update_plugins,
-                status_update_metrics,
-            );
-            status_updater.run().await
+        tasks.spawn({
+            let contracts = contracts.clone();
+            async move {
+                let status_updater = NodeStatusUpdater::new(
+                    status_update_store_context.clone(),
+                    15,
+                    None,
+                    contracts,
+                    compute_pool_id,
+                    args.disable_ejection,
+                    status_update_heartbeats.clone(),
+                    status_update_plugins,
+                    status_update_metrics,
+                );
+                status_updater.run().await
+            }
         });
     }
 
@@ -349,13 +352,13 @@ async fn main() -> Result<()> {
             "0.0.0.0",
             port,
             server_store_context.clone(),
-            server_wallet,
+            wallet,
             args.admin_api_key,
             storage_provider,
             heartbeats.clone(),
             store.clone(),
             args.hourly_s3_upload_limit,
-            Some(contracts.clone()),
+            Some(contracts),
             compute_pool_id,
             server_mode,
             scheduler,

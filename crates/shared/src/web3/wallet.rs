@@ -25,6 +25,7 @@ pub type WalletProvider = FillProvider<
     RootProvider,
 >;
 
+#[derive(Clone)]
 pub struct Wallet {
     pub wallet: EthereumWallet,
     pub signer: PrivateKeySigner,

@@ -25,7 +25,7 @@ const CONNECTION_TIMEOUT: u64 = 10; // 10 seconds for establishing connections
 const DEFAULT_INVITE_CONCURRENT_COUNT: usize = 32; // Max concurrent count of nodes being invited
 
 pub struct NodeInviter<'a> {
-    wallet: &'a Wallet,
+    wallet: Wallet,
     pool_id: u32,
     domain_id: u32,
     host: Option<&'a str>,
@@ -39,7 +39,7 @@ pub struct NodeInviter<'a> {
 impl<'a> NodeInviter<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        wallet: &'a Wallet,
+        wallet: Wallet,
         pool_id: u32,
         domain_id: u32,
         host: Option<&'a str>,
@@ -149,7 +149,7 @@ impl<'a> NodeInviter<'a> {
         };
         let payload_json = serde_json::to_value(&payload).unwrap();
 
-        let message_signature = sign_request(&invite_path, self.wallet, Some(&payload_json))
+        let message_signature = sign_request(&invite_path, &self.wallet, Some(&payload_json))
             .await
             .unwrap();
 

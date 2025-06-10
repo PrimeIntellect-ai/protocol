@@ -1,5 +1,4 @@
 use alloy::primitives::Address;
-use alloy_provider::RootProvider;
 
 use crate::web3::contracts::{
     core::error::ContractError, // Using custom error ContractError
@@ -14,6 +13,7 @@ use crate::web3::contracts::{
 use std::option::Option;
 use std::result::Result;
 
+#[derive(Clone)]
 pub struct Contracts<P: alloy_provider::Provider> {
     pub compute_registry: ComputeRegistryContract<P>,
     pub ai_token: AIToken<P>,
@@ -22,20 +22,6 @@ pub struct Contracts<P: alloy_provider::Provider> {
     pub stake_manager: Option<StakeManagerContract<P>>,
     pub synthetic_data_validator: Option<SyntheticDataWorkValidator<P>>,
     pub domain_registry: Option<DomainRegistryContract<P>>,
-}
-
-impl Clone for Contracts<RootProvider> {
-    fn clone(&self) -> Self {
-        Self {
-            compute_registry: self.compute_registry.clone(),
-            ai_token: self.ai_token.clone(),
-            prime_network: self.prime_network.clone(),
-            compute_pool: self.compute_pool.clone(),
-            stake_manager: self.stake_manager.clone(),
-            synthetic_data_validator: self.synthetic_data_validator.clone(),
-            domain_registry: self.domain_registry.clone(),
-        }
-    }
 }
 
 pub struct ContractBuilder<P: alloy_provider::Provider + Clone> {
