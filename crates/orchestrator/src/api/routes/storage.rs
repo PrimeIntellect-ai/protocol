@@ -437,8 +437,8 @@ mod tests {
             .await
             .unwrap();
         assert!(node_from_store.is_some());
-        if let Some(node) = node_from_store {
-            assert_eq!(node.address, node.address);
+        if let Some(node_from_store) = node_from_store {
+            assert_eq!(node.address, node_from_store.address);
         }
 
         let config = NodeGroupConfiguration {
