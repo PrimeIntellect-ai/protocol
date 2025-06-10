@@ -9,7 +9,7 @@ lazy_static! {
         "validator_validation_loop_duration_seconds",
         "Duration of the validation loop",
         &["validator_id", "pool_id"],
-        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+        vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0]
     ).unwrap();
 
     // === SYNTHETIC DATA VALIDATION METRICS ===
@@ -53,6 +53,12 @@ lazy_static! {
         "validator_group_validations_total",
         "Total group validations by result",
         &["validator_id", "pool_id", "group_id", "toploc_config_name", "result"] // result: accept, reject, crashed, pending, unknown
+    ).unwrap();
+
+    pub static ref GROUP_WORK_UNITS_CHECK_TOTAL: CounterVec = register_counter_vec!(
+        "validator_group_work_units_check_total",
+        "Whether the work units match the group size",
+        &["validator_id", "pool_id", "group_id", "toploc_config_name", "result"] // result: match, mismatch
     ).unwrap();
 }
 
@@ -108,6 +114,25 @@ impl MetricsContext {
     ) {
         if let Some(pool_id) = &self.pool_id {
             GROUP_VALIDATIONS
+                .with_label_values(&[
+                    &self.validator_id as &str,
+                    pool_id,
+                    group_id,
+                    toploc_config_name,
+                    result,
+                ])
+                .inc();
+        }
+    }
+
+    pub fn record_group_work_units_check_result(
+        &self,
+        group_id: &str,
+        toploc_config_name: &str,
+        result: &str,
+    ) {
+        if let Some(pool_id) = &self.pool_id {
+            GROUP_WORK_UNITS_CHECK_TOTAL
                 .with_label_values(&[
                     &self.validator_id as &str,
                     pool_id,

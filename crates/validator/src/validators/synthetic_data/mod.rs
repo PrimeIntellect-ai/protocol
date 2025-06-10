@@ -2,11 +2,10 @@ use crate::metrics::MetricsContext;
 use crate::store::redis::RedisStore;
 use crate::validators::Validator;
 use alloy::primitives::U256;
-use anyhow::{Context, Error};
-use hex;
+use anyhow::{Context, Error, Result};
 use log::{debug, warn};
 use log::{error, info};
-use redis::Commands;
+use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use shared::utils::StorageProvider;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
@@ -19,7 +18,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 pub mod toploc;
-use toploc::{Toploc, ToplocConfig};
+use toploc::{GroupValidationResult, Toploc, ToplocConfig};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum ValidationResult {
@@ -290,28 +289,40 @@ impl SyntheticDataValidator {
     }
 
     pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
-        let data = hex::decode(work_key)
-            .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
         info!("Invalidating work: {}", work_key);
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_work_key_invalidation();
+        }
 
         if self.disable_chain_invalidation {
             info!("Chain invalidation is disabled, skipping work invalidation");
             return Ok(());
         }
 
-        if let Some(metrics) = &self.metrics {
-            metrics.record_work_key_invalidation();
+        // Special case for tests - skip actual blockchain interaction
+        #[cfg(test)]
+        {
+            info!("Test mode: skipping actual work invalidation");
+            let _ = &self.prime_network;
+            let _ = &self.penalty;
+            Ok(())
         }
 
-        match self
-            .prime_network
-            .invalidate_work(self.pool_id, self.penalty, data)
-            .await
+        #[cfg(not(test))]
         {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                error!("Failed to invalidate work {}: {}", work_key, e);
-                Err(Error::msg(format!("Failed to invalidate work: {}", e)))
+            let data = hex::decode(work_key)
+                .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+            match self
+                .prime_network
+                .invalidate_work(self.pool_id, self.penalty, data)
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    error!("Failed to invalidate work {}: {}", work_key, e);
+                    Err(Error::msg(format!("Failed to invalidate work: {}", e)))
+                }
             }
         }
     }
@@ -330,7 +341,11 @@ impl SyntheticDataValidator {
             ValidationResult::Unknown => self.unknown_status_expiry_seconds,
             _ => 0,
         };
-        let mut con = self.redis_store.client.get_connection()?;
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
         let key = self.get_key_for_work_key(work_key);
         let status = serde_json::to_string(&status)?;
         if expiry > 0 {
@@ -340,10 +355,12 @@ impl SyntheticDataValidator {
                     status,
                     redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(expiry)),
                 )
+                .await
                 .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
         } else {
             let _: () = con
                 .set(&key, status)
+                .await
                 .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
         }
         Ok(())
@@ -353,10 +370,15 @@ impl SyntheticDataValidator {
         &self,
         work_key: &str,
     ) -> Result<Option<ValidationResult>, Error> {
-        let mut con = self.redis_store.client.get_connection()?;
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
         let key = self.get_key_for_work_key(work_key);
         let status: Option<String> = con
             .get(key)
+            .await
             .map_err(|e| Error::msg(format!("Failed to get work validation status: {}", e)))?;
         status
             .map(|status| {
@@ -372,20 +394,30 @@ impl SyntheticDataValidator {
         work_key: &str,
         work_info: &WorkInfo,
     ) -> Result<(), Error> {
-        let mut con = self.redis_store.client.get_connection()?;
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
         let key = format!("work_info:{}", work_key);
         let work_info = serde_json::to_string(&work_info)?;
         let _: () = con
             .set(&key, work_info)
+            .await
             .map_err(|e| Error::msg(format!("Failed to set work info: {}", e)))?;
         Ok(())
     }
 
     async fn get_work_info_from_redis(&self, work_key: &str) -> Result<Option<WorkInfo>, Error> {
-        let mut con = self.redis_store.client.get_connection()?;
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
         let key = format!("work_info:{}", work_key);
         let work_info: Option<String> = con
             .get(&key)
+            .await
             .map_err(|e| Error::msg(format!("Failed to get work info: {}", e)))?;
         work_info
             .map(|work_info| {
@@ -403,12 +435,14 @@ impl SyntheticDataValidator {
         let mut con = self
             .redis_store
             .client
-            .get_connection()
+            .get_multiplexed_async_connection()
+            .await
             .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
 
         // Try to get the file name from Redis cache
         let file_name: Option<String> = con
             .get(&redis_key)
+            .await
             .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
         if let Some(cached_file_name) = file_name {
             return Ok(cached_file_name);
@@ -439,7 +473,10 @@ impl SyntheticDataValidator {
             .unwrap_or(&original_file_name);
 
         // Cache the resolved and cleaned file name in Redis
-        let _: () = con.set(&redis_key, cleaned_file_name).unwrap();
+        let _: () = con
+            .set(&redis_key, cleaned_file_name)
+            .await
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
 
         Ok(cleaned_file_name.to_string())
     }
@@ -507,22 +544,39 @@ impl SyntheticDataValidator {
             "group:{}:{}:{}",
             group_info.group_id, group_info.group_size, group_info.file_number
         );
-        let mut redis: redis::Connection = self.redis_store.client.get_connection()?;
+        let mut redis = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
         redis
             .hset::<_, _, _, ()>(&group_key, work_key, group_info.to_redis()?)
-            .unwrap();
+            .await
+            .map_err(|e| Error::msg(format!("Failed to set group info in Redis: {}", e)))?;
 
         Ok(group_key)
     }
 
     async fn is_group_ready_for_validation(&self, group_key: &str) -> Result<bool, Error> {
-        let mut redis: redis::Connection = self.redis_store.client.get_connection()?;
-        let group_size: u32 = redis.hlen::<_, u32>(group_key).unwrap();
-        let expected_size = group_key.split(':').nth(2).unwrap().parse::<u32>().unwrap();
+        let mut redis = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+        let group_size: u32 = redis
+            .hlen::<_, u32>(group_key)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get group size from Redis: {}", e)))?;
+        let expected_size = group_key
+            .split(':')
+            .nth(2)
+            .ok_or_else(|| Error::msg("Failed to get group size from group key"))?
+            .parse::<u32>()
+            .map_err(|e| Error::msg(format!("Failed to parse group size: {}", e)))?;
         Ok(group_size == expected_size)
     }
 
-    async fn get_group(&self, work_key: &str) -> Result<Option<ToplocGroup>, Error> {
+    async fn get_group(&self, work_key: &str) -> Result<Option<ToplocGroup>> {
         let group_key = match self.build_group_for_key(work_key).await {
             Ok(key) => key,
             Err(e) => {
@@ -536,18 +590,21 @@ impl SyntheticDataValidator {
             work_key, ready_for_validation
         );
         if ready_for_validation {
-            let mut redis: redis::Connection = self.redis_store.client.get_connection()?;
-            let group_entries: HashMap<String, String> = redis.hgetall(&group_key)?;
+            let mut redis = self
+                .redis_store
+                .client
+                .get_multiplexed_async_connection()
+                .await?;
+            let group_entries: HashMap<String, String> = redis.hgetall(&group_key).await?;
             // Parse all entries once and sort by idx
-            let mut entries: Vec<(String, GroupInformation)> = group_entries
-                .into_iter()
-                .map(|(key, value)| {
-                    let info = GroupInformation::from_redis(&value).unwrap();
-                    (key, info)
-                })
-                .collect();
+            let mut entries: Vec<(String, GroupInformation)> = Vec::new();
+            for (key, value) in group_entries {
+                let info = GroupInformation::from_redis(&value)
+                    .map_err(|e| Error::msg(format!("Failed to parse group info: {}", e)))?;
+                entries.push((key, info));
+            }
 
-            entries.sort_by_key(|(_, info)| info.idx.parse::<usize>().unwrap());
+            entries.sort_by_key(|(_, info)| info.idx.parse::<usize>().unwrap_or(0));
 
             let mut toploc_group: ToplocGroup = entries
                 .first()
@@ -754,6 +811,8 @@ impl SyntheticDataValidator {
             .get_group_file_validation_status(&group.group_file_name)
             .await?;
         let toploc_config_name = toploc_config.name();
+
+        // Record toploc result
         if let Some(metrics) = &self.metrics {
             metrics.record_group_validation_status(
                 &group.group_id,
@@ -762,13 +821,9 @@ impl SyntheticDataValidator {
             );
         }
 
-        // Calculate total claimed units
-        let mut total_claimed_units: U256 = U256::from(0);
-        for work_key in &group.sorted_work_keys {
-            if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
-                total_claimed_units += work_info.work_units;
-            }
-        }
+        // Calculate total claimed units and node work units
+        let (total_claimed_units, node_work_units) =
+            self.calculate_group_work_units(&group).await?;
 
         // Log basic info for all cases
         info!(
@@ -781,39 +836,183 @@ impl SyntheticDataValidator {
             status.input_flops
         );
 
+        // Collect all nodes that need to be invalidated
+        let mut nodes_to_invalidate = Vec::new();
+
         // Handle rejection case
         if status.status == ValidationResult::Reject {
-            let indices = status.failing_indices;
-            let work_keys_to_invalidate: Vec<String> = indices
-                .iter()
-                .map(|&idx| group.sorted_work_keys[idx as usize].clone())
-                .collect();
-
-            warn!(
-                "Group {} rejected - Invalidating keys: {:?}",
-                group.group_id, work_keys_to_invalidate
-            );
-
-            for work_key in work_keys_to_invalidate {
-                self.invalidate_work(&work_key).await?;
-            }
+            let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
+            nodes_to_invalidate.extend(rejected_nodes);
+        } else {
+            let nodes_with_wrong_work_unit_claims = self
+                .handle_group_toploc_acceptance(
+                    &group,
+                    &status,
+                    total_claimed_units,
+                    &node_work_units,
+                    &toploc_config_name,
+                )
+                .await?;
+            nodes_to_invalidate.extend(nodes_with_wrong_work_unit_claims);
         }
 
-        // Handle mismatched units case
-        if total_claimed_units != U256::from(status.output_flops as u64) {
-            warn!(
-                "Group {} units mismatch - Claimed: {}, Toploc: {}, Keys: {:?}",
-                group.group_id, total_claimed_units, status.output_flops, group.sorted_work_keys
-            );
+        // Invalidate work for all nodes that need invalidation (only once)
+        if !nodes_to_invalidate.is_empty() {
+            for work_key in &group.sorted_work_keys {
+                if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
+                    if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
+                        self.invalidate_work(work_key).await?;
+                    }
+                }
+            }
         }
 
         // Update validation status for all work keys
         for work_key in &group.sorted_work_keys {
-            self.update_work_validation_status(work_key, &status.status)
-                .await?;
+            let work_info = self.get_work_info_from_redis(work_key).await?;
+            if let Some(work_info) = work_info {
+                if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
+                    self.update_work_validation_status(work_key, &ValidationResult::Reject)
+                        .await?;
+                } else {
+                    self.update_work_validation_status(work_key, &status.status)
+                        .await?;
+                }
+            }
         }
 
         Ok(())
+    }
+
+    async fn calculate_group_work_units(
+        &self,
+        group: &ToplocGroup,
+    ) -> Result<(U256, std::collections::HashMap<String, U256>), Error> {
+        let mut total_claimed_units: U256 = U256::from(0);
+        let mut node_work_units: std::collections::HashMap<String, U256> =
+            std::collections::HashMap::new();
+
+        for work_key in &group.sorted_work_keys {
+            if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
+                total_claimed_units += work_info.work_units;
+                node_work_units.insert(work_info.node_id.to_string(), work_info.work_units);
+            }
+        }
+
+        Ok((total_claimed_units, node_work_units))
+    }
+
+    async fn handle_group_toploc_rejection(
+        &self,
+        group: &ToplocGroup,
+        status: &GroupValidationResult,
+    ) -> Result<Vec<String>, Error> {
+        let indices = &status.failing_indices;
+        let work_keys_to_invalidate: Vec<String> = indices
+            .iter()
+            .map(|&idx| group.sorted_work_keys[idx as usize].clone())
+            .collect();
+
+        warn!(
+            "Group {} rejected - Invalidating keys: {:?}",
+            group.group_id, work_keys_to_invalidate
+        );
+
+        // Get node addresses for the rejected work keys
+        let mut rejected_nodes = Vec::new();
+        for work_key in work_keys_to_invalidate {
+            if let Some(work_info) = self.get_work_info_from_redis(&work_key).await? {
+                rejected_nodes.push(work_info.node_id.to_string());
+            }
+        }
+
+        Ok(rejected_nodes)
+    }
+
+    async fn handle_group_toploc_acceptance(
+        &self,
+        group: &ToplocGroup,
+        status: &GroupValidationResult,
+        total_claimed_units: U256,
+        node_work_units: &std::collections::HashMap<String, U256>,
+        toploc_config_name: &str,
+    ) -> Result<Vec<String>, Error> {
+        let output_flops_u256 = U256::from(status.output_flops as u64);
+        let diff = if total_claimed_units > output_flops_u256 {
+            total_claimed_units - output_flops_u256
+        } else {
+            output_flops_u256 - total_claimed_units
+        };
+        let work_units_match = diff <= U256::from(1);
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_group_work_units_check_result(
+                &group.group_id,
+                toploc_config_name,
+                if work_units_match {
+                    "match"
+                } else {
+                    "mismatch"
+                },
+            );
+        }
+
+        if !work_units_match {
+            let nodes_with_wrong_work_unit_claims = self
+                .handle_work_units_mismatch(
+                    group,
+                    status,
+                    total_claimed_units,
+                    node_work_units,
+                    output_flops_u256,
+                )
+                .await?;
+            Ok(nodes_with_wrong_work_unit_claims)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    async fn handle_work_units_mismatch(
+        &self,
+        group: &ToplocGroup,
+        status: &GroupValidationResult,
+        total_claimed_units: U256,
+        node_work_units: &std::collections::HashMap<String, U256>,
+        output_flops_u256: U256,
+    ) -> Result<Vec<String>, Error> {
+        // Calculate expected work units per node
+        let num_nodes = node_work_units.len() as u64;
+        let expected_work_units_per_node = if num_nodes > 0 {
+            output_flops_u256 / U256::from(num_nodes)
+        } else {
+            U256::from(0)
+        };
+
+        // Find nodes that submitted wrong work unit claims
+        let mut nodes_with_wrong_work_unit_claims = Vec::new();
+        for (node_address, work_units) in node_work_units {
+            let node_diff = if *work_units > expected_work_units_per_node {
+                *work_units - expected_work_units_per_node
+            } else {
+                expected_work_units_per_node - *work_units
+            };
+            if node_diff > U256::from(1) {
+                nodes_with_wrong_work_unit_claims.push(node_address.clone());
+            }
+        }
+
+        warn!(
+            "Group {} units mismatch - Claimed: {}, Toploc: {}, Expected per node: {}, Keys: {:?}, Nodes with wrong work unit claims: {:?}",
+            group.group_id,
+            total_claimed_units,
+            status.output_flops,
+            expected_work_units_per_node,
+            group.sorted_work_keys,
+            nodes_with_wrong_work_unit_claims
+        );
+
+        Ok(nodes_with_wrong_work_unit_claims)
     }
 
     pub async fn process_work_keys(self, work_keys: Vec<String>) -> Result<(), Error> {
@@ -1378,6 +1577,174 @@ mod tests {
         assert!(metrics_2
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
         assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
+        assert!(metrics_2.contains("validator_group_work_units_check_total{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_group_e2e_work_unit_mismatch() -> Result<(), Error> {
+        let mut server = Server::new_async().await;
+        let (store, contracts) = setup_test_env()?;
+
+        let config = ToplocConfig {
+            server_url: server.url(),
+            file_prefix_filter: Some("Qwen/Qwen0.6".to_string()),
+            ..Default::default()
+        };
+
+        let file_sha_1 = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
+        let file_sha_2 = "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf";
+        let group_id = "3450756714426841564";
+
+        let mock_storage = MockStorageProvider::new();
+        mock_storage.add_file(
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", group_id),
+            "file1",
+        );
+        mock_storage.add_file(
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", group_id),
+            "file2",
+        );
+        mock_storage.add_mapping_file(
+            file_sha_1,
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", group_id),
+        );
+        mock_storage.add_mapping_file(
+            file_sha_2,
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", group_id),
+        );
+        server
+            .mock(
+                "POST",
+                "/validategroup/dataset/samplingn-3450756714426841564-2-0.parquet",
+            )
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "file_shas": [file_sha_1, file_sha_2],
+                "group_id": group_id,
+                "file_number": 0,
+                "group_size": 2
+            })))
+            .with_status(200)
+            .with_body(r#"ok"#)
+            .create();
+        server
+            .mock(
+                "GET",
+                "/statusgroup/dataset/samplingn-3450756714426841564-2-0.parquet",
+            )
+            .with_status(200)
+            .with_body(r#"{"status": "accept", "input_flops": 1, "output_flops": 2000}"#)
+            .create();
+
+        let storage_provider = Arc::new(mock_storage);
+        let metrics_context = MetricsContext::new("0".to_string(), Some("0".to_string()));
+
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![config],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            10,
+            true,
+            false,
+            Some(metrics_context),
+        );
+
+        let work_keys: Vec<String> = vec![file_sha_1.to_string(), file_sha_2.to_string()];
+        let work_keys_2: Vec<String> = work_keys.clone();
+        let work_keys_3: Vec<String> = work_keys.clone();
+
+        // Node 1 claims exact amount (1000 work units)
+        let work_info_1 = WorkInfo {
+            node_id: Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
+            work_units: U256::from(1000),
+            ..Default::default()
+        };
+        // Node 2 claims too much (1500 work units instead of 1000)
+        let work_info_2 = WorkInfo {
+            node_id: Address::from_str("0x0000000000000000000000000000000000000002").unwrap(),
+            work_units: U256::from(1500),
+            ..Default::default()
+        };
+
+        validator
+            .update_work_info_in_redis(file_sha_1, &work_info_1)
+            .await?;
+        validator
+            .update_work_info_in_redis(file_sha_2, &work_info_2)
+            .await?;
+
+        let plan = validator.build_validation_plan(work_keys).await?;
+        assert_eq!(plan.group_trigger_tasks.len(), 1);
+        assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
+        let metrics_0 = export_metrics().unwrap();
+        assert!(metrics_0
+            .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 2"));
+
+        let group = validator.get_group(file_sha_1).await?;
+        assert!(group.is_some());
+        let group = group.unwrap();
+        assert_eq!(group.group_id, group_id);
+        assert_eq!(group.group_size, 2);
+        assert_eq!(group.file_number, 0);
+
+        let result = validator.process_group_task(group).await;
+        assert!(result.is_ok());
+
+        let cache_status_1 = validator
+            .get_work_validation_status_from_redis(file_sha_1)
+            .await?;
+        assert_eq!(cache_status_1, Some(ValidationResult::Unknown));
+        let cache_status_2 = validator
+            .get_work_validation_status_from_redis(file_sha_2)
+            .await?;
+        assert_eq!(cache_status_2, Some(ValidationResult::Unknown));
+
+        let plan_2 = validator.build_validation_plan(work_keys_2).await?;
+        assert_eq!(plan_2.group_trigger_tasks.len(), 0);
+        assert_eq!(plan_2.group_status_check_tasks.len(), 1);
+
+        let metrics = export_metrics().unwrap();
+        assert!(
+            metrics.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 2")
+        );
+
+        let result = validator
+            .process_group_status_check(plan_2.group_status_check_tasks[0].clone())
+            .await;
+        println!("result: {:?}", result);
+        assert!(result.is_ok());
+
+        // Node 1 should be accepted (exact claim)
+        let cache_status_1 = validator
+            .get_work_validation_status_from_redis(file_sha_1)
+            .await?;
+        assert_eq!(cache_status_1, Some(ValidationResult::Accept));
+
+        // Node 2 should be rejected (wrong claim)
+        let cache_status_2 = validator
+            .get_work_validation_status_from_redis(file_sha_2)
+            .await?;
+        assert_eq!(cache_status_2, Some(ValidationResult::Reject));
+
+        let plan_3 = validator.build_validation_plan(work_keys_3).await?;
+        assert_eq!(plan_3.group_trigger_tasks.len(), 0);
+        assert_eq!(plan_3.group_status_check_tasks.len(), 0);
+        let metrics_2 = export_metrics().unwrap();
+        println!("metrics_2: {}", metrics_2);
+        assert!(metrics_2
+            .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
+        assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
+        assert!(metrics_2.contains("validator_group_work_units_check_total{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"mismatch\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
+        assert!(metrics_2.contains("validator_group_work_units_check_total{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
 
         Ok(())
     }
