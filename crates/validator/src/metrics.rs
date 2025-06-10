@@ -9,7 +9,7 @@ lazy_static! {
         "validator_validation_loop_duration_seconds",
         "Duration of the validation loop",
         &["validator_id", "pool_id"],
-        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 12.0, 15.0, 18.0, 20.0, 25.0, 30.0, 60.0, 120.0, 300.0]
+        vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0]
     ).unwrap();
 
     // === SYNTHETIC DATA VALIDATION METRICS ===
