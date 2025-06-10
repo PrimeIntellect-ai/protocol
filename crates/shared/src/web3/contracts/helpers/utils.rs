@@ -166,7 +166,6 @@ mod tests {
 
         let call_two = contract.increment().nonce(tx_count);
         let tx = retry_call(call_two, 3, provider_clone, Some(1)).await;
-        println!("tx: {:?}", tx);
 
         assert!(tx.is_ok());
         Ok(())
