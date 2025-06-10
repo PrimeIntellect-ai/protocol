@@ -301,14 +301,6 @@ where
                     return Err(ErrorBadRequest("Address not authorized"));
                 }
 
-                if !validator_state.is_address_allowed(&recovered_address) {
-                    warn!(
-                        "Request with valid signature but not authorized. Allowed addresses: {:?}",
-                        validator_state.get_allowed_addresses()
-                    );
-                    return Err(ErrorBadRequest("Address not authorized"));
-                }
-
                 if let Some(timestamp) = timestamp {
                     let current_time = SystemTime::now()
                         .duration_since(UNIX_EPOCH)

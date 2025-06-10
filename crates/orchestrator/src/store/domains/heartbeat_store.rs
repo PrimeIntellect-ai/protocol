@@ -65,7 +65,9 @@ impl HeartbeatStore {
             .await
             .map_err(|_| anyhow!("Failed to get value"))?;
         match value {
-            Some(value) => Ok(value.parse::<u32>().unwrap()),
+            Some(value) => value
+                .parse::<u32>()
+                .map_err(|_| anyhow!("Failed to parse counter value")),
             None => Ok(0),
         }
     }
