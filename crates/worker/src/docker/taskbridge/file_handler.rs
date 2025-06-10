@@ -357,7 +357,7 @@ pub async fn handle_file_validation(
         .await
         .unwrap();
 
-    let tx = retry_call(call, 5, None, provider.clone(), None)
+    let tx = retry_call(call, 20, provider.clone(), None)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to submit work: {}", e))?;
 
