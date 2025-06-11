@@ -74,15 +74,29 @@ impl<'a> HardwareChallenge<'a> {
             .await?;
 
         let response_text = response.text().await?;
-        let parsed_response: ApiResponse<ChallengeResponse> = serde_json::from_str(&response_text)?;
+        let parsed_response: ApiResponse<ChallengeResponse> = serde_json::from_str(&response_text)
+            .map_err(|e| {
+                error!(
+                    "Failed to parse JSON response from node {}: {}",
+                    node.id, response_text
+                );
+                anyhow::anyhow!("Failed to parse response: {}", e)
+            })?;
 
         if !parsed_response.success {
-            Err(anyhow::anyhow!("Error fetching challenge from node"))
+            error!("Challenge failed for node {}: {}", node.id, response_text);
+            Err(anyhow::anyhow!(
+                "Error fetching challenge from node: {}",
+                response_text
+            ))
         } else if challenge_expected.result == parsed_response.data.result {
             info!("Challenge for node {} successful", node.id);
             Ok(0)
         } else {
-            error!("Challenge failed");
+            error!(
+                "Challenge failed for node {}: expected {:?}, got {:?}",
+                node.id, challenge_expected.result, parsed_response.data.result
+            );
             Err(anyhow::anyhow!("Node failed challenge"))
         }
     }
