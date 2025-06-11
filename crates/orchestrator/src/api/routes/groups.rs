@@ -166,15 +166,19 @@ async fn fetch_node_logs(node_address: Address, app_state: Data<AppState>) -> se
 
             let node_url = format!("http://{}:{}", node_ip, node_port);
             let logs_path = "/task/logs".to_string();
-            let logs_url = format!(
-                "{}{}?timestamp={}",
-                node_url,
-                logs_path,
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-            );
+            let timestamp = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            {
+                Ok(duration) => duration.as_secs(),
+                Err(e) => {
+                    error!("System time error for node {}: {}", node_address, e);
+                    return json!({
+                        "success": false,
+                        "error": "System time error"
+                    });
+                }
+            };
+
+            let logs_url = format!("{}{}?timestamp={}", node_url, logs_path, timestamp);
 
             let message_signature = match sign_request(&logs_path, &app_state.wallet, None).await {
                 Ok(sig) => sig,
@@ -189,18 +193,43 @@ async fn fetch_node_logs(node_address: Address, app_state: Data<AppState>) -> se
             };
 
             let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert(
-                "x-address",
-                app_state
-                    .wallet
-                    .wallet
-                    .default_signer()
-                    .address()
-                    .to_string()
-                    .parse()
-                    .unwrap(),
-            );
-            headers.insert("x-signature", message_signature.parse().unwrap());
+
+            let address_header = match app_state
+                .wallet
+                .wallet
+                .default_signer()
+                .address()
+                .to_string()
+                .parse()
+            {
+                Ok(header) => header,
+                Err(e) => {
+                    error!(
+                        "Failed to parse address header for node {}: {}",
+                        node_address, e
+                    );
+                    return json!({
+                        "success": false,
+                        "error": "Failed to create address header"
+                    });
+                }
+            };
+            headers.insert("x-address", address_header);
+
+            let signature_header = match message_signature.parse() {
+                Ok(header) => header,
+                Err(e) => {
+                    error!(
+                        "Failed to parse signature header for node {}: {}",
+                        node_address, e
+                    );
+                    return json!({
+                        "success": false,
+                        "error": "Failed to create signature header"
+                    });
+                }
+            };
+            headers.insert("x-signature", signature_header);
 
             match app_state
                 .http_client

@@ -490,11 +490,17 @@ impl NodeGroupsPlugin {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
         let pattern = format!("{}*", GROUP_KEY_PREFIX);
-        let group_keys: Vec<String> = conn.keys(&pattern).await?;
-        debug!("Found {} potential group keys", group_keys.len());
+        let mut iter: redis::AsyncIter<String> = conn.scan_match(&pattern).await?;
+        let mut all_keys = Vec::new();
+        while let Some(key) = iter.next_item().await {
+            all_keys.push(key);
+        }
+
+        drop(iter);
+        debug!("Found {} potential group keys", all_keys.len());
 
         let mut groups = Vec::new();
-        for group_key in group_keys {
+        for group_key in all_keys {
             if let Some(group_data) = conn.get::<_, Option<String>>(&group_key).await? {
                 if let Ok(group) = serde_json::from_str::<NodeGroup>(&group_data) {
                     if group.configuration_name == topology {
@@ -512,11 +518,17 @@ impl NodeGroupsPlugin {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
         let pattern = format!("{}*", GROUP_KEY_PREFIX);
-        let group_keys: Vec<String> = conn.keys(&pattern).await?;
-        debug!("Found {} potential group keys", group_keys.len());
+        let mut iter: redis::AsyncIter<String> = conn.scan_match(&pattern).await?;
+        let mut all_keys = Vec::new();
+        while let Some(key) = iter.next_item().await {
+            all_keys.push(key);
+        }
+
+        drop(iter);
+        debug!("Found {} potential group keys", all_keys.len());
 
         let mut groups = Vec::new();
-        for group_key in group_keys {
+        for group_key in all_keys {
             if let Some(group_data) = conn.get::<_, Option<String>>(&group_key).await? {
                 if let Ok(group) = serde_json::from_str::<NodeGroup>(&group_data) {
                     groups.push(group);

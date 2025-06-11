@@ -61,7 +61,7 @@ impl<'a> NodeInviter<'a> {
                 .timeout(Duration::from_secs(REQUEST_TIMEOUT))
                 .connect_timeout(Duration::from_secs(CONNECTION_TIMEOUT))
                 .build()
-                .unwrap(),
+                .expect("Failed to build HTTP client"),
         }
     }
 
@@ -119,7 +119,7 @@ impl<'a> NodeInviter<'a> {
         let expiration: [u8; 32] = U256::from(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .map_err(|e| anyhow::anyhow!("System time error: {}", e))?
                 .as_secs()
                 + 1000,
         )
@@ -142,29 +142,33 @@ impl<'a> NodeInviter<'a> {
             },
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .map_err(|e| anyhow::anyhow!("System time error: {}", e))?
                 .as_secs(),
             expiration,
             nonce,
         };
-        let payload_json = serde_json::to_value(&payload).unwrap();
+        let payload_json = serde_json::to_value(&payload)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize payload: {}", e))?;
 
         let message_signature = sign_request(&invite_path, &self.wallet, Some(&payload_json))
             .await
-            .unwrap();
+            .map_err(|e| anyhow::anyhow!("Failed to sign request: {}", e))?;
 
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "x-address",
-            self.wallet
-                .wallet
-                .default_signer()
-                .address()
-                .to_string()
-                .parse()
-                .unwrap(),
-        );
-        headers.insert("x-signature", message_signature.parse().unwrap());
+        let address_header = self
+            .wallet
+            .wallet
+            .default_signer()
+            .address()
+            .to_string()
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Failed to parse address header"))?;
+        headers.insert("x-address", address_header);
+
+        let signature_header = message_signature
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Failed to parse signature header"))?;
+        headers.insert("x-signature", signature_header);
 
         info!("Sending invite to node: {:?}", invite_url);
 
