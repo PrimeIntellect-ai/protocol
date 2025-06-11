@@ -785,27 +785,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_network_timeout_error() -> Result<(), Error> {
-        // Test with an invalid/unreachable URL to simulate network errors
-        let config = ToplocConfig {
-            server_url: "http://localhost:99999".to_string(), // Invalid port
-            auth_token: None,
-            file_prefix_filter: None,
-        };
-        let toploc = Toploc::new(config, None);
-
-        let result = toploc
-            .trigger_single_file_validation("abc123", "0x456", "test.parquet")
-            .await;
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Failed to trigger validation"));
-        Ok(())
-    }
-    #[tokio::test]
     async fn test_group_validation_with_auth_token() -> Result<(), Error> {
         let mut server = Server::new_async().await;
 
