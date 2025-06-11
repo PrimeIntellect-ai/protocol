@@ -882,7 +882,7 @@ impl SyntheticDataValidator<WalletProvider> {
         if status.status == ValidationResult::Reject {
             let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
             nodes_to_invalidate.extend(rejected_nodes);
-        } else {
+        } else if status.status == ValidationResult::Accept {
             let nodes_with_wrong_work_unit_claims = self
                 .handle_group_toploc_acceptance(
                     &group,
