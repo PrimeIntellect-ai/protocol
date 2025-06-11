@@ -127,13 +127,55 @@ impl DiscoveryMonitor {
         Ok(nodes)
     }
 
+    async fn has_healthy_node_with_same_endpoint(
+        &self,
+        node_address: Address,
+        ip_address: &str,
+        port: u16,
+    ) -> Result<bool, Error> {
+        let nodes = self.store_context.node_store.get_nodes().await?;
+        Ok(nodes.iter().any(|other_node| {
+            other_node.address != node_address
+                && other_node.ip_address == ip_address
+                && other_node.port == port
+                && other_node.status == NodeStatus::Healthy
+        }))
+    }
+
     async fn sync_single_node_with_discovery(
         &self,
         discovery_node: &DiscoveryNode,
     ) -> Result<(), Error> {
         let node_address = discovery_node.node.id.parse::<Address>()?;
+
+        // Check if there's any healthy node with the same IP and port
+        let has_healthy_node_same_endpoint = self
+            .has_healthy_node_with_same_endpoint(
+                node_address,
+                &discovery_node.node.ip_address,
+                discovery_node.node.port,
+            )
+            .await?;
+
         match self.store_context.node_store.get_node(&node_address).await {
             Ok(Some(existing_node)) => {
+                // If there's a healthy node with same IP and port, and this node isn't healthy, mark it dead
+                if has_healthy_node_same_endpoint && existing_node.status != NodeStatus::Healthy {
+                    info!(
+                        "Node {} shares endpoint {}:{} with a healthy node, marking as dead",
+                        node_address, discovery_node.node.ip_address, discovery_node.node.port
+                    );
+                    if let Err(e) = self
+                        .store_context
+                        .node_store
+                        .update_node_status(&node_address, NodeStatus::Dead)
+                        .await
+                    {
+                        error!("Error updating node status: {}", e);
+                    }
+                    return Ok(());
+                }
+
                 if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
                     info!(
                         "Node {} is validated but not provider whitelisted, marking as ejected",
@@ -172,8 +214,8 @@ impl DiscoveryMonitor {
                     // Node is active False but we have it in store and it is healthy
                     // This means that the node likely got kicked by e.g. the validator
                     // We simply remove it from the store now and will rediscover it later?
-                    println!(
-                        "Node {} is no longer active on chain, marking as dead",
+                    info!(
+                        "Node {} is no longer active on chain, marking as ejected",
                         node_address
                     );
                     if !discovery_node.is_provider_whitelisted {
@@ -225,6 +267,15 @@ impl DiscoveryMonitor {
                 }
             }
             Ok(None) => {
+                // Don't add new node if there's already a healthy node with same IP and port
+                if has_healthy_node_same_endpoint {
+                    info!(
+                        "Skipping new node {} as endpoint {}:{} is already used by a healthy node",
+                        node_address, discovery_node.node.ip_address, discovery_node.node.port
+                    );
+                    return Ok(());
+                }
+
                 info!("Discovered new validated node: {}", node_address);
                 let mut node = OrchestratorNode::from(discovery_node.clone());
                 node.first_seen = Some(Utc::now());
@@ -495,5 +546,120 @@ mod tests {
 
         // Status should remain the same
         assert_eq!(node_after_resync.status, NodeStatus::Discovered);
+    }
+
+    #[tokio::test]
+    async fn test_sync_node_with_same_endpoint() {
+        let store = Arc::new(RedisStore::new_test());
+        let mut con = store
+            .client
+            .get_connection()
+            .expect("Should connect to test Redis instance");
+
+        redis::cmd("PING")
+            .query::<String>(&mut con)
+            .expect("Redis should be responsive");
+        redis::cmd("FLUSHALL")
+            .query::<String>(&mut con)
+            .expect("Redis should be flushed");
+
+        let store_context = Arc::new(StoreContext::new(store.clone()));
+
+        // Create first node (will be healthy)
+        let node1_address = "0x1234567890123456789012345678901234567890";
+        let node1 = DiscoveryNode {
+            is_validated: true,
+            is_provider_whitelisted: true,
+            is_active: true,
+            node: Node {
+                id: node1_address.to_string(),
+                provider_address: node1_address.to_string(),
+                ip_address: "127.0.0.1".to_string(),
+                port: 8080,
+                compute_pool_id: 1,
+                compute_specs: Some(ComputeSpecs {
+                    gpu: None,
+                    cpu: None,
+                    ram_mb: Some(1024),
+                    storage_gb: Some(10),
+                    storage_path: None,
+                }),
+            },
+            is_blacklisted: false,
+            last_updated: None,
+            created_at: None,
+        };
+
+        let mut orchestrator_node1 = OrchestratorNode::from(node1.clone());
+        orchestrator_node1.status = NodeStatus::Healthy;
+        orchestrator_node1.address = node1.node.id.parse::<Address>().unwrap();
+
+        let _ = store_context
+            .node_store
+            .add_node(orchestrator_node1.clone())
+            .await;
+
+        // Create second node with same IP and port
+        let node2_address = "0x2234567890123456789012345678901234567890";
+        let mut node2 = node1.clone();
+        node2.node.id = node2_address.to_string();
+        node2.node.provider_address = node2_address.to_string();
+
+        let fake_wallet = Wallet::new(
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .unwrap();
+
+        let mode = ServerMode::Full;
+        let discovery_monitor = DiscoveryMonitor::new(
+            fake_wallet,
+            1,
+            10,
+            "http://localhost:8080".to_string(),
+            store_context.clone(),
+            Arc::new(LoopHeartbeats::new(&mode)),
+        );
+
+        // Try to sync the second node
+        discovery_monitor
+            .sync_single_node_with_discovery(&node2)
+            .await
+            .unwrap();
+
+        // Verify second node was not added
+        let node2_result = store_context
+            .node_store
+            .get_node(&node2_address.parse::<Address>().unwrap())
+            .await
+            .unwrap();
+        assert!(
+            node2_result.is_none(),
+            "Node with same endpoint should not be added"
+        );
+
+        // Create third node with same IP but different port (should be allowed)
+        let node3_address = "0x3234567890123456789012345678901234567890";
+        let mut node3 = node1.clone();
+        node3.node.id = node3_address.to_string();
+        node3.node.provider_address = node3_address.to_string();
+        node3.node.port = 8081; // Different port
+
+        // Try to sync the third node
+        discovery_monitor
+            .sync_single_node_with_discovery(&node3)
+            .await
+            .unwrap();
+
+        // Verify third node was added (different port)
+        let node3_result = store_context
+            .node_store
+            .get_node(&node3_address.parse::<Address>().unwrap())
+            .await
+            .unwrap();
+        assert!(
+            node3_result.is_some(),
+            "Node with different port should be added"
+        );
     }
 }
