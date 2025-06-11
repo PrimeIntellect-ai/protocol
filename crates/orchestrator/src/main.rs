@@ -277,7 +277,7 @@ async fn main() -> Result<()> {
                 metrics_sync_store_context,
                 metrics_sync_context,
                 server_mode,
-                10, // Sync every 10 seconds - aligns with heartbeat frequency
+                10,
             );
             sync_service.run().await
         });
