@@ -18,6 +18,8 @@ pub struct OrchestratorNode {
     pub version: Option<String>,
     pub p2p_id: Option<String>,
     pub last_status_change: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub first_seen: Option<DateTime<Utc>>,
 
     #[serde(default)]
     pub compute_specs: Option<ComputeSpecs>,
@@ -42,6 +44,7 @@ impl From<DiscoveryNode> for OrchestratorNode {
             version: None,
             p2p_id: None,
             last_status_change: None,
+            first_seen: None,
             compute_specs: discovery_node.compute_specs.clone(),
         }
     }

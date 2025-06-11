@@ -198,6 +198,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
 
@@ -211,6 +212,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
 
@@ -238,6 +240,7 @@ mod tests {
                 version: None,
                 p2p_id: None,
                 last_status_change: None,
+                first_seen: None,
                 compute_specs: None,
             },
             OrchestratorNode {
@@ -250,6 +253,7 @@ mod tests {
                 version: None,
                 p2p_id: None,
                 last_status_change: None,
+                first_seen: None,
                 compute_specs: None,
             },
             OrchestratorNode {
@@ -262,6 +266,7 @@ mod tests {
                 version: None,
                 p2p_id: None,
                 last_status_change: None,
+                first_seen: None,
                 compute_specs: None,
             },
         ];

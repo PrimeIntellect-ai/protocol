@@ -40,6 +40,7 @@ fn create_test_node(
         task_state: None,
         version: None,
         last_status_change: None,
+        first_seen: None,
         p2p_id: Some("test_p2p_id".to_string()),
         compute_specs,
     }
