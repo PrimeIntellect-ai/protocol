@@ -5,7 +5,7 @@ use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::Address;
 use anyhow::Error;
 use anyhow::Result;
-use chrono;
+use chrono::Utc;
 use log::{error, info};
 use serde_json;
 use shared::models::api::ApiResponse;
@@ -227,7 +227,7 @@ impl DiscoveryMonitor {
             Ok(None) => {
                 info!("Discovered new validated node: {}", node_address);
                 let mut node = OrchestratorNode::from(discovery_node.clone());
-                node.first_seen = Some(chrono::Utc::now());
+                node.first_seen = Some(Utc::now());
                 let _ = self.store_context.node_store.add_node(node.clone()).await;
             }
             Err(e) => {
@@ -294,7 +294,7 @@ mod tests {
         let mut orchestrator_node = OrchestratorNode::from(discovery_node.clone());
         orchestrator_node.status = NodeStatus::Ejected;
         orchestrator_node.address = discovery_node.node.id.parse::<Address>().unwrap();
-        orchestrator_node.first_seen = Some(chrono::Utc::now());
+        orchestrator_node.first_seen = Some(Utc::now());
         orchestrator_node.compute_specs = Some(ComputeSpecs {
             gpu: None,
             cpu: None,
@@ -420,7 +420,7 @@ mod tests {
             Arc::new(LoopHeartbeats::new(&mode)),
         );
 
-        let time_before = chrono::Utc::now();
+        let time_before = Utc::now();
 
         // Sync a new node that doesn't exist in the store
         discovery_monitor
@@ -428,7 +428,7 @@ mod tests {
             .await
             .unwrap();
 
-        let time_after = chrono::Utc::now();
+        let time_after = Utc::now();
 
         // Verify the node was added with first_seen timestamp
         let node_from_store = store_context
@@ -469,7 +469,7 @@ mod tests {
                 compute_specs: None,
             },
             is_blacklisted: false,
-            last_updated: Some(chrono::Utc::now()),
+            last_updated: Some(Utc::now()),
             created_at: None,
         };
 

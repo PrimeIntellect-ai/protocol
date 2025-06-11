@@ -18,6 +18,7 @@ pub struct OrchestratorNode {
     pub version: Option<String>,
     pub p2p_id: Option<String>,
     pub last_status_change: Option<DateTime<Utc>>,
+    #[serde(default)]
     pub first_seen: Option<DateTime<Utc>>,
 
     #[serde(default)]
