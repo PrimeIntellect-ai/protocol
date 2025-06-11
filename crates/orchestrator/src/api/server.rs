@@ -87,7 +87,6 @@ pub async fn start_server(
     ));
 
     let api_key_middleware = Arc::new(ApiKeyMiddleware::new(admin_api_key));
-
     HttpServer::new(move || {
         let mut app = App::new()
             .app_data(app_state.clone())
@@ -106,7 +105,8 @@ pub async fn start_server(
                         HttpResponse::InternalServerError().json(health_status)
                     }
                 },
-            )));
+            )))
+            .service(metrics_routes().wrap(api_key_middleware.clone()));
 
         if !matches!(server_mode, ServerMode::ProcessorOnly) {
             app = app
@@ -114,7 +114,6 @@ pub async fn start_server(
                 .service(storage_routes().wrap(ValidateSignature::new(validator_state.clone())))
                 .service(nodes_routes().wrap(api_key_middleware.clone()))
                 .service(tasks_routes().wrap(api_key_middleware.clone()))
-                .service(metrics_routes().wrap(api_key_middleware.clone()))
                 .service(groups_routes().wrap(api_key_middleware.clone()))
                 .default_service(web::route().to(|| async {
                     HttpResponse::NotFound().json(json!({
