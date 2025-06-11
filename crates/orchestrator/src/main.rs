@@ -25,6 +25,7 @@ use log::debug;
 use log::error;
 use log::info;
 use log::LevelFilter;
+use metrics::sync_service::MetricsSyncService;
 use metrics::webhook_sender::MetricsWebhookSender;
 use metrics::MetricsContext;
 use plugins::node_groups::NodeGroupConfiguration;
@@ -268,6 +269,19 @@ async fn main() -> Result<()> {
 
     // Only spawn processor tasks if in ProcessorOnly or Full mode
     if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+        // Start metrics sync service to centralize metrics from Redis to Prometheus
+        let metrics_sync_store_context = store_context.clone();
+        let metrics_sync_context = metrics_context.clone();
+        tasks.spawn(async move {
+            let sync_service = MetricsSyncService::new(
+                metrics_sync_store_context,
+                metrics_sync_context,
+                server_mode,
+                10,
+            );
+            sync_service.run().await
+        });
+
         if let Some(group_plugin) = node_groups_plugin.clone() {
             tasks.spawn(async move {
                 group_plugin

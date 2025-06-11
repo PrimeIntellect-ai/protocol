@@ -98,17 +98,12 @@ async fn heartbeat(
             .map(|metric| (&metric.key.task_id, &metric.key.label))
             .collect();
 
-        // Clean up stale metrics
+        // Clean up stale metrics from Redis only
+        // The sync service will handle all Prometheus updates
         for (task_id, task_metrics) in previous_metrics {
             for (label, _value) in task_metrics {
                 let prev_key = (&task_id, &label);
                 if !new_metrics_set.contains(&prev_key) {
-                    // Remove from Prometheus metrics
-                    app_state.metrics.remove_compute_task_gauge(
-                        &node_address.to_string(),
-                        &task_id,
-                        &label,
-                    );
                     // Remove from Redis metrics store
                     if let Err(e) = app_state
                         .store_context
@@ -122,7 +117,7 @@ async fn heartbeat(
             }
         }
 
-        // Store new metrics and update Prometheus
+        // Store new metrics in Redis only
         if let Err(e) = app_state
             .store_context
             .metrics_store
@@ -130,15 +125,6 @@ async fn heartbeat(
             .await
         {
             error!("Error storing metrics: {}", e);
-        }
-
-        for metric in metrics {
-            app_state.metrics.record_compute_task_gauge(
-                &node_address.to_string(),
-                &metric.key.task_id,
-                &metric.key.label,
-                metric.value,
-            );
         }
     }
 
@@ -171,7 +157,9 @@ mod tests {
 
     use super::*;
     use crate::api::tests::helper::create_test_app_state;
+    use crate::metrics::sync_service::MetricsSyncService;
     use crate::models::node::OrchestratorNode;
+    use crate::ServerMode;
 
     use actix_web::http::StatusCode;
     use actix_web::test;
@@ -254,10 +242,38 @@ mod tests {
             })
         );
 
-        let metrics = app_state.metrics.export_metrics().unwrap();
-        assert!(metrics.contains("performance/batch_avg_seq_length"));
-        assert!(metrics.contains("performance/batch_min_seq_length"));
-        assert!(metrics.contains("long-task-1234"));
+        // Verify metrics are stored in Redis (heartbeat API responsibility)
+        let redis_metrics = app_state
+            .store_context
+            .metrics_store
+            .get_metrics_for_node(node_address)
+            .await
+            .unwrap();
+        assert!(redis_metrics.contains_key("long-task-1234"));
+        assert!(redis_metrics["long-task-1234"].contains_key("performance/batch_avg_seq_length"));
+        assert!(redis_metrics["long-task-1234"].contains_key("performance/batch_min_seq_length"));
+
+        // Test metrics sync service: Redis -> Prometheus
+        // Verify Prometheus registry is initially empty (no sync service has run)
+        let prometheus_metrics_before = app_state.metrics.export_metrics().unwrap();
+        assert!(!prometheus_metrics_before.contains("performance/batch_avg_seq_length"));
+
+        // Create and run sync service manually to test the sync functionality
+        let sync_service = MetricsSyncService::new(
+            app_state.store_context.clone(),
+            app_state.metrics.clone(),
+            ServerMode::Full, // Test app uses Full mode
+            10,
+        );
+
+        // Manually trigger a sync operation
+        sync_service.sync_metrics_from_redis().await.unwrap();
+
+        // Verify Prometheus registry now contains the metrics from Redis
+        let prometheus_metrics_after = app_state.metrics.export_metrics().unwrap();
+        assert!(prometheus_metrics_after.contains("performance/batch_avg_seq_length"));
+        assert!(prometheus_metrics_after.contains("performance/batch_min_seq_length"));
+        assert!(prometheus_metrics_after.contains("long-task-1234"));
 
         let heartbeat_two = json!({"address": address, "metrics": [
             {"key": {"task_id": "long-task-1235", "label": "performance/batch_len"}, "value": 10.0},
@@ -272,11 +288,17 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let metrics = app_state.metrics.export_metrics().unwrap();
-        assert!(metrics.contains("long-task-1235"));
-        assert!(metrics.contains("performance/batch_len"));
-        assert!(metrics.contains("performance/batch_min_len"));
-        assert!(!metrics.contains("long-task-1234"));
+        // Verify new metrics in Redis and old metrics cleaned up
+        let redis_metrics = app_state
+            .store_context
+            .metrics_store
+            .get_metrics_for_node(node_address)
+            .await
+            .unwrap();
+        assert!(redis_metrics.contains_key("long-task-1235"));
+        assert!(redis_metrics["long-task-1235"].contains_key("performance/batch_len"));
+        assert!(redis_metrics["long-task-1235"].contains_key("performance/batch_min_len"));
+        assert!(!redis_metrics.contains_key("long-task-1234")); // Stale metrics cleaned up
         let aggregated_metrics = app_state
             .store_context
             .metrics_store
@@ -293,6 +315,12 @@ mod tests {
             aggregated_metrics.get("performance/batch_avg_seq_length"),
             None
         );
+        sync_service.sync_metrics_from_redis().await.unwrap();
+        let prometheus_metrics_after_two = app_state.metrics.export_metrics().unwrap();
+        assert!(prometheus_metrics_after_two.contains("performance/batch_len"));
+        assert!(prometheus_metrics_after_two.contains("performance/batch_min_len"));
+        assert!(prometheus_metrics_after_two.contains("long-task-1235"));
+        assert!(!prometheus_metrics_after_two.contains("long-task-1234"));
 
         let heartbeat_three = json!({"address": address, "metrics": [
         ]});
@@ -305,7 +333,15 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let metrics = app_state.metrics.export_metrics().unwrap();
+        // Verify all metrics cleaned up from Redis
+        let redis_metrics = app_state
+            .store_context
+            .metrics_store
+            .get_metrics_for_node(node_address)
+            .await
+            .unwrap();
+        assert!(redis_metrics.is_empty()); // All metrics for this node should be gone
+
         let aggregated_metrics = app_state
             .store_context
             .metrics_store
@@ -313,7 +349,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(aggregated_metrics, HashMap::new());
-        assert_eq!(metrics, "");
     }
 
     #[actix_web::test]
