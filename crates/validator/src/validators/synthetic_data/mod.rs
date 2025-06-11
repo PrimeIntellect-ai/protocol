@@ -1459,26 +1459,27 @@ mod tests {
             ..Default::default()
         };
 
-        let file_sha = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
-        let group_id = "3450756714426841564";
+        const FILE_SHA: &str = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
+        const GROUP_ID: &str = "3450756714426841564";
+        const NODE_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
 
         let mock_storage = MockStorageProvider::new();
         mock_storage.add_file(
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", group_id),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", GROUP_ID),
             "file1",
         );
         mock_storage.add_mapping_file(
-            file_sha,
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", group_id),
+            FILE_SHA,
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", GROUP_ID),
         );
         server
             .mock(
                 "POST",
-                "/validategroup/dataset/samplingn-3450756714426841564-1-0.parquet",
+                format!("/validategroup/dataset/samplingn-{}-1-0.parquet", GROUP_ID).as_str(),
             )
             .match_body(mockito::Matcher::Json(serde_json::json!({
-                "file_shas": [file_sha],
-                "group_id": group_id,
+                "file_shas": [FILE_SHA],
+                "group_id": GROUP_ID,
                 "file_number": 0,
                 "group_size": 1
             })))
@@ -1488,7 +1489,7 @@ mod tests {
         server
             .mock(
                 "GET",
-                "/statusgroup/dataset/samplingn-3450756714426841564-1-0.parquet",
+                format!("/statusgroup/dataset/samplingn-{}-1-0.parquet", GROUP_ID).as_str(),
             )
             .with_status(200)
             .with_body(r#"{"status": "accept"}"#)
@@ -1515,12 +1516,10 @@ mod tests {
             Some(metrics_context),
         );
 
-        let work_keys: Vec<String> = vec![file_sha.to_string()];
-        let work_keys_2: Vec<String> = work_keys.clone();
-        let work_keys_3: Vec<String> = work_keys.clone();
+        let work_keys: Vec<String> = vec![FILE_SHA.to_string()];
 
         let work_info = WorkInfo {
-            node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+            node_id: Address::from_str(NODE_ADDRESS).unwrap(),
             ..Default::default()
         };
         for work_key in work_keys.clone() {
@@ -1529,17 +1528,17 @@ mod tests {
                 .await?;
         }
 
-        let plan = validator.build_validation_plan(work_keys).await?;
+        let plan = validator.build_validation_plan(work_keys.clone()).await?;
         assert_eq!(plan.group_trigger_tasks.len(), 1);
-        assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
+        assert_eq!(plan.group_trigger_tasks[0].group_id, GROUP_ID);
         let metrics_0 = export_metrics().unwrap();
         assert!(metrics_0
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 1"));
 
-        let group = validator.get_group(file_sha).await?;
+        let group = validator.get_group(FILE_SHA).await?;
         assert!(group.is_some());
         let group = group.unwrap();
-        assert_eq!(group.group_id, group_id);
+        assert_eq!(group.group_id, GROUP_ID);
         assert_eq!(group.group_size, 1);
         assert_eq!(group.file_number, 0);
 
@@ -1547,11 +1546,11 @@ mod tests {
         assert!(result.is_ok());
 
         let cache_status = validator
-            .get_work_validation_status_from_redis(file_sha)
+            .get_work_validation_status_from_redis(FILE_SHA)
             .await?;
         assert_eq!(cache_status, Some(ValidationResult::Unknown));
 
-        let plan_2 = validator.build_validation_plan(work_keys_2).await?;
+        let plan_2 = validator.build_validation_plan(work_keys.clone()).await?;
         assert_eq!(plan_2.group_trigger_tasks.len(), 0);
         assert_eq!(plan_2.group_status_check_tasks.len(), 1);
 
@@ -1566,23 +1565,26 @@ mod tests {
         assert!(result.is_ok());
 
         let cache_status = validator
-            .get_work_validation_status_from_redis(file_sha)
+            .get_work_validation_status_from_redis(FILE_SHA)
             .await?;
         assert_eq!(cache_status, Some(ValidationResult::Accept));
 
-        let plan_3 = validator.build_validation_plan(work_keys_3).await?;
+        let plan_3 = validator.build_validation_plan(work_keys.clone()).await?;
         assert_eq!(plan_3.group_trigger_tasks.len(), 0);
         assert_eq!(plan_3.group_status_check_tasks.len(), 0);
         let metrics_2 = export_metrics().unwrap();
         assert!(metrics_2
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
         assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
-        assert!(metrics_2.contains("validator_group_work_units_check_total{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
+        assert!(metrics_2.contains(&format!("validator_group_work_units_check_total{{group_id=\"{}\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"}} 1", GROUP_ID)));
 
         Ok(())
     }
 
     #[tokio::test]
+    // This test accepts a groups submission via the toploc server which returns a total output flops count
+    // One of the nodes claims more work units than the output_flops_count / number of nodes
+    // The validator should reject the node and accept the other node
     async fn test_group_e2e_work_unit_mismatch() -> Result<(), Error> {
         let mut server = Server::new_async().await;
         let (store, contracts) = setup_test_env()?;
@@ -1593,35 +1595,39 @@ mod tests {
             ..Default::default()
         };
 
-        let file_sha_1 = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
-        let file_sha_2 = "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf";
-        let group_id = "3450756714426841564";
+        const HONEST_NODE_ADDRESS: &str = "0x0000000000000000000000000000000000000001";
+        const HONEST_FILE_SHA: &str =
+            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
+        const EXCESSIVE_FILE_SHA: &str =
+            "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf";
+        const EXCESSIVE_NODE_ADDRESS: &str = "0x0000000000000000000000000000000000000002";
+        const GROUP_ID: &str = "3456714426841564";
 
         let mock_storage = MockStorageProvider::new();
         mock_storage.add_file(
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", group_id),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", GROUP_ID),
             "file1",
         );
         mock_storage.add_file(
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", group_id),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", GROUP_ID),
             "file2",
         );
         mock_storage.add_mapping_file(
-            file_sha_1,
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", group_id),
+            HONEST_FILE_SHA,
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", GROUP_ID),
         );
         mock_storage.add_mapping_file(
-            file_sha_2,
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", group_id),
+            EXCESSIVE_FILE_SHA,
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", GROUP_ID),
         );
         server
             .mock(
                 "POST",
-                "/validategroup/dataset/samplingn-3450756714426841564-2-0.parquet",
+                format!("/validategroup/dataset/samplingn-{}-2-0.parquet", GROUP_ID).as_str(),
             )
             .match_body(mockito::Matcher::Json(serde_json::json!({
-                "file_shas": [file_sha_1, file_sha_2],
-                "group_id": group_id,
+                "file_shas": [HONEST_FILE_SHA, EXCESSIVE_FILE_SHA],
+                "group_id": GROUP_ID,
                 "file_number": 0,
                 "group_size": 2
             })))
@@ -1631,7 +1637,7 @@ mod tests {
         server
             .mock(
                 "GET",
-                "/statusgroup/dataset/samplingn-3450756714426841564-2-0.parquet",
+                format!("/statusgroup/dataset/samplingn-{}-2-0.parquet", GROUP_ID).as_str(),
             )
             .with_status(200)
             .with_body(r#"{"status": "accept", "input_flops": 1, "output_flops": 2000}"#)
@@ -1658,41 +1664,42 @@ mod tests {
             Some(metrics_context),
         );
 
-        let work_keys: Vec<String> = vec![file_sha_1.to_string(), file_sha_2.to_string()];
-        let work_keys_2: Vec<String> = work_keys.clone();
-        let work_keys_3: Vec<String> = work_keys.clone();
+        let work_keys: Vec<String> =
+            vec![HONEST_FILE_SHA.to_string(), EXCESSIVE_FILE_SHA.to_string()];
 
         // Node 1 claims exact amount (1000 work units)
+        const EXPECTED_WORK_UNITS: u64 = 1000;
+        const EXCESSIVE_WORK_UNITS: u64 = 1500;
         let work_info_1 = WorkInfo {
-            node_id: Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
-            work_units: U256::from(1000),
+            node_id: Address::from_str(HONEST_NODE_ADDRESS).unwrap(),
+            work_units: U256::from(EXPECTED_WORK_UNITS),
             ..Default::default()
         };
         // Node 2 claims too much (1500 work units instead of 1000)
         let work_info_2 = WorkInfo {
-            node_id: Address::from_str("0x0000000000000000000000000000000000000002").unwrap(),
-            work_units: U256::from(1500),
+            node_id: Address::from_str(EXCESSIVE_NODE_ADDRESS).unwrap(),
+            work_units: U256::from(EXCESSIVE_WORK_UNITS),
             ..Default::default()
         };
 
         validator
-            .update_work_info_in_redis(file_sha_1, &work_info_1)
+            .update_work_info_in_redis(HONEST_FILE_SHA, &work_info_1)
             .await?;
         validator
-            .update_work_info_in_redis(file_sha_2, &work_info_2)
+            .update_work_info_in_redis(EXCESSIVE_FILE_SHA, &work_info_2)
             .await?;
 
-        let plan = validator.build_validation_plan(work_keys).await?;
+        let plan = validator.build_validation_plan(work_keys.clone()).await?;
         assert_eq!(plan.group_trigger_tasks.len(), 1);
-        assert_eq!(plan.group_trigger_tasks[0].group_id, group_id);
+        assert_eq!(plan.group_trigger_tasks[0].group_id, GROUP_ID);
         let metrics_0 = export_metrics().unwrap();
         assert!(metrics_0
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 2"));
 
-        let group = validator.get_group(file_sha_1).await?;
+        let group = validator.get_group(HONEST_FILE_SHA).await?;
         assert!(group.is_some());
         let group = group.unwrap();
-        assert_eq!(group.group_id, group_id);
+        assert_eq!(group.group_id, GROUP_ID);
         assert_eq!(group.group_size, 2);
         assert_eq!(group.file_number, 0);
 
@@ -1700,15 +1707,15 @@ mod tests {
         assert!(result.is_ok());
 
         let cache_status_1 = validator
-            .get_work_validation_status_from_redis(file_sha_1)
+            .get_work_validation_status_from_redis(HONEST_FILE_SHA)
             .await?;
         assert_eq!(cache_status_1, Some(ValidationResult::Unknown));
         let cache_status_2 = validator
-            .get_work_validation_status_from_redis(file_sha_2)
+            .get_work_validation_status_from_redis(EXCESSIVE_FILE_SHA)
             .await?;
         assert_eq!(cache_status_2, Some(ValidationResult::Unknown));
 
-        let plan_2 = validator.build_validation_plan(work_keys_2).await?;
+        let plan_2 = validator.build_validation_plan(work_keys.clone()).await?;
         assert_eq!(plan_2.group_trigger_tasks.len(), 0);
         assert_eq!(plan_2.group_status_check_tasks.len(), 1);
 
@@ -1720,31 +1727,30 @@ mod tests {
         let result = validator
             .process_group_status_check(plan_2.group_status_check_tasks[0].clone())
             .await;
-        println!("result: {:?}", result);
         assert!(result.is_ok());
 
         // Node 1 should be accepted (exact claim)
         let cache_status_1 = validator
-            .get_work_validation_status_from_redis(file_sha_1)
+            .get_work_validation_status_from_redis(HONEST_FILE_SHA)
             .await?;
         assert_eq!(cache_status_1, Some(ValidationResult::Accept));
 
-        // Node 2 should be rejected (wrong claim)
+        // Node 2 should be rejected (excessive claim)
         let cache_status_2 = validator
-            .get_work_validation_status_from_redis(file_sha_2)
+            .get_work_validation_status_from_redis(EXCESSIVE_FILE_SHA)
             .await?;
         assert_eq!(cache_status_2, Some(ValidationResult::Reject));
 
-        let plan_3 = validator.build_validation_plan(work_keys_3).await?;
+        // Make sure there is no more work to process
+        let plan_3 = validator.build_validation_plan(work_keys.clone()).await?;
         assert_eq!(plan_3.group_trigger_tasks.len(), 0);
         assert_eq!(plan_3.group_status_check_tasks.len(), 0);
         let metrics_2 = export_metrics().unwrap();
-        println!("metrics_2: {}", metrics_2);
+        assert!(metrics_2.contains(&format!("validator_group_validations_total{{group_id=\"{}\",pool_id=\"0\",result=\"accept\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"}} 1", GROUP_ID)));
         assert!(metrics_2
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
         assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
-        assert!(metrics_2.contains("validator_group_work_units_check_total{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"mismatch\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
-        assert!(metrics_2.contains("validator_group_work_units_check_total{group_id=\"3450756714426841564\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"} 1"));
+        assert!(metrics_2.contains(&format!("validator_group_work_units_check_total{{group_id=\"{}\",pool_id=\"0\",result=\"mismatch\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"}} 1", GROUP_ID)));
 
         Ok(())
     }
