@@ -14,6 +14,7 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
+use chrono;
 
 pub struct DiscoveryMonitor {
     coordinator_wallet: Wallet,
@@ -225,7 +226,8 @@ impl DiscoveryMonitor {
             }
             Ok(None) => {
                 info!("Discovered new validated node: {}", node_address);
-                let node = OrchestratorNode::from(discovery_node.clone());
+                let mut node = OrchestratorNode::from(discovery_node.clone());
+                node.first_seen = Some(chrono::Utc::now());
                 let _ = self.store_context.node_store.add_node(node.clone()).await;
             }
             Err(e) => {
@@ -292,6 +294,7 @@ mod tests {
         let mut orchestrator_node = OrchestratorNode::from(discovery_node.clone());
         orchestrator_node.status = NodeStatus::Ejected;
         orchestrator_node.address = discovery_node.node.id.parse::<Address>().unwrap();
+        orchestrator_node.first_seen = Some(chrono::Utc::now());
         orchestrator_node.compute_specs = Some(ComputeSpecs {
             gpu: None,
             cpu: None,
@@ -363,5 +366,134 @@ mod tests {
         if let Some(node) = node_after_sync {
             assert_eq!(node.status, NodeStatus::Dead);
         }
+    }
+
+    #[tokio::test]
+    async fn test_first_seen_timestamp_set_on_new_node() {
+        let node_address = "0x2234567890123456789012345678901234567890";
+        let discovery_node = DiscoveryNode {
+            is_validated: true,
+            is_provider_whitelisted: true,
+            is_active: true,
+            node: Node {
+                id: node_address.to_string(),
+                provider_address: node_address.to_string(),
+                ip_address: "192.168.1.100".to_string(),
+                port: 8080,
+                compute_pool_id: 1,
+                compute_specs: None,
+            },
+            is_blacklisted: false,
+            last_updated: None,
+            created_at: None,
+        };
+
+        let store = Arc::new(RedisStore::new_test());
+        let mut con = store
+            .client
+            .get_connection()
+            .expect("Should connect to test Redis instance");
+
+        redis::cmd("PING")
+            .query::<String>(&mut con)
+            .expect("Redis should be responsive");
+        redis::cmd("FLUSHALL")
+            .query::<String>(&mut con)
+            .expect("Redis should be flushed");
+
+        let store_context = Arc::new(StoreContext::new(store.clone()));
+
+        let fake_wallet = Wallet::new(
+            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            Url::parse("http://localhost:8545").unwrap(),
+        )
+        .unwrap();
+
+        let mode = ServerMode::Full;
+
+        let discovery_monitor = DiscoveryMonitor::new(
+            fake_wallet,
+            1,
+            10,
+            "http://localhost:8080".to_string(),
+            store_context.clone(),
+            Arc::new(LoopHeartbeats::new(&mode)),
+        );
+
+        let time_before = chrono::Utc::now();
+
+        // Sync a new node that doesn't exist in the store
+        discovery_monitor
+            .sync_single_node_with_discovery(&discovery_node)
+            .await
+            .unwrap();
+
+        let time_after = chrono::Utc::now();
+
+        // Verify the node was added with first_seen timestamp
+        let node_from_store = store_context
+            .node_store
+            .get_node(&discovery_node.node.id.parse::<Address>().unwrap())
+            .await
+            .unwrap();
+
+        assert!(node_from_store.is_some());
+        let node = node_from_store.unwrap();
+        
+        // Verify first_seen is set
+        assert!(node.first_seen.is_some());
+        let first_seen = node.first_seen.unwrap();
+        
+        // Verify the timestamp is within the expected range
+        assert!(first_seen >= time_before && first_seen <= time_after);
+        
+        // Verify other fields are set correctly
+        assert_eq!(node.status, NodeStatus::Discovered);
+        assert_eq!(node.ip_address, "192.168.1.100");
+        
+        // Test case: Sync the same node again to verify first_seen is preserved
+        // Simulate some time passing
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        
+        // Update discovery data to simulate a change (e.g., IP address change)
+        let updated_discovery_node = DiscoveryNode {
+            is_validated: true,
+            is_provider_whitelisted: true,
+            is_active: true,
+            node: Node {
+                id: node_address.to_string(),
+                provider_address: node_address.to_string(),
+                ip_address: "192.168.1.101".to_string(), // Changed IP
+                port: 8080,
+                compute_pool_id: 1,
+                compute_specs: None,
+            },
+            is_blacklisted: false,
+            last_updated: Some(chrono::Utc::now()),
+            created_at: None,
+        };
+        
+        // Sync the node again
+        discovery_monitor
+            .sync_single_node_with_discovery(&updated_discovery_node)
+            .await
+            .unwrap();
+        
+        // Verify the node was updated but first_seen is preserved
+        let node_after_resync = store_context
+            .node_store
+            .get_node(&discovery_node.node.id.parse::<Address>().unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        
+        // Verify first_seen is still the same (preserved)
+        assert_eq!(node_after_resync.first_seen, Some(first_seen));
+        
+        // Verify IP was updated
+        assert_eq!(node_after_resync.ip_address, "192.168.1.101");
+        
+        // Status should remain the same
+        assert_eq!(node_after_resync.status, NodeStatus::Discovered);
     }
 }

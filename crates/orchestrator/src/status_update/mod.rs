@@ -368,6 +368,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
 
@@ -449,6 +450,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
 
@@ -507,6 +509,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
 
@@ -572,6 +575,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
 
@@ -642,6 +646,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
         if let Err(e) = app_state
@@ -735,6 +740,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
         if let Err(e) = app_state
@@ -764,6 +770,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
 
@@ -845,6 +852,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
 
@@ -940,6 +948,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
 

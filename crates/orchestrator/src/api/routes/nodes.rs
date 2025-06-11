@@ -469,6 +469,7 @@ mod tests {
             version: None,
             last_status_change: None,
             p2p_id: None,
+            first_seen: None,
             compute_specs: None,
         };
         app_state
