@@ -65,7 +65,7 @@ impl MetricsSyncService {
         };
 
         // Clear existing Prometheus metrics
-        self.metrics_context.clear_all_metrics();
+        self.metrics_context.clear_compute_task_metrics();
 
         // Rebuild metrics from Redis data
         let mut total_metrics = 0;
