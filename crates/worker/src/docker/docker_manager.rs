@@ -65,18 +65,21 @@ impl DockerManager {
     /// Pull a Docker image if it doesn't exist locally
     pub async fn pull_image(&self, image: &str) -> Result<(), DockerError> {
         debug!("Checking if image needs to be pulled: {}", image);
-        
+
         // Check if the image uses :latest or :main tag
         let should_always_pull = image.ends_with(":latest") || image.ends_with(":main");
-        
+
         // Only skip pulling if image exists locally AND it's not a :latest or :main tag
         if !should_always_pull && self.docker.inspect_image(image).await.is_ok() {
             debug!("Image {} already exists locally", image);
             return Ok(());
         }
-        
+
         if should_always_pull {
-            info!("Image {} uses :latest or :main tag, pulling to ensure we have the newest version", image);
+            info!(
+                "Image {} uses :latest or :main tag, pulling to ensure we have the newest version",
+                image
+            );
         } else {
             info!("Image {} not found locally, pulling...", image);
         }
