@@ -4,8 +4,9 @@ use crate::api::routes::task::task_routes;
 use crate::docker::DockerService;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::state::system_state::SystemState;
-use actix_web::{middleware, web::Data, App, HttpServer};
+use actix_web::{middleware, web, web::Data, App, HttpResponse, HttpServer};
 use log::error;
+use serde_json::json;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::structs::compute_pool::PoolInfo;
@@ -51,6 +52,13 @@ pub async fn start_server(
         }
     };
 
+    if validators.is_empty() {
+        error!("❌ No validator roles found on contracts - cannot start worker without validators");
+        error!("This means the smart contract has no registered validators, which is required for signature validation");
+        error!("Please ensure validators are properly registered on the PrimeNetwork contract before starting the worker");
+        std::process::exit(1);
+    }
+
     let mut allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
     allowed_addresses.extend(validators);
     let validator_state = Arc::new(ValidatorState::new(allowed_addresses));
@@ -63,6 +71,12 @@ pub async fn start_server(
             .service(invite_routes())
             .service(task_routes())
             .service(challenge_routes())
+            .default_service(web::route().to(|| async {
+                HttpResponse::NotFound().json(json!({
+                    "success": false,
+                    "error": "Resource not found"
+                }))
+            }))
     })
     .bind((host, port))?
     .run()

@@ -13,6 +13,7 @@ use futures_util::future::{self};
 use futures_util::Stream;
 use futures_util::StreamExt;
 use log::{debug, error, warn};
+use serde_json::json;
 use std::future::{ready, Ready};
 use std::pin::Pin;
 use std::rc::Rc;
@@ -189,12 +190,20 @@ where
 
                     // Check if adding this chunk would exceed the size limit
                     if body.len() + chunk.len() > MAX_BODY_SIZE {
-                        return Err(ErrorBadRequest("Request body too large"));
+                        return Err(ErrorBadRequest(json!({
+                            "error": "Request body too large",
+                            "code": "BODY_TOO_LARGE",
+                            "max_size": MAX_BODY_SIZE
+                        })));
                     }
 
                     // Check if we've exceeded the time limit for reading the body
                     if start_time.elapsed() > Duration::from_secs(BODY_TIMEOUT_SECS) {
-                        return Err(ErrorBadRequest("Request body read timeout"));
+                        return Err(ErrorBadRequest(json!({
+                            "error": "Request body read timeout",
+                            "code": "BODY_READ_TIMEOUT",
+                            "timeout_seconds": BODY_TIMEOUT_SECS
+                        })));
                     }
 
                     body.extend_from_slice(chunk.as_ref());
@@ -206,7 +215,13 @@ where
             let body_result =
                 match timeout(Duration::from_secs(BODY_TIMEOUT_SECS), body_read_future).await {
                     Ok(result) => result,
-                    Err(_) => return Err(ErrorBadRequest("Request body read timeout")),
+                    Err(_) => {
+                        return Err(ErrorBadRequest(json!({
+                            "error": "Request body read timeout",
+                            "code": "BODY_READ_TIMEOUT",
+                            "timeout_seconds": BODY_TIMEOUT_SECS
+                        })))
+                    }
                 };
 
             // If there was an error reading the body, return it
@@ -221,7 +236,11 @@ where
                     Ok(val) => val,
                     Err(e) => {
                         error!("Error parsing payload: {:?}", e);
-                        return Err(ErrorBadRequest(e));
+                        return Err(ErrorBadRequest(json!({
+                            "error": "Invalid JSON payload",
+                            "code": "INVALID_JSON",
+                            "details": e.to_string()
+                        })));
                     }
                 };
                 let mut payload_data = payload_value.clone();
@@ -238,7 +257,11 @@ where
                     Ok(s) => s,
                     Err(e) => {
                         error!("Error serializing payload: {:?}", e);
-                        return Err(ErrorBadRequest(e));
+                        return Err(ErrorBadRequest(json!({
+                            "error": "Failed to serialize payload",
+                            "code": "SERIALIZATION_ERROR",
+                            "details": e.to_string()
+                        })));
                     }
                 };
 
@@ -269,25 +292,41 @@ where
                 let signature = signature.trim_start_matches("0x");
                 let parsed_signature = match Signature::from_str(signature) {
                     Ok(sig) => sig,
-                    Err(_) => return Err(ErrorBadRequest("Invalid signature format")),
+                    Err(_) => {
+                        return Err(ErrorBadRequest(json!({
+                            "error": "Invalid signature format",
+                            "code": "INVALID_SIGNATURE_FORMAT"
+                        })))
+                    }
                 };
 
                 let recovered_address = match parsed_signature.recover_address_from_msg(msg) {
                     Ok(addr) => addr,
                     Err(_) => {
-                        return Err(ErrorBadRequest("Failed to recover address from message"))
+                        return Err(ErrorBadRequest(json!({
+                            "error": "Failed to recover address from message",
+                            "code": "ADDRESS_RECOVERY_FAILED"
+                        })))
                     }
                 };
 
                 let expected_address = match Address::from_str(&address) {
                     Ok(addr) => addr,
-                    Err(_) => return Err(ErrorBadRequest("Invalid address format")),
+                    Err(_) => {
+                        return Err(ErrorBadRequest(json!({
+                            "error": "Invalid address format",
+                            "code": "INVALID_ADDRESS_FORMAT"
+                        })))
+                    }
                 };
 
                 if recovered_address != expected_address {
                     debug!("Recovered address: {:?}", recovered_address);
                     debug!("Expected address: {:?}", expected_address);
-                    return Err(ErrorBadRequest("Invalid signature"));
+                    return Err(ErrorBadRequest(json!({
+                        "error": "Invalid signature",
+                        "code": "SIGNATURE_MISMATCH",
+                    })));
                 }
 
                 if !validator_state
@@ -298,7 +337,11 @@ where
                         "Request with valid signature but not authorized. Allowed addresses: {:?}",
                         validator_state.get_allowed_addresses()
                     );
-                    return Err(ErrorBadRequest("Address not authorized"));
+                    return Err(ErrorBadRequest(json!({
+                        "error": "Address not authorized",
+                        "code": "ADDRESS_NOT_AUTHORIZED",
+                        "address": recovered_address.to_string()
+                    })));
                 }
 
                 if let Some(timestamp) = timestamp {
@@ -307,7 +350,13 @@ where
                         .unwrap()
                         .as_secs();
                     if current_time - timestamp > 10 {
-                        return Err(ErrorBadRequest("Request expired"));
+                        return Err(ErrorBadRequest(json!({
+                            "error": "Request expired",
+                            "code": "REQUEST_EXPIRED",
+                            "timestamp": timestamp,
+                            "current_time": current_time,
+                            "max_age_seconds": 10
+                        })));
                     }
                 }
 
@@ -320,7 +369,11 @@ where
 
                 service.call(req).await
             } else {
-                Err(ErrorBadRequest("Missing signature or address"))
+                Err(ErrorBadRequest(json!({
+                    "error": "Missing signature or address",
+                    "code": "MISSING_AUTH_HEADERS",
+                    "required_headers": ["x-signature", "x-address"]
+                })))
             }
         })
     }
@@ -360,7 +413,8 @@ mod tests {
         let err = test::try_call_service(&app, req).await;
         match err {
             Err(e) => {
-                assert_eq!(e.to_string(), "Missing signature or address");
+                let error_str = e.to_string();
+                assert!(error_str.contains("Missing signature or address"));
                 let error_response = e.error_response();
                 assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
             }
@@ -389,7 +443,8 @@ mod tests {
         let err = test::try_call_service(&app, req).await;
         match err {
             Err(e) => {
-                assert_eq!(e.to_string(), "Invalid signature format");
+                let error_str = e.to_string();
+                assert!(error_str.contains("Invalid signature format"));
                 let error_response = e.error_response();
                 assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
             }
@@ -500,7 +555,8 @@ mod tests {
         let err = test::try_call_service(&app, req).await;
         match err {
             Err(e) => {
-                assert_eq!(e.to_string(), "Address not authorized");
+                let error_str = e.to_string();
+                assert!(error_str.contains("Address not authorized"));
                 let error_response = e.error_response();
                 assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
             }
@@ -573,7 +629,8 @@ mod tests {
         let err = test::try_call_service(&app, req).await;
         match err {
             Err(e) => {
-                assert_eq!(e.to_string(), "Address not authorized");
+                let error_str = e.to_string();
+                assert!(error_str.contains("Address not authorized"));
                 let error_response = e.error_response();
                 assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
             }
