@@ -1,4 +1,5 @@
 use prometheus::{GaugeVec, Opts, Registry, TextEncoder};
+pub mod sync_service;
 pub mod webhook_sender;
 
 pub struct MetricsContext {
@@ -52,5 +53,12 @@ impl MetricsContext {
         let encoder = TextEncoder::new();
         let metric_families = self.registry.gather();
         encoder.encode_to_string(&metric_families)
+    }
+
+    /// Clear all metrics from the registry
+    pub fn clear_all_metrics(&self) {
+        // Clear all time series from the compute_task_gauges metric family
+        // This removes all existing metrics so we can rebuild from Redis
+        self.compute_task_gauges.reset();
     }
 }
