@@ -326,8 +326,6 @@ where
                     return Err(ErrorBadRequest(json!({
                         "error": "Invalid signature",
                         "code": "SIGNATURE_MISMATCH",
-                        "recovered_address": recovered_address.to_string(),
-                        "expected_address": expected_address.to_string()
                     })));
                 }
 
