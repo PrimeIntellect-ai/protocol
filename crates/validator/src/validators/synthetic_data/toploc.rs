@@ -43,6 +43,8 @@ impl Toploc {
                 }
                 headers
             })
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
             .build()
             .expect("Failed to build HTTP client");
 
@@ -145,14 +147,24 @@ impl Toploc {
                 Ok(())
             }
             Err(e) => {
-                error!(
-                    "Failed to trigger remote toploc validation for {}: {}",
-                    file_name, e
-                );
+                let error_msg = if e.is_timeout() {
+                    format!("Toploc request timed out for {}: {}", file_name, e)
+                } else if e.is_connect() {
+                    format!(
+                        "Failed to connect to toploc server for {}: {}",
+                        file_name, e
+                    )
+                } else {
+                    format!(
+                        "Failed to trigger remote toploc validation for {}: {}",
+                        file_name, e
+                    )
+                };
+                error!("{}", error_msg);
                 if let Some(metrics) = &self.metrics {
                     metrics.record_api_request("toploc_single_file_validation", "0");
                 }
-                Err(Error::msg(format!("Failed to trigger validation: {}", e)))
+                Err(Error::msg(error_msg))
             }
         }
     }
@@ -216,17 +228,24 @@ impl Toploc {
                 Ok(())
             }
             Err(e) => {
-                error!(
-                    "Failed to trigger remote toploc group validation for {}: {}",
-                    file_name, e
-                );
+                let error_msg = if e.is_timeout() {
+                    format!("Toploc group request timed out for {}: {}", file_name, e)
+                } else if e.is_connect() {
+                    format!(
+                        "Failed to connect to toploc server for group {}: {}",
+                        file_name, e
+                    )
+                } else {
+                    format!(
+                        "Failed to trigger remote toploc group validation for {}: {}",
+                        file_name, e
+                    )
+                };
+                error!("{}", error_msg);
                 if let Some(metrics) = &self.metrics {
                     metrics.record_api_request("toploc_group_file_validation", "0");
                 }
-                Err(Error::msg(format!(
-                    "Failed to trigger group validation: {}",
-                    e
-                )))
+                Err(Error::msg(error_msg))
             }
         }
     }
@@ -313,14 +332,21 @@ impl Toploc {
                 }
             }
             Err(e) => {
-                error!(
-                    "Failed to poll remote toploc group validation for {}: {}",
-                    file_name, e
-                );
-                Err(Error::msg(format!(
-                    "Failed to poll remote toploc group validation: {}",
-                    e
-                )))
+                let error_msg = if e.is_timeout() {
+                    format!("Toploc status check timed out for {}: {}", file_name, e)
+                } else if e.is_connect() {
+                    format!(
+                        "Failed to connect to toploc server for status check {}: {}",
+                        file_name, e
+                    )
+                } else {
+                    format!(
+                        "Failed to poll remote toploc group validation for {}: {}",
+                        file_name, e
+                    )
+                };
+                error!("{}", error_msg);
+                Err(Error::msg(error_msg))
             }
         }
     }
