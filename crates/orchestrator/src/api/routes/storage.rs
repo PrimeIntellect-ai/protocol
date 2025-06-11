@@ -388,7 +388,6 @@ mod tests {
         );
 
         let metrics = app_state.metrics.export_metrics().unwrap();
-        println!("{}", metrics);
         assert!(metrics.contains("orchestrator_file_upload_requests_total"));
         assert!(metrics.contains(&format!("orchestrator_file_upload_requests_total{{node_address=\"test_address\",pool_id=\"{}\",task_id=\"{}\",task_name=\"test-task\"}} 1", app_state.metrics.pool_id, task.id)));
     }
