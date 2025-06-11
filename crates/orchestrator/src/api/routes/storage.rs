@@ -274,6 +274,12 @@ async fn request_upload(
                 file_name
             );
 
+            app_state.metrics.increment_file_upload_requests(
+                &request_upload.task_id,
+                &task.name,
+                address,
+            );
+
             #[cfg(test)]
             return HttpResponse::Ok().json(serde_json::json!({
                 "success": true,
@@ -380,6 +386,11 @@ mod tests {
             json["file_name"],
             serde_json::Value::String("model_123/user_uploads/test.parquet".to_string())
         );
+
+        let metrics = app_state.metrics.export_metrics().unwrap();
+        println!("{}", metrics);
+        assert!(metrics.contains("orchestrator_file_upload_requests_total"));
+        assert!(metrics.contains(&format!("orchestrator_file_upload_requests_total{{node_address=\"test_address\",pool_id=\"{}\",task_id=\"{}\",task_name=\"test-task\"}} 1", app_state.metrics.pool_id, task.id)));
     }
 
     #[actix_web::test]
