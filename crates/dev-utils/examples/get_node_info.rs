@@ -3,7 +3,6 @@ use alloy::providers::RootProvider;
 use clap::Parser;
 use eyre::Result;
 use shared::web3::contracts::core::builder::ContractBuilder;
-use shared::web3::wallet::Wallet;
 use std::str::FromStr;
 use url::Url;
 

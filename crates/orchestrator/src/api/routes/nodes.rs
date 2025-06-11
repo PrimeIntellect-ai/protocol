@@ -298,7 +298,8 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
     };
     headers.insert("x-signature", signature_header);
 
-    match reqwest::Client::new()
+    match app_state
+        .http_client
         .get(logs_url)
         .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
         .headers(headers)

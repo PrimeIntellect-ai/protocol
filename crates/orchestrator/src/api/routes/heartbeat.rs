@@ -18,7 +18,15 @@ async fn heartbeat(
     app_state: Data<AppState>,
 ) -> HttpResponse {
     let task_info = heartbeat.clone();
-    let node_address = Address::from_str(&heartbeat.address).unwrap();
+    let node_address = match Address::from_str(&heartbeat.address) {
+        Ok(address) => address,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "error": "Invalid node address format"
+            }));
+        }
+    };
 
     let node_opt = app_state
         .store_context
