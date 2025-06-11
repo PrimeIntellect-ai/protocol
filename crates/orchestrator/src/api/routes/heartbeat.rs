@@ -28,6 +28,11 @@ async fn heartbeat(
         }
     };
 
+    // Track heartbeat request in metrics
+    app_state
+        .metrics
+        .increment_heartbeat_requests(&heartbeat.address);
+
     let node_opt = app_state
         .store_context
         .node_store
@@ -257,6 +262,7 @@ mod tests {
         // Verify Prometheus registry is initially empty (no sync service has run)
         let prometheus_metrics_before = app_state.metrics.export_metrics().unwrap();
         assert!(!prometheus_metrics_before.contains("performance/batch_avg_seq_length"));
+        assert!(prometheus_metrics_before.contains(&format!("orchestrator_heartbeat_requests_total{{node_address=\"0x0000000000000000000000000000000000000000\",pool_id=\"{}\"}} 1", app_state.metrics.pool_id)));
 
         // Create and run sync service manually to test the sync functionality
         let sync_service = MetricsSyncService::new(
@@ -264,6 +270,7 @@ mod tests {
             app_state.metrics.clone(),
             ServerMode::Full, // Test app uses Full mode
             10,
+            None, // No node groups plugin in test
         );
 
         // Manually trigger a sync operation

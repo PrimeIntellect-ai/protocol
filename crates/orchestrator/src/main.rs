@@ -272,12 +272,14 @@ async fn main() -> Result<()> {
         // Start metrics sync service to centralize metrics from Redis to Prometheus
         let metrics_sync_store_context = store_context.clone();
         let metrics_sync_context = metrics_context.clone();
+        let metrics_sync_node_groups = node_groups_plugin.clone();
         tasks.spawn(async move {
             let sync_service = MetricsSyncService::new(
                 metrics_sync_store_context,
                 metrics_sync_context,
                 server_mode,
                 10,
+                metrics_sync_node_groups,
             );
             sync_service.run().await
         });
@@ -328,8 +330,6 @@ async fn main() -> Result<()> {
 
         let status_update_store_context = store_context.clone();
         let status_update_heartbeats = heartbeats.clone();
-        let status_update_metrics = metrics_context.clone();
-
         tasks.spawn({
             let contracts = contracts.clone();
             async move {
@@ -342,7 +342,6 @@ async fn main() -> Result<()> {
                     args.disable_ejection,
                     status_update_heartbeats.clone(),
                     status_update_plugins,
-                    status_update_metrics,
                 );
                 status_updater.run().await
             }

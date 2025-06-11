@@ -1,4 +1,3 @@
-use crate::metrics::MetricsContext;
 use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
@@ -20,7 +19,6 @@ pub struct NodeStatusUpdater {
     disable_ejection: bool,
     heartbeats: Arc<LoopHeartbeats>,
     plugins: Vec<Box<dyn StatusUpdatePlugin>>,
-    metrics_context: Arc<MetricsContext>,
 }
 
 impl NodeStatusUpdater {
@@ -34,7 +32,6 @@ impl NodeStatusUpdater {
         disable_ejection: bool,
         heartbeats: Arc<LoopHeartbeats>,
         plugins: Vec<Box<dyn StatusUpdatePlugin>>,
-        metrics_context: Arc<MetricsContext>,
     ) -> Self {
         Self {
             store_context,
@@ -45,7 +42,6 @@ impl NodeStatusUpdater {
             disable_ejection,
             heartbeats,
             plugins,
-            metrics_context,
         }
     }
 
@@ -279,12 +275,6 @@ impl NodeStatusUpdater {
 
                     for (task_id, task_metrics) in node_metrics {
                         for (label, _value) in task_metrics {
-                            // Remove from Prometheus metrics
-                            self.metrics_context.remove_compute_task_gauge(
-                                &node.address.to_string(),
-                                &task_id,
-                                &label,
-                            );
                             // Remove from Redis metrics store
                             if let Err(e) = self
                                 .store_context
@@ -356,7 +346,6 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
-            app_state.metrics.clone(),
         );
         let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -470,7 +459,6 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
-            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -528,7 +516,6 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
-            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -602,7 +589,6 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
-            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -689,7 +675,6 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
-            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -786,7 +771,6 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
-            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -875,7 +859,6 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
-            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -961,7 +944,6 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
-            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -1030,7 +1012,6 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
-            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
