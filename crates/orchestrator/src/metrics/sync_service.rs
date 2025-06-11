@@ -42,7 +42,6 @@ impl MetricsSyncService {
             debug!("Metrics sync service disabled for ApiOnly mode");
             return Ok(());
         }
-
         info!(
             "Starting metrics sync service (interval: {:?})",
             self.sync_interval
@@ -125,62 +124,59 @@ impl MetricsSyncService {
         // Clear existing orchestrator statistics
         self.metrics_context.clear_orchestrator_statistics();
 
+        // Get nodes once and reuse for multiple statistics
+        let nodes = match self.store_context.node_store.get_nodes().await {
+            Ok(nodes) => nodes,
+            Err(e) => {
+                error!("Failed to get nodes for statistics: {}", e);
+                Vec::new()
+            }
+        };
+
         // Sync nodes count by status
-        if let Ok(nodes) = self.store_context.node_store.get_nodes().await {
-            let mut status_counts: HashMap<String, i32> = HashMap::new();
-            for node in nodes {
-                let status = format!("{:?}", node.status).to_lowercase();
-                *status_counts.entry(status).or_insert(0) += 1;
-            }
-            for (status, count) in status_counts {
-                self.metrics_context.set_nodes_count(&status, count as f64);
-            }
-            debug!("Synced node statistics");
-        } else {
-            error!("Failed to get nodes for statistics");
+        let mut status_counts: HashMap<String, i32> = HashMap::new();
+        for node in &nodes {
+            let status = format!("{:?}", node.status).to_lowercase();
+            *status_counts.entry(status).or_insert(0) += 1;
         }
+        for (status, count) in status_counts {
+            self.metrics_context.set_nodes_count(&status, count as f64);
+        }
+        debug!("Synced node statistics");
 
         // Sync total tasks count (simple count, not by state)
         if let Ok(tasks) = self.store_context.task_store.get_all_tasks().await {
             let total_tasks = tasks.len() as f64;
             self.metrics_context.set_tasks_count(total_tasks);
             debug!("Synced task statistics: {} total tasks", total_tasks);
+
+            // Sync nodes per task based on node assignments
+            // Create task name mapping
+            let task_name_map: HashMap<String, String> = tasks
+                .into_iter()
+                .map(|task| (task.id.to_string(), task.name.clone()))
+                .collect();
+
+            // Count nodes per task
+            let mut task_node_counts: HashMap<String, i32> = HashMap::new();
+            for node in &nodes {
+                if let Some(task_id) = &node.task_id {
+                    *task_node_counts.entry(task_id.clone()).or_insert(0) += 1;
+                }
+            }
+
+            // Set metrics for each task with active nodes
+            for (task_id, count) in task_node_counts {
+                let task_name = task_name_map.get(&task_id).cloned().unwrap_or_else(|| {
+                    debug!("No task name found for task_id: {}", task_id);
+                    "unknown".to_string()
+                });
+                self.metrics_context
+                    .set_nodes_per_task(&task_id, &task_name, count as f64);
+            }
+            debug!("Synced nodes per task statistics");
         } else {
             error!("Failed to get tasks for statistics");
-        }
-
-        // Sync nodes per task based on node assignments
-        if let Ok(nodes) = self.store_context.node_store.get_nodes().await {
-            if let Ok(tasks) = self.store_context.task_store.get_all_tasks().await {
-                // Create task name mapping
-                let task_name_map: HashMap<String, String> = tasks
-                    .into_iter()
-                    .map(|task| (task.id.to_string(), task.name.clone()))
-                    .collect();
-
-                // Count nodes per task
-                let mut task_node_counts: HashMap<String, i32> = HashMap::new();
-                for node in nodes {
-                    if let Some(task_id) = &node.task_id {
-                        *task_node_counts.entry(task_id.clone()).or_insert(0) += 1;
-                    }
-                }
-
-                // Set metrics for each task with active nodes
-                for (task_id, count) in task_node_counts {
-                    let task_name = task_name_map.get(&task_id).cloned().unwrap_or_else(|| {
-                        debug!("No task name found for task_id: {}", task_id);
-                        "unknown".to_string()
-                    });
-                    self.metrics_context
-                        .set_nodes_per_task(&task_id, &task_name, count as f64);
-                }
-                debug!("Synced nodes per task statistics");
-            } else {
-                error!("Failed to get tasks for nodes per task statistics");
-            }
-        } else {
-            error!("Failed to get nodes for nodes per task statistics");
         }
 
         // Sync groups count by configuration name
