@@ -87,6 +87,8 @@ pub struct Task {
     pub scheduling_config: Option<SchedulingConfig>,
     #[serde(default)]
     pub storage_config: Option<StorageConfig>,
+    #[serde(default)]
+    pub restart_count: u32,
 }
 
 impl Default for Task {
@@ -103,6 +105,7 @@ impl Default for Task {
             updated_at: None,
             scheduling_config: None,
             storage_config: None,
+            restart_count: 0,
         }
     }
 }
@@ -158,6 +161,7 @@ impl TryFrom<TaskRequest> for Task {
             updated_at: None,
             scheduling_config: request.scheduling_config,
             storage_config: request.storage_config,
+            restart_count: 0,
         })
     }
 }
