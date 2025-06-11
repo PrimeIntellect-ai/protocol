@@ -5,6 +5,7 @@ use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::Address;
 use anyhow::Error;
 use anyhow::Result;
+use chrono;
 use log::{error, info};
 use serde_json;
 use shared::models::api::ApiResponse;
@@ -14,7 +15,6 @@ use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
-use chrono;
 
 pub struct DiscoveryMonitor {
     coordinator_wallet: Wallet,
@@ -439,22 +439,22 @@ mod tests {
 
         assert!(node_from_store.is_some());
         let node = node_from_store.unwrap();
-        
+
         // Verify first_seen is set
         assert!(node.first_seen.is_some());
         let first_seen = node.first_seen.unwrap();
-        
+
         // Verify the timestamp is within the expected range
         assert!(first_seen >= time_before && first_seen <= time_after);
-        
+
         // Verify other fields are set correctly
         assert_eq!(node.status, NodeStatus::Discovered);
         assert_eq!(node.ip_address, "192.168.1.100");
-        
+
         // Test case: Sync the same node again to verify first_seen is preserved
         // Simulate some time passing
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        
+
         // Update discovery data to simulate a change (e.g., IP address change)
         let updated_discovery_node = DiscoveryNode {
             is_validated: true,
@@ -472,13 +472,13 @@ mod tests {
             last_updated: Some(chrono::Utc::now()),
             created_at: None,
         };
-        
+
         // Sync the node again
         discovery_monitor
             .sync_single_node_with_discovery(&updated_discovery_node)
             .await
             .unwrap();
-        
+
         // Verify the node was updated but first_seen is preserved
         let node_after_resync = store_context
             .node_store
@@ -486,13 +486,13 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        
+
         // Verify first_seen is still the same (preserved)
         assert_eq!(node_after_resync.first_seen, Some(first_seen));
-        
+
         // Verify IP was updated
         assert_eq!(node_after_resync.ip_address, "192.168.1.101");
-        
+
         // Status should remain the same
         assert_eq!(node_after_resync.status, NodeStatus::Discovered);
     }
