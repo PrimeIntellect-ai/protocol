@@ -61,6 +61,6 @@ impl<P: alloy_provider::Provider> Contract<P> {
     }
 
     pub fn provider(&self) -> &P {
-        &self.instance.provider()
+        self.instance.provider()
     }
 }
