@@ -945,8 +945,6 @@ impl SyntheticDataValidator {
         };
         let work_units_match = diff <= U256::from(1);
 
-        println!("work_units_match: {}", work_units_match);
-
         if let Some(metrics) = &self.metrics {
             metrics.record_group_work_units_check_result(
                 &group.group_id,
@@ -1575,7 +1573,6 @@ mod tests {
         assert_eq!(plan_3.group_trigger_tasks.len(), 0);
         assert_eq!(plan_3.group_status_check_tasks.len(), 0);
         let metrics_2 = export_metrics().unwrap();
-        println!("metrics_2: {}", metrics_2);
         assert!(metrics_2
             .contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0"));
         assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
