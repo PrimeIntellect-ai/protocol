@@ -127,20 +127,35 @@ impl DiscoveryMonitor {
         Ok(nodes)
     }
 
+    async fn has_healthy_node_with_same_endpoint(
+        &self,
+        node_address: Address,
+        ip_address: &str,
+        port: u16,
+    ) -> Result<bool, Error> {
+        let nodes = self.store_context.node_store.get_nodes().await?;
+        Ok(nodes.iter().any(|other_node| {
+            other_node.address != node_address
+                && other_node.ip_address == ip_address
+                && other_node.port == port
+                && other_node.status == NodeStatus::Healthy
+        }))
+    }
+
     async fn sync_single_node_with_discovery(
         &self,
         discovery_node: &DiscoveryNode,
     ) -> Result<(), Error> {
         let node_address = discovery_node.node.id.parse::<Address>()?;
 
-        // First check if there's any healthy node with the same IP and port
-        let nodes = self.store_context.node_store.get_nodes().await?;
-        let has_healthy_node_same_endpoint = nodes.iter().any(|other_node| {
-            other_node.address != node_address
-                && other_node.ip_address == discovery_node.node.ip_address
-                && other_node.port == discovery_node.node.port
-                && other_node.status == NodeStatus::Healthy
-        });
+        // Check if there's any healthy node with the same IP and port
+        let has_healthy_node_same_endpoint = self
+            .has_healthy_node_with_same_endpoint(
+                node_address,
+                &discovery_node.node.ip_address,
+                discovery_node.node.port,
+            )
+            .await?;
 
         match self.store_context.node_store.get_node(&node_address).await {
             Ok(Some(existing_node)) => {
@@ -199,8 +214,8 @@ impl DiscoveryMonitor {
                     // Node is active False but we have it in store and it is healthy
                     // This means that the node likely got kicked by e.g. the validator
                     // We simply remove it from the store now and will rediscover it later?
-                    println!(
-                        "Node {} is no longer active on chain, marking as dead",
+                    info!(
+                        "Node {} is no longer active on chain, marking as ejected",
                         node_address
                     );
                     if !discovery_node.is_provider_whitelisted {
