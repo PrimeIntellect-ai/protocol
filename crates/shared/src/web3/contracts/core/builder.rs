@@ -1,46 +1,44 @@
 use alloy::primitives::Address;
 
-use crate::web3::{
-    contracts::{
-        core::error::ContractError, // Using custom error ContractError
-        implementations::{
-            ai_token_contract::AIToken, compute_pool_contract::ComputePool,
-            compute_registry_contract::ComputeRegistryContract,
-            domain_registry_contract::DomainRegistryContract,
-            prime_network_contract::PrimeNetworkContract, stake_manager::StakeManagerContract,
-            work_validators::synthetic_data_validator::SyntheticDataWorkValidator,
-        },
+use crate::web3::contracts::{
+    core::error::ContractError, // Using custom error ContractError
+    implementations::{
+        ai_token_contract::AIToken, compute_pool_contract::ComputePool,
+        compute_registry_contract::ComputeRegistryContract,
+        domain_registry_contract::DomainRegistryContract,
+        prime_network_contract::PrimeNetworkContract, stake_manager::StakeManagerContract,
+        work_validators::synthetic_data_validator::SyntheticDataWorkValidator,
     },
-    wallet::Wallet,
 };
 use std::option::Option;
 use std::result::Result;
 
-pub struct Contracts {
-    pub compute_registry: ComputeRegistryContract,
-    pub ai_token: AIToken,
-    pub prime_network: PrimeNetworkContract,
-    pub compute_pool: ComputePool,
-    pub stake_manager: Option<StakeManagerContract>,
-    pub synthetic_data_validator: Option<SyntheticDataWorkValidator>,
-    pub domain_registry: Option<DomainRegistryContract>,
+#[derive(Clone)]
+pub struct Contracts<P: alloy_provider::Provider> {
+    pub compute_registry: ComputeRegistryContract<P>,
+    pub ai_token: AIToken<P>,
+    pub prime_network: PrimeNetworkContract<P>,
+    pub compute_pool: ComputePool<P>,
+    pub stake_manager: Option<StakeManagerContract<P>>,
+    pub synthetic_data_validator: Option<SyntheticDataWorkValidator<P>>,
+    pub domain_registry: Option<DomainRegistryContract<P>>,
 }
 
-pub struct ContractBuilder<'a> {
-    wallet: &'a Wallet,
-    compute_registry: Option<ComputeRegistryContract>,
-    ai_token: Option<AIToken>,
-    prime_network: Option<PrimeNetworkContract>,
-    compute_pool: Option<ComputePool>,
-    stake_manager: Option<StakeManagerContract>,
-    synthetic_data_validator: Option<SyntheticDataWorkValidator>,
-    domain_registry: Option<DomainRegistryContract>,
+pub struct ContractBuilder<P: alloy_provider::Provider + Clone> {
+    provider: P,
+    compute_registry: Option<ComputeRegistryContract<P>>,
+    ai_token: Option<AIToken<P>>,
+    prime_network: Option<PrimeNetworkContract<P>>,
+    compute_pool: Option<ComputePool<P>>,
+    stake_manager: Option<StakeManagerContract<P>>,
+    synthetic_data_validator: Option<SyntheticDataWorkValidator<P>>,
+    domain_registry: Option<DomainRegistryContract<P>>,
 }
 
-impl<'a> ContractBuilder<'a> {
-    pub fn new(wallet: &'a Wallet) -> Self {
+impl<P: alloy_provider::Provider + Clone> ContractBuilder<P> {
+    pub fn new(provider: P) -> Self {
         Self {
-            wallet,
+            provider,
             compute_registry: None,
             ai_token: None,
             prime_network: None,
@@ -53,31 +51,34 @@ impl<'a> ContractBuilder<'a> {
 
     pub fn with_compute_registry(mut self) -> Self {
         self.compute_registry = Some(ComputeRegistryContract::new(
-            self.wallet,
+            self.provider.clone(),
             "compute_registry.json",
         ));
         self
     }
 
     pub fn with_ai_token(mut self) -> Self {
-        self.ai_token = Some(AIToken::new(self.wallet, "ai_token.json"));
+        self.ai_token = Some(AIToken::new(self.provider.clone(), "ai_token.json"));
         self
     }
 
     pub fn with_prime_network(mut self) -> Self {
-        self.prime_network = Some(PrimeNetworkContract::new(self.wallet, "prime_network.json"));
+        self.prime_network = Some(PrimeNetworkContract::new(
+            self.provider.clone(),
+            "prime_network.json",
+        ));
         self
     }
 
     pub fn with_compute_pool(mut self) -> Self {
-        self.compute_pool = Some(ComputePool::new(self.wallet, "compute_pool.json"));
+        self.compute_pool = Some(ComputePool::new(self.provider.clone(), "compute_pool.json"));
         self
     }
 
     pub fn with_synthetic_data_validator(mut self, address: Option<Address>) -> Self {
         self.synthetic_data_validator = Some(SyntheticDataWorkValidator::new(
             address.unwrap_or(Address::ZERO),
-            self.wallet,
+            self.provider.clone(),
             "synthetic_data_work_validator.json",
         ));
         self
@@ -85,19 +86,22 @@ impl<'a> ContractBuilder<'a> {
 
     pub fn with_domain_registry(mut self) -> Self {
         self.domain_registry = Some(DomainRegistryContract::new(
-            self.wallet,
+            self.provider.clone(),
             "domain_registry.json",
         ));
         self
     }
 
     pub fn with_stake_manager(mut self) -> Self {
-        self.stake_manager = Some(StakeManagerContract::new(self.wallet, "stake_manager.json"));
+        self.stake_manager = Some(StakeManagerContract::new(
+            self.provider.clone(),
+            "stake_manager.json",
+        ));
         self
     }
 
     // TODO: This is not ideal yet - now you have to init all contracts all the time
-    pub fn build(self) -> Result<Contracts, ContractError> {
+    pub fn build(self) -> Result<Contracts<P>, ContractError> {
         // Using custom error ContractError
         Ok(Contracts {
             compute_pool: match self.compute_pool {
@@ -126,7 +130,7 @@ impl<'a> ContractBuilder<'a> {
         })
     }
 
-    pub fn build_partial(&self) -> Result<Contracts, ContractError> {
+    pub fn build_partial(&self) -> Result<Contracts<P>, ContractError> {
         Ok(Contracts {
             compute_registry: self
                 .compute_registry

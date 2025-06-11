@@ -5,16 +5,17 @@ use crate::api::server::start_server;
 use crate::chainsync::ChainSync;
 use crate::store::node_store::NodeStore;
 use crate::store::redis::RedisStore;
+use alloy::providers::RootProvider;
 use anyhow::Result;
 use clap::Parser;
 use log::error;
 use log::LevelFilter;
 use shared::web3::contracts::core::builder::ContractBuilder;
-use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
+
 #[derive(Parser)]
 struct Args {
     /// RPC URL
@@ -49,37 +50,31 @@ async fn main() -> Result<()> {
 
     let redis_store = RedisStore::new(&args.redis_url);
     let node_store = Arc::new(NodeStore::new(redis_store));
-    // TODO: Find a way to read from chain without address - hardcoded key here
-    let wallet = Arc::new(
-        Wallet::new(
-            "0x4d97cf024fd8b486e5c8079cc478cbe24f01f99f75a0a28ae45088658f2bed5b",
-            args.rpc_url.parse().unwrap(),
-        )
-        .unwrap(),
-    );
-    let contracts = Arc::new(
-        ContractBuilder::new(&wallet)
-            .with_compute_registry()
-            .with_ai_token()
-            .with_prime_network()
-            .with_compute_pool()
-            .with_stake_manager()
-            .build()
-            .unwrap(),
-    );
+    let endpoint = match args.rpc_url.parse() {
+        Ok(url) => url,
+        Err(_) => {
+            return Err(anyhow::anyhow!("invalid RPC URL: {}", args.rpc_url));
+        }
+    };
+
+    let provider = RootProvider::new_http(endpoint);
+    let contracts = ContractBuilder::new(provider)
+        .with_compute_registry()
+        .with_ai_token()
+        .with_prime_network()
+        .with_compute_pool()
+        .with_stake_manager()
+        .build()
+        .unwrap();
 
     let cancellation_token = CancellationToken::new();
-    let node_store_clone = node_store.clone();
-    let contracts_clone = contracts.clone();
     let last_chain_sync = Arc::new(Mutex::new(None::<std::time::SystemTime>));
-    let heartbeat_server_clone = last_chain_sync.clone();
-
     let chain_sync = ChainSync::new(
-        node_store_clone,
+        node_store.clone(),
         cancellation_token.clone(),
         Duration::from_secs(10),
-        contracts,
-        last_chain_sync,
+        contracts.clone(),
+        last_chain_sync.clone(),
     );
     chain_sync.run().await?;
 
@@ -87,9 +82,9 @@ async fn main() -> Result<()> {
         "0.0.0.0",
         args.port,
         node_store,
-        contracts_clone,
+        contracts,
         args.platform_api_key,
-        heartbeat_server_clone,
+        last_chain_sync,
         args.only_one_node_per_ip.unwrap_or(false),
     )
     .await

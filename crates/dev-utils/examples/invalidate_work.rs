@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
         .map_err(|e| eyre::eyre!("Failed to create wallet: {}", e))?;
 
     // Build the PrimeNetwork contract
-    let contracts = ContractBuilder::new(&wallet)
+    let contracts = ContractBuilder::new(wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()

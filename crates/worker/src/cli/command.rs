@@ -216,39 +216,35 @@ pub async fn execute_command(
             /*
              Initialize Wallet instances
             */
-            let provider_wallet_instance = Arc::new(
+            let provider_wallet_instance =
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         error!("Failed to create wallet: {}", err);
                         std::process::exit(1);
                     }
-                },
-            );
+                };
 
-            let node_wallet_instance = Arc::new(
+            let node_wallet_instance =
                 match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         error!("❌ Failed to create wallet: {}", err);
                         std::process::exit(1);
                     }
-                },
-            );
+                };
 
             /*
              Initialize dependencies - services, contracts, operations
             */
-            let contracts = Arc::new(
-                ContractBuilder::new(&provider_wallet_instance)
-                    .with_compute_registry()
-                    .with_ai_token()
-                    .with_prime_network()
-                    .with_compute_pool()
-                    .with_stake_manager()
-                    .build()
-                    .unwrap(),
-            );
+            let contracts = ContractBuilder::new(provider_wallet_instance.provider())
+                .with_compute_registry()
+                .with_ai_token()
+                .with_prime_network()
+                .with_compute_pool()
+                .with_stake_manager()
+                .build()
+                .unwrap();
 
             let provider_ops = ProviderOperations::new(
                 provider_wallet_instance.clone(),
@@ -266,9 +262,8 @@ pub async fn execute_command(
                 compute_node_state,
             );
 
-            let discovery_wallet = node_wallet_instance.clone();
             let discovery_service =
-                DiscoveryService::new(discovery_wallet, discovery_url.clone(), None);
+                DiscoveryService::new(node_wallet_instance.clone(), discovery_url.clone(), None);
             let discovery_state = state.clone();
             let discovery_updater =
                 DiscoveryUpdater::new(discovery_service.clone(), discovery_state.clone());
@@ -758,15 +753,13 @@ pub async fn execute_command(
 
             let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();
 
-            let contracts = Arc::new(
-                ContractBuilder::new(&provider_wallet)
-                    .with_compute_registry()
-                    .with_ai_token()
-                    .with_prime_network()
-                    .with_compute_pool()
-                    .build()
-                    .unwrap(),
-            );
+            let contracts = ContractBuilder::new(provider_wallet.provider())
+                .with_compute_registry()
+                .with_ai_token()
+                .with_prime_network()
+                .with_compute_pool()
+                .build()
+                .unwrap();
 
             let provider_balance = contracts
                 .ai_token
@@ -837,40 +830,36 @@ pub async fn execute_command(
                 std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
             };
 
-            let provider_wallet_instance = Arc::new(
+            let provider_wallet_instance =
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         Console::user_error(&format!("Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
-                },
-            );
+                };
 
-            let node_wallet_instance = Arc::new(
+            let node_wallet_instance =
                 match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         Console::user_error(&format!("❌ Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
-                },
-            );
+                };
             let state = Arc::new(SystemState::new(None, true, None));
             /*
              Initialize dependencies - services, contracts, operations
             */
 
-            let contracts = Arc::new(
-                ContractBuilder::new(&provider_wallet_instance)
-                    .with_compute_registry()
-                    .with_ai_token()
-                    .with_prime_network()
-                    .with_compute_pool()
-                    .with_stake_manager()
-                    .build()
-                    .unwrap(),
-            );
+            let contracts = ContractBuilder::new(provider_wallet_instance.provider())
+                .with_compute_registry()
+                .with_ai_token()
+                .with_prime_network()
+                .with_compute_pool()
+                .with_stake_manager()
+                .build()
+                .unwrap();
 
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,

@@ -15,8 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
 
-pub struct DiscoveryMonitor<'b> {
-    coordinator_wallet: &'b Wallet,
+pub struct DiscoveryMonitor {
+    coordinator_wallet: Wallet,
     compute_pool_id: u32,
     interval_s: u64,
     discovery_url: String,
@@ -25,9 +25,9 @@ pub struct DiscoveryMonitor<'b> {
     http_client: reqwest::Client,
 }
 
-impl<'b> DiscoveryMonitor<'b> {
+impl DiscoveryMonitor {
     pub fn new(
-        coordinator_wallet: &'b Wallet,
+        coordinator_wallet: Wallet,
         compute_pool_id: u32,
         interval_s: u64,
         discovery_url: String,
@@ -68,7 +68,7 @@ impl<'b> DiscoveryMonitor<'b> {
         let discovery_route = format!("/api/pool/{}", self.compute_pool_id);
         let address = self.coordinator_wallet.address().to_string();
 
-        let signature = match sign_request(&discovery_route, self.coordinator_wallet, None).await {
+        let signature = match sign_request(&discovery_route, &self.coordinator_wallet, None).await {
             Ok(sig) => sig,
             Err(e) => {
                 error!("Failed to sign discovery request: {}", e);
@@ -329,7 +329,7 @@ mod tests {
         let mode = ServerMode::Full;
 
         let discovery_monitor = DiscoveryMonitor::new(
-            &fake_wallet,
+            fake_wallet,
             1,
             10,
             "http://localhost:8080".to_string(),

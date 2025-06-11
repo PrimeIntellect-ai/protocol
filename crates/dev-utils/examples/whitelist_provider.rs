@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
     let wallet = Wallet::new(&args.key, Url::parse(&args.rpc_url)?).unwrap();
 
     // Build all contracts
-    let contracts = ContractBuilder::new(&wallet)
+    let contracts = ContractBuilder::new(wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()

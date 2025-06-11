@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
+use shared::web3::wallet::WalletProvider;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
@@ -22,9 +23,9 @@ const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.worker/";
 pub struct TaskBridge {
     pub socket_path: String,
     pub metrics_store: Arc<MetricsStore>,
-    pub contracts: Option<Arc<Contracts>>,
+    pub contracts: Option<Contracts<WalletProvider>>,
     pub node_config: Option<Node>,
-    pub node_wallet: Option<Arc<Wallet>>,
+    pub node_wallet: Option<Wallet>,
     pub docker_storage_path: Option<String>,
     pub state: Arc<SystemState>,
 }
@@ -41,9 +42,9 @@ impl TaskBridge {
     pub fn new(
         socket_path: Option<&str>,
         metrics_store: Arc<MetricsStore>,
-        contracts: Option<Arc<Contracts>>,
+        contracts: Option<Contracts<WalletProvider>>,
         node_config: Option<Node>,
-        node_wallet: Option<Arc<Wallet>>,
+        node_wallet: Option<Wallet>,
         docker_storage_path: Option<String>,
         state: Arc<SystemState>,
     ) -> Arc<Self> {
@@ -141,7 +142,7 @@ impl TaskBridge {
                     let contracts_inner = contracts_ref.clone();
                     let node_inner = node_ref.clone();
                     let provider = match self.node_wallet.as_ref() {
-                        Some(wallet) => wallet.provider.clone(),
+                        Some(wallet) => wallet.provider(),
                         None => {
                             error!("No wallet provider found");
                             return Err(anyhow::anyhow!("No wallet provider found"));

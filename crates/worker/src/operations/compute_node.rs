@@ -1,8 +1,8 @@
 use crate::{console::Console, state::system_state::SystemState};
 use alloy::{primitives::utils::keccak256 as keccak, primitives::U256, signers::Signer};
 use anyhow::Result;
-use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
+use shared::web3::{contracts::core::builder::Contracts, wallet::WalletProvider};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 pub struct ComputeNodeOperations<'c> {
     provider_wallet: &'c Wallet,
     node_wallet: &'c Wallet,
-    contracts: Arc<Contracts>,
+    contracts: Contracts<WalletProvider>,
     system_state: Arc<SystemState>,
 }
 
@@ -18,7 +18,7 @@ impl<'c> ComputeNodeOperations<'c> {
     pub fn new(
         provider_wallet: &'c Wallet,
         node_wallet: &'c Wallet,
-        contracts: Arc<Contracts>,
+        contracts: Contracts<WalletProvider>,
         system_state: Arc<SystemState>,
     ) -> Self {
         Self {

@@ -20,17 +20,17 @@ use shared::security::api_key_middleware::ApiKeyMiddleware;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::utils::StorageProvider;
 use shared::web3::contracts::core::builder::Contracts;
-use shared::web3::wallet::Wallet;
+use shared::web3::wallet::{Wallet, WalletProvider};
 use std::sync::Arc;
 
 pub struct AppState {
     pub store_context: Arc<StoreContext>,
-    pub wallet: Arc<Wallet>,
+    pub wallet: Wallet,
     pub storage_provider: Arc<dyn StorageProvider>,
     pub heartbeats: Arc<LoopHeartbeats>,
     pub redis_store: Arc<RedisStore>,
     pub hourly_upload_limit: i64,
-    pub contracts: Option<Arc<Contracts>>,
+    pub contracts: Option<Contracts<WalletProvider>>,
     pub pool_id: u32,
     pub scheduler: Scheduler,
     pub node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
@@ -43,13 +43,13 @@ pub async fn start_server(
     host: &str,
     port: u16,
     store_context: Arc<StoreContext>,
-    wallet: Arc<Wallet>,
+    wallet: Wallet,
     admin_api_key: String,
     storage_provider: Arc<dyn StorageProvider>,
     heartbeats: Arc<LoopHeartbeats>,
     redis_store: Arc<RedisStore>,
     hourly_upload_limit: i64,
-    contracts: Option<Arc<Contracts>>,
+    contracts: Option<Contracts<WalletProvider>>,
     pool_id: u32,
     server_mode: ServerMode,
     scheduler: Scheduler,

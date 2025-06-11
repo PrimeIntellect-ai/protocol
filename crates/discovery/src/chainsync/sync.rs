@@ -1,5 +1,6 @@
 use crate::store::node_store::NodeStore;
 use alloy::primitives::Address;
+use alloy::providers::RootProvider;
 use anyhow::Error;
 use log::error;
 use shared::models::node::DiscoveryNode;
@@ -9,11 +10,12 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
+
 pub struct ChainSync {
     pub node_store: Arc<NodeStore>,
     cancel_token: CancellationToken,
     chain_sync_interval: Duration,
-    contracts: Arc<Contracts>,
+    contracts: Contracts<RootProvider>,
     last_chain_sync: Arc<Mutex<Option<std::time::SystemTime>>>,
 }
 
@@ -22,7 +24,7 @@ impl ChainSync {
         node_store: Arc<NodeStore>,
         cancellation_token: CancellationToken,
         chain_sync_interval: Duration,
-        contracts: Arc<Contracts>,
+        contracts: Contracts<RootProvider>,
         last_chain_sync: Arc<Mutex<Option<std::time::SystemTime>>>,
     ) -> Self {
         Self {
@@ -36,7 +38,7 @@ impl ChainSync {
 
     async fn sync_single_node(
         node_store: Arc<NodeStore>,
-        contracts: Arc<Contracts>,
+        contracts: Contracts<RootProvider>,
         node: DiscoveryNode,
     ) -> Result<(), Error> {
         let mut n = node.clone();
@@ -95,23 +97,25 @@ impl ChainSync {
         Ok(())
     }
 
-    pub async fn run(&self) -> Result<(), Error> {
-        let node_store_clone = self.node_store.clone();
-        let contracts_clone = self.contracts.clone();
-        let cancel_token = self.cancel_token.clone();
-        let chain_sync_interval = self.chain_sync_interval;
-        let last_chain_sync = self.last_chain_sync.clone();
+    pub async fn run(self) -> Result<(), Error> {
+        let ChainSync {
+            node_store,
+            cancel_token,
+            chain_sync_interval,
+            last_chain_sync,
+            contracts,
+        } = self;
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(chain_sync_interval);
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        let nodes = node_store_clone.get_nodes();
+                        let nodes = node_store.get_nodes();
                         match nodes {
                             Ok(nodes) => {
                                 for node in nodes {
-                                    if let Err(e) = ChainSync::sync_single_node(node_store_clone.clone(), contracts_clone.clone(), node).await {
+                                    if let Err(e) = ChainSync::sync_single_node(node_store.clone(), contracts.clone(), node).await {
                                         error!("Error syncing node: {}", e);
                                     }
                                 }

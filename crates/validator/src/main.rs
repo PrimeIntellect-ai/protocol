@@ -213,7 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let mut contract_builder = ContractBuilder::new(&validator_wallet)
+    let mut contract_builder = ContractBuilder::new(validator_wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
@@ -250,7 +250,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             contract_builder.with_synthetic_data_validator(Some(domain.validation_logic));
     }
 
-    let contracts = Arc::new(contract_builder.build().unwrap());
+    let contracts = contract_builder.build().unwrap();
 
     let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
 

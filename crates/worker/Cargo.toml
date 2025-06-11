@@ -20,7 +20,6 @@ libc = "0.2"
 nvml-wrapper = "0.10.0"
 log = { workspace = true }
 env_logger = { workspace = true }
-cargo-watch = "8.4.1"
 futures-core = "0.3"
 futures-util = { workspace = true }
 alloy = { workspace = true }

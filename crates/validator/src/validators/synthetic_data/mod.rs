@@ -1,8 +1,7 @@
 use crate::metrics::MetricsContext;
 use crate::store::redis::RedisStore;
-use crate::validators::Validator;
 use alloy::primitives::U256;
-use anyhow::{Context, Error, Result};
+use anyhow::{Context as _, Error, Result};
 use log::{debug, warn};
 use log::{error, info};
 use redis::AsyncCommands;
@@ -12,6 +11,7 @@ use shared::web3::contracts::implementations::prime_network_contract::PrimeNetwo
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::{
     SyntheticDataWorkValidator, WorkInfo,
 };
+use shared::web3::wallet::WalletProvider;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
@@ -206,11 +206,19 @@ impl GroupInformation {
     }
 }
 
+#[derive(Debug)]
+pub struct ValidationPlan {
+    pub single_trigger_tasks: Vec<(String, WorkInfo)>,
+    pub group_trigger_tasks: Vec<ToplocGroup>,
+    pub status_check_tasks: Vec<String>,
+    pub group_status_check_tasks: Vec<ToplocGroup>,
+}
+
 #[derive(Clone)]
-pub struct SyntheticDataValidator {
+pub struct SyntheticDataValidator<P: alloy::providers::Provider + Clone> {
     pool_id: U256,
-    validator: SyntheticDataWorkValidator,
-    prime_network: PrimeNetworkContract,
+    validator: SyntheticDataWorkValidator<P>,
+    prime_network: PrimeNetworkContract<P>,
     toploc: Vec<Toploc>,
     penalty: U256,
     storage_provider: Arc<dyn StorageProvider>,
@@ -227,28 +235,12 @@ pub struct SyntheticDataValidator {
     metrics: Option<MetricsContext>,
 }
 
-impl Validator for SyntheticDataValidator {
-    type Error = anyhow::Error;
-
-    fn name(&self) -> &str {
-        "Synthetic Data Validator"
-    }
-}
-
-#[derive(Debug)]
-pub struct ValidationPlan {
-    pub single_trigger_tasks: Vec<(String, WorkInfo)>,
-    pub group_trigger_tasks: Vec<ToplocGroup>,
-    pub status_check_tasks: Vec<String>,
-    pub group_status_check_tasks: Vec<ToplocGroup>,
-}
-
-impl SyntheticDataValidator {
+impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool_id_str: String,
-        validator: SyntheticDataWorkValidator,
-        prime_network: PrimeNetworkContract,
+        validator: SyntheticDataWorkValidator<P>,
+        prime_network: PrimeNetworkContract<P>,
         toploc_configs: Vec<ToplocConfig>,
         penalty: U256,
         storage_provider: Arc<dyn StorageProvider>,
@@ -285,45 +277,6 @@ impl SyntheticDataValidator {
             with_node_grouping,
             disable_chain_invalidation,
             metrics,
-        }
-    }
-
-    pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
-        info!("Invalidating work: {}", work_key);
-
-        if let Some(metrics) = &self.metrics {
-            metrics.record_work_key_invalidation();
-        }
-
-        if self.disable_chain_invalidation {
-            info!("Chain invalidation is disabled, skipping work invalidation");
-            return Ok(());
-        }
-
-        // Special case for tests - skip actual blockchain interaction
-        #[cfg(test)]
-        {
-            info!("Test mode: skipping actual work invalidation");
-            let _ = &self.prime_network;
-            let _ = &self.penalty;
-            Ok(())
-        }
-
-        #[cfg(not(test))]
-        {
-            let data = hex::decode(work_key)
-                .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
-            match self
-                .prime_network
-                .invalidate_work(self.pool_id, self.penalty, data)
-                .await
-            {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    error!("Failed to invalidate work {}: {}", work_key, e);
-                    Err(Error::msg(format!("Failed to invalidate work: {}", e)))
-                }
-            }
         }
     }
 
@@ -481,54 +434,6 @@ impl SyntheticDataValidator {
         Ok(cleaned_file_name.to_string())
     }
 
-    async fn process_workkey_status(&self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
-        let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
-
-        let toploc_config = self
-            .toploc
-            .iter()
-            .find(|t| t.matches_file_name(&cleaned_file_name))
-            .ok_or(ProcessWorkKeyError::NoMatchingToplocConfig(format!(
-                "No matching toploc config found for {}",
-                cleaned_file_name
-            )))?;
-
-        let result = toploc_config
-            .get_single_file_validation_status(&cleaned_file_name)
-            .await;
-        let validation_result = result?;
-        info!(
-            "Validation result for {}: {:?}",
-            work_key, validation_result
-        );
-
-        match validation_result {
-            ValidationResult::Accept => {
-                info!("Validation accepted for {}", cleaned_file_name);
-            }
-            ValidationResult::Reject => {
-                if let Err(e) = self.invalidate_work(work_key).await {
-                    error!("Failed to invalidate work {}: {}", work_key, e);
-                    return Err(ProcessWorkKeyError::InvalidatingWorkError(e.to_string()));
-                }
-            }
-            _ => (),
-        }
-
-        if let Err(e) = self
-            .update_work_validation_status(work_key, &validation_result)
-            .await
-        {
-            error!(
-                "Failed to update work validation status for {}: {}",
-                work_key, e
-            );
-            return Err(ProcessWorkKeyError::ValidationPollingError(e.to_string()));
-        }
-
-        Ok(())
-    }
-
     async fn build_group_for_key(&self, work_key: &str) -> Result<String, Error> {
         let file = self
             .get_file_name_for_work_key(work_key)
@@ -619,35 +524,6 @@ impl SyntheticDataValidator {
             return Ok(Some(toploc_group));
         }
         Ok(None)
-    }
-
-    pub async fn validate_work(self) -> Result<(), Error> {
-        debug!("Validating work for pool ID: {:?}", self.pool_id);
-
-        // Get all work keys for the pool from the last 24 hours
-        let max_age_in_seconds = 60 * self.work_validation_interval;
-        let current_timestamp = U256::from(chrono::Utc::now().timestamp());
-        let max_age_ago = current_timestamp - U256::from(max_age_in_seconds);
-
-        let work_keys = self
-            .validator
-            .get_work_since(self.pool_id, max_age_ago)
-            .await
-            .context("Failed to get work keys from the last 24 hours")?;
-
-        if !work_keys.is_empty() {
-            info!(
-                "Found {} work keys to validate in the last {} seconds creation time",
-                work_keys.len(),
-                max_age_in_seconds
-            );
-        } else {
-            debug!(
-                "No work keys to validate in the last {} seconds creation time",
-                max_age_in_seconds
-            );
-        }
-        self.process_work_keys(work_keys).await
     }
 
     pub async fn build_validation_plan(
@@ -799,90 +675,6 @@ impl SyntheticDataValidator {
 
         Ok(())
     }
-    pub async fn process_group_status_check(&self, group: ToplocGroup) -> Result<(), Error> {
-        let toploc_config = self
-            .find_matching_toploc_config(&group.prefix)
-            .ok_or(Error::msg(format!(
-                "No matching toploc config found for group for status check {} {}",
-                group.group_id, group.prefix
-            )))?;
-
-        let status = toploc_config
-            .get_group_file_validation_status(&group.group_file_name)
-            .await?;
-        let toploc_config_name = toploc_config.name();
-
-        // Record toploc result
-        if let Some(metrics) = &self.metrics {
-            metrics.record_group_validation_status(
-                &group.group_id,
-                &toploc_config_name,
-                &status.status.to_string(),
-            );
-        }
-
-        // Calculate total claimed units and node work units
-        let (total_claimed_units, node_work_units) =
-            self.calculate_group_work_units(&group).await?;
-
-        // Log basic info for all cases
-        info!(
-            "Group {} ({}) - Status: {:?}, Claimed: {}, Toploc: {} flops (input: {} flops)",
-            group.group_id,
-            group.group_file_name,
-            status.status,
-            total_claimed_units,
-            status.output_flops,
-            status.input_flops
-        );
-
-        // Collect all nodes that need to be invalidated
-        let mut nodes_to_invalidate = Vec::new();
-
-        // Handle rejection case
-        if status.status == ValidationResult::Reject {
-            let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
-            nodes_to_invalidate.extend(rejected_nodes);
-        } else {
-            let nodes_with_wrong_work_unit_claims = self
-                .handle_group_toploc_acceptance(
-                    &group,
-                    &status,
-                    total_claimed_units,
-                    &node_work_units,
-                    &toploc_config_name,
-                )
-                .await?;
-            nodes_to_invalidate.extend(nodes_with_wrong_work_unit_claims);
-        }
-
-        // Invalidate work for all nodes that need invalidation (only once)
-        if !nodes_to_invalidate.is_empty() {
-            for work_key in &group.sorted_work_keys {
-                if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
-                    if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
-                        self.invalidate_work(work_key).await?;
-                    }
-                }
-            }
-        }
-
-        // Update validation status for all work keys
-        for work_key in &group.sorted_work_keys {
-            let work_info = self.get_work_info_from_redis(work_key).await?;
-            if let Some(work_info) = work_info {
-                if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
-                    self.update_work_validation_status(work_key, &ValidationResult::Reject)
-                        .await?;
-                } else {
-                    self.update_work_validation_status(work_key, &status.status)
-                        .await?;
-                }
-            }
-        }
-
-        Ok(())
-    }
 
     async fn calculate_group_work_units(
         &self,
@@ -1014,6 +806,122 @@ impl SyntheticDataValidator {
 
         Ok(nodes_with_wrong_work_unit_claims)
     }
+}
+
+impl SyntheticDataValidator<WalletProvider> {
+    pub async fn validate_work(self) -> Result<(), Error> {
+        debug!("Validating work for pool ID: {:?}", self.pool_id);
+
+        // Get all work keys for the pool from the last 24 hours
+        let max_age_in_seconds = 60 * self.work_validation_interval;
+        let current_timestamp = U256::from(chrono::Utc::now().timestamp());
+        let max_age_ago = current_timestamp - U256::from(max_age_in_seconds);
+
+        let work_keys = self
+            .validator
+            .get_work_since(self.pool_id, max_age_ago)
+            .await
+            .context("Failed to get work keys from the last 24 hours")?;
+
+        if !work_keys.is_empty() {
+            info!(
+                "Found {} work keys to validate in the last {} seconds creation time",
+                work_keys.len(),
+                max_age_in_seconds
+            );
+        } else {
+            debug!(
+                "No work keys to validate in the last {} seconds creation time",
+                max_age_in_seconds
+            );
+        }
+        self.process_work_keys(work_keys).await
+    }
+
+    pub async fn process_group_status_check(&self, group: ToplocGroup) -> Result<(), Error> {
+        let toploc_config = self
+            .find_matching_toploc_config(&group.prefix)
+            .ok_or(Error::msg(format!(
+                "No matching toploc config found for group for status check {} {}",
+                group.group_id, group.prefix
+            )))?;
+
+        let status = toploc_config
+            .get_group_file_validation_status(&group.group_file_name)
+            .await?;
+        let toploc_config_name = toploc_config.name();
+
+        // Record toploc result
+        if let Some(metrics) = &self.metrics {
+            metrics.record_group_validation_status(
+                &group.group_id,
+                &toploc_config_name,
+                &status.status.to_string(),
+            );
+        }
+
+        // Calculate total claimed units and node work units
+        let (total_claimed_units, node_work_units) =
+            self.calculate_group_work_units(&group).await?;
+
+        // Log basic info for all cases
+        info!(
+            "Group {} ({}) - Status: {:?}, Claimed: {}, Toploc: {} flops (input: {} flops)",
+            group.group_id,
+            group.group_file_name,
+            status.status,
+            total_claimed_units,
+            status.output_flops,
+            status.input_flops
+        );
+
+        // Collect all nodes that need to be invalidated
+        let mut nodes_to_invalidate = Vec::new();
+
+        // Handle rejection case
+        if status.status == ValidationResult::Reject {
+            let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
+            nodes_to_invalidate.extend(rejected_nodes);
+        } else {
+            let nodes_with_wrong_work_unit_claims = self
+                .handle_group_toploc_acceptance(
+                    &group,
+                    &status,
+                    total_claimed_units,
+                    &node_work_units,
+                    &toploc_config_name,
+                )
+                .await?;
+            nodes_to_invalidate.extend(nodes_with_wrong_work_unit_claims);
+        }
+
+        // Invalidate work for all nodes that need invalidation (only once)
+        if !nodes_to_invalidate.is_empty() {
+            for work_key in &group.sorted_work_keys {
+                if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
+                    if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
+                        self.invalidate_work(work_key).await?;
+                    }
+                }
+            }
+        }
+
+        // Update validation status for all work keys
+        for work_key in &group.sorted_work_keys {
+            let work_info = self.get_work_info_from_redis(work_key).await?;
+            if let Some(work_info) = work_info {
+                if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
+                    self.update_work_validation_status(work_key, &ValidationResult::Reject)
+                        .await?;
+                } else {
+                    self.update_work_validation_status(work_key, &status.status)
+                        .await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 
     pub async fn process_work_keys(self, work_keys: Vec<String>) -> Result<(), Error> {
         debug!("Processing work keys: {:?}", work_keys);
@@ -1143,6 +1051,93 @@ impl SyntheticDataValidator {
 
         Ok(())
     }
+
+    async fn process_workkey_status(&self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
+        let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
+
+        let toploc_config = self
+            .toploc
+            .iter()
+            .find(|t| t.matches_file_name(&cleaned_file_name))
+            .ok_or(ProcessWorkKeyError::NoMatchingToplocConfig(format!(
+                "No matching toploc config found for {}",
+                cleaned_file_name
+            )))?;
+
+        let result = toploc_config
+            .get_single_file_validation_status(&cleaned_file_name)
+            .await;
+        let validation_result = result?;
+        info!(
+            "Validation result for {}: {:?}",
+            work_key, validation_result
+        );
+
+        match validation_result {
+            ValidationResult::Accept => {
+                info!("Validation accepted for {}", cleaned_file_name);
+            }
+            ValidationResult::Reject => {
+                if let Err(e) = self.invalidate_work(work_key).await {
+                    error!("Failed to invalidate work {}: {}", work_key, e);
+                    return Err(ProcessWorkKeyError::InvalidatingWorkError(e.to_string()));
+                }
+            }
+            _ => (),
+        }
+
+        if let Err(e) = self
+            .update_work_validation_status(work_key, &validation_result)
+            .await
+        {
+            error!(
+                "Failed to update work validation status for {}: {}",
+                work_key, e
+            );
+            return Err(ProcessWorkKeyError::ValidationPollingError(e.to_string()));
+        }
+
+        Ok(())
+    }
+
+    pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
+        info!("Invalidating work: {}", work_key);
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_work_key_invalidation();
+        }
+
+        if self.disable_chain_invalidation {
+            info!("Chain invalidation is disabled, skipping work invalidation");
+            return Ok(());
+        }
+
+        // Special case for tests - skip actual blockchain interaction
+        #[cfg(test)]
+        {
+            info!("Test mode: skipping actual work invalidation");
+            let _ = &self.prime_network;
+            let _ = &self.penalty;
+            Ok(())
+        }
+
+        #[cfg(not(test))]
+        {
+            let data = hex::decode(work_key)
+                .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+            match self
+                .prime_network
+                .invalidate_work(self.pool_id, self.penalty, data)
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    error!("Failed to invalidate work {}: {}", work_key, e);
+                    Err(Error::msg(format!("Failed to invalidate work: {}", e)))
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1175,7 +1170,7 @@ mod tests {
         store
     }
 
-    fn setup_test_env() -> Result<(RedisStore, Contracts), Error> {
+    fn setup_test_env() -> Result<(RedisStore, Contracts<WalletProvider>), Error> {
         let store = test_store();
         let url = Url::parse("http://localhost:8545").unwrap();
 
@@ -1185,7 +1180,7 @@ mod tests {
         )
         .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
 
-        let contracts = ContractBuilder::new(&demo_wallet)
+        let contracts = ContractBuilder::new(demo_wallet.provider())
             .with_compute_registry()
             .with_ai_token()
             .with_prime_network()
