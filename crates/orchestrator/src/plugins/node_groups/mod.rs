@@ -526,15 +526,20 @@ impl NodeGroupsPlugin {
 
         drop(iter);
         debug!("Found {} potential group keys", all_keys.len());
-
-        let mut groups = Vec::new();
-        for group_key in all_keys {
-            if let Some(group_data) = conn.get::<_, Option<String>>(&group_key).await? {
-                if let Ok(group) = serde_json::from_str::<NodeGroup>(&group_data) {
-                    groups.push(group);
-                }
-            }
+        let mut pipe = redis::pipe();
+        for key in &all_keys {
+            pipe.get(key);
         }
+
+        let values: Vec<Option<String>> = pipe.query_async(&mut conn).await?;
+
+        let groups: Vec<NodeGroup> = values
+            .into_iter()
+            .filter_map(|value| {
+                value.and_then(|data| serde_json::from_str::<NodeGroup>(&data).ok())
+            })
+            .collect();
+
         debug!("Found {} total groups", groups.len());
         Ok(groups)
     }
