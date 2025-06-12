@@ -2383,6 +2383,7 @@ dependencies = [
  "anyhow",
  "clap",
  "env_logger",
+ "futures",
  "log",
  "redis",
  "redis-test",

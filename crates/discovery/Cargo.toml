@@ -9,8 +9,9 @@ alloy = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 env_logger = { workspace = true }
+futures = { workspace = true }
 log = { workspace = true }
-redis = { workspace = true }
+redis = { workspace = true, features = ["tokio-comp"] }
 redis-test = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
