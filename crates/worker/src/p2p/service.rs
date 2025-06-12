@@ -33,7 +33,7 @@ pub struct P2PService {
     node_id: String,
     listening_addrs: Vec<String>,
     cancellation_token: CancellationToken,
-    context: P2PContext,
+    context: Option<P2PContext>,
 }
 
 impl P2PService {
@@ -41,7 +41,7 @@ impl P2PService {
     pub async fn new(
         worker_p2p_seed: Option<u64>,
         cancellation_token: CancellationToken,
-        context: P2PContext,
+        context: Option<P2PContext>,
     ) -> Result<Self> {
         // Generate or derive the secret key for this worker
         let secret_key = if let Some(seed) = worker_p2p_seed {
@@ -121,7 +121,7 @@ impl P2PService {
     }
 
     /// Handle an incoming connection
-    async fn handle_connection(incoming: Incoming, context: P2PContext) {
+    async fn handle_connection(incoming: Incoming, context: Option<P2PContext>) {
         match incoming.await {
             Ok(connection) => {
                 info!("Accepted connection");
@@ -159,7 +159,7 @@ impl P2PService {
     async fn handle_stream(
         mut send: iroh::endpoint::SendStream,
         mut recv: iroh::endpoint::RecvStream,
-        context: P2PContext,
+        context: Option<P2PContext>,
     ) -> Result<()> {
         let mut msg_len_bytes = [0u8; 4];
         recv.read_exact(&mut msg_len_bytes).await?;
@@ -194,30 +194,54 @@ impl P2PService {
                 )
             }
             P2PMessage::Invite(invite) => {
-                let (status, error) = Self::handle_invite(invite, &context).await;
-                P2PResponse::new(request.id, P2PMessage::InviteResponse { status, error })
+                if let Some(context) = &context {
+                    let (status, error) = Self::handle_invite(invite, context).await;
+                    P2PResponse::new(request.id, P2PMessage::InviteResponse { status, error })
+                } else {
+                    P2PResponse::new(
+                        request.id,
+                        P2PMessage::InviteResponse {
+                            status: "error".to_string(),
+                            error: Some("No context".to_string()),
+                        },
+                    )
+                }
             }
             P2PMessage::GetTaskLogs => {
-                let logs = context.docker_service.get_logs().await;
-                let response_logs = logs
-                    .map(|log_string| vec![log_string])
-                    .map_err(|e| e.to_string());
-                P2PResponse::new(
-                    request.id,
-                    P2PMessage::GetTaskLogsResponse {
-                        logs: response_logs,
-                    },
-                )
+                if let Some(context) = &context {
+                    let logs = context.docker_service.get_logs().await;
+                    let response_logs = logs
+                        .map(|log_string| vec![log_string])
+                        .map_err(|e| e.to_string());
+                    P2PResponse::new(
+                        request.id,
+                        P2PMessage::GetTaskLogsResponse {
+                            logs: response_logs,
+                        },
+                    )
+                } else {
+                    P2PResponse::new(
+                        request.id,
+                        P2PMessage::GetTaskLogsResponse { logs: Ok(vec![]) },
+                    )
+                }
             }
             P2PMessage::RestartTask => {
-                let result = context.docker_service.restart_task().await;
-                let response_result = result.map_err(|e| e.to_string());
-                P2PResponse::new(
-                    request.id,
-                    P2PMessage::RestartTaskResponse {
-                        result: response_result,
-                    },
-                )
+                if let Some(context) = &context {
+                    let result = context.docker_service.restart_task().await;
+                    let response_result = result.map_err(|e| e.to_string());
+                    P2PResponse::new(
+                        request.id,
+                        P2PMessage::RestartTaskResponse {
+                            result: response_result,
+                        },
+                    )
+                } else {
+                    P2PResponse::new(
+                        request.id,
+                        P2PMessage::RestartTaskResponse { result: Ok(()) },
+                    )
+                }
             }
             _ => {
                 warn!("Unexpected message type");
@@ -371,3 +395,6 @@ impl P2PService {
         ("ok".to_string(), None)
     }
 }
+
+#[cfg(test)]
+mod tests {}

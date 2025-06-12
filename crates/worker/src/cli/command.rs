@@ -623,7 +623,7 @@ pub async fn execute_command(
             let p2p_service = match P2PService::new(
                 state.worker_p2p_seed,
                 cancellation_token.clone(),
-                p2p_context,
+                Some(p2p_context),
             )
             .await
             {
@@ -634,13 +634,11 @@ pub async fn execute_command(
                 }
             };
 
-            // Start accepting P2P connections
             if let Err(e) = p2p_service.start().await {
                 error!("❌ Failed to start P2P listener: {}", e);
                 std::process::exit(1);
             }
 
-            // Update node config with P2P info
             node_config.worker_p2p_id = Some(p2p_service.node_id().to_string());
             node_config.worker_p2p_addresses = Some(
                 p2p_service
