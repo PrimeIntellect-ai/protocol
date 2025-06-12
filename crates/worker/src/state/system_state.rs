@@ -36,7 +36,6 @@ pub struct SystemState {
     disable_state_storing: bool,
     pub compute_pool_id: Option<String>,
 
-    // TODO: Persist both container and worker p2p ids
     pub worker_p2p_seed: Option<u64>,
     pub p2p_id: Option<String>,
     pub p2p_seed: Option<u64>,

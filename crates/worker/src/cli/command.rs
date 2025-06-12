@@ -608,8 +608,13 @@ pub async fn execute_command(
 
             // Start P2P service
             Console::title("🔗 Starting P2P Service");
-            // TODO: Fix weird hb clone
-            let heartbeat = heartbeat_service.unwrap();
+            let heartbeat = match heartbeat_service.clone() {
+                Ok(service) => service,
+                Err(e) => {
+                    error!("❌ Heartbeat service is not available: {}", e);
+                    std::process::exit(1);
+                }
+            };
 
             let p2p_context = P2PContext {
                 docker_service: docker_service.clone(),

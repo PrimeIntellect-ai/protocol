@@ -67,13 +67,6 @@ async fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    // Run migration to populate Redis set from existing keys
-    // TODO: Remove this after all production instances have been migrated
-    if let Err(e) = node_store.migrate_to_set().await {
-        error!("Failed to migrate nodes to set (non-fatal): {}", e);
-        // Continue anyway - the migration is not critical for operation
-    }
-
     let cancellation_token = CancellationToken::new();
     let last_chain_sync = Arc::new(Mutex::new(None::<std::time::SystemTime>));
     let chain_sync = ChainSync::new(

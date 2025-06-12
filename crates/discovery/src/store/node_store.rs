@@ -153,37 +153,4 @@ impl NodeStore {
 
         Ok(serialized_node)
     }
-
-    // Migration helper: populate the set from existing keys
-    pub async fn migrate_to_set(&self) -> Result<(), Error> {
-        let mut con = self.get_connection().await?;
-        let mut cursor = 0;
-
-        loop {
-            let (new_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
-                .arg(cursor)
-                .arg("MATCH")
-                .arg("node:*")
-                .arg("COUNT")
-                .arg(100)
-                .query_async(&mut con)
-                .await?;
-
-            for key in keys {
-                if let Some(node_id) = key.strip_prefix("node:") {
-                    // Skip the "node:ids" key itself
-                    if node_id != "ids" {
-                        let _: () = con.sadd("node:ids", node_id).await?;
-                    }
-                }
-            }
-
-            cursor = new_cursor;
-            if cursor == 0 {
-                break;
-            }
-        }
-
-        Ok(())
-    }
 }
