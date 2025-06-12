@@ -340,9 +340,12 @@ impl DockerService {
     pub async fn restart_task(&self) -> Result<(), Box<dyn std::error::Error>> {
         let current_task = self.state.get_current_task().await;
         match current_task {
-            Some(task) => {
+            Some(mut task) => {
                 let container_id = format!("{}-{}", TASK_PREFIX, task.id);
                 self.docker_manager.restart_container(&container_id).await?;
+                task.restart_count = task.restart_count.saturating_add(1);
+                task.state = TaskState::RESTARTING;
+                self.state.set_current_task(Some(task.clone())).await;
                 Ok(())
             }
             None => Ok(()),
@@ -387,6 +390,10 @@ mod tests {
             .state
             .set_current_task(Some(task_clone))
             .await;
+        docker_service.restart_task().await.unwrap();
+        let updated_task = docker_service.state.get_current_task().await.unwrap();
+        assert_eq!(updated_task.restart_count, 1);
+        assert_eq!(updated_task.state, TaskState::RESTARTING);
 
         assert_eq!(
             docker_service.state.get_current_task().await.unwrap().name,

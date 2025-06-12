@@ -63,4 +63,12 @@ impl DockerState {
         let mut is_running_guard = self.is_running.lock().await;
         *is_running_guard = is_running;
     }
+
+    pub async fn increment_restart_count(&self) {
+        let mut current_task = self.current_task.lock().await;
+        if let Some(task) = current_task.as_mut() {
+            task.restart_count += 1;
+        }
+    }
 }
+
