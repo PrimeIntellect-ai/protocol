@@ -24,6 +24,7 @@ fn get_default_state_dir() -> Option<String> {
 struct PersistedSystemState {
     endpoint: Option<String>,
     p2p_seed: Option<u64>,
+    worker_p2p_seed: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +35,9 @@ pub struct SystemState {
     state_dir_overwrite: Option<PathBuf>,
     disable_state_storing: bool,
     pub compute_pool_id: Option<String>,
+
+    // TODO: Persist both container and worker p2p ids
+    pub worker_p2p_seed: Option<u64>,
     pub p2p_id: Option<String>,
     pub p2p_seed: Option<u64>,
 }
@@ -52,6 +56,7 @@ impl SystemState {
         debug!("State path: {:?}", state_path);
         let mut endpoint = None;
         let mut p2p_seed: Option<u64> = None;
+        let mut worker_p2p_seed: Option<u64> = None;
         // Try to load state, log info if creating new file
         if let Some(path) = &state_path {
             let state_file = path.join(STATE_FILENAME);
@@ -64,6 +69,7 @@ impl SystemState {
                 debug!("Loaded previous state from {:?}", state_file);
                 endpoint = loaded_state.endpoint;
                 p2p_seed = loaded_state.p2p_seed;
+                worker_p2p_seed = loaded_state.worker_p2p_seed;
             } else {
                 debug!("Failed to load state from {:?}", state_file);
             }
@@ -83,6 +89,11 @@ impl SystemState {
                 }
             });
 
+        if worker_p2p_seed.is_none() {
+            let seed = generate_random_seed();
+            worker_p2p_seed = Some(seed);
+        }
+
         Self {
             last_heartbeat: Arc::new(RwLock::new(None)),
             is_running: Arc::new(RwLock::new(false)),
@@ -92,6 +103,7 @@ impl SystemState {
             compute_pool_id,
             p2p_seed,
             p2p_id,
+            worker_p2p_seed,
         }
     }
     fn save_state(&self, heartbeat_endpoint: Option<String>) -> Result<()> {
@@ -106,6 +118,7 @@ impl SystemState {
                     let state = PersistedSystemState {
                         endpoint: heartbeat_endpoint,
                         p2p_seed: Some(seed),
+                        worker_p2p_seed: self.worker_p2p_seed,
                     };
 
                     debug!("state: {:?}", state);

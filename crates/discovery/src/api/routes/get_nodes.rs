@@ -171,7 +171,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             compute_pool_id: 0,
-            compute_specs: None,
+            ..Default::default()
         };
         match app_state.node_store.register_node(sample_node).await {
             Ok(_) => (),
@@ -214,7 +214,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             compute_pool_id: 0,
-            compute_specs: None,
+            ..Default::default()
         };
         match app_state.node_store.register_node(older_node).await {
             Ok(_) => (),
@@ -233,7 +233,7 @@ mod tests {
             ip_address: "127.0.0.2".to_string(),
             port: 8081,
             compute_pool_id: 0,
-            compute_specs: None,
+            ..Default::default()
         };
         match app_state.node_store.register_node(newer_node).await {
             Ok(_) => (),
@@ -277,14 +277,13 @@ mod tests {
                     ip_address: "192.168.1.1".to_string(),
                     port: 8080,
                     compute_pool_id: 1,
-                    compute_specs: None,
+                    ..Default::default()
                 },
                 is_validated: true,
                 is_provider_whitelisted: true,
                 is_active: true,
-                last_updated: None,
-                created_at: None,
                 is_blacklisted: false,
+                ..Default::default()
             },
             DiscoveryNode {
                 node: Node {
@@ -293,14 +292,13 @@ mod tests {
                     ip_address: "192.168.1.2".to_string(),
                     port: 8080,
                     compute_pool_id: 1,
-                    compute_specs: None,
+                    ..Default::default()
                 },
                 is_validated: true,
                 is_provider_whitelisted: true,
                 is_active: false,
-                last_updated: None,
-                created_at: None,
                 is_blacklisted: false,
+                ..Default::default()
             },
         ];
 
@@ -312,14 +310,13 @@ mod tests {
                 ip_address: "192.168.1.3".to_string(),
                 port: 8080,
                 compute_pool_id: 2,
-                compute_specs: None,
+                ..Default::default()
             },
             is_validated: true,
             is_provider_whitelisted: true,
             is_active: true,
-            last_updated: None,
-            created_at: None,
             is_blacklisted: false,
+            ..Default::default()
         });
 
         // Node with same IP in different pools (active in pool 3)
@@ -330,14 +327,13 @@ mod tests {
                 ip_address: "192.168.1.4".to_string(),
                 port: 8080,
                 compute_pool_id: 3,
-                compute_specs: None,
+                ..Default::default()
             },
             is_validated: true,
             is_provider_whitelisted: true,
             is_active: true,
-            last_updated: None,
-            created_at: None,
             is_blacklisted: false,
+            ..Default::default()
         });
 
         // This node should be filtered out because it shares IP with an active node in pool 3
@@ -348,14 +344,13 @@ mod tests {
                 ip_address: "192.168.1.4".to_string(),
                 port: 8081,
                 compute_pool_id: 1,
-                compute_specs: None,
+                ..Default::default()
             },
             is_validated: true,
             is_provider_whitelisted: true,
             is_active: false,
-            last_updated: None,
-            created_at: None,
             is_blacklisted: false,
+            ..Default::default()
         });
 
         // Test filtering for pool 1
@@ -393,14 +388,13 @@ mod tests {
                     ip_address: "192.168.1.1".to_string(),
                     port: 8080,
                     compute_pool_id: 1,
-                    compute_specs: None,
+                    ..Default::default()
                 },
                 is_validated: true,
                 is_provider_whitelisted: true,
                 is_active: false,
-                last_updated: None,
-                created_at: None,
                 is_blacklisted: false,
+                ..Default::default()
             },
             // Inactive node in pool 2 with same IP
             DiscoveryNode {
@@ -410,14 +404,13 @@ mod tests {
                     ip_address: "192.168.1.1".to_string(),
                     port: 8080,
                     compute_pool_id: 2,
-                    compute_specs: None,
+                    ..Default::default()
                 },
                 is_validated: true,
                 is_provider_whitelisted: true,
                 is_active: false,
-                last_updated: None,
-                created_at: None,
                 is_blacklisted: false,
+                ..Default::default()
             },
         ];
 

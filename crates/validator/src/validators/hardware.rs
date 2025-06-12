@@ -143,13 +143,12 @@ mod tests {
                 compute_pool_id: 1,
                 id: Address::ZERO.to_string(),
                 provider_address: Address::ZERO.to_string(),
-                compute_specs: None,
+                ..Default::default()
             },
             is_active: true,
             is_provider_whitelisted: true,
             is_blacklisted: false,
-            last_updated: None,
-            created_at: None,
+            ..Default::default()
         };
 
         let fake_discovery_node2 = DiscoveryNode {
@@ -160,13 +159,12 @@ mod tests {
                 compute_pool_id: 1,
                 id: Address::ZERO.to_string(),
                 provider_address: Address::ZERO.to_string(),
-                compute_specs: None,
+                ..Default::default()
             },
             is_active: true,
             is_provider_whitelisted: true,
             is_blacklisted: false,
-            last_updated: None,
-            created_at: None,
+            ..Default::default()
         };
 
         let nodes = vec![fake_discovery_node1, fake_discovery_node2];

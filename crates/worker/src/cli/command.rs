@@ -10,6 +10,7 @@ use crate::metrics::store::MetricsStore;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderOperations;
+use crate::p2p::P2PService;
 use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
@@ -310,11 +311,13 @@ pub async fn execute_command(
                     .to_string(),
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
+                worker_p2p_id: None,
+                worker_p2p_addresses: None,
             };
 
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
-            let node_config = hardware_check.check_hardware(node_config).await.unwrap();
+            let mut node_config = hardware_check.check_hardware(node_config).await.unwrap();
             let software_checker = SoftwareChecker::new(Some(issue_tracker.clone()));
             if let Err(err) = software_checker.check_software(&node_config).await {
                 Console::user_error(&format!("❌ Software check failed: {}", err));
@@ -603,6 +606,39 @@ pub async fn execute_command(
                 }
             }
 
+            // Start P2P service
+            Console::title("🔗 Starting P2P Service");
+
+            let p2p_service =
+                match P2PService::new(state.worker_p2p_seed, cancellation_token.clone()).await {
+                    Ok(service) => service,
+                    Err(e) => {
+                        error!("❌ Failed to start P2P service: {}", e);
+                        std::process::exit(1);
+                    }
+                };
+
+            // Start accepting P2P connections
+            if let Err(e) = p2p_service.start().await {
+                error!("❌ Failed to start P2P listener: {}", e);
+                std::process::exit(1);
+            }
+
+            // Update node config with P2P info
+            node_config.worker_p2p_id = Some(p2p_service.node_id().to_string());
+            node_config.worker_p2p_addresses = Some(
+                p2p_service
+                    .listening_addresses()
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+            );
+
+            Console::success(&format!(
+                "P2P service started with ID: {}",
+                p2p_service.node_id()
+            ));
+
             let mut attempts = 0;
             let max_attempts = 100;
             while attempts < max_attempts {
@@ -683,6 +719,8 @@ pub async fn execute_command(
                 compute_specs: None,
                 provider_address: String::new(),
                 compute_pool_id: 0,
+                worker_p2p_id: None,
+                worker_p2p_addresses: None,
             };
 
             let node_config = match hardware_checker.check_hardware(node_config).await {

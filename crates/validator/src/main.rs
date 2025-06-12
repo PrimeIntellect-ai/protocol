@@ -1,4 +1,5 @@
 pub mod metrics;
+pub mod p2p;
 pub mod store;
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
@@ -9,6 +10,7 @@ use clap::Parser;
 use log::{debug, LevelFilter};
 use log::{error, info};
 use metrics::MetricsContext;
+use p2p::P2PClient;
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
@@ -131,6 +133,10 @@ struct Args {
     /// Redis URL
     #[arg(long, default_value = "redis://localhost:6380")]
     redis_url: String,
+
+    /// Enable P2P testing (will ping workers)
+    #[arg(long, default_value = "true")]
+    enable_p2p_test: bool,
 }
 
 #[tokio::main]
@@ -146,6 +152,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     env_logger::Builder::new()
         .filter_level(log_level)
+        .filter_module("iroh", log::LevelFilter::Warn)
+        .filter_module("iroh_net", log::LevelFilter::Warn)
+        .filter_module("iroh_quinn", log::LevelFilter::Warn)
+        .filter_module("iroh_base", log::LevelFilter::Warn)
+        .filter_module("tracing::span", log::LevelFilter::Warn)
         .format_timestamp(None)
         .init();
 
@@ -225,6 +236,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let metrics_ctx =
         MetricsContext::new(validator_wallet.address().to_string(), args.pool_id.clone());
+
+    // Initialize P2P client if enabled
+    let p2p_client = if args.enable_p2p_test {
+        match P2PClient::new().await {
+            Ok(client) => {
+                info!("P2P client initialized for testing");
+                Some(client)
+            }
+            Err(e) => {
+                error!("Failed to initialize P2P client: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     if let Some(pool_id) = args.pool_id.clone() {
         let pool = match contracts
@@ -401,6 +428,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
             };
+
+            // Test P2P connectivity if enabled
+            if let Some(ref p2p_client) = p2p_client {
+                info!("Testing P2P connectivity to {} nodes", nodes.len());
+                for node in &nodes {
+                    if let (Some(p2p_id), Some(p2p_addrs)) =
+                        (&node.node.worker_p2p_id, &node.node.worker_p2p_addresses)
+                    {
+                        if !p2p_addrs.is_empty() {
+                            info!("Pinging worker {} with P2P ID: {}", node.node.id, p2p_id);
+                            match p2p_client.ping_worker(p2p_id, p2p_addrs).await {
+                                Ok(nonce) => {
+                                    info!(
+                                        "✅ Successfully pinged worker {} (nonce: {})",
+                                        node.node.id, nonce
+                                    );
+                                }
+                                Err(e) => {
+                                    error!("❌ Failed to ping worker {}: {}", node.node.id, e);
+                                }
+                            }
+                        }
+                    } else {
+                        debug!("Node {} does not have P2P information", node.node.id);
+                    }
+                }
+            }
 
             // Ensure nodes have enough stake
             let mut nodes_with_enough_stake = Vec::new();

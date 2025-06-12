@@ -51,6 +51,6 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing-log = "0.2.0"
 time = "0.3.41"
-iroh = "0.34.1"
-rand_v8 = { package = "rand", version = "0.8.5", features = ["std"] }
-rand_core_v6 = { package = "rand_core", version = "0.6.4", features = ["std"] }
+iroh = { workspace = true }
+rand_v8 = { workspace = true }
+rand_core_v6 = { workspace = true }
