@@ -83,7 +83,13 @@ impl P2PClient {
     ) -> Result<()> {
         let response = self
             .shared_client
-            .send_request(worker_p2p_id, worker_addresses, worker_wallet_address, P2PMessage::RestartTask, 20)
+            .send_request(
+                worker_p2p_id,
+                worker_addresses,
+                worker_wallet_address,
+                P2PMessage::RestartTask,
+                20,
+            )
             .await?;
 
         match response {

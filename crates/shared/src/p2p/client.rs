@@ -3,8 +3,8 @@ use anyhow::Result;
 use iroh::endpoint::{RecvStream, SendStream};
 use iroh::{Endpoint, NodeAddr, NodeId, SecretKey};
 use log::{debug, info};
-use std::time::Duration;
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::p2p::messages::{P2PMessage, P2PRequest, P2PResponse};
 use crate::p2p::protocol::PRIME_P2P_PROTOCOL;
@@ -49,10 +49,7 @@ impl P2PClient {
     }
 
     /// Helper function to write a message with length prefix
-    async fn write_message<T: serde::Serialize>(
-        send: &mut SendStream,
-        message: &T,
-    ) -> Result<()> {
+    async fn write_message<T: serde::Serialize>(send: &mut SendStream, message: &T) -> Result<()> {
         let message_bytes = serde_json::to_vec(message)?;
         send.write_all(&(message_bytes.len() as u32).to_be_bytes())
             .await?;
@@ -61,16 +58,14 @@ impl P2PClient {
     }
 
     /// Helper function to read a message with length prefix
-    async fn read_message<T: serde::de::DeserializeOwned>(
-        recv: &mut RecvStream,
-    ) -> Result<T> {
+    async fn read_message<T: serde::de::DeserializeOwned>(recv: &mut RecvStream) -> Result<T> {
         let mut len_bytes = [0u8; 4];
         recv.read_exact(&mut len_bytes).await?;
         let len = u32::from_be_bytes(len_bytes) as usize;
-        
+
         let mut message_bytes = vec![0u8; len];
         recv.read_exact(&mut message_bytes).await?;
-        
+
         let message: T = serde_json::from_slice(&message_bytes)?;
         Ok(message)
     }
@@ -86,8 +81,13 @@ impl P2PClient {
         let timeout_duration = Duration::from_secs(timeout_secs);
 
         tokio::time::timeout(timeout_duration, async {
-            self.send_request_inner(target_p2p_id, target_addresses, target_wallet_address, message)
-                .await
+            self.send_request_inner(
+                target_p2p_id,
+                target_addresses,
+                target_wallet_address,
+                message,
+            )
+            .await
         })
         .await
         .map_err(|_| {
@@ -98,7 +98,6 @@ impl P2PClient {
             )
         })?
     }
-    
 
     async fn send_request_inner(
         &self,
@@ -141,7 +140,7 @@ impl P2PClient {
             message: challenge_message.clone(),
         });
         Self::write_message(&mut send, &request_auth_challenge).await?;
-        
+
         // Response contains the auth challenge we have to solve (to show we are the right node)
         let auth_challenge_response: P2PResponse = Self::read_message(&mut recv).await?;
         let auth_challenge_solution: P2PRequest = match auth_challenge_response.message {
@@ -150,15 +149,12 @@ impl P2PClient {
                 message,
             } => {
                 // Parse the signature from the server
-                let parsed_signature = if let Ok(sig) =
-                    alloy::primitives::Signature::from_str(&signed_message)
-                {
-                    sig
-                } else {
-                    return Err(anyhow::anyhow!(
-                        "Failed to parse signature from server"
-                    ));
-                };
+                let parsed_signature =
+                    if let Ok(sig) = alloy::primitives::Signature::from_str(&signed_message) {
+                        sig
+                    } else {
+                        return Err(anyhow::anyhow!("Failed to parse signature from server"));
+                    };
 
                 // Recover address from the challenge message that the server signed
                 let recovered_address = if let Ok(addr) =
@@ -181,9 +177,7 @@ impl P2PClient {
                 }
 
                 debug!("Auth challenge received from node: {}", target_p2p_id);
-                let signature = sign_message(&message, &self.wallet)
-                    .await
-                    .unwrap();
+                let signature = sign_message(&message, &self.wallet).await.unwrap();
                 P2PRequest::new(P2PMessage::AuthSolution {
                     signed_message: signature,
                 })

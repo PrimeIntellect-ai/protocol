@@ -270,7 +270,7 @@ impl P2PService {
                     let challenge_bytes: [u8; 32] = rand_v8::rngs::OsRng.gen();
                     let challenge_message = hex::encode(challenge_bytes);
 
-                    info!("Received request auth challenge");
+                    debug!("Received request auth challenge");
                     let signature = match sign_message(&message, &wallet).await {
                         Ok(signature) => signature,
                         Err(e) => {
@@ -294,9 +294,8 @@ impl P2PService {
                     )
                 }
                 P2PMessage::AuthSolution { signed_message } => {
-                    info!("Received auth solution");
-
                     // Get the challenge message for this connection
+                    debug!("Received auth solution");
                     let challenge_message = match &current_challenge {
                         Some(challenge) => challenge,
                         None => {

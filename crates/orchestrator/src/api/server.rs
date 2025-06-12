@@ -21,12 +21,11 @@ use shared::security::api_key_middleware::ApiKeyMiddleware;
 use shared::security::auth_signature_middleware::{ValidateSignature, ValidatorState};
 use shared::utils::StorageProvider;
 use shared::web3::contracts::core::builder::Contracts;
-use shared::web3::wallet::{Wallet, WalletProvider};
+use shared::web3::wallet::WalletProvider;
 use std::sync::Arc;
 
 pub struct AppState {
     pub store_context: Arc<StoreContext>,
-    pub wallet: Wallet,
     pub storage_provider: Arc<dyn StorageProvider>,
     pub heartbeats: Arc<LoopHeartbeats>,
     pub redis_store: Arc<RedisStore>,
@@ -36,7 +35,6 @@ pub struct AppState {
     pub scheduler: Scheduler,
     pub node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
     pub metrics: Arc<MetricsContext>,
-    pub http_client: reqwest::Client,
     pub p2p_client: Arc<P2PClient>,
 }
 
@@ -45,7 +43,6 @@ pub async fn start_server(
     host: &str,
     port: u16,
     store_context: Arc<StoreContext>,
-    wallet: Wallet,
     admin_api_key: String,
     storage_provider: Arc<dyn StorageProvider>,
     heartbeats: Arc<LoopHeartbeats>,
@@ -62,7 +59,6 @@ pub async fn start_server(
     info!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
         store_context,
-        wallet,
         storage_provider,
         heartbeats,
         redis_store,
@@ -72,7 +68,6 @@ pub async fn start_server(
         scheduler,
         node_groups_plugin,
         metrics,
-        http_client: reqwest::Client::new(),
         p2p_client,
     });
     let node_store = app_state.store_context.node_store.clone();

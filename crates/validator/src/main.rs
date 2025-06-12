@@ -133,10 +133,6 @@ struct Args {
     /// Redis URL
     #[arg(long, default_value = "redis://localhost:6380")]
     redis_url: String,
-
-    /// Enable P2P testing (will ping workers)
-    #[arg(long, default_value = "true")]
-    enable_p2p_test: bool,
 }
 
 #[tokio::main]
@@ -238,7 +234,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         MetricsContext::new(validator_wallet.address().to_string(), args.pool_id.clone());
 
     // Initialize P2P client if enabled
-    let p2p_client = if args.enable_p2p_test {
+    let p2p_client = {
         match P2PClient::new(validator_wallet.clone()).await {
             Ok(client) => {
                 info!("P2P client initialized for testing");
@@ -249,8 +245,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             }
         }
-    } else {
-        None
     };
 
     if let Some(pool_id) = args.pool_id.clone() {
@@ -429,41 +423,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
             };
-
-            // Test P2P connectivity if enabled
-            if let Some(ref p2p_client) = p2p_client {
-                info!("Testing P2P connectivity to {} nodes", nodes.len());
-                for node in &nodes {
-                    if let (Some(p2p_id), Some(p2p_addrs)) =
-                        (&node.node.worker_p2p_id, &node.node.worker_p2p_addresses)
-                    {
-                        if !p2p_addrs.is_empty() {
-
-                            let address = match Address::from_str(&node.node.id) {
-                                Ok(addr) => addr,
-                                Err(e) => {
-                                    error!("Failed to parse node address {}: {}", node.node.id, e);
-                                    continue;
-                                }
-                            };
-                            info!("Pinging worker {} with P2P ID: {}", address, p2p_id);
-                            match p2p_client.ping_worker(address, p2p_id, p2p_addrs).await {
-                                Ok(nonce) => {
-                                    info!(
-                                        "✅ Successfully pinged worker {} (nonce: {})",
-                                        node.node.id, nonce
-                                    );
-                                }
-                                Err(e) => {
-                                    error!("❌ Failed to ping worker {}: {}", node.node.id, e);
-                                }
-                            }
-                        }
-                    } else {
-                        debug!("Node {} does not have P2P information", node.node.id);
-                    }
-                }
-            }
 
             // Ensure nodes have enough stake
             let mut nodes_with_enough_stake = Vec::new();

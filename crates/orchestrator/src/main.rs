@@ -375,7 +375,6 @@ async fn main() -> Result<()> {
             "0.0.0.0",
             port,
             server_store_context.clone(),
-            wallet,
             args.admin_api_key,
             storage_provider,
             heartbeats.clone(),

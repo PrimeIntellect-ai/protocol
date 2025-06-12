@@ -57,12 +57,6 @@ pub async fn create_test_app_state() -> Data<AppState> {
         store_context: store_context.clone(),
         contracts: None,
         pool_id: 1,
-        wallet: Wallet::new(
-            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-            Url::parse("http://localhost:8545").unwrap(),
-        )
-        .unwrap(),
-
         storage_provider,
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,
@@ -70,7 +64,6 @@ pub async fn create_test_app_state() -> Data<AppState> {
         scheduler,
         node_groups_plugin: None,
         metrics,
-        http_client: reqwest::Client::new(),
         p2p_client: p2p_client.clone(),
     })
 }
@@ -134,12 +127,6 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
         store_context: store_context.clone(),
         contracts: None,
         pool_id: 1,
-        wallet: Wallet::new(
-            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-            Url::parse("http://localhost:8545").unwrap(),
-        )
-        .unwrap(),
-
         storage_provider,
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,
@@ -147,7 +134,6 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
         scheduler,
         node_groups_plugin,
         metrics,
-        http_client: reqwest::Client::new(),
         p2p_client: p2p_client.clone(),
     })
 }
@@ -207,11 +193,6 @@ pub async fn create_test_app_state_with_metrics() -> Data<AppState> {
         store_context: store_context.clone(),
         contracts: None,
         pool_id: 1,
-        wallet: Wallet::new(
-            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-            Url::parse("http://localhost:8545").unwrap(),
-        )
-        .unwrap(),
         storage_provider,
         heartbeats: Arc::new(LoopHeartbeats::new(&mode)),
         hourly_upload_limit: 12,
@@ -219,7 +200,6 @@ pub async fn create_test_app_state_with_metrics() -> Data<AppState> {
         scheduler,
         node_groups_plugin: None,
         metrics,
-        http_client: reqwest::Client::new(),
         p2p_client: p2p_client.clone(),
     })
 }

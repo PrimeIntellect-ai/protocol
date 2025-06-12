@@ -44,13 +44,18 @@ impl<'a> HardwareChallenge<'a> {
         let mut challenge_with_timestamp = challenge_matrix.clone();
         challenge_with_timestamp.timestamp = Some(current_time);
 
-        let node_address =Address::from_str(&node.node.id)
+        let node_address = Address::from_str(&node.node.id)
             .map_err(|e| anyhow::anyhow!("Failed to parse node address {}: {}", node.node.id, e))?;
 
         // Send challenge via P2P
         match self
             .p2p_client
-            .send_hardware_challenge(node_address, p2p_id, p2p_addresses, challenge_with_timestamp)
+            .send_hardware_challenge(
+                node_address,
+                p2p_id,
+                p2p_addresses,
+                challenge_with_timestamp,
+            )
             .await
         {
             Ok(response) => {

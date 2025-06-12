@@ -11,9 +11,7 @@ pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 #[serde(tag = "type", content = "payload")]
 pub enum P2PMessage {
     /// Request auth challenge from worker to validator
-    RequestAuthChallenge {
-        message: String,
-    },
+    RequestAuthChallenge { message: String },
 
     /// Auth challenge from worker to validator
     AuthChallenge {
@@ -22,15 +20,13 @@ pub enum P2PMessage {
     },
 
     /// Auth solution from validator to worker
-    AuthSolution {
-        signed_message: String,
-    },
+    AuthSolution { signed_message: String },
 
     /// Auth granted from worker to validator
-    AuthGranted {  },
+    AuthGranted {},
 
     /// Auth rejected from validator to worker
-    AuthRejected {  },
+    AuthRejected {},
 
     /// Simple ping message for connectivity testing
     Ping { timestamp: SystemTime, nonce: u64 },

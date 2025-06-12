@@ -113,14 +113,14 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
         }
     };
 
-    if node.p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
+    if node.worker_p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
         return HttpResponse::BadRequest().json(json!({
             "success": false,
             "error": "Node does not have p2p information"
         }));
     }
 
-    let p2p_id = node.p2p_id.as_ref().unwrap();
+    let p2p_id = node.worker_p2p_id.as_ref().unwrap();
     let p2p_addresses = node.worker_p2p_addresses.as_ref().unwrap();
 
     match app_state
@@ -169,14 +169,14 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
         }
     };
 
-    if node.p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
+    if node.worker_p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
         return HttpResponse::BadRequest().json(json!({
             "success": false,
             "error": "Node does not have p2p information"
         }));
     }
 
-    let p2p_id = node.p2p_id.as_ref().unwrap();
+    let p2p_id = node.worker_p2p_id.as_ref().unwrap();
     let p2p_addresses = node.worker_p2p_addresses.as_ref().unwrap();
 
     match app_state
