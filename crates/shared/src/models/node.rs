@@ -56,6 +56,22 @@ pub struct GpuSpecs {
     pub model: Option<String>,
     pub memory_mb: Option<u32>,
     pub indices: Option<Vec<u32>>,
+    pub vendor: Option<GpuVendor>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum GpuVendor {
+    Nvidia,
+    Amd,
+}
+
+impl std::fmt::Display for GpuVendor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GpuVendor::Nvidia => write!(f, "nvidia"),
+            GpuVendor::Amd => write!(f, "amd"),
+        }
+    }
 }
 
 impl fmt::Display for ComputeRequirements {
@@ -593,6 +609,7 @@ mod tests {
                     count: gpu_count,
                     model: gpu_model.map(String::from),
                     memory_mb: gpu_mem,
+                    vendor: None,
                     ..Default::default()
                 })
             } else {
@@ -892,6 +909,7 @@ mod tests {
             gpu: Some(GpuSpecs {
                 count: Some(4),
                 model: Some("A100".to_string()),
+                vendor: None, // For test purposes
                 ..Default::default()
             }),
             cpu: Some(CpuSpecs {
@@ -920,6 +938,7 @@ mod tests {
                 count: Some(4),
                 model: Some("A100".to_string()),
                 memory_mb: Some(40000),
+                vendor: None, // For test purposes
                 ..Default::default()
             }),
             cpu: Some(CpuSpecs {
@@ -1033,6 +1052,40 @@ mod tests {
         let req_str = "gpu:count=8;gpu:model=H100;gpu:memory_mb=80000;gpu:count=4;gpu:model=A100;gpu:memory_mb=40000;gpu:count=2;gpu:model=RTX4090;gpu:memory_mb=24000;ram_mb=62000";
         let requirements = ComputeRequirements::from_str(req_str).unwrap();
         assert!(specs.meets(&requirements));
+    }
+
+    #[test]
+    fn test_amd_gpu_model_parsing_and_matching() {
+        // Test with MI300X
+        let req_str_mi = "gpu:count=2;gpu:model=mi300x;gpu:memory_mb=196000";
+        let requirements_mi = ComputeRequirements::from_str(req_str_mi).unwrap();
+
+        let specs_mi = create_compute_specs(
+            Some(2),
+            Some("amd aqua vanjaram [instinct mi300x vf]"),
+            Some(196000),
+            None,
+            None,
+            None,
+        );
+        assert!(specs_mi.meets(&requirements_mi));
+
+        // Test mixed vendor
+        let req_str_mixed =
+            "gpu:count=8;gpu:model=a100,h100;gpu:count=4;gpu:model=mi250x,mi300x;ram_mb=196000";
+        let requirements_mixed = ComputeRequirements::from_str(req_str_mixed).unwrap();
+        assert_eq!(requirements_mixed.gpu.len(), 2);
+
+        // AMD node should meet the second option
+        let specs_amd = create_compute_specs(
+            Some(4),
+            Some("AMD MI300X"),
+            Some(196000),
+            None,
+            Some(256000),
+            None,
+        );
+        assert!(specs_amd.meets(&requirements_mixed));
     }
 
     #[test]
