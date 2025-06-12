@@ -67,6 +67,12 @@ pub struct TaskRequest {
     pub args: Option<Vec<String>>,
     pub scheduling_config: Option<SchedulingConfig>,
     pub storage_config: Option<StorageConfig>,
+    pub metadata: Option<TaskMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TaskMetadata {
+    pub labels: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -87,6 +93,8 @@ pub struct Task {
     pub scheduling_config: Option<SchedulingConfig>,
     #[serde(default)]
     pub storage_config: Option<StorageConfig>,
+    #[serde(default)]
+    pub metadata: Option<TaskMetadata>,
 }
 
 impl Default for Task {
@@ -103,6 +111,7 @@ impl Default for Task {
             updated_at: None,
             scheduling_config: None,
             storage_config: None,
+            metadata: None,
         }
     }
 }
@@ -158,6 +167,7 @@ impl TryFrom<TaskRequest> for Task {
             updated_at: None,
             scheduling_config: request.scheduling_config,
             storage_config: request.storage_config,
+            metadata: request.metadata,
         })
     }
 }

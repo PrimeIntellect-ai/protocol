@@ -264,4 +264,53 @@ mod tests {
         assert_eq!(tasks[1].image, "test2");
         assert_eq!(tasks[2].image, "test1");
     }
+
+    #[actix_web::test]
+    async fn test_create_task_with_metadata() {
+        let app_state = create_test_app_state().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .route("/tasks", post().to(create_task)),
+        )
+        .await;
+
+        let mut labels = std::collections::HashMap::new();
+        labels.insert("model".to_string(), "qwen3-4b".to_string());
+        labels.insert("dataset".to_string(), "intellect-2-rl-dataset".to_string());
+        labels.insert("version".to_string(), "v1".to_string());
+
+        let payload = TaskRequest {
+            image: "primeintellect/prime-rl:main".to_string(),
+            name: "Qwen3-4B:INTELLECT-2-RL-Dataset".to_string(),
+            metadata: Some(shared::models::task::TaskMetadata {
+                labels: Some(labels),
+            }),
+            ..Default::default()
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/tasks")
+            .set_json(payload)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
+        assert!(json["task"]["id"].is_string());
+        assert_eq!(json["task"]["image"], "primeintellect/prime-rl:main");
+        assert_eq!(json["task"]["name"], "Qwen3-4B:INTELLECT-2-RL-Dataset");
+
+        // Verify metadata is preserved
+        assert!(json["task"]["metadata"].is_object());
+        assert!(json["task"]["metadata"]["labels"].is_object());
+        assert_eq!(json["task"]["metadata"]["labels"]["model"], "qwen3-4b");
+        assert_eq!(
+            json["task"]["metadata"]["labels"]["dataset"],
+            "intellect-2-rl-dataset"
+        );
+        assert_eq!(json["task"]["metadata"]["labels"]["version"], "v1");
+    }
 }

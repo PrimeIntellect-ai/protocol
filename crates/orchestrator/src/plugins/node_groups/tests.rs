@@ -1488,29 +1488,40 @@ async fn test_task_observer() {
     let all_tasks = store_context.task_store.get_all_tasks().await.unwrap();
     println!("All tasks: {:?}", all_tasks);
     assert_eq!(all_tasks.len(), 2);
+    // Manually assign the first task to the group to test immediate dissolution
+    let group_3_before = plugin
+        .get_node_group(&node_3.address.to_string())
+        .await
+        .unwrap();
+    assert!(group_3_before.is_some());
+    let group_3_id = group_3_before.unwrap().id;
+
+    // Assign task to the group
+    let _ = plugin
+        .assign_task_to_group(&group_3_id, &task.id.to_string())
+        .await;
+
+    // Delete the task - group should be dissolved immediately with new behavior
     let _ = store_context
         .task_store
         .delete_task(task.id.to_string())
         .await;
 
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
     let group_3 = plugin
         .get_node_group(&node_3.address.to_string())
         .await
         .unwrap();
-    println!("Group 3: {:?}", group_3);
-    assert!(group_3.is_some());
+    println!("Group 3 after task deletion: {:?}", group_3);
+    // With new behavior, group should be dissolved immediately when its assigned task is deleted
+    assert!(group_3.is_none());
+
+    // Clean up second task
     let _ = store_context
         .task_store
         .delete_task(task2.id.to_string())
         .await;
-
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    let group_3 = plugin
-        .get_node_group(&node_3.address.to_string())
-        .await
-        .unwrap();
-    println!("Group 3: {:?}", group_3);
-    assert!(group_3.is_none());
 }
 
 #[tokio::test]
@@ -1636,6 +1647,19 @@ async fn test_building_largest_possible_groups() {
         "Nodes 2 and 3 should be in the same group"
     );
 
+    // Get the group that all nodes are in and assign the task to it
+    let group1_info = plugin
+        .get_node_group(&node1.address.to_string())
+        .await
+        .unwrap();
+    assert!(group1_info.is_some());
+    let group_id = group1_info.unwrap().id;
+
+    // Assign the task to the group to enable immediate dissolution behavior
+    let _ = plugin
+        .assign_task_to_group(&group_id, &task.id.to_string())
+        .await;
+
     let _ = plugin
         .store_context
         .task_store
@@ -1644,7 +1668,7 @@ async fn test_building_largest_possible_groups() {
 
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-    // Verify nodes are removed from groups after task deletion
+    // Verify nodes are removed from groups after task deletion (immediate dissolution)
     let group1 = plugin
         .get_node_group(&node1.address.to_string())
         .await

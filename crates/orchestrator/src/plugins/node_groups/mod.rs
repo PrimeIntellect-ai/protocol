@@ -13,7 +13,10 @@ use shared::models::node::ComputeRequirements;
 use shared::models::task::Task;
 use std::time::Duration;
 use std::{collections::BTreeSet, sync::Arc};
-use std::{collections::HashSet, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 pub mod scheduler_impl;
 pub mod status_update_impl;
@@ -224,7 +227,7 @@ impl NodeGroupsPlugin {
         Ok(None)
     }
 
-    async fn assign_task_to_group(&self, group_id: &str, task_id: &str) -> Result<bool, Error> {
+    pub async fn assign_task_to_group(&self, group_id: &str, task_id: &str) -> Result<bool, Error> {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
         let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
         let result: bool = conn.set_nx::<_, _, bool>(&task_key, task_id).await?;
@@ -416,6 +419,11 @@ impl NodeGroupsPlugin {
                 conn.hdel::<_, _, ()>(NODE_GROUP_MAP_KEY, node).await?;
             }
 
+            // Delete group task assignment
+            let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
+            debug!("Deleting group task assignment from key: {}", task_key);
+            conn.del::<_, ()>(&task_key).await?;
+
             // Delete group
             debug!("Deleting group data from key: {}", group_key);
             conn.del::<_, ()>(&group_key).await?;
@@ -482,65 +490,39 @@ impl NodeGroupsPlugin {
         Ok(tasks)
     }
 
-    pub async fn get_all_groups_for_topology(
-        &self,
-        topology: &str,
-    ) -> Result<Vec<NodeGroup>, Error> {
-        debug!("Getting all groups for topology: {}", topology);
-        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
-
-        let pattern = format!("{}*", GROUP_KEY_PREFIX);
-        let mut iter: redis::AsyncIter<String> = conn.scan_match(&pattern).await?;
-        let mut all_keys = Vec::new();
-        while let Some(key) = iter.next_item().await {
-            all_keys.push(key);
-        }
-
-        drop(iter);
-        debug!("Found {} potential group keys", all_keys.len());
-
-        let mut groups = Vec::new();
-        for group_key in all_keys {
-            if let Some(group_data) = conn.get::<_, Option<String>>(&group_key).await? {
-                if let Ok(group) = serde_json::from_str::<NodeGroup>(&group_data) {
-                    if group.configuration_name == topology {
-                        groups.push(group);
-                    }
-                }
-            }
-        }
-        debug!("Found {} groups for topology {}", groups.len(), topology);
-        Ok(groups)
-    }
-
     pub async fn get_all_groups(&self) -> Result<Vec<NodeGroup>, Error> {
         debug!("Getting all groups");
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
-        let pattern = format!("{}*", GROUP_KEY_PREFIX);
-        let mut iter: redis::AsyncIter<String> = conn.scan_match(&pattern).await?;
-        let mut all_keys = Vec::new();
-        while let Some(key) = iter.next_item().await {
-            all_keys.push(key);
+        // Get all node-to-group mappings
+        let node_mappings: HashMap<String, String> = conn.hgetall(NODE_GROUP_MAP_KEY).await?;
+
+        if node_mappings.is_empty() {
+            debug!("No node mappings found");
+            return Ok(Vec::new());
         }
 
-        drop(iter);
-        debug!("Found {} potential group keys", all_keys.len());
-        let mut pipe = redis::pipe();
-        for key in &all_keys {
-            pipe.get(key);
+        // Collect unique group IDs
+        let group_ids: HashSet<String> = node_mappings.values().cloned().collect();
+        debug!("Found {} unique group IDs", group_ids.len());
+
+        // Fetch each group's data
+        let mut groups = Vec::new();
+        for group_id in group_ids {
+            let group_key = Self::get_group_key(&group_id);
+            if let Some(group_data) = conn.get::<_, Option<String>>(&group_key).await? {
+                match serde_json::from_str::<NodeGroup>(&group_data) {
+                    Ok(group) => groups.push(group),
+                    Err(e) => {
+                        error!("Failed to parse group {} data: {}", group_id, e);
+                    }
+                }
+            } else {
+                warn!("Group {} exists in mapping but has no data", group_id);
+            }
         }
 
-        let values: Vec<Option<String>> = pipe.query_async(&mut conn).await?;
-
-        let groups: Vec<NodeGroup> = values
-            .into_iter()
-            .filter_map(|value| {
-                value.and_then(|data| serde_json::from_str::<NodeGroup>(&data).ok())
-            })
-            .collect();
-
-        debug!("Found {} total groups", groups.len());
+        debug!("Successfully loaded {} groups", groups.len());
         Ok(groups)
     }
 
@@ -553,6 +535,53 @@ impl NodeGroupsPlugin {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn get_all_node_group_mappings(&self) -> Result<HashMap<String, String>, Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+
+        let mappings: HashMap<String, String> = conn.hgetall(NODE_GROUP_MAP_KEY).await?;
+        Ok(mappings)
+    }
+
+    /// Get all groups assigned to a specific task
+    /// Returns a list of group IDs that are currently working on the given task
+    pub async fn get_groups_for_task(&self, task_id: &str) -> Result<Vec<String>, Error> {
+        debug!("Getting all groups for task: {}", task_id);
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+
+        // First, collect all group_task keys
+        let pattern = format!("{}*", GROUP_TASK_KEY_PREFIX);
+        let mut iter: redis::AsyncIter<String> = conn.scan_match(&pattern).await?;
+        let mut all_keys = Vec::new();
+
+        while let Some(key) = iter.next_item().await {
+            all_keys.push(key);
+        }
+
+        // Drop the iterator to release the borrow on conn
+        drop(iter);
+
+        // Now check which keys point to our task_id
+        let mut group_ids = Vec::new();
+        for key in all_keys {
+            if let Some(stored_task_id) = conn.get::<_, Option<String>>(&key).await? {
+                if stored_task_id == task_id {
+                    // Extract group_id from the key (remove the prefix)
+                    if let Some(group_id) = key.strip_prefix(GROUP_TASK_KEY_PREFIX) {
+                        group_ids.push(group_id.to_string());
+                    }
+                }
+            }
+        }
+
+        debug!(
+            "Found {} groups for task {}: {:?}",
+            group_ids.len(),
+            task_id,
+            group_ids
+        );
+        Ok(group_ids)
     }
 }
 
@@ -586,24 +615,64 @@ impl TaskObserver for NodeGroupsPlugin {
     fn on_task_deleted(&self, task: Option<Task>) -> Result<()> {
         if let Some(task) = task {
             debug!("Task deleted event received: {:?}", task);
+            let task_id = task.id.to_string();
             let topologies = self.get_task_topologies(&task)?;
-            debug!("Found {} topologies to check for cleanup", topologies.len());
+            debug!("Found {} topologies for task cleanup", topologies.len());
 
             tokio::spawn({
                 let plugin = self.clone();
+                let task_id = task_id.clone();
                 let topologies = topologies.clone();
                 async move {
-                    for topology in topologies {
-                        debug!("Checking topology {} for cleanup", topology);
-                        let tasks = match plugin.get_all_tasks_for_topology(&topology).await {
-                            Ok(tasks) => tasks,
-                            Err(e) => {
-                                error!("Failed to get tasks for topology {}: {}", topology, e);
-                                continue;
-                            }
-                        };
+                    // Immediately dissolve all groups assigned to this specific task
+                    debug!("Dissolving groups for deleted task: {}", task_id);
+                    let groups_for_task = match plugin.get_groups_for_task(&task_id).await {
+                        Ok(groups) => groups,
+                        Err(e) => {
+                            error!("Failed to get groups for task {}: {}", task_id, e);
+                            return;
+                        }
+                    };
 
-                        if tasks.is_empty() {
+                    if !groups_for_task.is_empty() {
+                        info!(
+                            "Dissolving {} groups for deleted task {}",
+                            groups_for_task.len(),
+                            task_id
+                        );
+
+                        for group_id in &groups_for_task {
+                            debug!("Dissolving group {} for deleted task {}", group_id, task_id);
+                            if let Err(e) = plugin.dissolve_group(group_id).await {
+                                error!(
+                                    "Failed to dissolve group {} for task {}: {}",
+                                    group_id, task_id, e
+                                );
+                            } else {
+                                info!(
+                                    "Successfully dissolved group {} for deleted task {}",
+                                    group_id, task_id
+                                );
+                            }
+                        }
+                    } else {
+                        debug!("No groups found for deleted task {}", task_id);
+                    }
+
+                    // Also check if we need to disable configurations when no tasks remain for a topology
+                    // This is secondary to the immediate group dissolution above
+                    for topology in topologies {
+                        debug!("Checking topology {} for configuration cleanup", topology);
+                        let remaining_tasks =
+                            match plugin.get_all_tasks_for_topology(&topology).await {
+                                Ok(tasks) => tasks,
+                                Err(e) => {
+                                    error!("Failed to get tasks for topology {}: {}", topology, e);
+                                    continue;
+                                }
+                            };
+
+                        if remaining_tasks.is_empty() {
                             debug!(
                                 "No tasks remaining for topology {}, disabling configuration",
                                 topology
@@ -613,26 +682,6 @@ impl TaskObserver for NodeGroupsPlugin {
                                     "Failed to disable configuration for topology {}: {}",
                                     topology, e
                                 );
-                                return;
-                            }
-
-                            let groups = match plugin.get_all_groups_for_topology(&topology).await {
-                                Ok(groups) => groups,
-                                Err(e) => {
-                                    error!("Failed to get groups for topology {}: {}", topology, e);
-                                    return;
-                                }
-                            };
-
-                            debug!(
-                                "Dissolving {} groups for topology {}",
-                                groups.len(),
-                                topology
-                            );
-                            for group in groups {
-                                if let Err(e) = plugin.dissolve_group(&group.id).await {
-                                    error!("Failed to dissolve group {}: {}", group.id, e);
-                                }
                             }
                         }
                     }
