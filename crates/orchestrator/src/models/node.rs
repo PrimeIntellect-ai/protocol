@@ -23,6 +23,10 @@ pub struct OrchestratorNode {
 
     #[serde(default)]
     pub compute_specs: Option<ComputeSpecs>,
+    #[serde(default)]
+    pub worker_p2p_id: Option<String>,
+    #[serde(default)]
+    pub worker_p2p_addresses: Option<Vec<String>>,
 }
 
 fn serialize_address<S>(address: &Address, serializer: S) -> Result<S::Ok, S::Error>
@@ -46,6 +50,8 @@ impl From<DiscoveryNode> for OrchestratorNode {
             last_status_change: None,
             first_seen: None,
             compute_specs: discovery_node.compute_specs.clone(),
+            worker_p2p_id: discovery_node.worker_p2p_id.clone(),
+            worker_p2p_addresses: discovery_node.worker_p2p_addresses.clone(),
         }
     }
 }

@@ -1,38 +1,36 @@
-use anyhow::{Context, Error, Result};
+use crate::p2p::client::P2PClient;
+use alloy::primitives::Address;
+use anyhow::{Error, Result};
 use log::{error, info};
 use rand::{rng, Rng};
-use reqwest::Client;
-use shared::{
-    models::{
-        api::ApiResponse,
-        challenge::{calc_matrix, ChallengeRequest, ChallengeResponse, FixedF64},
-        node::DiscoveryNode,
-    },
-    security::request_signer::sign_request,
-    web3::wallet::Wallet,
+use shared::models::{
+    challenge::{calc_matrix, ChallengeRequest, FixedF64},
+    node::DiscoveryNode,
 };
+use std::str::FromStr;
 
 pub struct HardwareChallenge<'a> {
-    wallet: &'a Wallet,
-    client: Client,
+    p2p_client: &'a P2PClient,
 }
 
 impl<'a> HardwareChallenge<'a> {
-    pub fn new(wallet: &'a Wallet) -> Self {
-        Self {
-            wallet,
-            client: Client::new(),
-        }
+    pub fn new(p2p_client: &'a P2PClient) -> Self {
+        Self { p2p_client }
     }
 
-    pub async fn challenge_node(
-        &self,
-        node: &DiscoveryNode,
-        challenge_route: &str,
-    ) -> Result<i32, Error> {
-        let node_url = format!("http://{}:{}", node.node.ip_address, node.node.port);
+    pub async fn challenge_node(&self, node: &DiscoveryNode) -> Result<i32, Error> {
+        // Check if node has P2P ID and addresses
+        let p2p_id = node
+            .node
+            .worker_p2p_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Node {} does not have P2P ID", node.id))?;
 
-        let mut headers = reqwest::header::HeaderMap::new();
+        let p2p_addresses = node
+            .node
+            .worker_p2p_addresses
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Node {} does not have P2P addresses", node.id))?;
 
         // create random challenge matrix
         let challenge_matrix = self.random_challenge(3, 3, 3, 3);
@@ -46,58 +44,36 @@ impl<'a> HardwareChallenge<'a> {
         let mut challenge_with_timestamp = challenge_matrix.clone();
         challenge_with_timestamp.timestamp = Some(current_time);
 
-        let post_url = format!("{}{}", node_url, challenge_route);
+        let node_address = Address::from_str(&node.node.id)
+            .map_err(|e| anyhow::anyhow!("Failed to parse node address {}: {}", node.node.id, e))?;
 
-        let address = self.wallet.wallet.default_signer().address().to_string();
-        let challenge_matrix_value = serde_json::to_value(&challenge_with_timestamp)?;
-        let signature = sign_request(challenge_route, self.wallet, Some(&challenge_matrix_value))
+        // Send challenge via P2P
+        match self
+            .p2p_client
+            .send_hardware_challenge(
+                node_address,
+                p2p_id,
+                p2p_addresses,
+                challenge_with_timestamp,
+            )
             .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-        headers.insert(
-            "x-address",
-            reqwest::header::HeaderValue::from_str(&address)
-                .context("Failed to create address header")?,
-        );
-        headers.insert(
-            "x-signature",
-            reqwest::header::HeaderValue::from_str(&signature)
-                .context("Failed to create signature header")?,
-        );
-        let response = self
-            .client
-            .post(post_url)
-            .headers(headers)
-            .json(&challenge_matrix_value)
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await?;
-
-        let response_text = response.text().await?;
-        let parsed_response: ApiResponse<ChallengeResponse> = serde_json::from_str(&response_text)
-            .map_err(|e| {
-                error!(
-                    "Failed to parse JSON response from node {}: {}",
-                    node.id, response_text
-                );
-                anyhow::anyhow!("Failed to parse response: {}", e)
-            })?;
-
-        if !parsed_response.success {
-            error!("Challenge failed for node {}: {}", node.id, response_text);
-            Err(anyhow::anyhow!(
-                "Error fetching challenge from node: {}",
-                response_text
-            ))
-        } else if challenge_expected.result == parsed_response.data.result {
-            info!("Challenge for node {} successful", node.id);
-            Ok(0)
-        } else {
-            error!(
-                "Challenge failed for node {}: expected {:?}, got {:?}",
-                node.id, challenge_expected.result, parsed_response.data.result
-            );
-            Err(anyhow::anyhow!("Node failed challenge"))
+        {
+            Ok(response) => {
+                if challenge_expected.result == response.result {
+                    info!("Challenge for node {} successful", node.id);
+                    Ok(0)
+                } else {
+                    error!(
+                        "Challenge failed for node {}: expected {:?}, got {:?}",
+                        node.id, challenge_expected.result, response.result
+                    );
+                    Err(anyhow::anyhow!("Node failed challenge"))
+                }
+            }
+            Err(e) => {
+                error!("Failed to send challenge to node {}: {}", node.id, e);
+                Err(anyhow::anyhow!("Failed to send challenge: {}", e))
+            }
         }
     }
 

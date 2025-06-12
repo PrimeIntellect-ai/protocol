@@ -5,7 +5,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct Node {
     pub id: String,
     pub provider_address: String,
@@ -13,6 +13,10 @@ pub struct Node {
     pub port: u16,
     pub compute_pool_id: u32,
     pub compute_specs: Option<ComputeSpecs>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worker_p2p_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worker_p2p_addresses: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
@@ -521,7 +525,7 @@ impl CpuSpecs {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct DiscoveryNode {
     #[serde(flatten)]
     pub node: Node,

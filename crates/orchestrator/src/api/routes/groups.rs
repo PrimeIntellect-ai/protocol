@@ -7,7 +7,6 @@ use alloy::primitives::Address;
 use futures::future::join_all;
 use log::error;
 use serde_json::json;
-use shared::security::request_signer::sign_request;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -100,7 +99,7 @@ async fn get_group_logs(group_id: web::Path<String>, app_state: Data<AppState>) 
                     .map(|node_address| {
                         let app_state = app_state.clone();
                         let node_address = *node_address;
-                        async move { fetch_node_logs(node_address, app_state).await }
+                        async move { fetch_node_logs_p2p(node_address, app_state).await }
                     })
                     .collect();
 
@@ -142,7 +141,10 @@ async fn get_group_logs(group_id: web::Path<String>, app_state: Data<AppState>) 
     }
 }
 
-async fn fetch_node_logs(node_address: Address, app_state: Data<AppState>) -> serde_json::Value {
+async fn fetch_node_logs_p2p(
+    node_address: Address,
+    app_state: Data<AppState>,
+) -> serde_json::Value {
     let node = match app_state
         .store_context
         .node_store
@@ -161,115 +163,50 @@ async fn fetch_node_logs(node_address: Address, app_state: Data<AppState>) -> se
 
     match node {
         Some(node) => {
-            let node_ip = node.ip_address;
-            let node_port = node.port;
+            // Check if P2P client is available
+            let p2p_client = app_state.p2p_client.clone();
 
-            let node_url = format!("http://{}:{}", node_ip, node_port);
-            let logs_path = "/task/logs".to_string();
-            let timestamp = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-            {
-                Ok(duration) => duration.as_secs(),
-                Err(e) => {
-                    error!("System time error for node {}: {}", node_address, e);
-                    return json!({
-                        "success": false,
-                        "error": "System time error"
-                    });
-                }
-            };
-
-            let logs_url = format!("{}{}?timestamp={}", node_url, logs_path, timestamp);
-
-            let message_signature = match sign_request(&logs_path, &app_state.wallet, None).await {
-                Ok(sig) => sig,
-                Err(e) => {
-                    error!("Failed to sign request for node {}: {}", node_address, e);
-                    return json!({
-                        "success": false,
-                        "error": format!("Failed to sign request: {}", e),
-                        "status": node.status.to_string()
-                    });
-                }
-            };
-
-            let mut headers = reqwest::header::HeaderMap::new();
-
-            let address_header = match app_state
-                .wallet
-                .wallet
-                .default_signer()
-                .address()
-                .to_string()
-                .parse()
-            {
-                Ok(header) => header,
-                Err(e) => {
-                    error!(
-                        "Failed to parse address header for node {}: {}",
-                        node_address, e
-                    );
-                    return json!({
-                        "success": false,
-                        "error": "Failed to create address header"
-                    });
-                }
-            };
-            headers.insert("x-address", address_header);
-
-            let signature_header = match message_signature.parse() {
-                Ok(header) => header,
-                Err(e) => {
-                    error!(
-                        "Failed to parse signature header for node {}: {}",
-                        node_address, e
-                    );
-                    return json!({
-                        "success": false,
-                        "error": "Failed to create signature header"
-                    });
-                }
-            };
-            headers.insert("x-signature", signature_header);
-
-            match app_state
-                .http_client
-                .get(logs_url)
-                .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
-                .headers(headers)
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        match response.json::<serde_json::Value>().await {
-                            Ok(logs) => logs,
-                            Err(e) => {
-                                error!("Failed to parse logs for node {}: {}", node_address, e);
-                                json!({
-                                    "success": false,
-                                    "error": format!("Failed to parse logs: {}", e),
-                                    "status": node.status.to_string()
-                                })
-                            }
-                        }
-                    } else {
-                        error!(
-                            "Failed to get logs for node {}: {}",
-                            node_address,
-                            response.status()
-                        );
-                        json!({
+            // Check if node has P2P information
+            let (worker_p2p_id, worker_p2p_addresses) =
+                match (&node.worker_p2p_id, &node.worker_p2p_addresses) {
+                    (Some(p2p_id), Some(p2p_addrs)) if !p2p_addrs.is_empty() => (p2p_id, p2p_addrs),
+                    _ => {
+                        error!("Node {} does not have P2P information", node_address);
+                        return json!({
                             "success": false,
-                            "error": format!("Failed to get logs: {}", response.status()),
+                            "error": "Node does not have P2P information",
                             "status": node.status.to_string()
-                        })
+                        });
                     }
+                };
+
+            // Send P2P request for task logs
+            match tokio::time::timeout(
+                Duration::from_secs(NODE_REQUEST_TIMEOUT),
+                p2p_client.get_task_logs(node_address, worker_p2p_id, worker_p2p_addresses),
+            )
+            .await
+            {
+                Ok(Ok(log_lines)) => {
+                    json!({
+                        "success": true,
+                        "logs": log_lines,
+                        "status": node.status.to_string()
+                    })
                 }
-                Err(e) => {
-                    error!("Failed to fetch logs for node {}: {}", node_address, e);
+                Ok(Err(e)) => {
+                    error!("P2P request failed for node {}: {}", node_address, e);
                     json!({
                         "success": false,
-                        "error": format!("Failed to connect to node: {}", e),
+                        "error": format!("P2P request failed: {}", e),
+                        "status": node.status.to_string()
+                    })
+                }
+                Err(_) => {
+                    error!("P2P request timed out for node {}", node_address);
+                    json!({
+                        "success": false,
+                        "error": "P2P request timed out",
                         "status": node.status.to_string()
                     })
                 }

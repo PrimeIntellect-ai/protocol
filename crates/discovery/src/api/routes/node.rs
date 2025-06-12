@@ -48,6 +48,8 @@ pub async fn register_node(
             // This now causes the discovery svc to reject nodes that have just updated their software.
             // This is a temporary fix to ensure the node is accepted even though the indices are different.
             let mut existing_clone = existing_node.node.clone();
+            existing_clone.worker_p2p_id = update_node.worker_p2p_id.clone();
+            existing_clone.worker_p2p_addresses = update_node.worker_p2p_addresses.clone();
             match &update_node.compute_specs {
                 Some(compute_specs) => {
                     if let Some(ref mut existing_compute_specs) = existing_clone.compute_specs {
@@ -224,7 +226,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8089,
             compute_pool_id: 0,
-            compute_specs: None,
+            ..Default::default()
         };
 
         let app_state = AppState {
@@ -279,6 +281,7 @@ mod tests {
                 storage_gb: Some(500),
                 storage_path: None,
             }),
+            ..Default::default()
         };
 
         let node_clone_for_recall = node.clone();
@@ -405,7 +408,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8089,
             compute_pool_id: 0,
-            compute_specs: None,
+            ..Default::default()
         };
 
         let app_state = AppState {
@@ -470,7 +473,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8089,
             compute_pool_id: 0,
-            compute_specs: None,
+            ..Default::default()
         };
 
         let app_state = AppState {
@@ -534,6 +537,7 @@ mod tests {
                 storage_gb: Some(500),
                 storage_path: None,
             }),
+            ..Default::default()
         };
 
         let app_state = AppState {

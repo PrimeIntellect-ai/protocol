@@ -330,16 +330,14 @@ mod tests {
                 port: 8080,
                 compute_pool_id: 1,
                 compute_specs: Some(ComputeSpecs {
-                    gpu: None,
-                    cpu: None,
                     ram_mb: Some(1024),
                     storage_gb: Some(10),
-                    storage_path: None,
+                    ..Default::default()
                 }),
+                ..Default::default()
             },
             is_blacklisted: false,
-            last_updated: None,
-            created_at: None,
+            ..Default::default()
         };
 
         let mut orchestrator_node = OrchestratorNode::from(discovery_node.clone());
@@ -432,11 +430,10 @@ mod tests {
                 ip_address: "192.168.1.100".to_string(),
                 port: 8080,
                 compute_pool_id: 1,
-                compute_specs: None,
+                ..Default::default()
             },
             is_blacklisted: false,
-            last_updated: None,
-            created_at: None,
+            ..Default::default()
         };
 
         let store = Arc::new(RedisStore::new_test());
@@ -517,11 +514,10 @@ mod tests {
                 ip_address: "192.168.1.101".to_string(), // Changed IP
                 port: 8080,
                 compute_pool_id: 1,
-                compute_specs: None,
+                ..Default::default()
             },
             is_blacklisted: false,
-            last_updated: Some(Utc::now()),
-            created_at: None,
+            ..Default::default()
         };
 
         // Sync the node again
@@ -578,16 +574,14 @@ mod tests {
                 port: 8080,
                 compute_pool_id: 1,
                 compute_specs: Some(ComputeSpecs {
-                    gpu: None,
-                    cpu: None,
                     ram_mb: Some(1024),
                     storage_gb: Some(10),
-                    storage_path: None,
+                    ..Default::default()
                 }),
+                ..Default::default()
             },
             is_blacklisted: false,
-            last_updated: None,
-            created_at: None,
+            ..Default::default()
         };
 
         let mut orchestrator_node1 = OrchestratorNode::from(node1.clone());

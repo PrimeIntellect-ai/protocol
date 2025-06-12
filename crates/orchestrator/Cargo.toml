@@ -29,6 +29,8 @@ shared = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
+iroh = { workspace = true }
+rand_v8 = { workspace = true }
 
 [dev-dependencies]
 mockito = { workspace = true }

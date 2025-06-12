@@ -352,13 +352,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::WaitingForHeartbeat,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         if let Err(e) = app_state
@@ -434,13 +428,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Healthy,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         if let Err(e) = app_state
@@ -492,13 +480,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Unhealthy,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         if let Err(e) = app_state
@@ -557,13 +539,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Unhealthy,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         if let Err(e) = app_state
@@ -627,13 +603,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Unhealthy,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
         if let Err(e) = app_state
             .store_context
@@ -646,12 +616,8 @@ mod tests {
 
         let heartbeat = HeartbeatRequest {
             address: node.address.to_string(),
-            task_id: None,
-            task_state: None,
-            metrics: None,
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
-            timestamp: None,
-            p2p_id: None,
+            ..Default::default()
         };
         if let Err(e) = app_state
             .store_context
@@ -720,13 +686,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Unhealthy,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
         if let Err(e) = app_state
             .store_context
@@ -750,13 +710,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Healthy,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         if let Err(e) = app_state
@@ -831,13 +785,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Unhealthy,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         if let Err(e) = app_state
@@ -888,12 +836,8 @@ mod tests {
 
         let heartbeat = HeartbeatRequest {
             address: node.address.to_string(),
-            task_id: None,
-            task_state: None,
-            metrics: None,
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
-            timestamp: None,
-            p2p_id: None,
+            ..Default::default()
         };
         if let Err(e) = app_state
             .store_context
@@ -926,13 +870,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Discovered,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         if let Err(e) = app_state

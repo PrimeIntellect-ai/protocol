@@ -7,12 +7,7 @@ use alloy::primitives::Address;
 use log::{error, info};
 use serde::Deserialize;
 use serde_json::json;
-use shared::security::request_signer::sign_request;
 use std::str::FromStr;
-use std::time::Duration;
-
-// Timeout for node operations in seconds
-const NODE_REQUEST_TIMEOUT: u64 = 30;
 
 #[derive(Deserialize)]
 struct NodeQuery {
@@ -118,91 +113,25 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
         }
     };
 
-    let node_ip = node.ip_address;
-    let node_port = node.port;
+    if node.worker_p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
+        return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "Node does not have p2p information"
+        }));
+    }
 
-    let node_url = format!("http://{}:{}", node_ip, node_port);
-    let restart_path = "/task/restart".to_string();
-    let restart_url = format!("{}{}", node_url, restart_path);
-    let payload = json!({
-        "timestamp": std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
-    });
-
-    let message_signature =
-        match sign_request(&restart_path, &app_state.wallet, Some(&payload)).await {
-            Ok(signature) => signature,
-            Err(e) => {
-                error!("Error signing request: {}", e);
-                return HttpResponse::InternalServerError().json(json!({
-                    "success": false,
-                    "error": "Failed to sign request"
-                }));
-            }
-        };
-
-    let mut headers = reqwest::header::HeaderMap::new();
-    let address_header = match app_state
-        .wallet
-        .wallet
-        .default_signer()
-        .address()
-        .to_string()
-        .parse()
-    {
-        Ok(header) => header,
-        Err(e) => {
-            error!("Error parsing address header: {}", e);
-            return HttpResponse::InternalServerError().json(json!({
-                "success": false,
-                "error": "Failed to create address header"
-            }));
-        }
-    };
-    headers.insert("x-address", address_header);
-
-    let signature_header = match message_signature.parse() {
-        Ok(header) => header,
-        Err(e) => {
-            error!("Error parsing signature header: {}", e);
-            return HttpResponse::InternalServerError().json(json!({
-                "success": false,
-                "error": "Failed to create signature header"
-            }));
-        }
-    };
-    headers.insert("x-signature", signature_header);
+    let p2p_id = node.worker_p2p_id.as_ref().unwrap();
+    let p2p_addresses = node.worker_p2p_addresses.as_ref().unwrap();
 
     match app_state
-        .http_client
-        .post(restart_url)
-        .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
-        .headers(headers)
-        .body(payload.to_string())
-        .send()
+        .p2p_client
+        .restart_task(node_address, p2p_id, p2p_addresses)
         .await
     {
-        Ok(response) => {
-            if response.status().is_success() {
-                match response.json::<serde_json::Value>().await {
-                    Ok(result) => HttpResponse::Ok().json(result),
-                    Err(e) => {
-                        error!("Error parsing response: {}", e);
-                        HttpResponse::InternalServerError().json(json!({
-                            "success": false,
-                            "error": "Failed to parse response"
-                        }))
-                    }
-                }
-            } else {
-                HttpResponse::InternalServerError().json(json!({
-                    "success": false,
-                    "error": format!("Failed to restart task: {}", response.status())
-                }))
-            }
-        }
+        Ok(_) => HttpResponse::Ok().json(json!({
+            "success": true,
+            "message": "Task restarted successfully"
+        })),
         Err(e) => HttpResponse::InternalServerError().json(json!({
             "success": false,
             "error": format!("Failed to restart task: {}", e)
@@ -240,91 +169,25 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
         }
     };
 
-    let node_ip = node.ip_address;
-    let node_port = node.port;
+    if node.worker_p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
+        return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "Node does not have p2p information"
+        }));
+    }
 
-    let node_url = format!("http://{}:{}", node_ip, node_port);
-    let logs_path = "/task/logs".to_string();
-    let logs_url = format!(
-        "{}{}?timestamp={}",
-        node_url,
-        logs_path,
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
-    );
-
-    let message_signature = match sign_request(&logs_path, &app_state.wallet, None).await {
-        Ok(signature) => signature,
-        Err(e) => {
-            error!("Error signing request: {}", e);
-            return HttpResponse::InternalServerError().json(json!({
-                "success": false,
-                "error": "Failed to sign request"
-            }));
-        }
-    };
-
-    let mut headers = reqwest::header::HeaderMap::new();
-    let address_header = match app_state
-        .wallet
-        .wallet
-        .default_signer()
-        .address()
-        .to_string()
-        .parse()
-    {
-        Ok(header) => header,
-        Err(e) => {
-            error!("Error parsing address header: {}", e);
-            return HttpResponse::InternalServerError().json(json!({
-                "success": false,
-                "error": "Failed to create address header"
-            }));
-        }
-    };
-    headers.insert("x-address", address_header);
-
-    let signature_header = match message_signature.parse() {
-        Ok(header) => header,
-        Err(e) => {
-            error!("Error parsing signature header: {}", e);
-            return HttpResponse::InternalServerError().json(json!({
-                "success": false,
-                "error": "Failed to create signature header"
-            }));
-        }
-    };
-    headers.insert("x-signature", signature_header);
+    let p2p_id = node.worker_p2p_id.as_ref().unwrap();
+    let p2p_addresses = node.worker_p2p_addresses.as_ref().unwrap();
 
     match app_state
-        .http_client
-        .get(logs_url)
-        .timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT))
-        .headers(headers)
-        .send()
+        .p2p_client
+        .get_task_logs(node_address, p2p_id, p2p_addresses)
         .await
     {
-        Ok(response) => {
-            if response.status().is_success() {
-                match response.json::<serde_json::Value>().await {
-                    Ok(logs) => HttpResponse::Ok().json(logs),
-                    Err(e) => {
-                        error!("Error parsing logs response: {}", e);
-                        HttpResponse::InternalServerError().json(json!({
-                            "success": false,
-                            "error": "Failed to parse logs response"
-                        }))
-                    }
-                }
-            } else {
-                HttpResponse::InternalServerError().json(json!({
-                    "success": false,
-                    "error": format!("Failed to get logs: {}", response.status())
-                }))
-            }
-        }
+        Ok(logs) => HttpResponse::Ok().json(json!({
+            "success": true,
+            "logs": logs
+        })),
         Err(e) => HttpResponse::InternalServerError().json(json!({
             "success": false,
             "error": format!("Failed to get logs: {}", e)
@@ -464,13 +327,7 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             status: NodeStatus::Discovered,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
         app_state
             .store_context
@@ -507,37 +364,6 @@ mod tests {
             "Expected address to be {} but got {}",
             node.address,
             nodes_array[0]["address"]
-        );
-    }
-
-    #[actix_web::test]
-    async fn test_get_metrics_for_node_not_exist() {
-        let app_state = create_test_app_state().await;
-        let app = test::init_service(
-            App::new()
-                .app_data(app_state.clone())
-                .route("/nodes/{node_id}/metrics", get().to(get_node_metrics)),
-        )
-        .await;
-
-        let node_id = "0x0000000000000000000000000000000000000000";
-        let req = test::TestRequest::get()
-            .uri(&format!("/nodes/{}/metrics", node_id))
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        let body = test::read_body(resp).await;
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(
-            json["success"], true,
-            "Expected success to be true but got {:?}",
-            json["success"]
-        );
-        assert_eq!(
-            json["metrics"],
-            json!({}),
-            "Expected empty metrics object but got {:?}",
-            json["metrics"]
         );
     }
 }

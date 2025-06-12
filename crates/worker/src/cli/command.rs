@@ -1,4 +1,3 @@
-use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::issue::IssueReport;
 use crate::checks::software::SoftwareChecker;
@@ -10,6 +9,8 @@ use crate::metrics::store::MetricsStore;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderOperations;
+use crate::p2p::P2PContext;
+use crate::p2p::P2PService;
 use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
@@ -45,7 +46,7 @@ pub enum Commands {
         #[arg(long, default_value = "http://localhost:8545")]
         rpc_url: String,
 
-        /// Port number for the worker to listen on
+        /// Port number for the worker to listen on - DEPRECATED
         #[arg(long, default_value = "8080")]
         port: u16,
 
@@ -166,7 +167,7 @@ pub async fn execute_command(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match command {
         Commands::Run {
-            port,
+            port: _,
             external_ip,
             compute_pool_id,
             dry_run: _,
@@ -302,7 +303,7 @@ pub async fn execute_command(
                     .address()
                     .to_string(),
                 ip_address: external_ip.clone().unwrap_or(detected_external_ip.clone()),
-                port: *port,
+                port: 0,
                 provider_address: provider_wallet_instance
                     .wallet
                     .default_signer()
@@ -310,11 +311,13 @@ pub async fn execute_command(
                     .to_string(),
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
+                worker_p2p_id: None,
+                worker_p2p_addresses: None,
             };
 
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
-            let node_config = hardware_check.check_hardware(node_config).await.unwrap();
+            let mut node_config = hardware_check.check_hardware(node_config).await.unwrap();
             let software_checker = SoftwareChecker::new(Some(issue_tracker.clone()));
             if let Err(err) = software_checker.check_software(&node_config).await {
                 Console::user_error(&format!("❌ Software check failed: {}", err));
@@ -603,6 +606,77 @@ pub async fn execute_command(
                 }
             }
 
+            // Start P2P service
+            Console::title("🔗 Starting P2P Service");
+            let heartbeat = match heartbeat_service.clone() {
+                Ok(service) => service,
+                Err(e) => {
+                    error!("❌ Heartbeat service is not available: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            let p2p_context = P2PContext {
+                docker_service: docker_service.clone(),
+                heartbeat_service: heartbeat.clone(),
+                system_state: state.clone(),
+                contracts: contracts.clone(),
+                node_wallet: node_wallet_instance.clone(),
+                provider_wallet: provider_wallet_instance.clone(),
+            };
+
+            let validators = match contracts.prime_network.get_validator_role().await {
+                Ok(validators) => validators,
+                Err(e) => {
+                    error!("Failed to get validator role: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            if validators.is_empty() {
+                error!("❌ No validator roles found on contracts - cannot start worker without validators");
+                error!("This means the smart contract has no registered validators, which is required for signature validation");
+                error!("Please ensure validators are properly registered on the PrimeNetwork contract before starting the worker");
+                std::process::exit(1);
+            }
+
+            let mut allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
+            allowed_addresses.extend(validators);
+
+            let p2p_service = match P2PService::new(
+                state.worker_p2p_seed,
+                cancellation_token.clone(),
+                Some(p2p_context),
+                node_wallet_instance.clone(),
+                allowed_addresses,
+            )
+            .await
+            {
+                Ok(service) => service,
+                Err(e) => {
+                    error!("❌ Failed to start P2P service: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            if let Err(e) = p2p_service.start().await {
+                error!("❌ Failed to start P2P listener: {}", e);
+                std::process::exit(1);
+            }
+
+            node_config.worker_p2p_id = Some(p2p_service.node_id().to_string());
+            node_config.worker_p2p_addresses = Some(
+                p2p_service
+                    .listening_addresses()
+                    .iter()
+                    .map(|addr| addr.to_string())
+                    .collect(),
+            );
+            Console::success(&format!(
+                "P2P service started with ID: {}",
+                p2p_service.node_id()
+            ));
+
             let mut attempts = 0;
             let max_attempts = 100;
             while attempts < max_attempts {
@@ -634,39 +708,24 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
-            // 6. Start HTTP Server to receive challenges and invites to join cluster
-            Console::info(
-                "🌐 Starting endpoint service and waiting for sync with orchestrator",
-                "",
-            );
-
             discovery_updater.start_auto_update(node_config);
 
-            if let Err(err) = {
-                let heartbeat_clone = heartbeat_service.unwrap().clone();
-                if recover_last_state {
-                    info!("Recovering from previous state: {}", recover_last_state);
-                    heartbeat_clone
-                        .activate_heartbeat_if_endpoint_exists()
-                        .await;
-                }
-
-                let server_state = state.clone();
-                start_server(
-                    "0.0.0.0",
-                    *port,
-                    contracts.clone(),
-                    node_wallet_instance.clone(),
-                    provider_wallet_instance.clone(),
-                    heartbeat_clone.clone(),
-                    docker_service.clone(),
-                    pool_info,
-                    server_state,
-                )
-                .await
-            } {
-                error!("❌ Failed to start server: {}", err);
+            if recover_last_state {
+                info!("Recovering from previous state: {}", recover_last_state);
+                heartbeat.activate_heartbeat_if_endpoint_exists().await;
             }
+
+            // Keep the worker running and listening for P2P connections
+            Console::success("Worker is now running and listening for P2P connections...");
+
+            // Wait for cancellation signal to gracefully shutdown
+            cancellation_token.cancelled().await;
+
+            Console::info(
+                "Shutdown signal received",
+                "Gracefully shutting down worker...",
+            );
+
             Ok(())
         }
         Commands::Check {} => {
@@ -683,6 +742,8 @@ pub async fn execute_command(
                 compute_specs: None,
                 provider_address: String::new(),
                 compute_pool_id: 0,
+                worker_p2p_id: None,
+                worker_p2p_addresses: None,
             };
 
             let node_config = match hardware_checker.check_hardware(node_config).await {

@@ -1,4 +1,5 @@
 pub mod metrics;
+pub mod p2p;
 pub mod store;
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
@@ -9,6 +10,7 @@ use clap::Parser;
 use log::{debug, LevelFilter};
 use log::{error, info};
 use metrics::MetricsContext;
+use p2p::P2PClient;
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
@@ -146,6 +148,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     env_logger::Builder::new()
         .filter_level(log_level)
+        .filter_module("iroh", log::LevelFilter::Warn)
+        .filter_module("iroh_net", log::LevelFilter::Warn)
+        .filter_module("iroh_quinn", log::LevelFilter::Warn)
+        .filter_module("iroh_base", log::LevelFilter::Warn)
+        .filter_module("tracing::span", log::LevelFilter::Warn)
         .format_timestamp(None)
         .init();
 
@@ -226,6 +233,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let metrics_ctx =
         MetricsContext::new(validator_wallet.address().to_string(), args.pool_id.clone());
 
+    // Initialize P2P client if enabled
+    let p2p_client = {
+        match P2PClient::new(validator_wallet.clone()).await {
+            Ok(client) => {
+                info!("P2P client initialized for testing");
+                Some(client)
+            }
+            Err(e) => {
+                error!("Failed to initialize P2P client: {}", e);
+                None
+            }
+        }
+    };
+
     if let Some(pool_id) = args.pool_id.clone() {
         let pool = match contracts
             .compute_pool
@@ -252,7 +273,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let contracts = contract_builder.build().unwrap();
 
-    let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
+    let hardware_validator =
+        HardwareValidator::new(&validator_wallet, contracts.clone(), p2p_client.as_ref());
 
     let synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
