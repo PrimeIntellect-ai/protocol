@@ -35,7 +35,7 @@ pub async fn register_node(
     }
 
     let update_node = node.clone();
-    let existing_node = data.node_store.get_node(update_node.id.clone());
+    let existing_node = data.node_store.get_node(update_node.id.clone()).await;
     if let Ok(Some(existing_node)) = existing_node {
         // Node already exists - check if it's active in a pool
         if existing_node.is_active {
@@ -91,7 +91,8 @@ pub async fn register_node(
     // Check if any other node is on this same IP with different address
     let existing_node_by_ip = data
         .node_store
-        .get_active_node_by_ip(update_node.ip_address.clone());
+        .get_active_node_by_ip(update_node.ip_address.clone())
+        .await;
     if data.only_one_node_per_ip {
         if let Ok(Some(existing_node)) = existing_node_by_ip {
             if existing_node.id != update_node.id {
@@ -110,13 +111,26 @@ pub async fn register_node(
     }
 
     if let Some(contracts) = data.contracts.clone() {
-        if (contracts
+        let provider_address = match node.provider_address.parse() {
+            Ok(addr) => addr,
+            Err(_) => {
+                return HttpResponse::BadRequest()
+                    .json(ApiResponse::new(false, "Invalid provider address format"));
+            }
+        };
+
+        let node_id = match node.id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return HttpResponse::BadRequest()
+                    .json(ApiResponse::new(false, "Invalid node ID format"));
+            }
+        };
+
+        if contracts
             .compute_registry
-            .get_node(
-                node.provider_address.parse().unwrap(),
-                node.id.parse().unwrap(),
-            )
-            .await)
+            .get_node(provider_address, node_id)
+            .await
             .is_err()
         {
             return HttpResponse::BadRequest().json(ApiResponse::new(
@@ -174,7 +188,7 @@ pub async fn register_node(
 
     let node_store = data.node_store.clone();
 
-    match node_store.register_node(node.clone()) {
+    match node_store.register_node(node.clone()).await {
         Ok(_) => HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully")),
         Err(_) => HttpResponse::InternalServerError()
             .json(ApiResponse::new(false, "Internal server error")),
@@ -309,7 +323,7 @@ mod tests {
         assert!(body.success);
         assert_eq!(body.data, "Node registered successfully");
 
-        let nodes = app_state.node_store.get_nodes();
+        let nodes = app_state.node_store.get_nodes().await;
         match nodes {
             Ok(nodes) => {
                 assert_eq!(nodes.len(), 1);
@@ -329,14 +343,14 @@ mod tests {
             created_at: None,
         };
 
-        match app_state.node_store.update_node(validated) {
+        match app_state.node_store.update_node(validated).await {
             Ok(_) => (),
             Err(_) => {
                 unreachable!("Error updating node");
             }
         }
 
-        let nodes = app_state.node_store.get_nodes();
+        let nodes = app_state.node_store.get_nodes().await;
         match nodes {
             Ok(nodes) => {
                 assert_eq!(nodes.len(), 1);
@@ -368,7 +382,7 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let nodes = app_state.node_store.get_nodes();
+        let nodes = app_state.node_store.get_nodes().await;
         match nodes {
             Ok(nodes) => {
                 assert_eq!(nodes.len(), 1);
@@ -434,7 +448,7 @@ mod tests {
         assert!(body.success);
         assert_eq!(body.data, "Node registered successfully");
 
-        let nodes = app_state.node_store.get_nodes();
+        let nodes = app_state.node_store.get_nodes().await;
         let nodes = match nodes {
             Ok(nodes) => nodes,
             Err(_) => {
@@ -529,7 +543,11 @@ mod tests {
             only_one_node_per_ip: true,
         };
 
-        app_state.node_store.register_node(node.clone()).unwrap();
+        app_state
+            .node_store
+            .register_node(node.clone())
+            .await
+            .unwrap();
 
         node.compute_specs.as_mut().unwrap().storage_gb = Some(300);
         node.compute_specs
@@ -573,7 +591,7 @@ mod tests {
         assert!(body.success);
         assert_eq!(body.data, "Node registered successfully");
 
-        let nodes = app_state.node_store.get_nodes();
+        let nodes = app_state.node_store.get_nodes().await;
         let nodes = match nodes {
             Ok(nodes) => nodes,
             Err(_) => {
