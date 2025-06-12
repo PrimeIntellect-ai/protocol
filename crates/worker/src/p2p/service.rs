@@ -2,6 +2,7 @@ use anyhow::Result;
 use iroh::endpoint::Incoming;
 use iroh::{Endpoint, SecretKey};
 use log::{debug, error, info, warn};
+use shared::models::challenge::calc_matrix;
 use shared::p2p::{P2PMessage, P2PRequest, P2PResponse, PRIME_P2P_PROTOCOL};
 use std::time::SystemTime;
 use tokio_util::sync::CancellationToken;
@@ -155,20 +156,28 @@ impl P2PService {
                     },
                 )
             }
+            P2PMessage::HardwareChallenge { challenge, .. } => {
+                info!("Received hardware challenge");
+                let challenge_response = calc_matrix(&challenge);
+                P2PResponse::new(
+                    request.id,
+                    P2PMessage::HardwareChallengeResponse {
+                        response: challenge_response,
+                        timestamp: SystemTime::now(),
+                    },
+                )
+            }
             _ => {
                 warn!("Unexpected message type");
                 return Ok(());
             }
         };
 
-        // Send the response
-        info!("Sending P2P response: {:?}", response);
         let response_bytes = serde_json::to_vec(&response)?;
         send.write_all(&(response_bytes.len() as u32).to_be_bytes())
             .await?;
         send.write_all(&response_bytes).await?;
         send.finish()?;
-        info!("P2P response sent");
 
         // Wait for client to close
         match recv.read_to_end(1024).await {

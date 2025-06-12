@@ -1,3 +1,4 @@
+use crate::models::challenge::{ChallengeRequest, ChallengeResponse};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
@@ -10,6 +11,18 @@ pub enum P2PMessage {
 
     /// Response to ping
     Pong { timestamp: SystemTime, nonce: u64 },
+
+    /// Hardware challenge from validator to worker
+    HardwareChallenge {
+        challenge: ChallengeRequest,
+        timestamp: SystemTime,
+    },
+
+    /// Hardware challenge response from worker to validator
+    HardwareChallengeResponse {
+        response: ChallengeResponse,
+        timestamp: SystemTime,
+    },
 }
 
 /// P2P request wrapper with ID for tracking

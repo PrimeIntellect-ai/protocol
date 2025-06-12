@@ -1,4 +1,3 @@
-use crate::api::routes::challenge::challenge_routes;
 use crate::api::routes::invite::invite_routes;
 use crate::api::routes::task::task_routes;
 use crate::docker::DockerService;
@@ -70,7 +69,6 @@ pub async fn start_server(
             .wrap(ValidateSignature::new(validator_state.clone()))
             .service(invite_routes())
             .service(task_routes())
-            .service(challenge_routes())
             .default_service(web::route().to(|| async {
                 HttpResponse::NotFound().json(json!({
                     "success": false,

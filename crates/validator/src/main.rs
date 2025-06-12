@@ -279,7 +279,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let contracts = contract_builder.build().unwrap();
 
-    let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
+    let hardware_validator =
+        HardwareValidator::new(&validator_wallet, contracts.clone(), p2p_client.as_ref());
 
     let synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();

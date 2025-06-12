@@ -2,6 +2,7 @@ use anyhow::Result;
 use iroh::{Endpoint, NodeAddr, NodeId, SecretKey};
 use log::{debug, info};
 use rand_v8::Rng;
+use shared::models::challenge::{ChallengeRequest, ChallengeResponse};
 use shared::p2p::{P2PMessage, P2PRequest, P2PResponse, PRIME_P2P_PROTOCOL};
 use std::str::FromStr;
 use std::time::SystemTime;
@@ -98,6 +99,82 @@ impl P2PClient {
         };
 
         connection.close(0u32.into(), b"ping complete");
+        // Give the close frame time to be sent
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+        result
+    }
+
+    /// Send a hardware challenge to a worker and wait for response
+    pub async fn send_hardware_challenge(
+        &self,
+        worker_p2p_id: &str,
+        worker_addresses: &[String],
+        challenge: ChallengeRequest,
+    ) -> Result<ChallengeResponse> {
+        // Parse the worker node ID
+        let node_id = NodeId::from_str(worker_p2p_id)?;
+
+        // Parse addresses
+        let mut socket_addrs = Vec::new();
+        for addr in worker_addresses {
+            if let Ok(socket_addr) = addr.parse() {
+                socket_addrs.push(socket_addr);
+            }
+        }
+
+        // Create node address
+        let node_addr = NodeAddr::new(node_id).with_direct_addresses(socket_addrs);
+
+        debug!(
+            "Connecting to worker P2P node for hardware challenge: {}",
+            worker_p2p_id
+        );
+
+        // Connect to the worker
+        let connection = self.endpoint.connect(node_addr, PRIME_P2P_PROTOCOL).await?;
+
+        // Open a bidirectional stream
+        let (mut send, mut recv) = connection.open_bi().await?;
+
+        let challenge_request = P2PRequest::new(P2PMessage::HardwareChallenge {
+            challenge,
+            timestamp: SystemTime::now(),
+        });
+
+        // Serialize and send the request
+        let request_bytes = serde_json::to_vec(&challenge_request)?;
+        send.write_all(&(request_bytes.len() as u32).to_be_bytes())
+            .await?;
+        send.write_all(&request_bytes).await?;
+
+        send.finish()?;
+
+        // Read the response
+        let mut response_len_bytes = [0u8; 4];
+        recv.read_exact(&mut response_len_bytes).await?;
+        let response_len = u32::from_be_bytes(response_len_bytes) as usize;
+
+        let mut response_bytes = vec![0u8; response_len];
+        recv.read_exact(&mut response_bytes).await?;
+
+        let response: P2PResponse = serde_json::from_slice(&response_bytes)?;
+
+        // Extract the challenge response
+        let result = match response.message {
+            P2PMessage::HardwareChallengeResponse { response, .. } => {
+                info!(
+                    "Received hardware challenge response from worker {}",
+                    worker_p2p_id
+                );
+                Ok(response)
+            }
+            _ => Err(anyhow::anyhow!(
+                "Unexpected response type for hardware challenge"
+            )),
+        };
+
+        connection.close(0u32.into(), b"challenge complete");
         // Give the close frame time to be sent
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
