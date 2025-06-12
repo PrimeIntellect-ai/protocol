@@ -88,7 +88,7 @@ impl P2PClient {
                 worker_addresses,
                 worker_wallet_address,
                 P2PMessage::RestartTask,
-                20,
+                25,
             )
             .await?;
 

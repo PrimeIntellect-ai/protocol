@@ -147,7 +147,6 @@ impl P2PService {
     ) {
         match incoming.await {
             Ok(connection) => {
-                info!("Accepted connection");
                 match connection.accept_bi().await {
                     Ok((send, recv)) => {
                         if let Err(e) =
