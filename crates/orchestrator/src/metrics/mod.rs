@@ -4,6 +4,7 @@ pub mod webhook_sender;
 
 pub struct MetricsContext {
     pub compute_task_gauges: GaugeVec,
+    pub task_info: GaugeVec,
     pub pool_id: String,
     pub registry: Registry,
     pub file_upload_requests_total: CounterVec,
@@ -19,7 +20,21 @@ impl MetricsContext {
         // For current state/rate metrics
         let compute_task_gauges = GaugeVec::new(
             Opts::new("compute_gauges", "Compute task gauge metrics"),
-            &["node_address", "task_id", "task_name", "label", "pool_id"],
+            &[
+                "node_address",
+                "task_id",
+                "task_name",
+                "label",
+                "pool_id",
+                "group_id",
+                "group_config_name",
+            ],
+        )
+        .unwrap();
+
+        let task_info = GaugeVec::new(
+            Opts::new("task_info", "Task information with metadata"),
+            &["task_id", "task_name", "pool_id", "metadata"],
         )
         .unwrap();
 
@@ -77,6 +92,7 @@ impl MetricsContext {
 
         let registry = Registry::new();
         let _ = registry.register(Box::new(compute_task_gauges.clone()));
+        let _ = registry.register(Box::new(task_info.clone()));
         let _ = registry.register(Box::new(file_upload_requests_total.clone()));
         let _ = registry.register(Box::new(nodes_total.clone()));
         let _ = registry.register(Box::new(tasks_total.clone()));
@@ -86,6 +102,7 @@ impl MetricsContext {
 
         Self {
             compute_task_gauges,
+            task_info,
             pool_id,
             registry,
             file_upload_requests_total,
@@ -97,6 +114,7 @@ impl MetricsContext {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn record_compute_task_gauge(
         &self,
         node_address: &str,
@@ -104,9 +122,21 @@ impl MetricsContext {
         task_name: &str,
         label: &str,
         value: f64,
+        group_id: Option<&str>,
+        group_config_name: Option<&str>,
     ) {
+        let group_id_str = group_id.unwrap_or("none");
+        let group_config_name_str = group_config_name.unwrap_or("none");
         self.compute_task_gauges
-            .with_label_values(&[node_address, task_id, task_name, label, &self.pool_id])
+            .with_label_values(&[
+                node_address,
+                task_id,
+                task_name,
+                label,
+                &self.pool_id,
+                group_id_str,
+                group_config_name_str,
+            ])
             .set(value);
     }
 
@@ -151,6 +181,12 @@ impl MetricsContext {
             .set(count);
     }
 
+    pub fn set_task_info(&self, task_id: &str, task_name: &str, metadata: &str) {
+        self.task_info
+            .with_label_values(&[task_id, task_name, &self.pool_id, metadata])
+            .set(1.0);
+    }
+
     pub fn export_metrics(&self) -> Result<String, prometheus::Error> {
         let encoder = TextEncoder::new();
         let metric_families = self.registry.gather();
@@ -170,5 +206,6 @@ impl MetricsContext {
         self.tasks_total.reset();
         self.groups_total.reset();
         self.nodes_per_task.reset();
+        self.task_info.reset();
     }
 }
