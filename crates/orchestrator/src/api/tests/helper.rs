@@ -46,7 +46,12 @@ pub async fn create_test_app_state() -> Data<AppState> {
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
     let metrics = Arc::new(MetricsContext::new(1.to_string()));
-    let p2p_client = Arc::new(P2PClient::new().await.unwrap());
+    let wallet = Wallet::new(
+        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+        Url::parse("http://localhost:8545").unwrap(),
+    )
+    .unwrap();
+    let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -118,7 +123,12 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
     let metrics = Arc::new(MetricsContext::new(1.to_string()));
-    let p2p_client = Arc::new(P2PClient::new().await.unwrap());
+    let wallet = Wallet::new(
+        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+        Url::parse("http://localhost:8545").unwrap(),
+    )
+    .unwrap();
+    let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -186,7 +196,12 @@ pub async fn create_test_app_state_with_metrics() -> Data<AppState> {
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
     let metrics = Arc::new(MetricsContext::new("0".to_string()));
-    let p2p_client = Arc::new(P2PClient::new().await.unwrap());
+    let wallet = Wallet::new(
+        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+        Url::parse("http://localhost:8545").unwrap(),
+    )
+    .unwrap();
+    let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
     Data::new(AppState {
         store_context: store_context.clone(),

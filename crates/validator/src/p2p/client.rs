@@ -1,8 +1,10 @@
+use alloy::primitives::Address;
 use anyhow::Result;
 use log::info;
 use rand_v8::Rng;
 use shared::models::challenge::{ChallengeRequest, ChallengeResponse};
-use shared::p2p::{client::P2PClient as SharedP2PClient, P2PMessage};
+use shared::p2p::{client::P2PClient as SharedP2PClient, messages::P2PMessage};
+use shared::web3::wallet::Wallet;
 use std::time::SystemTime;
 
 pub struct P2PClient {
@@ -10,13 +12,14 @@ pub struct P2PClient {
 }
 
 impl P2PClient {
-    pub async fn new() -> Result<Self> {
-        let shared_client = SharedP2PClient::new().await?;
+    pub async fn new(wallet: Wallet) -> Result<Self> {
+        let shared_client = SharedP2PClient::new(wallet).await?;
         Ok(Self { shared_client })
     }
 
     pub async fn ping_worker(
         &self,
+        worker_wallet_address: Address,
         worker_p2p_id: &str,
         worker_addresses: &[String],
     ) -> Result<u64> {
@@ -27,6 +30,7 @@ impl P2PClient {
             .send_request(
                 worker_p2p_id,
                 worker_addresses,
+                worker_wallet_address,
                 P2PMessage::Ping {
                     timestamp: SystemTime::now(),
                     nonce,
@@ -56,6 +60,7 @@ impl P2PClient {
 
     pub async fn send_hardware_challenge(
         &self,
+        worker_wallet_address: Address,
         worker_p2p_id: &str,
         worker_addresses: &[String],
         challenge: ChallengeRequest,
@@ -65,6 +70,7 @@ impl P2PClient {
             .send_request(
                 worker_p2p_id,
                 worker_addresses,
+                worker_wallet_address,
                 P2PMessage::HardwareChallenge {
                     challenge,
                     timestamp: SystemTime::now(),

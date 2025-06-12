@@ -1,4 +1,5 @@
 use crate::p2p::client::P2PClient;
+use alloy::primitives::Address;
 use anyhow::{Error, Result};
 use log::{error, info};
 use rand::{rng, Rng};
@@ -6,6 +7,7 @@ use shared::models::{
     challenge::{calc_matrix, ChallengeRequest, FixedF64},
     node::DiscoveryNode,
 };
+use std::str::FromStr;
 
 pub struct HardwareChallenge<'a> {
     p2p_client: &'a P2PClient,
@@ -42,10 +44,13 @@ impl<'a> HardwareChallenge<'a> {
         let mut challenge_with_timestamp = challenge_matrix.clone();
         challenge_with_timestamp.timestamp = Some(current_time);
 
+        let node_address =Address::from_str(&node.node.id)
+            .map_err(|e| anyhow::anyhow!("Failed to parse node address {}: {}", node.node.id, e))?;
+
         // Send challenge via P2P
         match self
             .p2p_client
-            .send_hardware_challenge(p2p_id, p2p_addresses, challenge_with_timestamp)
+            .send_hardware_challenge(node_address, p2p_id, p2p_addresses, challenge_with_timestamp)
             .await
         {
             Ok(response) => {

@@ -172,7 +172,7 @@ async fn main() -> Result<()> {
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
 
-    let p2p_client = Arc::new(P2PClient::new().await?);
+    let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
     let contracts = ContractBuilder::new(wallet.provider())
         .with_compute_registry()

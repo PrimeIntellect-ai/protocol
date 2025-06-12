@@ -3,10 +3,35 @@ use crate::models::invite::InviteRequest;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
+/// Maximum message size for P2P communication (1MB)
+pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
+
 /// P2P message types for validator-worker communication
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "payload")]
 pub enum P2PMessage {
+    /// Request auth challenge from worker to validator
+    RequestAuthChallenge {
+        message: String,
+    },
+
+    /// Auth challenge from worker to validator
+    AuthChallenge {
+        signed_message: String,
+        message: String,
+    },
+
+    /// Auth solution from validator to worker
+    AuthSolution {
+        signed_message: String,
+    },
+
+    /// Auth granted from worker to validator
+    AuthGranted {  },
+
+    /// Auth rejected from validator to worker
+    AuthRejected {  },
+
     /// Simple ping message for connectivity testing
     Ping { timestamp: SystemTime, nonce: u64 },
 

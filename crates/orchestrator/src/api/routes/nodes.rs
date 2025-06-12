@@ -125,7 +125,7 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
 
     match app_state
         .p2p_client
-        .restart_task(p2p_id, p2p_addresses)
+        .restart_task(node_address, p2p_id, p2p_addresses)
         .await
     {
         Ok(_) => HttpResponse::Ok().json(json!({
@@ -181,7 +181,7 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
 
     match app_state
         .p2p_client
-        .get_task_logs(p2p_id, p2p_addresses)
+        .get_task_logs(node_address, p2p_id, p2p_addresses)
         .await
     {
         Ok(logs) => HttpResponse::Ok().json(json!({

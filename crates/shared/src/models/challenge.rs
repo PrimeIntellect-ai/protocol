@@ -53,7 +53,7 @@ impl PartialEq for FixedF64 {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ChallengeRequest {
     pub rows_a: usize,
     pub cols_a: usize,
@@ -64,7 +64,7 @@ pub struct ChallengeRequest {
     pub timestamp: Option<u64>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ChallengeResponse {
     pub result: Vec<FixedF64>,
     pub rows: usize,

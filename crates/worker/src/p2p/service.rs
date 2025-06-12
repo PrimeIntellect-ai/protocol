@@ -2,21 +2,32 @@ use crate::console::Console;
 use crate::docker::DockerService;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::state::system_state::SystemState;
-use alloy::primitives::{FixedBytes, U256};
+use alloy::primitives::{Address, FixedBytes, U256};
 use anyhow::Result;
+use dashmap::DashMap;
 use iroh::endpoint::Incoming;
 use iroh::{Endpoint, SecretKey};
+use lazy_static::lazy_static;
 use log::{debug, error, info, warn};
+use rand_v8::Rng;
 use shared::models::challenge::calc_matrix;
 use shared::models::invite::InviteRequest;
-use shared::p2p::{P2PMessage, P2PRequest, P2PResponse, PRIME_P2P_PROTOCOL};
+use shared::p2p::messages::MAX_MESSAGE_SIZE;
+use shared::p2p::messages::{P2PMessage, P2PRequest, P2PResponse};
+use shared::p2p::protocol::PRIME_P2P_PROTOCOL;
+use shared::security::request_signer::sign_message;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::helpers::utils::retry_call;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::{Wallet, WalletProvider};
+use std::str::FromStr;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use tokio_util::sync::CancellationToken;
+
+lazy_static! {
+    static ref NONCE_CACHE: DashMap<String, SystemTime> = DashMap::new();
+}
 
 #[derive(Clone)]
 pub struct P2PContext {
@@ -34,6 +45,8 @@ pub struct P2PService {
     listening_addrs: Vec<String>,
     cancellation_token: CancellationToken,
     context: Option<P2PContext>,
+    allowed_addresses: Vec<Address>,
+    wallet: Wallet,
 }
 
 impl P2PService {
@@ -42,6 +55,8 @@ impl P2PService {
         worker_p2p_seed: Option<u64>,
         cancellation_token: CancellationToken,
         context: Option<P2PContext>,
+        wallet: Wallet,
+        allowed_addresses: Vec<Address>,
     ) -> Result<Self> {
         // Generate or derive the secret key for this worker
         let secret_key = if let Some(seed) = worker_p2p_seed {
@@ -80,6 +95,8 @@ impl P2PService {
             listening_addrs,
             cancellation_token,
             context,
+            allowed_addresses,
+            wallet,
         })
     }
 
@@ -97,7 +114,8 @@ impl P2PService {
         let endpoint = self.endpoint.clone();
         let cancellation_token = self.cancellation_token.clone();
         let context = self.context.clone();
-
+        let allowed_addresses = self.allowed_addresses.clone();
+        let wallet = self.wallet.clone();
         tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -107,7 +125,7 @@ impl P2PService {
                     }
                     incoming = endpoint.accept() => {
                         if let Some(incoming) = incoming {
-                            tokio::spawn(Self::handle_connection(incoming, context.clone()));
+                            tokio::spawn(Self::handle_connection(incoming, context.clone(), allowed_addresses.clone(), wallet.clone()));
                         } else {
                             warn!("P2P endpoint closed");
                             break;
@@ -121,13 +139,21 @@ impl P2PService {
     }
 
     /// Handle an incoming connection
-    async fn handle_connection(incoming: Incoming, context: Option<P2PContext>) {
+    async fn handle_connection(
+        incoming: Incoming,
+        context: Option<P2PContext>,
+        allowed_addresses: Vec<Address>,
+        wallet: Wallet,
+    ) {
         match incoming.await {
             Ok(connection) => {
                 info!("Accepted connection");
                 match connection.accept_bi().await {
                     Ok((send, recv)) => {
-                        if let Err(e) = Self::handle_stream(send, recv, context).await {
+                        if let Err(e) =
+                            Self::handle_stream(send, recv, context, allowed_addresses, wallet)
+                                .await
+                        {
                             error!("Error handling stream: {}", e);
                         }
                         // Wait a bit before closing to ensure client has processed response
@@ -155,111 +181,255 @@ impl P2PService {
         }
     }
 
+    /// Read a message from the stream
+    async fn read_message(recv: &mut iroh::endpoint::RecvStream) -> Result<P2PRequest> {
+        // Read message length
+        let mut msg_len_bytes = [0u8; 4];
+        match recv.read_exact(&mut msg_len_bytes).await {
+            Ok(_) => {}
+            Err(e) => {
+                debug!("Stream read ended: {}", e);
+                return Err(anyhow::anyhow!("Stream closed"));
+            }
+        }
+        let msg_len = u32::from_be_bytes(msg_len_bytes) as usize;
+
+        // Enforce maximum message size
+        if msg_len > MAX_MESSAGE_SIZE {
+            error!(
+                "Message size {} exceeds maximum allowed size {}",
+                msg_len, MAX_MESSAGE_SIZE
+            );
+            return Err(anyhow::anyhow!("Message too large"));
+        }
+
+        let mut msg_bytes = vec![0u8; msg_len];
+        recv.read_exact(&mut msg_bytes).await?;
+
+        let request: P2PRequest = serde_json::from_slice(&msg_bytes)
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize P2P request: {}", e))?;
+
+        debug!("Received P2P request: {:?}", request);
+        Ok(request)
+    }
+
+    async fn write_response(
+        send: &mut iroh::endpoint::SendStream,
+        response: P2PResponse,
+    ) -> Result<()> {
+        let response_bytes = serde_json::to_vec(&response)?;
+
+        // Check response size before sending
+        if response_bytes.len() > MAX_MESSAGE_SIZE {
+            error!(
+                "Response size {} exceeds maximum allowed size {}",
+                response_bytes.len(),
+                MAX_MESSAGE_SIZE
+            );
+            return Err(anyhow::anyhow!("Response too large"));
+        }
+
+        send.write_all(&(response_bytes.len() as u32).to_be_bytes())
+            .await?;
+        send.write_all(&response_bytes).await?;
+        Ok(())
+    }
+
     /// Handle a bidirectional stream
     async fn handle_stream(
         mut send: iroh::endpoint::SendStream,
         mut recv: iroh::endpoint::RecvStream,
         context: Option<P2PContext>,
+        allowed_addresses: Vec<Address>,
+        wallet: Wallet,
     ) -> Result<()> {
-        let mut msg_len_bytes = [0u8; 4];
-        recv.read_exact(&mut msg_len_bytes).await?;
-        let msg_len = u32::from_be_bytes(msg_len_bytes) as usize;
+        // Handle multiple messages in sequence
+        let mut is_authorized = false;
+        let mut current_challenge: Option<String> = None;
 
-        let mut msg_bytes = vec![0u8; msg_len];
-        recv.read_exact(&mut msg_bytes).await?;
+        loop {
+            let request = match Self::read_message(&mut recv).await {
+                Ok(req) => req,
+                Err(_) => break, // Stream closed or error
+            };
 
-        let request: P2PRequest = serde_json::from_slice(&msg_bytes)?;
-        debug!("Received P2P request: {:?}", request);
-        // Handle the request
-        let response = match request.message {
-            P2PMessage::Ping { nonce, .. } => {
-                info!("Received ping with nonce: {}", nonce);
-                P2PResponse::new(
-                    request.id,
-                    P2PMessage::Pong {
-                        timestamp: SystemTime::now(),
-                        nonce,
-                    },
-                )
-            }
-            P2PMessage::HardwareChallenge { challenge, .. } => {
-                info!("Received hardware challenge");
-                let challenge_response = calc_matrix(&challenge);
-                P2PResponse::new(
-                    request.id,
-                    P2PMessage::HardwareChallengeResponse {
-                        response: challenge_response,
-                        timestamp: SystemTime::now(),
-                    },
-                )
-            }
-            P2PMessage::Invite(invite) => {
-                if let Some(context) = &context {
-                    let (status, error) = Self::handle_invite(invite, context).await;
-                    P2PResponse::new(request.id, P2PMessage::InviteResponse { status, error })
-                } else {
+            // Handle the request
+            let response = match request.message {
+                P2PMessage::Ping { nonce, .. } => {
+                    info!("Received ping with nonce: {}", nonce);
                     P2PResponse::new(
                         request.id,
-                        P2PMessage::InviteResponse {
-                            status: "error".to_string(),
-                            error: Some("No context".to_string()),
+                        P2PMessage::Pong {
+                            timestamp: SystemTime::now(),
+                            nonce,
                         },
                     )
                 }
-            }
-            P2PMessage::GetTaskLogs => {
-                if let Some(context) = &context {
-                    let logs = context.docker_service.get_logs().await;
-                    let response_logs = logs
-                        .map(|log_string| vec![log_string])
-                        .map_err(|e| e.to_string());
+                P2PMessage::RequestAuthChallenge { message } => {
+                    // Generate a fresh cryptographically secure challenge message for this auth attempt
+                    let challenge_bytes: [u8; 32] = rand_v8::rngs::OsRng.gen();
+                    let challenge_message = hex::encode(challenge_bytes);
+
+                    info!("Received request auth challenge");
+                    let signature = match sign_message(&message, &wallet).await {
+                        Ok(signature) => signature,
+                        Err(e) => {
+                            error!("Failed to sign message: {}", e);
+                            return Err(anyhow::anyhow!("Failed to sign message: {}", e));
+                        }
+                    };
+
+                    // Store the challenge message in nonce cache to prevent replay
+                    NONCE_CACHE.insert(challenge_message.clone(), SystemTime::now());
+
+                    // Store the current challenge for this connection
+                    current_challenge = Some(challenge_message.clone());
+
                     P2PResponse::new(
                         request.id,
-                        P2PMessage::GetTaskLogsResponse {
-                            logs: response_logs,
+                        P2PMessage::AuthChallenge {
+                            message: challenge_message,
+                            signed_message: signature,
                         },
                     )
-                } else {
-                    P2PResponse::new(
-                        request.id,
-                        P2PMessage::GetTaskLogsResponse { logs: Ok(vec![]) },
-                    )
                 }
-            }
-            P2PMessage::RestartTask => {
-                if let Some(context) = &context {
-                    let result = context.docker_service.restart_task().await;
-                    let response_result = result.map_err(|e| e.to_string());
+                P2PMessage::AuthSolution { signed_message } => {
+                    info!("Received auth solution");
+
+                    // Get the challenge message for this connection
+                    let challenge_message = match &current_challenge {
+                        Some(challenge) => challenge,
+                        None => {
+                            warn!("No active challenge for auth solution");
+                            let response =
+                                P2PResponse::new(request.id, P2PMessage::AuthRejected {});
+                            Self::write_response(&mut send, response).await?;
+                            continue;
+                        }
+                    };
+
+                    // Check if challenge message has been used before (replay attack prevention)
+                    if !NONCE_CACHE.contains_key(challenge_message) {
+                        warn!(
+                            "Challenge message not found or expired: {}",
+                            challenge_message
+                        );
+                        let response = P2PResponse::new(request.id, P2PMessage::AuthRejected {});
+                        Self::write_response(&mut send, response).await?;
+                        continue;
+                    }
+
+                    // Clean up old nonces (older than 5 minutes)
+                    let cutoff_time = SystemTime::now() - Duration::from_secs(300);
+                    NONCE_CACHE.retain(|_, &mut timestamp| timestamp > cutoff_time);
+
+                    // Parse the signature
+                    let parsed_signature = if let Ok(sig) =
+                        alloy::primitives::Signature::from_str(&signed_message)
+                    {
+                        sig
+                    } else {
+                        // Handle signature parsing error
+                        let response = P2PResponse::new(request.id, P2PMessage::AuthRejected {});
+                        Self::write_response(&mut send, response).await?;
+                        continue;
+                    };
+
+                    // Recover address from the challenge message that the client signed
+                    let recovered_address = if let Ok(addr) =
+                        parsed_signature.recover_address_from_msg(challenge_message)
+                    {
+                        addr
+                    } else {
+                        // Handle address recovery error
+                        let response = P2PResponse::new(request.id, P2PMessage::AuthRejected {});
+                        Self::write_response(&mut send, response).await?;
+                        continue;
+                    };
+
+                    // Check if the recovered address is in allowed addresses
+                    NONCE_CACHE.remove(challenge_message);
+                    current_challenge = None;
+                    if allowed_addresses.contains(&recovered_address) {
+                        is_authorized = true;
+                        P2PResponse::new(request.id, P2PMessage::AuthGranted {})
+                    } else {
+                        P2PResponse::new(request.id, P2PMessage::AuthRejected {})
+                    }
+                }
+                P2PMessage::HardwareChallenge { challenge, .. } if is_authorized => {
+                    info!("Received hardware challenge");
+                    let challenge_response = calc_matrix(&challenge);
                     P2PResponse::new(
                         request.id,
-                        P2PMessage::RestartTaskResponse {
-                            result: response_result,
+                        P2PMessage::HardwareChallengeResponse {
+                            response: challenge_response,
+                            timestamp: SystemTime::now(),
                         },
                     )
-                } else {
-                    P2PResponse::new(
-                        request.id,
-                        P2PMessage::RestartTaskResponse { result: Ok(()) },
-                    )
                 }
-            }
-            _ => {
-                warn!("Unexpected message type");
-                return Ok(());
-            }
-        };
+                P2PMessage::Invite(invite) if is_authorized => {
+                    if let Some(context) = &context {
+                        let (status, error) = Self::handle_invite(invite, context).await;
+                        P2PResponse::new(request.id, P2PMessage::InviteResponse { status, error })
+                    } else {
+                        P2PResponse::new(
+                            request.id,
+                            P2PMessage::InviteResponse {
+                                status: "error".to_string(),
+                                error: Some("No context".to_string()),
+                            },
+                        )
+                    }
+                }
+                P2PMessage::GetTaskLogs if is_authorized => {
+                    if let Some(context) = &context {
+                        let logs = context.docker_service.get_logs().await;
+                        let response_logs = logs
+                            .map(|log_string| vec![log_string])
+                            .map_err(|e| e.to_string());
+                        P2PResponse::new(
+                            request.id,
+                            P2PMessage::GetTaskLogsResponse {
+                                logs: response_logs,
+                            },
+                        )
+                    } else {
+                        P2PResponse::new(
+                            request.id,
+                            P2PMessage::GetTaskLogsResponse { logs: Ok(vec![]) },
+                        )
+                    }
+                }
+                P2PMessage::RestartTask if is_authorized => {
+                    if let Some(context) = &context {
+                        let result = context.docker_service.restart_task().await;
+                        let response_result = result.map_err(|e| e.to_string());
+                        P2PResponse::new(
+                            request.id,
+                            P2PMessage::RestartTaskResponse {
+                                result: response_result,
+                            },
+                        )
+                    } else {
+                        P2PResponse::new(
+                            request.id,
+                            P2PMessage::RestartTaskResponse { result: Ok(()) },
+                        )
+                    }
+                }
+                _ => {
+                    warn!("Unexpected message type");
+                    continue;
+                }
+            };
 
-        let response_bytes = serde_json::to_vec(&response)?;
-        send.write_all(&(response_bytes.len() as u32).to_be_bytes())
-            .await?;
-        send.write_all(&response_bytes).await?;
-        send.finish()?;
-
-        // Wait for client to close
-        match recv.read_to_end(1024).await {
-            Ok(_) => debug!("Client closed their send stream gracefully"),
-            Err(e) => debug!("Error waiting for client close: {}", e),
+            // Send response
+            Self::write_response(&mut send, response).await?;
         }
+
+        // Finish the send stream
+        send.finish()?;
 
         Ok(())
     }
@@ -397,4 +567,105 @@ impl P2PService {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use rand_v8::Rng;
+    use serial_test::serial;
+    use shared::p2p::P2PClient;
+    use url::Url;
+
+    use super::*;
+
+    async fn setup_test_service(
+        include_addresses: bool,
+    ) -> (P2PService, P2PClient, Address, Address) {
+        let validator_wallet = shared::web3::wallet::Wallet::new(
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            Url::parse("https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161").unwrap(),
+        )
+        .unwrap();
+        let worker_wallet = shared::web3::wallet::Wallet::new(
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            Url::parse("https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161").unwrap(),
+        )
+        .unwrap();
+        let validator_wallet_address = validator_wallet.wallet.default_signer().address();
+        let worker_wallet_address = worker_wallet.wallet.default_signer().address();
+        let service = P2PService::new(
+            None,
+            CancellationToken::new(),
+            None,
+            worker_wallet,
+            if include_addresses {
+                vec![validator_wallet_address]
+            } else {
+                vec![]
+            },
+        )
+        .await
+        .unwrap();
+        let client = P2PClient::new(validator_wallet.clone()).await.unwrap();
+        (
+            service,
+            client,
+            validator_wallet_address,
+            worker_wallet_address,
+        )
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_ping() {
+        let (service, client, _, worker_wallet_address) = setup_test_service(true).await;
+        println!("worker_wallet_address: {:?}", worker_wallet_address);
+        let node_id = service.node_id().to_string();
+        let addresses = service.listening_addresses().to_vec();
+        let random_nonce = rand_v8::thread_rng().gen::<u64>();
+
+        tokio::spawn(async move {
+            service.start().await.unwrap();
+        });
+
+        let ping = P2PMessage::Ping {
+            nonce: random_nonce,
+            timestamp: SystemTime::now(),
+        };
+
+        let response = client
+            .send_request(&node_id, &addresses, worker_wallet_address, ping, 20)
+            .await
+            .unwrap();
+
+        let response_nonce = match response {
+            P2PMessage::Pong { nonce, .. } => nonce,
+            _ => panic!("Expected Pong message"),
+        };
+        assert_eq!(response_nonce, random_nonce);
+    }
+    #[tokio::test]
+    #[serial]
+    async fn test_auth_error() {
+        let (service, client, _, worker_wallet_address) = setup_test_service(false).await;
+        let node_id = service.node_id().to_string();
+        let addresses = service.listening_addresses().to_vec();
+
+        tokio::spawn(async move {
+            service.start().await.unwrap();
+        });
+
+        let ping = P2PMessage::Ping {
+            nonce: rand_v8::thread_rng().gen::<u64>(),
+            timestamp: SystemTime::now(),
+        };
+
+        // Since we set include_addresses to false, the client's wallet address
+        // is not in the allowed_addresses list, so we expect auth to be rejected
+        let result = client
+            .send_request(&node_id, &addresses, worker_wallet_address, ping, 20)
+            .await;
+
+        assert!(
+            result.is_err(),
+            "Expected auth to be rejected but request succeeded"
+        );
+    }
+}

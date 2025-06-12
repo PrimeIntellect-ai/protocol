@@ -148,7 +148,7 @@ impl<'a> NodeInviter<'a> {
 
         match self
             .p2p_client
-            .invite_worker(p2p_id, p2p_addresses, payload)
+            .invite_worker(node.address, p2p_id, p2p_addresses, payload)
             .await
         {
             Ok(_) => {

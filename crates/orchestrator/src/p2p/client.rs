@@ -1,20 +1,23 @@
+use alloy::primitives::Address;
 use anyhow::Result;
 use log::{info, warn};
 use shared::models::invite::InviteRequest;
-use shared::p2p::{client::P2PClient as SharedP2PClient, P2PMessage};
+use shared::p2p::{client::P2PClient as SharedP2PClient, messages::P2PMessage};
+use shared::web3::wallet::Wallet;
 
 pub struct P2PClient {
     shared_client: SharedP2PClient,
 }
 
 impl P2PClient {
-    pub async fn new() -> Result<Self> {
-        let shared_client = SharedP2PClient::new().await?;
+    pub async fn new(wallet: Wallet) -> Result<Self> {
+        let shared_client = SharedP2PClient::new(wallet).await?;
         Ok(Self { shared_client })
     }
 
     pub async fn invite_worker(
         &self,
+        worker_wallet_address: Address,
         worker_p2p_id: &str,
         worker_addresses: &[String],
         invite: InviteRequest,
@@ -24,6 +27,7 @@ impl P2PClient {
             .send_request(
                 worker_p2p_id,
                 worker_addresses,
+                worker_wallet_address,
                 P2PMessage::Invite(invite),
                 20,
             )
@@ -46,6 +50,7 @@ impl P2PClient {
 
     pub async fn get_task_logs(
         &self,
+        worker_wallet_address: Address,
         worker_p2p_id: &str,
         worker_addresses: &[String],
     ) -> Result<Vec<String>> {
@@ -54,6 +59,7 @@ impl P2PClient {
             .send_request(
                 worker_p2p_id,
                 worker_addresses,
+                worker_wallet_address,
                 P2PMessage::GetTaskLogs,
                 15, // 15 second timeout for getting logs
             )
@@ -71,12 +77,13 @@ impl P2PClient {
 
     pub async fn restart_task(
         &self,
+        worker_wallet_address: Address,
         worker_p2p_id: &str,
         worker_addresses: &[String],
     ) -> Result<()> {
         let response = self
             .shared_client
-            .send_request(worker_p2p_id, worker_addresses, P2PMessage::RestartTask, 20)
+            .send_request(worker_p2p_id, worker_addresses, worker_wallet_address, P2PMessage::RestartTask, 20)
             .await?;
 
         match response {

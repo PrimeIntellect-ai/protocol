@@ -620,10 +620,30 @@ pub async fn execute_command(
                 provider_wallet: provider_wallet_instance.clone(),
             };
 
+            let validators = match contracts.prime_network.get_validator_role().await {
+                Ok(validators) => validators,
+                Err(e) => {
+                    error!("Failed to get validator role: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            if validators.is_empty() {
+                error!("❌ No validator roles found on contracts - cannot start worker without validators");
+                error!("This means the smart contract has no registered validators, which is required for signature validation");
+                error!("Please ensure validators are properly registered on the PrimeNetwork contract before starting the worker");
+                std::process::exit(1);
+            }
+
+            let mut allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
+            allowed_addresses.extend(validators);
+
             let p2p_service = match P2PService::new(
                 state.worker_p2p_seed,
                 cancellation_token.clone(),
                 Some(p2p_context),
+                node_wallet_instance.clone(),
+                allowed_addresses,
             )
             .await
             {

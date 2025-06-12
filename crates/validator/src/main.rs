@@ -239,7 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize P2P client if enabled
     let p2p_client = if args.enable_p2p_test {
-        match P2PClient::new().await {
+        match P2PClient::new(validator_wallet.clone()).await {
             Ok(client) => {
                 info!("P2P client initialized for testing");
                 Some(client)
@@ -438,8 +438,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         (&node.node.worker_p2p_id, &node.node.worker_p2p_addresses)
                     {
                         if !p2p_addrs.is_empty() {
-                            info!("Pinging worker {} with P2P ID: {}", node.node.id, p2p_id);
-                            match p2p_client.ping_worker(p2p_id, p2p_addrs).await {
+
+                            let address = match Address::from_str(&node.node.id) {
+                                Ok(addr) => addr,
+                                Err(e) => {
+                                    error!("Failed to parse node address {}: {}", node.node.id, e);
+                                    continue;
+                                }
+                            };
+                            info!("Pinging worker {} with P2P ID: {}", address, p2p_id);
+                            match p2p_client.ping_worker(address, p2p_id, p2p_addrs).await {
                                 Ok(nonce) => {
                                     info!(
                                         "✅ Successfully pinged worker {} (nonce: {})",

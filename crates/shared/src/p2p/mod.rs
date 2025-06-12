@@ -2,6 +2,5 @@ pub mod client;
 pub mod messages;
 pub mod protocol;
 
-pub use client::*;
-pub use messages::*;
+pub use client::P2PClient;
 pub use protocol::*;
