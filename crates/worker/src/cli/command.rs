@@ -1,4 +1,3 @@
-use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::issue::IssueReport;
 use crate::checks::software::SoftwareChecker;
@@ -10,6 +9,7 @@ use crate::metrics::store::MetricsStore;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderOperations;
+use crate::p2p::P2PContext;
 use crate::p2p::P2PService;
 use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
@@ -46,7 +46,7 @@ pub enum Commands {
         #[arg(long, default_value = "http://localhost:8545")]
         rpc_url: String,
 
-        /// Port number for the worker to listen on
+        /// Port number for the worker to listen on - DEPRECATED
         #[arg(long, default_value = "8080")]
         port: u16,
 
@@ -167,7 +167,7 @@ pub async fn execute_command(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match command {
         Commands::Run {
-            port,
+            port: _,
             external_ip,
             compute_pool_id,
             dry_run: _,
@@ -303,7 +303,7 @@ pub async fn execute_command(
                     .address()
                     .to_string(),
                 ip_address: external_ip.clone().unwrap_or(detected_external_ip.clone()),
-                port: *port,
+                port: 0,
                 provider_address: provider_wallet_instance
                     .wallet
                     .default_signer()
@@ -608,15 +608,31 @@ pub async fn execute_command(
 
             // Start P2P service
             Console::title("🔗 Starting P2P Service");
+            // TODO: Fix weird hb clone
+            let heartbeat = heartbeat_service.unwrap();
 
-            let p2p_service =
-                match P2PService::new(state.worker_p2p_seed, cancellation_token.clone()).await {
-                    Ok(service) => service,
-                    Err(e) => {
-                        error!("❌ Failed to start P2P service: {}", e);
-                        std::process::exit(1);
-                    }
-                };
+            let p2p_context = P2PContext {
+                docker_service: docker_service.clone(),
+                heartbeat_service: heartbeat.clone(),
+                system_state: state.clone(),
+                contracts: contracts.clone(),
+                node_wallet: node_wallet_instance.clone(),
+                provider_wallet: provider_wallet_instance.clone(),
+            };
+
+            let p2p_service = match P2PService::new(
+                state.worker_p2p_seed,
+                cancellation_token.clone(),
+                p2p_context,
+            )
+            .await
+            {
+                Ok(service) => service,
+                Err(e) => {
+                    error!("❌ Failed to start P2P service: {}", e);
+                    std::process::exit(1);
+                }
+            };
 
             // Start accepting P2P connections
             if let Err(e) = p2p_service.start().await {
@@ -630,10 +646,9 @@ pub async fn execute_command(
                 p2p_service
                     .listening_addresses()
                     .iter()
-                    .map(|s| s.to_string())
+                    .map(|addr| addr.to_string())
                     .collect(),
             );
-
             Console::success(&format!(
                 "P2P service started with ID: {}",
                 p2p_service.node_id()
@@ -670,39 +685,24 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
-            // 6. Start HTTP Server to receive challenges and invites to join cluster
-            Console::info(
-                "🌐 Starting endpoint service and waiting for sync with orchestrator",
-                "",
-            );
-
             discovery_updater.start_auto_update(node_config);
 
-            if let Err(err) = {
-                let heartbeat_clone = heartbeat_service.unwrap().clone();
-                if recover_last_state {
-                    info!("Recovering from previous state: {}", recover_last_state);
-                    heartbeat_clone
-                        .activate_heartbeat_if_endpoint_exists()
-                        .await;
-                }
-
-                let server_state = state.clone();
-                start_server(
-                    "0.0.0.0",
-                    *port,
-                    contracts.clone(),
-                    node_wallet_instance.clone(),
-                    provider_wallet_instance.clone(),
-                    heartbeat_clone.clone(),
-                    docker_service.clone(),
-                    pool_info,
-                    server_state,
-                )
-                .await
-            } {
-                error!("❌ Failed to start server: {}", err);
+            if recover_last_state {
+                info!("Recovering from previous state: {}", recover_last_state);
+                heartbeat.activate_heartbeat_if_endpoint_exists().await;
             }
+
+            // Keep the worker running and listening for P2P connections
+            Console::success("Worker is now running and listening for P2P connections...");
+
+            // Wait for cancellation signal to gracefully shutdown
+            cancellation_token.cancelled().await;
+
+            Console::info(
+                "Shutdown signal received",
+                "Gracefully shutting down worker...",
+            );
+
             Ok(())
         }
         Commands::Check {} => {

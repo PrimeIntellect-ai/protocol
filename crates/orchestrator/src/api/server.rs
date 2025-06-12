@@ -5,6 +5,7 @@ use crate::api::routes::task::tasks_routes;
 use crate::api::routes::{heartbeat::heartbeat_routes, metrics::metrics_routes};
 use crate::metrics::MetricsContext;
 use crate::models::node::NodeStatus;
+use crate::p2p::client::P2PClient;
 use crate::plugins::node_groups::NodeGroupsPlugin;
 use crate::scheduler::Scheduler;
 use crate::store::core::{RedisStore, StoreContext};
@@ -36,6 +37,7 @@ pub struct AppState {
     pub node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
     pub metrics: Arc<MetricsContext>,
     pub http_client: reqwest::Client,
+    pub p2p_client: Arc<P2PClient>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -55,6 +57,7 @@ pub async fn start_server(
     scheduler: Scheduler,
     node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
     metrics: Arc<MetricsContext>,
+    p2p_client: Arc<P2PClient>,
 ) -> Result<(), Error> {
     info!("Starting server at http://{}:{}", host, port);
     let app_state = Data::new(AppState {
@@ -70,6 +73,7 @@ pub async fn start_server(
         node_groups_plugin,
         metrics,
         http_client: reqwest::Client::new(),
+        p2p_client,
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();

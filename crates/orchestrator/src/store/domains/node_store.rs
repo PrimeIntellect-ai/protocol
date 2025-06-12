@@ -193,13 +193,7 @@ mod tests {
             ip_address: "192.168.1.1".to_string(),
             port: 8080,
             status: NodeStatus::Discovered,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         let healthy_node = OrchestratorNode {
@@ -207,13 +201,7 @@ mod tests {
             ip_address: "192.168.1.2".to_string(),
             port: 8081,
             status: NodeStatus::Healthy,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            first_seen: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         node_store.add_node(uninvited_node.clone()).await.unwrap();
@@ -235,39 +223,21 @@ mod tests {
                 ip_address: "192.168.1.3".to_string(),
                 port: 8082,
                 status: NodeStatus::Dead,
-                task_id: None,
-                task_state: None,
-                version: None,
-                p2p_id: None,
-                last_status_change: None,
-                first_seen: None,
-                compute_specs: None,
+                ..Default::default()
             },
             OrchestratorNode {
                 address: Address::from_str("0x0000000000000000000000000000000000000002").unwrap(),
                 ip_address: "192.168.1.2".to_string(),
                 port: 8081,
                 status: NodeStatus::Discovered,
-                task_id: None,
-                task_state: None,
-                version: None,
-                p2p_id: None,
-                last_status_change: None,
-                first_seen: None,
-                compute_specs: None,
+                ..Default::default()
             },
             OrchestratorNode {
                 address: Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
                 ip_address: "192.168.1.1".to_string(),
                 port: 8080,
                 status: NodeStatus::Healthy,
-                task_id: None,
-                task_state: None,
-                version: None,
-                p2p_id: None,
-                last_status_change: None,
-                first_seen: None,
-                compute_specs: None,
+                ..Default::default()
             },
         ];
         for node in nodes {

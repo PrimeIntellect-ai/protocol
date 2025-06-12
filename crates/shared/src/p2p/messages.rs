@@ -1,4 +1,5 @@
 use crate::models::challenge::{ChallengeRequest, ChallengeResponse};
+use crate::models::invite::InviteRequest;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
@@ -23,6 +24,27 @@ pub enum P2PMessage {
         response: ChallengeResponse,
         timestamp: SystemTime,
     },
+
+    /// Invite request from orchestrator to worker
+    Invite(InviteRequest),
+
+    /// Response to invite
+    InviteResponse {
+        status: String,
+        error: Option<String>,
+    },
+
+    /// Get task logs from worker
+    GetTaskLogs,
+
+    /// Response with task logs
+    GetTaskLogsResponse { logs: Result<Vec<String>, String> },
+
+    /// Restart task on worker
+    RestartTask,
+
+    /// Response to restart task
+    RestartTaskResponse { result: Result<(), String> },
 }
 
 /// P2P request wrapper with ID for tracking

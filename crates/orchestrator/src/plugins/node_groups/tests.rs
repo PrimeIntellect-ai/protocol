@@ -36,13 +36,9 @@ fn create_test_node(
         ip_address,
         port: 8080,
         status,
-        task_id: None,
-        task_state: None,
-        version: None,
-        last_status_change: None,
-        first_seen: None,
         p2p_id: Some("test_p2p_id".to_string()),
         compute_specs,
+        ..Default::default()
     }
 }
 #[tokio::test]

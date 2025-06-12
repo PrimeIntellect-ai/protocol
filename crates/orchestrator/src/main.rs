@@ -4,6 +4,7 @@ mod events;
 mod metrics;
 mod models;
 mod node;
+mod p2p;
 mod plugins;
 mod scheduler;
 mod status_update;
@@ -12,6 +13,7 @@ mod utils;
 use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
+use crate::p2p::client::P2PClient;
 use crate::scheduler::Scheduler;
 use crate::status_update::NodeStatusUpdater;
 use crate::store::core::RedisStore;
@@ -134,6 +136,11 @@ async fn main() -> Result<()> {
     env_logger::Builder::new()
         .filter_level(log_level)
         .format_timestamp(None)
+        .filter_module("iroh", log::LevelFilter::Warn)
+        .filter_module("iroh_net", log::LevelFilter::Warn)
+        .filter_module("iroh_quinn", log::LevelFilter::Warn)
+        .filter_module("iroh_base", log::LevelFilter::Warn)
+        .filter_module("tracing::span", log::LevelFilter::Warn)
         .init();
 
     let server_mode = match args.mode.as_str() {
@@ -164,6 +171,8 @@ async fn main() -> Result<()> {
 
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
+
+    let p2p_client = Arc::new(P2PClient::new().await?);
 
     let contracts = ContractBuilder::new(wallet.provider())
         .with_compute_registry()
@@ -313,6 +322,7 @@ async fn main() -> Result<()> {
         let inviter_heartbeats = heartbeats.clone();
         tasks.spawn({
             let wallet = wallet.clone();
+            let p2p_client = p2p_client.clone();
             async move {
                 let inviter = NodeInviter::new(
                     wallet,
@@ -323,6 +333,7 @@ async fn main() -> Result<()> {
                     args.url.as_deref(),
                     inviter_store_context.clone(),
                     inviter_heartbeats.clone(),
+                    p2p_client,
                 );
                 inviter.run().await
             }
@@ -376,6 +387,7 @@ async fn main() -> Result<()> {
             scheduler,
             node_groups_plugin,
             metrics_context,
+            p2p_client,
         ) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);
