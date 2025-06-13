@@ -51,7 +51,7 @@ This can also be used to upgrade the current installation to the latest release.
 
 For the latest dev build use: 
 ```
-curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/main/crates/worker/scripts/install.sh | bash -s -- --dev
+curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/develop/crates/worker/scripts/install.sh | bash -s -- --dev
 ```
 
 ## Documentation
