@@ -28,6 +28,7 @@ impl P2PClient {
         let endpoint = Endpoint::builder()
             .secret_key(secret_key)
             .alpns(vec![PRIME_P2P_PROTOCOL.to_vec()])
+            .discovery_n0()
             .bind()
             .await?;
 
