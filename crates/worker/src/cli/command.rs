@@ -685,11 +685,40 @@ pub async fn execute_command(
                     Ok(_) => break,
                     Err(e) => {
                         attempts += 1;
-                        error!(
-                            "Attempt {}: ❌ Failed to upload discovery info: {}",
-                            attempts, e
-                        );
+                        let error_msg = e.to_string();
+
+                        // Check if this is a Cloudflare block
+                        if error_msg.contains("403 Forbidden")
+                            && (error_msg.contains("Cloudflare")
+                                || error_msg.contains("Sorry, you have been blocked")
+                                || error_msg.contains("Attention Required!"))
+                        {
+                            error!(
+                                "Attempt {}: ❌ Discovery service blocked by Cloudflare protection. This may indicate:",
+                                attempts
+                            );
+                            error!("  • Your IP address has been flagged by Cloudflare security");
+                            error!("  • Too many requests from your location");
+                            error!("  • Network configuration issues");
+                            error!("  • Discovery service may be under DDoS protection");
+                            error!(
+                                "Please contact support or try from a different network/IP address"
+                            );
+                        } else {
+                            error!(
+                                "Attempt {}: ❌ Failed to upload discovery info: {}",
+                                attempts, e
+                            );
+                        }
+
                         if attempts >= max_attempts {
+                            if error_msg.contains("403 Forbidden")
+                                && (error_msg.contains("Cloudflare")
+                                    || error_msg.contains("Sorry, you have been blocked"))
+                            {
+                                error!("❌ Unable to reach discovery service due to Cloudflare blocking after {} attempts", max_attempts);
+                                error!("This is likely a network/IP issue rather than a worker configuration problem");
+                            }
                             std::process::exit(1);
                         }
                     }
