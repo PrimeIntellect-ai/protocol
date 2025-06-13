@@ -25,11 +25,13 @@ fi
 
 # Check if dev flag is set
 if [[ "$1" == "--dev" ]]; then
-  LATEST_DEV_TAG=$(curl -s "$RELEASE_URL" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+-beta\.[0-9]\+' | head -1)
+  echo -e "${BLUE}→ Fetching latest dev tag from GitHub API...${NC}"
+  LATEST_DEV_TAG=$(curl -s "https://api.github.com/repos/PrimeIntellect-ai/protocol/tags" | grep -o '"name": *"v[0-9]\+\.[0-9]\+\.[0-9]\+-beta\.[0-9]\+"' | head -1 | sed 's/"name": *"\(.*\)"/\1/')
   if [[ -z "$LATEST_DEV_TAG" ]]; then
-    echo -e "${RED}✗ Could not find latest dev release${NC}"
+    echo -e "${RED}✗ Could not find latest dev tag${NC}"
     exit 1
   fi
+  echo -e "${GREEN}✓ Found latest dev tag: $LATEST_DEV_TAG${NC}"
   BINARY_URL="$RELEASE_URL/download/$LATEST_DEV_TAG/worker-linux-x86_64"
 fi
 
