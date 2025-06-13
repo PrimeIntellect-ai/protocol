@@ -308,11 +308,15 @@ impl NodeGroupsPlugin {
                 };
                 debug!("Created new group structure: {:?}", group);
 
+                // Use a Redis transaction to atomically create the group
+                let mut pipe = redis::pipe();
+                pipe.atomic();
+
                 // Store group data
                 let group_key = Self::get_group_key(&group_id);
                 let group_data = serde_json::to_string(&group)?;
                 debug!("Storing group data at key: {}", group_key);
-                conn.set::<_, _, ()>(&group_key, group_data).await?;
+                pipe.set(&group_key, group_data);
 
                 // Map nodes to group
                 debug!(
@@ -321,9 +325,11 @@ impl NodeGroupsPlugin {
                     group_id
                 );
                 for node in &available_nodes {
-                    conn.hset::<_, _, _, ()>(NODE_GROUP_MAP_KEY, node, &group_id)
-                        .await?;
+                    pipe.hset(NODE_GROUP_MAP_KEY, node, &group_id);
                 }
+
+                // Execute all operations atomically
+                pipe.query_async::<()>(&mut conn).await?;
 
                 // Remove used nodes from healthy_nodes
                 let prev_healthy_count = healthy_nodes.len();
