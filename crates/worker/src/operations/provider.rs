@@ -239,7 +239,7 @@ impl ProviderOperations {
             }
             if !self.prompt_user_confirmation(&format!(
                 "Do you want to approve staking {} tokens?",
-                stake / U256::from(10u128.pow(18))
+                stake.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0)
             )) {
                 Console::info("Operation cancelled by user", "Staking approval declined");
                 return Err(ProviderError::UserCancelled);
@@ -290,7 +290,7 @@ impl ProviderOperations {
             }
             if !self.prompt_user_confirmation(&format!(
                 "Do you want to approve staking {} tokens?",
-                stake / U256::from(10u128.pow(18))
+                stake.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0)
             )) {
                 Console::info("Operation cancelled by user", "Staking approval declined");
                 return Err(ProviderError::UserCancelled);
@@ -363,7 +363,7 @@ impl ProviderOperations {
 
         if !self.prompt_user_confirmation(&format!(
             "Do you want to approve staking {} additional tokens?",
-            additional_stake / U256::from(10u128.pow(18))
+            additional_stake.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0)
         )) {
             Console::info("Operation cancelled by user", "Staking approval declined");
             return Err(ProviderError::UserCancelled);
