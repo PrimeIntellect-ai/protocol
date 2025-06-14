@@ -164,6 +164,25 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                         })
                         .collect::<Vec<String>>()
                 });
+                // Replace group variables in volume mounts if they exist
+                if let Some(volume_mounts) = task_clone.volume_mounts {
+                    task_clone.volume_mounts = Some(
+                        volume_mounts
+                            .into_iter()
+                            .map(|mut volume_mount| {
+                                volume_mount.host_path =
+                                    volume_mount.host_path.replace("${GROUP_ID}", &group.id);
+
+                                volume_mount.container_path = volume_mount
+                                    .container_path
+                                    .replace("${GROUP_ID}", &group.id);
+
+                                volume_mount
+                            })
+                            .collect(),
+                    );
+                }
+
                 return Ok(vec![task_clone]);
             }
         }
