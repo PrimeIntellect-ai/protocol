@@ -58,6 +58,89 @@ pub struct SchedulingConfig {
     pub plugins: Option<HashMap<String, HashMap<String, Vec<String>>>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct VolumeMount {
+    /// Name/path of the volume on the host (supports label replacements)
+    pub host_path: String,
+    /// Path where the volume should be mounted in the container
+    pub container_path: String,
+}
+
+impl VolumeMount {
+    /// Replace labels in the host_path with actual values
+    /// Note: GROUP_ID replacement is handled by the node groups plugin
+    /// (temporary until we have an expander trait)
+    pub fn replace_labels(&self, task_id: &str, node_address: Option<&str>) -> Self {
+        let mut host_path = self.host_path.clone();
+        let mut container_path = self.container_path.clone();
+
+        // Replace ${TASK_ID} with actual task ID
+        host_path = host_path.replace("${TASK_ID}", task_id);
+        container_path = container_path.replace("${TASK_ID}", task_id);
+
+        // Replace ${NODE_ADDRESS} with actual node address if provided
+        if let Some(addr) = node_address {
+            host_path = host_path.replace("${NODE_ADDRESS}", addr);
+            container_path = container_path.replace("${NODE_ADDRESS}", addr);
+        }
+
+        // Get current timestamp for ${TIMESTAMP}
+        let timestamp = chrono::Utc::now().timestamp().to_string();
+        host_path = host_path.replace("${TIMESTAMP}", &timestamp);
+        container_path = container_path.replace("${TIMESTAMP}", &timestamp);
+
+        Self {
+            host_path,
+            container_path,
+        }
+    }
+
+    /// Validate the volume mount configuration
+    pub fn validate(&self) -> Result<(), String> {
+        if self.host_path.is_empty() {
+            return Err("Host path cannot be empty".to_string());
+        }
+
+        if self.container_path.is_empty() {
+            return Err("Container path cannot be empty".to_string());
+        }
+
+        // Check for supported variables
+        let supported_vars = [
+            "${TASK_ID}",
+            "${GROUP_ID}",
+            "${TIMESTAMP}",
+            "${NODE_ADDRESS}",
+        ];
+
+        let re = regex::Regex::new(r"\$\{[^}]+\}").unwrap();
+
+        // Check host_path
+        for cap in re.find_iter(&self.host_path) {
+            let var = cap.as_str();
+            if !supported_vars.contains(&var) {
+                return Err(format!(
+                    "Volume mount host_path contains unsupported variable: {}. Supported variables: {:?}",
+                    var, supported_vars
+                ));
+            }
+        }
+
+        // Check container_path
+        for cap in re.find_iter(&self.container_path) {
+            let var = cap.as_str();
+            if !supported_vars.contains(&var) {
+                return Err(format!(
+                    "Volume mount container_path contains unsupported variable: {}. Supported variables: {:?}",
+                    var, supported_vars
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TaskRequest {
     pub image: String,
@@ -68,6 +151,7 @@ pub struct TaskRequest {
     pub scheduling_config: Option<SchedulingConfig>,
     pub storage_config: Option<StorageConfig>,
     pub metadata: Option<TaskMetadata>,
+    pub volume_mounts: Option<Vec<VolumeMount>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -95,6 +179,8 @@ pub struct Task {
     pub storage_config: Option<StorageConfig>,
     #[serde(default)]
     pub metadata: Option<TaskMetadata>,
+    #[serde(default)]
+    pub volume_mounts: Option<Vec<VolumeMount>>,
 }
 
 impl Default for Task {
@@ -112,6 +198,7 @@ impl Default for Task {
             scheduling_config: None,
             storage_config: None,
             metadata: None,
+            volume_mounts: None,
         }
     }
 }
@@ -155,6 +242,12 @@ impl TryFrom<TaskRequest> for Task {
             storage_config.validate()?;
         }
 
+        if let Some(volume_mounts) = &request.volume_mounts {
+            for volume_mount in volume_mounts {
+                volume_mount.validate()?;
+            }
+        }
+
         Ok(Task {
             id: Uuid::new_v4(),
             image: request.image,
@@ -168,6 +261,7 @@ impl TryFrom<TaskRequest> for Task {
             scheduling_config: request.scheduling_config,
             storage_config: request.storage_config,
             metadata: request.metadata,
+            volume_mounts: request.volume_mounts,
         })
     }
 }
@@ -201,5 +295,136 @@ impl ToRedisArgs for Task {
     {
         let task_json = serde_json::to_string(self).expect("Failed to serialize Task to JSON");
         out.write_arg(task_json.as_bytes());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+
+    #[test]
+    fn test_volume_mount_label_replacement() {
+        let volume_mount = VolumeMount {
+            host_path: "/host/data/${TASK_ID}".to_string(),
+            container_path: "/container/data/${TASK_ID}".to_string(),
+        };
+
+        let processed = volume_mount.replace_labels("task-123", Some("node-addr"));
+
+        assert_eq!(processed.host_path, "/host/data/task-123");
+        assert_eq!(processed.container_path, "/container/data/task-123");
+    }
+
+    #[test]
+    fn test_volume_mount_label_replacement_without_group() {
+        let volume_mount = VolumeMount {
+            host_path: "/host/data/${TASK_ID}".to_string(),
+            container_path: "/container/data/${TASK_ID}".to_string(),
+        };
+
+        let processed = volume_mount.replace_labels("task-789", None);
+
+        assert_eq!(processed.host_path, "/host/data/task-789");
+        assert_eq!(processed.container_path, "/container/data/task-789");
+    }
+
+    #[test]
+    fn test_volume_mount_with_timestamp() {
+        let volume_mount = VolumeMount {
+            host_path: "/host/logs/${TASK_ID}-${TIMESTAMP}".to_string(),
+            container_path: "/container/logs".to_string(),
+        };
+
+        let processed = volume_mount.replace_labels("task-123", None);
+
+        assert!(processed.host_path.starts_with("/host/logs/task-123-"));
+        assert!(processed.host_path.len() > "/host/logs/task-123-".len());
+        assert_eq!(processed.container_path, "/container/logs");
+    }
+
+    #[test]
+    fn test_volume_mount_validation_success() {
+        let volume_mount = VolumeMount {
+            host_path: "/host/data/${TASK_ID}".to_string(),
+            container_path: "/container/data".to_string(),
+        };
+
+        assert!(volume_mount.validate().is_ok());
+    }
+
+    #[test]
+    fn test_volume_mount_validation_with_node_address() {
+        let volume_mount = VolumeMount {
+            host_path: "/host/data/${NODE_ADDRESS}".to_string(),
+            container_path: "/container/data/${TASK_ID}".to_string(),
+        };
+
+        assert!(volume_mount.validate().is_ok());
+    }
+
+    #[test]
+    fn test_volume_mount_validation_empty_host_path() {
+        let volume_mount = VolumeMount {
+            host_path: "".to_string(),
+            container_path: "/container/data".to_string(),
+        };
+
+        assert!(volume_mount.validate().is_err());
+        assert_eq!(
+            volume_mount.validate().unwrap_err(),
+            "Host path cannot be empty"
+        );
+    }
+
+    #[test]
+    fn test_volume_mount_validation_empty_container_path() {
+        let volume_mount = VolumeMount {
+            host_path: "/host/data".to_string(),
+            container_path: "".to_string(),
+        };
+
+        assert!(volume_mount.validate().is_err());
+        assert_eq!(
+            volume_mount.validate().unwrap_err(),
+            "Container path cannot be empty"
+        );
+    }
+
+    #[test]
+    fn test_volume_mount_validation_unsupported_variable() {
+        let volume_mount = VolumeMount {
+            host_path: "/host/data/${UNSUPPORTED_VAR}".to_string(),
+            container_path: "/container/data".to_string(),
+        };
+
+        assert!(volume_mount.validate().is_err());
+        assert!(volume_mount
+            .validate()
+            .unwrap_err()
+            .contains("unsupported variable: ${UNSUPPORTED_VAR}"));
+    }
+
+    #[test]
+    fn test_task_with_volume_mounts() {
+        let task_request = TaskRequest {
+            image: "ubuntu:latest".to_string(),
+            name: "test-task".to_string(),
+            volume_mounts: Some(vec![
+                VolumeMount {
+                    host_path: "/host/data/${TASK_ID}".to_string(),
+                    container_path: "/data".to_string(),
+                },
+                VolumeMount {
+                    host_path: "/host/logs/${TASK_ID}".to_string(),
+                    container_path: "/logs".to_string(),
+                },
+            ]),
+            ..Default::default()
+        };
+
+        let task = Task::try_from(task_request).unwrap();
+        assert!(task.volume_mounts.is_some());
+        assert_eq!(task.volume_mounts.as_ref().unwrap().len(), 2);
     }
 }

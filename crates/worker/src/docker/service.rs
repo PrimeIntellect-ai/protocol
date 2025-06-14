@@ -217,13 +217,26 @@ impl DockerService {
                                         if let Some(p2p_seed) = p2p_seed {
                                             env_vars.insert("IROH_SEED".to_string(), p2p_seed.to_string());
                                         }
-                                        let volumes = vec![
+
+                                        let mut volumes = vec![
                                             (
                                                 Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
                                                 Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
                                                 false,
+                                                false,
                                             )
                                         ];
+
+                                        if let Some(volume_mounts) = &payload.volume_mounts {
+                                            for volume_mount in volume_mounts {
+                                                volumes.push((
+                                                    volume_mount.host_path.clone(),
+                                                    volume_mount.container_path.clone(),
+                                                    false,
+                                                    true
+                                                ));
+                                            }
+                                        }
                                         let shm_size = match system_memory_mb {
                                             Some(mem_mb) => (mem_mb as u64) * 1024 * 1024 / 2, // Convert MB to bytes and divide by 2
                                             None => {

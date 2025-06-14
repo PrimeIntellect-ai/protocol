@@ -120,8 +120,8 @@ impl DockerManager {
         env_vars: Option<HashMap<String, String>>,
         command: Option<Vec<String>>,
         gpu: Option<GpuSpecs>,
-        // Simple Vec of (host_path, container_path, read_only)
-        volumes: Option<Vec<(String, String, bool)>>,
+        // Simple Vec of (host_path, container_path, read_only, task_volume)
+        volumes: Option<Vec<(String, String, bool, bool)>>,
         shm_size: Option<u64>,
     ) -> Result<String, DockerError> {
         info!("Starting to pull image: {}", image);
@@ -130,20 +130,20 @@ impl DockerManager {
         if self.storage_path.is_some() {
             // Create task-specific data volume
             let volume_name = format!("{}_data", name);
-            let path = format!(
-                "{}/{}",
+            let task_data_path = format!(
+                "{}/{}/data",
                 self.storage_path.clone().unwrap(),
                 name.trim_start_matches('/')
             );
-            std::fs::create_dir_all(&path)?;
+            std::fs::create_dir_all(&task_data_path)?;
 
             // Set permissions to allow container user to write to data directory
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&path)?.permissions();
+                let mut perms = std::fs::metadata(&task_data_path)?.permissions();
                 perms.set_mode(0o777);
-                std::fs::set_permissions(&path, perms)?;
+                std::fs::set_permissions(&task_data_path, perms)?;
             }
 
             self.docker
@@ -153,7 +153,7 @@ impl DockerManager {
                     driver_opts: HashMap::from([
                         ("type".to_string(), "none".to_string()),
                         ("o".to_string(), "bind".to_string()),
-                        ("device".to_string(), path),
+                        ("device".to_string(), task_data_path),
                     ]),
                     labels: HashMap::new(),
                 })
@@ -161,7 +161,7 @@ impl DockerManager {
 
             final_volumes.push((volume_name, "/data".to_string(), false));
 
-            // Create shared volume if it doesn't exist
+            // Create shared volume if it doesn't exist (idempotent)
             let shared_path = format!("{}/shared", self.storage_path.clone().unwrap());
             std::fs::create_dir_all(&shared_path)?;
 
@@ -173,7 +173,9 @@ impl DockerManager {
                 std::fs::set_permissions(&shared_path, perms)?;
             }
 
-            self.docker
+            // Try to create shared volume, ignore if it already exists
+            match self
+                .docker
                 .create_volume(CreateVolumeOptions {
                     name: "shared_data".to_string(),
                     driver: "local".to_string(),
@@ -184,7 +186,21 @@ impl DockerManager {
                     ]),
                     labels: HashMap::new(),
                 })
-                .await?;
+                .await
+            {
+                Ok(_) => {
+                    debug!("Shared volume 'shared_data' created successfully");
+                }
+                Err(DockerError::DockerResponseServerError {
+                    status_code: 409, ..
+                }) => {
+                    debug!("Shared volume 'shared_data' already exists, reusing");
+                }
+                Err(e) => {
+                    error!("Failed to create shared volume: {}", e);
+                    return Err(e);
+                }
+            }
 
             final_volumes.push(("shared_data".to_string(), "/shared".to_string(), false));
         }
@@ -209,13 +225,97 @@ impl DockerManager {
                 .collect::<Vec<String>>();
 
             if let Some(vols) = volumes {
-                binds.extend(vols.into_iter().map(|(host, container, read_only)| {
-                    if read_only {
-                        format!("{}:{}:ro", host, container)
-                    } else {
-                        format!("{}:{}", host, container)
-                    }
-                }));
+                let processed_volumes: Vec<(String, String, bool)> = if let Some(storage_path) =
+                    &self.storage_path
+                {
+                    // Create volume mount directories within storage path structure
+                    vols.into_iter()
+                        .map(|(host_path, container_path, read_only, task_volume)| {
+                            if task_volume {
+                                // Create volume mount directory within the task's storage area
+                                let volume_mount_dir = format!(
+                                    "{}/{}/mounts/{}",
+                                    storage_path,
+                                    name.trim_start_matches('/'),
+                                    host_path.trim_start_matches('/').replace('/', "_")
+                                );
+
+                                // Create the directory
+                                if let Err(e) = std::fs::create_dir_all(&volume_mount_dir) {
+                                    error!(
+                                        "Failed to create volume mount directory {}: {}",
+                                        volume_mount_dir, e
+                                    );
+                                } else {
+                                    // Set permissions to allow container user to write to the directory
+                                    #[cfg(unix)]
+                                    {
+                                        use std::os::unix::fs::PermissionsExt;
+                                        if let Ok(metadata) = std::fs::metadata(&volume_mount_dir) {
+                                            let mut perms = metadata.permissions();
+                                            perms.set_mode(0o777);
+                                            if let Err(e) =
+                                                std::fs::set_permissions(&volume_mount_dir, perms)
+                                            {
+                                                debug!(
+                                                    "Failed to set permissions for {}: {}",
+                                                    volume_mount_dir, e
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+
+                                (volume_mount_dir, container_path, read_only)
+                            } else {
+                                // Use the original host path for non-task volumes
+                                (host_path, container_path, read_only)
+                            }
+                        })
+                        .collect()
+                } else {
+                    // If no storage path, only create directories for task volumes
+                    vols.into_iter()
+                        .map(|(host_path, container_path, read_only, task_volume)| {
+                            if task_volume {
+                                if let Err(e) = std::fs::create_dir_all(&host_path) {
+                                    error!("Failed to create directory {}: {}", host_path, e);
+                                } else {
+                                    // Set permissions to allow container user to write to the directory
+                                    #[cfg(unix)]
+                                    {
+                                        use std::os::unix::fs::PermissionsExt;
+                                        if let Ok(metadata) = std::fs::metadata(&host_path) {
+                                            let mut perms = metadata.permissions();
+                                            perms.set_mode(0o777);
+                                            if let Err(e) =
+                                                std::fs::set_permissions(&host_path, perms)
+                                            {
+                                                debug!(
+                                                    "Failed to set permissions for {}: {}",
+                                                    host_path, e
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            (host_path, container_path, read_only)
+                        })
+                        .collect()
+                };
+
+                binds.extend(
+                    processed_volumes
+                        .into_iter()
+                        .map(|(host, container, read_only)| {
+                            if read_only {
+                                format!("{}:{}:ro", host, container)
+                            } else {
+                                format!("{}:{}", host, container)
+                            }
+                        }),
+                );
             }
 
             Some(binds)
