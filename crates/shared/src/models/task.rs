@@ -301,7 +301,6 @@ impl ToRedisArgs for Task {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn test_volume_mount_label_replacement() {
