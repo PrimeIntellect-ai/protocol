@@ -1,6 +1,6 @@
 use crate::api::server::AppState;
 use actix_web::{
-    web::{self, get, Data},
+    web::{self, delete, get, Data},
     HttpResponse, Scope,
 };
 use alloy::primitives::Address;
@@ -74,6 +74,26 @@ async fn get_configurations(app_state: Data<AppState>) -> HttpResponse {
             "configurations": configs_with_status,
             "total_count": configs_with_status.len()
         }))
+    } else {
+        HttpResponse::ServiceUnavailable().json(json!({
+            "success": false,
+            "error": "Node groups plugin is not enabled"
+        }))
+    }
+}
+
+async fn delete_group(group_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
+    if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
+        match node_groups_plugin.dissolve_group(&group_id).await {
+            Ok(()) => HttpResponse::Ok().json(json!({
+                "success": true,
+                "message": format!("Group {} successfully deleted", group_id.as_str())
+            })),
+            Err(e) => HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": format!("Failed to delete group: {}", e)
+            })),
+        }
     } else {
         HttpResponse::ServiceUnavailable().json(json!({
             "success": false,
@@ -227,5 +247,6 @@ pub fn groups_routes() -> Scope {
     web::scope("/groups")
         .route("", get().to(get_groups))
         .route("/configs", get().to(get_configurations))
+        .route("/{group_id}", delete().to(delete_group))
         .route("/{group_id}/logs", get().to(get_group_logs))
 }

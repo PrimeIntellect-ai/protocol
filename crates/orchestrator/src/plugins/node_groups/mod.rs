@@ -308,11 +308,15 @@ impl NodeGroupsPlugin {
                 };
                 debug!("Created new group structure: {:?}", group);
 
+                // Use a Redis transaction to atomically create the group
+                let mut pipe = redis::pipe();
+                pipe.atomic();
+
                 // Store group data
                 let group_key = Self::get_group_key(&group_id);
                 let group_data = serde_json::to_string(&group)?;
                 debug!("Storing group data at key: {}", group_key);
-                conn.set::<_, _, ()>(&group_key, group_data).await?;
+                pipe.set(&group_key, group_data);
 
                 // Map nodes to group
                 debug!(
@@ -321,9 +325,11 @@ impl NodeGroupsPlugin {
                     group_id
                 );
                 for node in &available_nodes {
-                    conn.hset::<_, _, _, ()>(NODE_GROUP_MAP_KEY, node, &group_id)
-                        .await?;
+                    pipe.hset(NODE_GROUP_MAP_KEY, node, &group_id);
                 }
+
+                // Execute all operations atomically
+                pipe.query_async::<()>(&mut conn).await?;
 
                 // Remove used nodes from healthy_nodes
                 let prev_healthy_count = healthy_nodes.len();
@@ -402,7 +408,7 @@ impl NodeGroupsPlugin {
         }
     }
 
-    async fn dissolve_group(&self, group_id: &str) -> Result<(), Error> {
+    pub async fn dissolve_group(&self, group_id: &str) -> Result<(), Error> {
         debug!("Attempting to dissolve group: {}", group_id);
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
@@ -413,20 +419,27 @@ impl NodeGroupsPlugin {
             let group: NodeGroup = serde_json::from_str(&group_data)?;
             debug!("Found group to dissolve: {:?}", group);
 
+            // Use a Redis transaction to atomically dissolve the group
+            let mut pipe = redis::pipe();
+            pipe.atomic();
+
             // Remove all nodes from the group mapping
             debug!("Removing {} nodes from group mapping", group.nodes.len());
             for node in &group.nodes {
-                conn.hdel::<_, _, ()>(NODE_GROUP_MAP_KEY, node).await?;
+                pipe.hdel(NODE_GROUP_MAP_KEY, node);
             }
 
             // Delete group task assignment
             let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
             debug!("Deleting group task assignment from key: {}", task_key);
-            conn.del::<_, ()>(&task_key).await?;
+            pipe.del(&task_key);
 
             // Delete group
             debug!("Deleting group data from key: {}", group_key);
-            conn.del::<_, ()>(&group_key).await?;
+            pipe.del(&group_key);
+
+            // Execute all operations atomically
+            pipe.query_async::<()>(&mut conn).await?;
 
             info!(
                 "Dissolved group {} with {} nodes",

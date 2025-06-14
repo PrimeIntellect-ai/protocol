@@ -524,11 +524,18 @@ impl P2PService {
                 );
             }
         };
-
         let provider = &context.provider_wallet.provider;
         match retry_call(call, 3, provider.clone(), None).await {
             Ok(result) => {
-                Console::success(&format!("Successfully joined compute pool: {}", result));
+                Console::section("WORKER JOINED COMPUTE POOL");
+                Console::success(&format!(
+                    "Successfully registered on chain with tx: {}",
+                    result
+                ));
+                Console::info(
+                    "Status",
+                    "Worker is now part of the compute pool and ready to receive tasks",
+                );
             }
             Err(err) => {
                 error!("Failed to join compute pool: {:?}", err);
