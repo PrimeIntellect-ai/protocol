@@ -189,21 +189,17 @@ impl DockerService {
                                                 return;
                                             }
                                         };
-                                        let cmd_full = (payload.command, payload.args);
-                                        let cmd = match cmd_full {
-                                            (Some(c), Some(a)) => {
-                                                let mut cmd = vec![c];
-                                                cmd.extend(a.into_iter().map(|arg| {
+                                        let cmd = match payload.cmd {
+                                            Some(cmd_vec) => {
+                                                cmd_vec.into_iter().map(|arg| {
                                                     if let Some(seed) = p2p_seed {
                                                         arg.replace("${WORKER_P2P_SEED}", &seed.to_string())
                                                     } else {
                                                         arg
                                                     }
-                                                }));
-                                                cmd
+                                                }).collect()
                                             }
-                                            (Some(c), None) => vec![c],
-                                            _ => vec!["sleep".to_string(), "infinity".to_string()],
+                                            None => vec!["sleep".to_string(), "infinity".to_string()],
                                         };
 
                                         let mut env_vars: HashMap<String, String> = HashMap::new();
@@ -231,7 +227,7 @@ impl DockerService {
                                                 67108864 // Default to 64MB in bytes
                                             }
                                         };
-                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size)).await {
+                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size), payload.entrypoint).await {
                                             Ok(container_id) => {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
@@ -375,8 +371,8 @@ mod tests {
             name: "test".to_string(),
             id: Uuid::new_v4(),
             env_vars: None,
-            command: Some("sleep".to_string()),
-            args: Some(vec!["5".to_string()]), // Reduced sleep time
+            cmd: Some(vec!["sleep".to_string(), "5".to_string()]), // Reduced sleep time
+            entrypoint: None,
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             ..Default::default()

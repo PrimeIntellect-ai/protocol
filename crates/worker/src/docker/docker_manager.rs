@@ -123,6 +123,7 @@ impl DockerManager {
         // Simple Vec of (host_path, container_path, read_only)
         volumes: Option<Vec<(String, String, bool)>>,
         shm_size: Option<u64>,
+        entrypoint: Option<Vec<String>>,
     ) -> Result<String, DockerError> {
         info!("Starting to pull image: {}", image);
 
@@ -261,6 +262,9 @@ impl DockerManager {
             cmd: command
                 .as_ref()
                 .map(|c| c.iter().map(String::as_str).collect()),
+            entrypoint: entrypoint
+                .as_ref()
+                .map(|e| e.iter().map(String::as_str).collect()),
             host_config,
             ..Default::default()
         };

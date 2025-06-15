@@ -533,8 +533,8 @@ async fn test_group_scheduling() {
         image: "prime-vllm".to_string(),
         name: "test-task".to_string(),
         env_vars: Some(env_vars),
-        command: Some("uv".to_string()),
-        args: Some(vec![
+        cmd: Some(vec![
+            "uv".to_string(),
             "run".to_string(),
             "generate.py".to_string(),
             "--model".to_string(),
@@ -548,6 +548,7 @@ async fn test_group_scheduling() {
             "--file-number".to_string(),
             "${LAST_FILE_IDX}".to_string(),
         ]),
+        entrypoint: None,
         state: TaskState::PENDING,
         created_at: 0,
         ..Default::default()
@@ -609,11 +610,11 @@ async fn test_group_scheduling() {
     assert_eq!(env_vars_1.get("GROUP_INDEX").unwrap(), "0");
     assert_eq!(env_vars_1.get("RANK").unwrap(), "0");
     assert_eq!(env_vars_1.get("WORLD_SIZE").unwrap(), "2");
-    assert_eq!(task_node_1.args.as_ref().unwrap()[3], "model/Qwen3-14B-0.2");
+    assert_eq!(task_node_1.cmd.as_ref().unwrap()[4], "model/Qwen3-14B-0.2");
     assert_ne!(env_vars_1.get("GROUP_ID").unwrap(), "${GROUP_ID}");
     assert_eq!(env_vars_1.get("TOTAL_UPLOAD_COUNT").unwrap(), "1");
     assert_eq!(env_vars_1.get("LAST_FILE_IDX").unwrap(), "0");
-    assert_eq!(task_node_1.args.as_ref().unwrap()[9], "1"); // Check upload count in args
+    assert_eq!(task_node_1.cmd.as_ref().unwrap()[10], "1"); // Check upload count in cmd
 
     assert_eq!(filtered_tasks_2.len(), 1);
     let task_node_2 = &filtered_tasks_2[0];
@@ -621,11 +622,11 @@ async fn test_group_scheduling() {
     assert_eq!(env_vars_2.get("GROUP_INDEX").unwrap(), "1");
     assert_eq!(env_vars_2.get("RANK").unwrap(), "1");
     assert_eq!(env_vars_2.get("WORLD_SIZE").unwrap(), "2");
-    assert_eq!(task_node_2.args.as_ref().unwrap()[3], "model/Qwen3-14B-1.2");
+    assert_eq!(task_node_2.cmd.as_ref().unwrap()[4], "model/Qwen3-14B-1.2");
     assert_ne!(env_vars_2.get("GROUP_ID").unwrap(), "${GROUP_ID}");
     assert_eq!(env_vars_2.get("TOTAL_UPLOAD_COUNT").unwrap(), "0");
     assert_eq!(env_vars_2.get("LAST_FILE_IDX").unwrap(), "0");
-    assert_eq!(task_node_2.args.as_ref().unwrap()[9], "0"); // Check upload count in args
+    assert_eq!(task_node_2.cmd.as_ref().unwrap()[10], "0"); // Check upload count in cmd
 
     assert_eq!(task_node_1.id, task_node_2.id);
 }
@@ -752,8 +753,12 @@ async fn test_group_formation_with_max_size() {
         image: "test-image".to_string(),
         name: "test-task".to_string(),
         env_vars: Some(env_vars),
-        command: Some("run".to_string()),
-        args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
+        cmd: Some(vec![
+            "run".to_string(),
+            "--index".to_string(),
+            "${GROUP_INDEX}".to_string(),
+        ]),
+        entrypoint: None,
         state: TaskState::PENDING,
         created_at: 0,
         ..Default::default()
@@ -851,8 +856,12 @@ async fn test_node_groups_with_allowed_topologies() {
         image: "test-image".to_string(),
         name: "test-task".to_string(),
         env_vars: None,
-        command: Some("run".to_string()),
-        args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
+        cmd: Some(vec![
+            "run".to_string(),
+            "--index".to_string(),
+            "${GROUP_INDEX}".to_string(),
+        ]),
+        entrypoint: None,
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
                 "node_groups".to_string(),
@@ -884,8 +893,12 @@ async fn test_node_groups_with_allowed_topologies() {
         image: "test-image".to_string(),
         name: "test-task".to_string(),
         env_vars: None,
-        command: Some("run".to_string()),
-        args: Some(vec!["--index".to_string(), "${GROUP_INDEX}".to_string()]),
+        cmd: Some(vec![
+            "run".to_string(),
+            "--index".to_string(),
+            "${GROUP_INDEX}".to_string(),
+        ]),
+        entrypoint: None,
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
                 "node_groups".to_string(),

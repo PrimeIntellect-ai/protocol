@@ -44,9 +44,9 @@ impl Scheduler {
                 }
             }
 
-            // Replace variables in args
-            if let Some(args) = &mut task.args {
-                for arg in args.iter_mut() {
+            // Replace variables in cmd
+            if let Some(cmd) = &mut task.cmd {
+                for arg in cmd.iter_mut() {
                     *arg = arg
                         .replace("${TASK_ID}", &task.id.to_string())
                         .replace("${NODE_ADDRESS}", &node_address.to_string());
@@ -107,10 +107,11 @@ mod tests {
             state: TaskState::PENDING,
             created_at: 1,
             env_vars: Some(env_vars),
-            args: Some(vec![
+            cmd: Some(vec![
                 "--task=${TASK_ID}".to_string(),
                 "--node=${NODE_ADDRESS}".to_string(),
             ]),
+            entrypoint: None,
             ..Default::default()
         };
 
@@ -132,9 +133,9 @@ mod tests {
             &format!("node-{}", node_address)
         );
 
-        // Check args replacement
-        let args = returned_task.args.unwrap();
-        assert_eq!(args[0], format!("--task={}", task.id));
-        assert_eq!(args[1], format!("--node={}", node_address));
+        // Check cmd replacement
+        let cmd = returned_task.cmd.unwrap();
+        assert_eq!(cmd[0], format!("--task={}", task.id));
+        assert_eq!(cmd[1], format!("--node={}", node_address));
     }
 }

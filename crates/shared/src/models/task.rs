@@ -63,8 +63,8 @@ pub struct TaskRequest {
     pub image: String,
     pub name: String,
     pub env_vars: Option<std::collections::HashMap<String, String>>,
-    pub command: Option<String>,
-    pub args: Option<Vec<String>>,
+    pub cmd: Option<Vec<String>>,
+    pub entrypoint: Option<Vec<String>>,
     pub scheduling_config: Option<SchedulingConfig>,
     pub storage_config: Option<StorageConfig>,
     pub metadata: Option<TaskMetadata>,
@@ -82,8 +82,8 @@ pub struct Task {
     pub image: String,
     pub name: String,
     pub env_vars: Option<std::collections::HashMap<String, String>>,
-    pub command: Option<String>,
-    pub args: Option<Vec<String>>,
+    pub cmd: Option<Vec<String>>,
+    pub entrypoint: Option<Vec<String>>,
     pub state: TaskState,
     #[serde(default)]
     pub created_at: i64,
@@ -104,8 +104,8 @@ impl Default for Task {
             image: String::new(),
             name: String::new(),
             env_vars: None,
-            command: None,
-            args: None,
+            cmd: None,
+            entrypoint: None,
             state: TaskState::default(),
             created_at: 0,
             updated_at: None,
@@ -147,6 +147,7 @@ impl StorageConfig {
         Ok(())
     }
 }
+
 impl TryFrom<TaskRequest> for Task {
     type Error = String;
 
@@ -159,8 +160,8 @@ impl TryFrom<TaskRequest> for Task {
             id: Uuid::new_v4(),
             image: request.image,
             name: request.name,
-            command: request.command,
-            args: request.args,
+            cmd: request.cmd,
+            entrypoint: request.entrypoint,
             env_vars: request.env_vars,
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
