@@ -152,8 +152,8 @@ impl SchedulerPlugin for NodeGroupsPlugin {
                     *value = new_value;
                 }
                 task_clone.env_vars = Some(env_vars);
-                task_clone.args = task_clone.args.map(|args| {
-                    args.into_iter()
+                task_clone.cmd = task_clone.cmd.map(|cmd| {
+                    cmd.into_iter()
                         .map(|arg| {
                             arg.replace("${GROUP_INDEX}", &idx.to_string())
                                 .replace("${GROUP_SIZE}", &group.nodes.len().to_string())
