@@ -105,6 +105,10 @@ pub enum Commands {
         /// Log level
         #[arg(long)]
         log_level: Option<String>,
+
+        /// Storage path for worker data (overrides automatic selection)
+        #[arg(long)]
+        storage_path: Option<String>,
     },
     Check {},
 
@@ -183,6 +187,7 @@ pub async fn execute_command(
             skip_system_checks,
             loki_url: _,
             log_level: _,
+            storage_path,
         } => {
             if *disable_state_storing && *auto_recover {
                 Console::user_error(
@@ -317,7 +322,14 @@ pub async fn execute_command(
 
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
-            let mut node_config = hardware_check.check_hardware(node_config).await.unwrap();
+            let mut node_config = if storage_path.is_some() {
+                hardware_check
+                    .check_hardware_with_storage_path(node_config, storage_path.clone())
+                    .await
+                    .unwrap()
+            } else {
+                hardware_check.check_hardware(node_config).await.unwrap()
+            };
             let software_checker = SoftwareChecker::new(Some(issue_tracker.clone()));
             if let Err(err) = software_checker.check_software(&node_config).await {
                 Console::user_error(&format!("❌ Software check failed: {}", err));

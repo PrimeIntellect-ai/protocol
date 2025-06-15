@@ -33,7 +33,18 @@ impl HardwareChecker {
         &mut self,
         mut node_config: Node,
     ) -> Result<Node, Box<dyn std::error::Error>> {
-        self.collect_system_info(&mut node_config).await?;
+        self.collect_system_info(&mut node_config, None).await?;
+        self.print_system_info(&node_config);
+        Ok(node_config)
+    }
+
+    pub async fn check_hardware_with_storage_path(
+        &mut self,
+        mut node_config: Node,
+        storage_path_override: Option<String>,
+    ) -> Result<Node, Box<dyn std::error::Error>> {
+        self.collect_system_info(&mut node_config, storage_path_override)
+            .await?;
         self.print_system_info(&node_config);
         Ok(node_config)
     }
@@ -41,6 +52,7 @@ impl HardwareChecker {
     async fn collect_system_info(
         &mut self,
         node_config: &mut Node,
+        storage_path_override: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Console::section("Hardware Checks");
         let issue_tracker = self.issues.write().await;
@@ -72,7 +84,16 @@ impl HardwareChecker {
             issue_tracker.add_issue(IssueType::NoGpu, "No GPU detected");
         }
 
-        let (storage_path, available_space) = if cfg!(target_os = "linux") {
+        let (storage_path, available_space) = if let Some(override_path) = storage_path_override {
+            // Use the user-provided storage path override
+            let available_space = if cfg!(target_os = "linux") {
+                super::storage::get_available_space(&override_path)
+            } else {
+                None
+            };
+            (Some(override_path), available_space)
+        } else if cfg!(target_os = "linux") {
+            // Use automatic storage selection
             match super::storage::find_largest_storage() {
                 Some(mount_point) => (Some(mount_point.path), Some(mount_point.available_space)),
                 None => (None, None),
