@@ -127,11 +127,7 @@ pub async fn start_server(
                     .wrap(ValidateSignature::new(validator_validator.clone()))
                     .route("", web::get().to(get_nodes)),
             )
-            .service(
-                web::scope("/api/pool/{pool_id}")
-                    .wrap(ValidateSignature::new(validate_signatures.clone()))
-                    .route("", get().to(get_nodes_for_pool)),
-            )
+            .service(web::scope("/api/pool/{pool_id}").route("", get().to(get_nodes_for_pool)))
             .service(node_routes().wrap(ValidateSignature::new(validate_signatures.clone())))
             .default_service(web::route().to(|| async {
                 HttpResponse::NotFound().json(json!({

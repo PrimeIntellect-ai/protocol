@@ -4,9 +4,12 @@ use actix_web::{
     web::{self},
     HttpResponse,
 };
-use alloy::primitives::U256;
+use alloy::primitives::{Address, U256};
+use alloy::signers::Signature;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
+use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
     let nodes = data.node_store.get_nodes().await;
@@ -48,6 +51,98 @@ pub async fn get_nodes_for_pool(
     pool_id: web::Path<String>,
     req: actix_web::HttpRequest,
 ) -> HttpResponse {
+    // Extract and validate authentication headers first
+    let address_str = match req.headers().get("x-address") {
+        Some(address) => match address.to_str() {
+            Ok(addr) => addr.to_string(),
+            Err(_) => {
+                return HttpResponse::BadRequest().json(ApiResponse::new(
+                    false,
+                    "Invalid x-address header - parsing issue",
+                ))
+            }
+        },
+        None => {
+            return HttpResponse::BadRequest()
+                .json(ApiResponse::new(false, "Missing x-address header"))
+        }
+    };
+
+    let signature_str = match req.headers().get("x-signature") {
+        Some(signature) => match signature.to_str() {
+            Ok(sig) => sig.to_string(),
+            Err(_) => {
+                return HttpResponse::BadRequest().json(ApiResponse::new(
+                    false,
+                    "Invalid x-signature header - parsing issue",
+                ))
+            }
+        },
+        None => {
+            return HttpResponse::BadRequest()
+                .json(ApiResponse::new(false, "Missing x-signature header"))
+        }
+    };
+
+    // Validate signature format and recover address
+    let signature = signature_str.trim_start_matches("0x");
+    let parsed_signature = match Signature::from_str(signature) {
+        Ok(sig) => sig,
+        Err(_) => {
+            return HttpResponse::BadRequest()
+                .json(ApiResponse::new(false, "Invalid signature format"))
+        }
+    };
+
+    let expected_address = match Address::from_str(&address_str) {
+        Ok(addr) => addr,
+        Err(_) => {
+            return HttpResponse::BadRequest()
+                .json(ApiResponse::new(false, "Invalid address format"))
+        }
+    };
+
+    // Create message for signature verification (path only for GET requests)
+    let path = req.path();
+    let msg = path.to_string();
+
+    let recovered_address = match parsed_signature.recover_address_from_msg(&msg) {
+        Ok(addr) => addr,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(ApiResponse::new(
+                false,
+                "Failed to recover address from signature",
+            ))
+        }
+    };
+
+    if recovered_address != expected_address {
+        return HttpResponse::BadRequest()
+            .json(ApiResponse::new(false, "Signature verification failed"));
+    }
+
+    // Validate timestamp if present in query parameters to prevent replay attacks
+    if let Some(query) = req.uri().query() {
+        if let Some(timestamp_param) = query
+            .split('&')
+            .find(|param| param.starts_with("timestamp="))
+            .and_then(|param| param.split('=').nth(1))
+        {
+            if let Ok(timestamp) = timestamp_param.parse::<u64>() {
+                let current_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                if current_time - timestamp > 10 {
+                    return HttpResponse::BadRequest().json(ApiResponse::new(
+                        false,
+                        "Request expired - timestamp too old",
+                    ));
+                }
+            }
+        }
+    }
+
     let nodes = data.node_store.get_nodes().await;
     match nodes {
         Ok(nodes) => {
@@ -69,6 +164,7 @@ pub async fn get_nodes_for_pool(
 
             match data.contracts.clone() {
                 Some(contracts) => {
+                    // Only make expensive RPC call after signature validation
                     let pool_info =
                         match contracts.compute_pool.get_pool_info(pool_contract_id).await {
                             Ok(info) => info,
@@ -79,32 +175,12 @@ pub async fn get_nodes_for_pool(
                         };
                     let owner = pool_info.creator;
                     let manager = pool_info.compute_manager_key;
-                    let address_str = match req.headers().get("x-address") {
-                        Some(address) => match address.to_str() {
-                            Ok(addr) => addr.to_string(),
-                            Err(_) => {
-                                return HttpResponse::BadRequest().json(ApiResponse::new(
-                                    false,
-                                    "Invalid x-address header - parsing issue",
-                                ))
-                            }
-                        },
-                        None => {
-                            return HttpResponse::BadRequest()
-                                .json(ApiResponse::new(false, "Missing x-address header"))
-                        }
-                    };
 
-                    // Normalize the address strings for comparison
-                    let owner_str = owner.to_string().to_lowercase();
-                    let manager_str = manager.to_string().to_lowercase();
-                    let address_str_normalized = address_str.to_lowercase();
-
-                    if address_str_normalized != owner_str && address_str_normalized != manager_str
-                    {
-                        return HttpResponse::BadRequest().json(ApiResponse::new(
+                    // Check if authenticated address is authorized for this pool
+                    if expected_address != owner && expected_address != manager {
+                        return HttpResponse::Forbidden().json(ApiResponse::new(
                             false,
-                            "Invalid x-address header - not owner or manager",
+                            "Access denied - caller is not pool owner or manager",
                         ));
                     }
                 }
