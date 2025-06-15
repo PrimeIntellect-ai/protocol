@@ -58,8 +58,7 @@ impl DockerService {
     pub fn generate_task_config_hash(task: &Task) -> u64 {
         let mut hasher = DefaultHasher::new();
         task.image.hash(&mut hasher);
-        task.command.hash(&mut hasher);
-        task.args.hash(&mut hasher);
+        task.cmd.hash(&mut hasher);
 
         if let Some(env_vars) = &task.env_vars {
             let mut sorted_env: Vec<_> = env_vars.iter().collect();
@@ -464,8 +463,8 @@ mod tests {
                 ("VAR_B".to_string(), "value_b".to_string()),
                 ("VAR_C".to_string(), "value_c".to_string()),
             ])),
-            command: Some("sleep".to_string()),
-            args: Some(vec!["5".to_string()]),
+            cmd: Some(vec!["sleep".to_string(), "5".to_string()]),
+            entrypoint: None,
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             volume_mounts: Some(vec![
@@ -495,8 +494,7 @@ mod tests {
                 ("VAR_A".to_string(), "value_a".to_string()),
                 ("VAR_B".to_string(), "value_b".to_string()),
             ])),
-            command: Some("sleep".to_string()),
-            args: Some(vec!["5".to_string()]),
+            cmd: Some(vec!["sleep".to_string(), "5".to_string()]),
             state: TaskState::PENDING,
             created_at: Utc::now().timestamp_millis(),
             volume_mounts: Some(vec![
