@@ -75,10 +75,12 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
         .add_directive("hyper_util=warn".parse()?)
         .add_directive("bollard=warn".parse()?)
         .add_directive("alloy=warn".parse()?)
-        .add_directive("iroh=warn".parse()?)
-        .add_directive("iroh_net=warn".parse()?)
-        .add_directive("iroh_quinn=warn".parse()?)
-        .add_directive("iroh_base=warn".parse()?)
+        .add_directive("iroh=error".parse()?)
+        .add_directive("iroh_net=error".parse()?)
+        .add_directive("iroh_quinn=error".parse()?)
+        .add_directive("iroh_base=error".parse()?)
+        .add_directive("quinn=error".parse()?)
+        .add_directive("quinn_proto=error".parse()?)
         .add_directive("tracing::span=warn".parse()?);
 
     let fmt_layer = fmt::layer()
