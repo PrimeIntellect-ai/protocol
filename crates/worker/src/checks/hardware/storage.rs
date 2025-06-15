@@ -127,6 +127,23 @@ pub fn find_largest_storage() -> Option<MountPoint> {
     None
 }
 
+#[cfg(target_os = "linux")]
+pub fn get_available_space(path: &str) -> Option<u64> {
+    let mut stats: statvfs_t = unsafe { std::mem::zeroed() };
+    if let Ok(path_c) = CString::new(path) {
+        if unsafe { statvfs(path_c.as_ptr(), &mut stats) } == 0 {
+            let available = stats.f_bsize * stats.f_bavail;
+            return Some(available);
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn get_available_space(_path: &str) -> Option<u64> {
+    None
+}
+
 #[allow(dead_code)]
 pub fn print_storage_info() {
     match get_storage_info() {
