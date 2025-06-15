@@ -53,6 +53,20 @@ impl Scheduler {
                 }
             }
 
+            // Replace variables in volume mounts
+            if let Some(volume_mounts) = &mut task.volume_mounts {
+                // Extract group_id from metadata labels if available
+
+                for volume_mount in volume_mounts.iter_mut() {
+                    // Use the replace_labels method with all variables
+                    let processed = volume_mount
+                        .replace_labels(&task.id.to_string(), Some(&node_address.to_string()));
+
+                    // Replace the mount with the processed version
+                    *volume_mount = processed;
+                }
+            }
+
             return Ok(Some(task));
         }
 

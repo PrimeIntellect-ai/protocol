@@ -8,7 +8,9 @@ use log::debug;
 use shared::models::node::GpuSpecs;
 use shared::models::task::Task;
 use shared::models::task::TaskState;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -53,6 +55,36 @@ impl DockerService {
             p2p_seed,
         }
     }
+    pub fn generate_task_config_hash(task: &Task) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        task.image.hash(&mut hasher);
+        task.command.hash(&mut hasher);
+        task.args.hash(&mut hasher);
+
+        if let Some(env_vars) = &task.env_vars {
+            let mut sorted_env: Vec<_> = env_vars.iter().collect();
+            sorted_env.sort_by_key(|(k, _)| *k);
+            for (key, value) in sorted_env {
+                key.hash(&mut hasher);
+                value.hash(&mut hasher);
+            }
+        }
+
+        if let Some(volume_mounts) = &task.volume_mounts {
+            let mut sorted_volumes: Vec<_> = volume_mounts.iter().collect();
+            sorted_volumes.sort_by(|a, b| {
+                a.host_path
+                    .cmp(&b.host_path)
+                    .then_with(|| a.container_path.cmp(&b.container_path))
+            });
+            for volume_mount in sorted_volumes {
+                volume_mount.host_path.hash(&mut hasher);
+                volume_mount.container_path.hash(&mut hasher);
+            }
+        }
+
+        hasher.finish()
+    }
 
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut interval = interval(Duration::from_secs(5));
@@ -67,9 +99,11 @@ impl DockerService {
         let terminating_container_tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> =
             Arc::new(Mutex::new(Vec::new()));
 
-        pub fn generate_task_id(task: &Option<Task>) -> Option<String> {
-            task.as_ref()
-                .map(|task| format!("{}-{}", TASK_PREFIX, task.id))
+        fn generate_task_id(task: &Option<Task>) -> Option<String> {
+            task.as_ref().map(|task| {
+                let config_hash = DockerService::generate_task_config_hash(task);
+                format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash)
+            })
         }
 
         async fn cleanup_tasks(tasks: &Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>) {
@@ -140,7 +174,7 @@ impl DockerService {
                     }
 
                     if current_task.is_some() && task_id.is_some() {
-                        let container_task_id = format!("{}-{}", TASK_PREFIX, current_task.unwrap().id);
+                        let container_task_id = task_id.as_ref().unwrap().clone();
                         let container_match = all_containers.iter().find(|c| c.names.contains(&format!("/{}", container_task_id)));
                         if container_match.is_none() {
                             let running_tasks = starting_container_tasks.lock().await;
@@ -213,13 +247,26 @@ impl DockerService {
                                         if let Some(p2p_seed) = p2p_seed {
                                             env_vars.insert("IROH_SEED".to_string(), p2p_seed.to_string());
                                         }
-                                        let volumes = vec![
+
+                                        let mut volumes = vec![
                                             (
                                                 Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
                                                 Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
                                                 false,
+                                                false,
                                             )
                                         ];
+
+                                        if let Some(volume_mounts) = &payload.volume_mounts {
+                                            for volume_mount in volume_mounts {
+                                                volumes.push((
+                                                    volume_mount.host_path.clone(),
+                                                    volume_mount.container_path.clone(),
+                                                    false,
+                                                    true
+                                                ));
+                                            }
+                                        }
                                         let shm_size = match system_memory_mb {
                                             Some(mem_mb) => (mem_mb as u64) * 1024 * 1024 / 2, // Convert MB to bytes and divide by 2
                                             None => {
@@ -318,7 +365,8 @@ impl DockerService {
         let current_task = self.state.get_current_task().await;
         match current_task {
             Some(task) => {
-                let container_id = format!("{}-{}", TASK_PREFIX, task.id);
+                let config_hash = Self::generate_task_config_hash(&task);
+                let container_id = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
                 let logs = self
                     .docker_manager
                     .get_container_logs(&container_id, None)
@@ -337,7 +385,8 @@ impl DockerService {
         let current_task = self.state.get_current_task().await;
         match current_task {
             Some(task) => {
-                let container_id = format!("{}-{}", TASK_PREFIX, task.id);
+                let config_hash = Self::generate_task_config_hash(&task);
+                let container_id = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
                 self.docker_manager.restart_container(&container_id).await?;
                 Ok(())
             }
@@ -345,12 +394,14 @@ impl DockerService {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use alloy::primitives::Address;
     use shared::models::task::Task;
     use shared::models::task::TaskState;
+    use shared::models::task::VolumeMount;
     use uuid::Uuid;
 
     #[tokio::test]
@@ -398,5 +449,80 @@ mod tests {
         state_clone.set_current_task(None).await;
         tokio::time::sleep(Duration::from_secs(2)).await;
         cancellation_token.cancel();
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn test_generate_task_config_hash() {
+        // Create first task with volume mounts and env vars in one order
+        let task1 = Task {
+            image: "ubuntu:latest".to_string(),
+            name: "test".to_string(),
+            id: Uuid::new_v4(),
+            env_vars: Some(HashMap::from([
+                ("VAR_A".to_string(), "value_a".to_string()),
+                ("VAR_B".to_string(), "value_b".to_string()),
+                ("VAR_C".to_string(), "value_c".to_string()),
+            ])),
+            command: Some("sleep".to_string()),
+            args: Some(vec!["5".to_string()]),
+            state: TaskState::PENDING,
+            created_at: Utc::now().timestamp_millis(),
+            volume_mounts: Some(vec![
+                VolumeMount {
+                    host_path: "/tmp/test".to_string(),
+                    container_path: "/tmp/test".to_string(),
+                },
+                VolumeMount {
+                    host_path: "/tmp/test2".to_string(),
+                    container_path: "/tmp/test2".to_string(),
+                },
+                VolumeMount {
+                    host_path: "/tmp/test3".to_string(),
+                    container_path: "/tmp/test3".to_string(),
+                },
+            ]),
+            ..Default::default()
+        };
+
+        // Create second task with same content but different order
+        let task2 = Task {
+            image: "ubuntu:latest".to_string(),
+            name: "test".to_string(),
+            id: Uuid::new_v4(),
+            env_vars: Some(HashMap::from([
+                ("VAR_C".to_string(), "value_c".to_string()),
+                ("VAR_A".to_string(), "value_a".to_string()),
+                ("VAR_B".to_string(), "value_b".to_string()),
+            ])),
+            command: Some("sleep".to_string()),
+            args: Some(vec!["5".to_string()]),
+            state: TaskState::PENDING,
+            created_at: Utc::now().timestamp_millis(),
+            volume_mounts: Some(vec![
+                VolumeMount {
+                    host_path: "/tmp/test3".to_string(),
+                    container_path: "/tmp/test3".to_string(),
+                },
+                VolumeMount {
+                    host_path: "/tmp/test".to_string(),
+                    container_path: "/tmp/test".to_string(),
+                },
+                VolumeMount {
+                    host_path: "/tmp/test2".to_string(),
+                    container_path: "/tmp/test2".to_string(),
+                },
+            ]),
+            ..Default::default()
+        };
+
+        let hash1 = DockerService::generate_task_config_hash(&task1);
+        let hash2 = DockerService::generate_task_config_hash(&task2);
+
+        // Despite different ordering, hashes should be the same
+        assert_eq!(
+            hash1, hash2,
+            "Hashes should be equal despite different ordering of env vars and volume mounts"
+        );
     }
 }
