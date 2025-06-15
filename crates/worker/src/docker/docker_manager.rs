@@ -296,70 +296,72 @@ impl DockerManager {
                 .collect::<Vec<String>>();
 
             if let Some(vols) = volumes {
-                let processed_volumes: Vec<(String, String, bool)> =
-                    if let Some(_storage_path) = &self.storage_path {
-                        // Create volume mount directories within storage path structure
-                        vols.into_iter()
-                            .map(|(host_path, container_path, read_only, task_volume)| {
-                                if task_volume {
-                                    // Create volume mount directory within the task's storage area
-                                    // Remove leading slash and sanitize the path
-                                    let sanitized_host_path =
-                                        host_path.trim_start_matches('/').replace('/', "_");
-                                    match self.safe_storage_path(&[
-                                        name.trim_start_matches('/'),
-                                        "mounts",
-                                        &sanitized_host_path,
-                                    ]) {
-                                        Ok(volume_mount_dir) => {
-                                            // Create the directory
-                                            if let Err(e) =
-                                                Self::create_secure_directory(&volume_mount_dir)
-                                            {
-                                                error!(
-                                                "Failed to create volume mount directory {}: {}",
-                                                volume_mount_dir.display(), e
-                                            );
-                                            }
-                                            (
-                                                volume_mount_dir.to_string_lossy().to_string(),
-                                                container_path,
-                                                read_only,
-                                            )
-                                        }
-                                        Err(e) => {
+                let processed_volumes: Vec<(String, String, bool)> = if let Some(_storage_path) =
+                    &self.storage_path
+                {
+                    // Create volume mount directories within storage path structure
+                    vols.into_iter()
+                        .map(|(host_path, container_path, read_only, task_volume)| {
+                            if task_volume {
+                                // Create volume mount directory within the task's storage area
+                                // Remove leading slash and sanitize the path
+                                let sanitized_host_path =
+                                    host_path.trim_start_matches('/').replace('/', "_");
+                                match self.safe_storage_path(&[
+                                    name.trim_start_matches('/'),
+                                    "mounts",
+                                    &sanitized_host_path,
+                                ]) {
+                                    Ok(volume_mount_dir) => {
+                                        // Create the directory
+                                        if let Err(e) =
+                                            Self::create_secure_directory(&volume_mount_dir)
+                                        {
                                             error!(
-                                                "Failed to create secure path for volume mount: {}",
+                                                "Failed to create volume mount directory {}: {}",
+                                                volume_mount_dir.display(),
                                                 e
                                             );
-                                            // Fallback to original host path for non-task volumes
-                                            (host_path, container_path, read_only)
                                         }
+                                        (
+                                            volume_mount_dir.to_string_lossy().to_string(),
+                                            container_path,
+                                            read_only,
+                                        )
                                     }
-                                } else {
-                                    // Use the original host path for non-task volumes
-                                    (host_path, container_path, read_only)
-                                }
-                            })
-                            .collect()
-                    } else {
-                        // If no storage path, handle task volumes differently
-                        vols.into_iter()
-                            .map(|(host_path, container_path, read_only, task_volume)| {
-                                if task_volume {
-                                    // For task volumes without storage path, ensure no leading slash
-                                    let clean_host_path = host_path.trim_start_matches('/');
-                                    let path = Path::new(clean_host_path);
-                                    if let Err(e) = Self::create_secure_directory(path) {
-                                        error!("Failed to create directory {}: {}", clean_host_path, e);
+                                    Err(e) => {
+                                        error!(
+                                            "Failed to create secure path for volume mount: {}",
+                                            e
+                                        );
+                                        // Fallback to original host path for non-task volumes
+                                        (host_path, container_path, read_only)
                                     }
-                                    (clean_host_path.to_string(), container_path, read_only)
-                                } else {
-                                    (host_path, container_path, read_only)
                                 }
-                            })
-                            .collect()
-                    };
+                            } else {
+                                // Use the original host path for non-task volumes
+                                (host_path, container_path, read_only)
+                            }
+                        })
+                        .collect()
+                } else {
+                    // If no storage path, handle task volumes differently
+                    vols.into_iter()
+                        .map(|(host_path, container_path, read_only, task_volume)| {
+                            if task_volume {
+                                // For task volumes without storage path, ensure no leading slash
+                                let clean_host_path = host_path.trim_start_matches('/');
+                                let path = Path::new(clean_host_path);
+                                if let Err(e) = Self::create_secure_directory(path) {
+                                    error!("Failed to create directory {}: {}", clean_host_path, e);
+                                }
+                                (clean_host_path.to_string(), container_path, read_only)
+                            } else {
+                                (host_path, container_path, read_only)
+                            }
+                        })
+                        .collect()
+                };
 
                 binds.extend(
                     processed_volumes
