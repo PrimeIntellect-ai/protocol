@@ -13,6 +13,7 @@ use futures_util::StreamExt;
 use log::{debug, error, info};
 use shared::models::node::GpuSpecs;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use strip_ansi_escapes::strip;
 
@@ -47,6 +48,91 @@ pub struct DockerManager {
 
 impl DockerManager {
     const DEFAULT_LOG_TAIL: i64 = 300;
+
+    /// Sanitize a path component to prevent directory traversal attacks
+    fn sanitize_path_component(component: &str) -> Result<String, DockerError> {
+        // Remove any path separators and potentially dangerous characters
+        let sanitized = component
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == '.')
+            .collect::<String>();
+
+        // Prevent empty strings and dot-only strings
+        if sanitized.is_empty() || sanitized == "." || sanitized == ".." {
+            return Err(DockerError::DockerResponseServerError {
+                status_code: 400,
+                message: format!("Invalid path component: {}", component),
+            });
+        }
+
+        // Prevent path components that are too long
+        if sanitized.len() > 255 {
+            return Err(DockerError::DockerResponseServerError {
+                status_code: 400,
+                message: "Path component too long".to_string(),
+            });
+        }
+
+        Ok(sanitized)
+    }
+
+    /// Safely construct a path within the storage directory
+    fn safe_storage_path(&self, components: &[&str]) -> Result<PathBuf, DockerError> {
+        let base_path = match &self.storage_path {
+            Some(path) => PathBuf::from(path),
+            None => {
+                return Err(DockerError::DockerResponseServerError {
+                    status_code: 500,
+                    message: "Storage path not configured".to_string(),
+                })
+            }
+        };
+
+        let mut result = base_path.clone();
+        for component in components {
+            let sanitized = Self::sanitize_path_component(component)?;
+            result = result.join(sanitized);
+        }
+
+        // Ensure the final path is still within the base storage path
+        if !result.starts_with(&base_path) {
+            return Err(DockerError::DockerResponseServerError {
+                status_code: 400,
+                message: "Path traversal attempt detected".to_string(),
+            });
+        }
+
+        Ok(result)
+    }
+
+    /// Create a directory with secure permissions
+    fn create_secure_directory(path: &Path) -> Result<(), DockerError> {
+        std::fs::create_dir_all(path).map_err(|e| DockerError::DockerResponseServerError {
+            status_code: 500,
+            message: format!("Failed to create directory: {}", e),
+        })?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(path)
+                .map_err(|e| DockerError::DockerResponseServerError {
+                    status_code: 500,
+                    message: format!("Failed to get directory metadata: {}", e),
+                })?
+                .permissions();
+            perms.set_mode(0o755); // rwxr-xr-x instead of rwxrwxrwx
+            std::fs::set_permissions(path, perms).map_err(|e| {
+                DockerError::DockerResponseServerError {
+                    status_code: 500,
+                    message: format!("Failed to set directory permissions: {}", e),
+                }
+            })?;
+        }
+
+        Ok(())
+    }
+
     /// Create a new DockerManager instance
     pub fn new(storage_path: Option<String>) -> Result<Self, DockerError> {
         let docker = match Docker::connect_with_unix_defaults() {
@@ -130,21 +216,8 @@ impl DockerManager {
         if self.storage_path.is_some() {
             // Create task-specific data volume
             let volume_name = format!("{}_data", name);
-            let task_data_path = format!(
-                "{}/{}/data",
-                self.storage_path.clone().unwrap(),
-                name.trim_start_matches('/')
-            );
-            std::fs::create_dir_all(&task_data_path)?;
-
-            // Set permissions to allow container user to write to data directory
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&task_data_path)?.permissions();
-                perms.set_mode(0o777);
-                std::fs::set_permissions(&task_data_path, perms)?;
-            }
+            let task_data_path = self.safe_storage_path(&[name.trim_start_matches('/'), "data"])?;
+            Self::create_secure_directory(&task_data_path)?;
 
             self.docker
                 .create_volume(CreateVolumeOptions {
@@ -153,7 +226,10 @@ impl DockerManager {
                     driver_opts: HashMap::from([
                         ("type".to_string(), "none".to_string()),
                         ("o".to_string(), "bind".to_string()),
-                        ("device".to_string(), task_data_path),
+                        (
+                            "device".to_string(),
+                            task_data_path.to_string_lossy().to_string(),
+                        ),
                     ]),
                     labels: HashMap::new(),
                 })
@@ -162,16 +238,8 @@ impl DockerManager {
             final_volumes.push((volume_name, "/data".to_string(), false));
 
             // Create shared volume if it doesn't exist (idempotent)
-            let shared_path = format!("{}/shared", self.storage_path.clone().unwrap());
-            std::fs::create_dir_all(&shared_path)?;
-
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&shared_path)?.permissions();
-                perms.set_mode(0o777);
-                std::fs::set_permissions(&shared_path, perms)?;
-            }
+            let shared_path = self.safe_storage_path(&["shared"])?;
+            Self::create_secure_directory(&shared_path)?;
 
             // Try to create shared volume, ignore if it already exists
             match self
@@ -182,7 +250,10 @@ impl DockerManager {
                     driver_opts: HashMap::from([
                         ("type".to_string(), "none".to_string()),
                         ("o".to_string(), "bind".to_string()),
-                        ("device".to_string(), shared_path),
+                        (
+                            "device".to_string(),
+                            shared_path.to_string_lossy().to_string(),
+                        ),
                     ]),
                     labels: HashMap::new(),
                 })
@@ -225,85 +296,70 @@ impl DockerManager {
                 .collect::<Vec<String>>();
 
             if let Some(vols) = volumes {
-                let processed_volumes: Vec<(String, String, bool)> = if let Some(storage_path) =
-                    &self.storage_path
-                {
-                    // Create volume mount directories within storage path structure
-                    vols.into_iter()
-                        .map(|(host_path, container_path, read_only, task_volume)| {
-                            if task_volume {
-                                // Create volume mount directory within the task's storage area
-                                let volume_mount_dir = format!(
-                                    "{}/{}/mounts/{}",
-                                    storage_path,
-                                    name.trim_start_matches('/'),
-                                    host_path.trim_start_matches('/').replace('/', "_")
-                                );
-
-                                // Create the directory
-                                if let Err(e) = std::fs::create_dir_all(&volume_mount_dir) {
-                                    error!(
-                                        "Failed to create volume mount directory {}: {}",
-                                        volume_mount_dir, e
-                                    );
-                                } else {
-                                    // Set permissions to allow container user to write to the directory
-                                    #[cfg(unix)]
-                                    {
-                                        use std::os::unix::fs::PermissionsExt;
-                                        if let Ok(metadata) = std::fs::metadata(&volume_mount_dir) {
-                                            let mut perms = metadata.permissions();
-                                            perms.set_mode(0o777);
+                let processed_volumes: Vec<(String, String, bool)> =
+                    if let Some(_storage_path) = &self.storage_path {
+                        // Create volume mount directories within storage path structure
+                        vols.into_iter()
+                            .map(|(host_path, container_path, read_only, task_volume)| {
+                                if task_volume {
+                                    // Create volume mount directory within the task's storage area
+                                    // Remove leading slash and sanitize the path
+                                    let sanitized_host_path =
+                                        host_path.trim_start_matches('/').replace('/', "_");
+                                    match self.safe_storage_path(&[
+                                        name.trim_start_matches('/'),
+                                        "mounts",
+                                        &sanitized_host_path,
+                                    ]) {
+                                        Ok(volume_mount_dir) => {
+                                            // Create the directory
                                             if let Err(e) =
-                                                std::fs::set_permissions(&volume_mount_dir, perms)
+                                                Self::create_secure_directory(&volume_mount_dir)
                                             {
-                                                debug!(
-                                                    "Failed to set permissions for {}: {}",
-                                                    volume_mount_dir, e
-                                                );
+                                                error!(
+                                                "Failed to create volume mount directory {}: {}",
+                                                volume_mount_dir.display(), e
+                                            );
                                             }
+                                            (
+                                                volume_mount_dir.to_string_lossy().to_string(),
+                                                container_path,
+                                                read_only,
+                                            )
+                                        }
+                                        Err(e) => {
+                                            error!(
+                                                "Failed to create secure path for volume mount: {}",
+                                                e
+                                            );
+                                            // Fallback to original host path for non-task volumes
+                                            (host_path, container_path, read_only)
                                         }
                                     }
-                                }
-
-                                (volume_mount_dir, container_path, read_only)
-                            } else {
-                                // Use the original host path for non-task volumes
-                                (host_path, container_path, read_only)
-                            }
-                        })
-                        .collect()
-                } else {
-                    // If no storage path, only create directories for task volumes
-                    vols.into_iter()
-                        .map(|(host_path, container_path, read_only, task_volume)| {
-                            if task_volume {
-                                if let Err(e) = std::fs::create_dir_all(&host_path) {
-                                    error!("Failed to create directory {}: {}", host_path, e);
                                 } else {
-                                    // Set permissions to allow container user to write to the directory
-                                    #[cfg(unix)]
-                                    {
-                                        use std::os::unix::fs::PermissionsExt;
-                                        if let Ok(metadata) = std::fs::metadata(&host_path) {
-                                            let mut perms = metadata.permissions();
-                                            perms.set_mode(0o777);
-                                            if let Err(e) =
-                                                std::fs::set_permissions(&host_path, perms)
-                                            {
-                                                debug!(
-                                                    "Failed to set permissions for {}: {}",
-                                                    host_path, e
-                                                );
-                                            }
-                                        }
-                                    }
+                                    // Use the original host path for non-task volumes
+                                    (host_path, container_path, read_only)
                                 }
-                            }
-                            (host_path, container_path, read_only)
-                        })
-                        .collect()
-                };
+                            })
+                            .collect()
+                    } else {
+                        // If no storage path, handle task volumes differently
+                        vols.into_iter()
+                            .map(|(host_path, container_path, read_only, task_volume)| {
+                                if task_volume {
+                                    // For task volumes without storage path, ensure no leading slash
+                                    let clean_host_path = host_path.trim_start_matches('/');
+                                    let path = Path::new(clean_host_path);
+                                    if let Err(e) = Self::create_secure_directory(path) {
+                                        error!("Failed to create directory {}: {}", clean_host_path, e);
+                                    }
+                                    (clean_host_path.to_string(), container_path, read_only)
+                                } else {
+                                    (host_path, container_path, read_only)
+                                }
+                            })
+                            .collect()
+                    };
 
                 binds.extend(
                     processed_volumes
@@ -498,58 +554,72 @@ impl DockerManager {
             }
 
             // --- Step 4: Remove directory with retries ---
-            if let Some(path) = &self.storage_path {
-                let dir_path = format!("{}/{}", path, trimmed_name);
+            if self.storage_path.is_some() {
+                match self.safe_storage_path(&[trimmed_name]) {
+                    Ok(dir_path) => {
+                        // Check if directory exists before attempting to remove it
+                        if dir_path.exists() {
+                            let mut success = false;
 
-                // Check if directory exists before attempting to remove it
-                if std::path::Path::new(&dir_path).exists() {
-                    let mut success = false;
-
-                    for attempt in 0..max_retries {
-                        match std::fs::remove_dir_all(&dir_path) {
-                            Ok(_) => {
-                                info!("Directory {} removed successfully", dir_path);
-                                success = true;
-                                break;
+                            for attempt in 0..max_retries {
+                                match std::fs::remove_dir_all(&dir_path) {
+                                    Ok(_) => {
+                                        info!(
+                                            "Directory {} removed successfully",
+                                            dir_path.display()
+                                        );
+                                        success = true;
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        debug!(
+                                            "Attempt {}/{} failed to remove dir {}: {}",
+                                            attempt + 1,
+                                            max_retries,
+                                            dir_path.display(),
+                                            e
+                                        );
+                                        tokio::time::sleep(Duration::from_secs(1)).await;
+                                    }
+                                }
                             }
-                            Err(e) => {
-                                debug!(
-                                    "Attempt {}/{} failed to remove dir {}: {}",
-                                    attempt + 1,
-                                    max_retries,
-                                    dir_path,
-                                    e
+
+                            if !success {
+                                error!(
+                                    "Failed to remove directory {} after {} attempts — trying fallback",
+                                    dir_path.display(), max_retries
                                 );
-                                tokio::time::sleep(Duration::from_secs(1)).await;
+
+                                // Try `rm -rf` as fallback
+                                match std::process::Command::new("rm")
+                                    .arg("-rf")
+                                    .arg(&dir_path)
+                                    .status()
+                                {
+                                    Ok(status) if status.success() => {
+                                        info!(
+                                            "Fallback removal of {} succeeded",
+                                            dir_path.display()
+                                        );
+                                    }
+                                    Ok(status) => {
+                                        error!("Fallback rm -rf failed with status {}", status);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to execute fallback rm -rf: {}", e);
+                                    }
+                                }
                             }
+                        } else {
+                            debug!(
+                                "Directory {} does not exist, skipping removal",
+                                dir_path.display()
+                            );
                         }
                     }
-
-                    if !success {
-                        error!(
-                            "Failed to remove directory {} after {} attempts — trying fallback",
-                            dir_path, max_retries
-                        );
-
-                        // Try `rm -rf` as fallback
-                        match std::process::Command::new("rm")
-                            .arg("-rf")
-                            .arg(&dir_path)
-                            .status()
-                        {
-                            Ok(status) if status.success() => {
-                                info!("Fallback removal of {} succeeded", dir_path);
-                            }
-                            Ok(status) => {
-                                error!("Fallback rm -rf failed with status {}", status);
-                            }
-                            Err(e) => {
-                                error!("Failed to execute fallback rm -rf: {}", e);
-                            }
-                        }
+                    Err(e) => {
+                        error!("Failed to create secure path for directory removal: {}", e);
                     }
-                } else {
-                    debug!("Directory {} does not exist, skipping removal", dir_path);
                 }
             }
         }
