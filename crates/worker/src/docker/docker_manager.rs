@@ -217,10 +217,8 @@ impl DockerManager {
 
         let mut final_volumes = Vec::new();
         if self.storage_path.is_some() {
-            // Create task-specific data volume using predictable directory structure
             let volume_name = format!("{}_data", name);
 
-            // Extract task ID from container name for predictable data directory
             let data_dir_name = match TaskContainer::from_str(name) {
                 Ok(task_container) => task_container.data_dir_name(),
                 Err(_) => {
@@ -312,7 +310,6 @@ impl DockerManager {
                 let processed_volumes: Vec<(String, String, bool)> = if let Some(_storage_path) =
                     &self.storage_path
                 {
-                    // Create volume mount directories within storage path structure
                     vols.into_iter()
                         .map(|(host_path, container_path, read_only, task_volume)| {
                             if task_volume {
@@ -321,7 +318,6 @@ impl DockerManager {
                                 let sanitized_host_path =
                                     host_path.trim_start_matches('/').replace('/', "_");
 
-                                // Use predictable directory structure for task volumes
                                 let mount_dir_name = match TaskContainer::from_str(name) {
                                     Ok(task_container) => task_container.data_dir_name(),
                                     Err(_) => {
@@ -623,7 +619,6 @@ impl DockerManager {
                 };
 
                 if should_remove_directory {
-                    // Use predictable directory structure for removal
                     let dir_name = if let Ok(task_container) = TaskContainer::from_str(trimmed_name)
                     {
                         task_container.data_dir_name()

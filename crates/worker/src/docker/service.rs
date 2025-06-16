@@ -8,9 +8,7 @@ use log::debug;
 use shared::models::node::GpuSpecs;
 use shared::models::task::Task;
 use shared::models::task::TaskState;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -56,36 +54,6 @@ impl DockerService {
         }
     }
 
-    pub fn generate_task_config_hash(task: &Task) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        task.image.hash(&mut hasher);
-        task.cmd.hash(&mut hasher);
-
-        if let Some(env_vars) = &task.env_vars {
-            let mut sorted_env: Vec<_> = env_vars.iter().collect();
-            sorted_env.sort_by_key(|(k, _)| *k);
-            for (key, value) in sorted_env {
-                key.hash(&mut hasher);
-                value.hash(&mut hasher);
-            }
-        }
-
-        if let Some(volume_mounts) = &task.volume_mounts {
-            let mut sorted_volumes: Vec<_> = volume_mounts.iter().collect();
-            sorted_volumes.sort_by(|a, b| {
-                a.host_path
-                    .cmp(&b.host_path)
-                    .then_with(|| a.container_path.cmp(&b.container_path))
-            });
-            for volume_mount in sorted_volumes {
-                volume_mount.host_path.hash(&mut hasher);
-                volume_mount.container_path.hash(&mut hasher);
-            }
-        }
-
-        hasher.finish()
-    }
-
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut interval = interval(Duration::from_secs(5));
         let manager = self.docker_manager.clone();
@@ -101,7 +69,7 @@ impl DockerService {
 
         fn generate_task_id(task: &Option<Task>) -> Option<String> {
             task.as_ref().map(|task| {
-                let config_hash = DockerService::generate_task_config_hash(task);
+                let config_hash = task.generate_config_hash();
                 format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash)
             })
         }
@@ -365,7 +333,7 @@ impl DockerService {
         let current_task = self.state.get_current_task().await;
         match current_task {
             Some(task) => {
-                let config_hash = Self::generate_task_config_hash(&task);
+                let config_hash = task.generate_config_hash();
                 let container_id = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
                 let logs = self
                     .docker_manager
@@ -385,7 +353,7 @@ impl DockerService {
         let current_task = self.state.get_current_task().await;
         match current_task {
             Some(task) => {
-                let config_hash = Self::generate_task_config_hash(&task);
+                let config_hash = task.generate_config_hash();
                 let container_id = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
                 self.docker_manager.restart_container(&container_id).await?;
                 Ok(())
