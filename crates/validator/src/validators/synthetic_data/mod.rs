@@ -1323,11 +1323,6 @@ impl SyntheticDataValidator<WalletProvider> {
     pub async fn soft_invalidate_work(&self, work_key: &str) -> Result<(), Error> {
         info!("Soft invalidating work: {}", work_key);
 
-        // TODO: Add custom metrics for soft invalidation
-        if let Some(metrics) = &self.metrics {
-            metrics.record_work_key_invalidation();
-        }
-
         if self.disable_chain_invalidation {
             info!("Chain invalidation is disabled, skipping work soft invalidation");
             return Ok(());
@@ -1436,6 +1431,11 @@ impl SyntheticDataValidator<WalletProvider> {
 
             if still_incomplete {
                 // Get all work keys in this incomplete group and soft invalidate them
+
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_group_soft_invalidation(&group_key);
+                }
+
                 match self.get_group_work_keys_from_redis(&group_key).await {
                     Ok(work_keys) => {
                         warn!("Soft invalidating {} work keys from incomplete group past grace period: {}", 
@@ -2332,7 +2332,7 @@ mod tests {
             true,
             true, // disable_chain_invalidation for testing
             1,    // 1 minute grace period (but we'll simulate expiry)
-            None,
+            Some(MetricsContext::new("0".to_string(), Some("0".to_string()))),
         );
 
         // Add work info for only the first file (making the group incomplete)
@@ -2366,8 +2366,6 @@ mod tests {
             .update_incomplete_group_deadline_relative(&group_key, -2)
             .await?;
 
-        
-
         let result = validator.process_groups_past_grace_period().await;
         assert!(
             result.is_ok(),
@@ -2376,11 +2374,17 @@ mod tests {
         let new_tracking = validator
             .is_group_being_tracked_as_incomplete(&group_key)
             .await?;
-        assert!(!new_tracking, "Group should no longer be tracked as incomplete");
+        assert!(
+            !new_tracking,
+            "Group should no longer be tracked as incomplete"
+        );
         let key_status = validator
             .get_work_validation_status_from_redis(FILE_SHA_1)
             .await?;
         assert_eq!(key_status, Some(ValidationResult::IncompleteGroup));
+
+        let metrics = export_metrics().unwrap();
+        assert!(metrics.contains(&format!("validator_work_keys_soft_invalidated_total{{group_key=\"group:{}:2:0\",pool_id=\"0\",validator_id=\"0\"}} 1", GROUP_ID)));
 
         Ok(())
     }

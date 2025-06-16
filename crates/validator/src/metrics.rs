@@ -21,6 +21,12 @@ lazy_static! {
         &["validator_id", "pool_id"]
     ).unwrap();
 
+    pub static ref WORK_KEYS_SOFT_INVALIDATED: CounterVec = register_counter_vec!(
+        "validator_work_keys_soft_invalidated_total",
+        "Total work keys soft invalidated",
+        &["validator_id", "pool_id", "group_key"]
+    ).unwrap();
+
     // Errors in synthetic data validation
 
     /// Total work keys processed by the validator
@@ -94,6 +100,14 @@ impl MetricsContext {
         if let Some(pool_id) = &self.pool_id {
             WORK_KEYS_INVALIDATED
                 .with_label_values(&[&self.validator_id as &str, pool_id])
+                .inc();
+        }
+    }
+
+    pub fn record_group_soft_invalidation(&self, group_key: &str) {
+        if let Some(pool_id) = &self.pool_id {
+            WORK_KEYS_SOFT_INVALIDATED
+                .with_label_values(&[&self.validator_id as &str, pool_id, group_key])
                 .inc();
         }
     }
