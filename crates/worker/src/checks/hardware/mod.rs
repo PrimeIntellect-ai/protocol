@@ -1,6 +1,7 @@
-mod gpu;
+pub mod gpu;
 pub mod hardware_check;
-mod interconnect;
-mod memory;
-mod storage;
+pub mod interconnect;
+pub mod memory;
+pub mod storage;
+pub mod storage_path;
 pub use hardware_check::HardwareChecker;

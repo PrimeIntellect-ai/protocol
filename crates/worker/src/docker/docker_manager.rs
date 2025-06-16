@@ -45,7 +45,7 @@ pub struct ContainerDetails {
 
 pub struct DockerManager {
     docker: Docker,
-    storage_path: Option<String>,
+    storage_path: String,
 }
 
 impl DockerManager {
@@ -80,15 +80,7 @@ impl DockerManager {
 
     /// Safely construct a path within the storage directory
     fn safe_storage_path(&self, components: &[&str]) -> Result<PathBuf, DockerError> {
-        let base_path = match &self.storage_path {
-            Some(path) => PathBuf::from(path),
-            None => {
-                return Err(DockerError::DockerResponseServerError {
-                    status_code: 500,
-                    message: "Storage path not configured".to_string(),
-                })
-            }
-        };
+        let base_path = PathBuf::from(&self.storage_path);
 
         let mut result = base_path.clone();
         for component in components {
@@ -123,7 +115,7 @@ impl DockerManager {
                     message: format!("Failed to get directory metadata: {}", e),
                 })?
                 .permissions();
-            perms.set_mode(0o755); // rwxr-xr-x instead of rwxrwxrwx
+            perms.set_mode(0o777);
             std::fs::set_permissions(path, perms).map_err(|e| {
                 DockerError::DockerResponseServerError {
                     status_code: 500,
@@ -136,7 +128,7 @@ impl DockerManager {
     }
 
     /// Create a new DockerManager instance
-    pub fn new(storage_path: Option<String>) -> Result<Self, DockerError> {
+    pub fn new(storage_path: String) -> Result<Self, DockerError> {
         let docker = match Docker::connect_with_unix_defaults() {
             Ok(docker) => docker,
             Err(e) => {
@@ -144,6 +136,26 @@ impl DockerManager {
                 return Err(e);
             }
         };
+
+        // Validate and create storage directory
+        let storage_path_buf = PathBuf::from(&storage_path);
+        if !storage_path_buf.exists() {
+            info!("Creating storage directory: {}", storage_path);
+            Self::create_secure_directory(&storage_path_buf)?;
+        } else {
+            // Verify it's a directory and writable
+            if !storage_path_buf.is_dir() {
+                return Err(DockerError::DockerResponseServerError {
+                    status_code: 400,
+                    message: format!("Storage path is not a directory: {}", storage_path),
+                });
+            }
+        }
+
+        info!(
+            "DockerManager initialized with storage path: {}",
+            storage_path
+        );
         Ok(Self {
             docker,
             storage_path,
@@ -216,76 +228,74 @@ impl DockerManager {
         info!("Starting to pull image: {}", image);
 
         let mut final_volumes = Vec::new();
-        if self.storage_path.is_some() {
-            let volume_name = format!("{}_data", name);
+        let volume_name = format!("{}_data", name);
 
-            let data_dir_name = match TaskContainer::from_str(name) {
-                Ok(task_container) => task_container.data_dir_name(),
-                Err(_) => {
-                    // Fallback to using full container name if extraction fails
-                    name.trim_start_matches('/').to_string()
-                }
-            };
-
-            let task_data_path = self.safe_storage_path(&[&data_dir_name, "data"])?;
-            Self::create_secure_directory(&task_data_path)?;
-
-            self.docker
-                .create_volume(CreateVolumeOptions {
-                    name: volume_name.clone(),
-                    driver: "local".to_string(),
-                    driver_opts: HashMap::from([
-                        ("type".to_string(), "none".to_string()),
-                        ("o".to_string(), "bind".to_string()),
-                        (
-                            "device".to_string(),
-                            task_data_path.to_string_lossy().to_string(),
-                        ),
-                    ]),
-                    labels: HashMap::new(),
-                })
-                .await?;
-
-            final_volumes.push((volume_name, "/data".to_string(), false));
-
-            // Create shared volume if it doesn't exist (idempotent)
-            let shared_path = self.safe_storage_path(&["shared"])?;
-            Self::create_secure_directory(&shared_path)?;
-
-            // Try to create shared volume, ignore if it already exists
-            match self
-                .docker
-                .create_volume(CreateVolumeOptions {
-                    name: "shared_data".to_string(),
-                    driver: "local".to_string(),
-                    driver_opts: HashMap::from([
-                        ("type".to_string(), "none".to_string()),
-                        ("o".to_string(), "bind".to_string()),
-                        (
-                            "device".to_string(),
-                            shared_path.to_string_lossy().to_string(),
-                        ),
-                    ]),
-                    labels: HashMap::new(),
-                })
-                .await
-            {
-                Ok(_) => {
-                    debug!("Shared volume 'shared_data' created successfully");
-                }
-                Err(DockerError::DockerResponseServerError {
-                    status_code: 409, ..
-                }) => {
-                    debug!("Shared volume 'shared_data' already exists, reusing");
-                }
-                Err(e) => {
-                    error!("Failed to create shared volume: {}", e);
-                    return Err(e);
-                }
+        let data_dir_name = match TaskContainer::from_str(name) {
+            Ok(task_container) => task_container.data_dir_name(),
+            Err(_) => {
+                // Fallback to using full container name if extraction fails
+                name.trim_start_matches('/').to_string()
             }
+        };
 
-            final_volumes.push(("shared_data".to_string(), "/shared".to_string(), false));
+        let task_data_path = self.safe_storage_path(&[&data_dir_name, "data"])?;
+        Self::create_secure_directory(&task_data_path)?;
+
+        self.docker
+            .create_volume(CreateVolumeOptions {
+                name: volume_name.clone(),
+                driver: "local".to_string(),
+                driver_opts: HashMap::from([
+                    ("type".to_string(), "none".to_string()),
+                    ("o".to_string(), "bind".to_string()),
+                    (
+                        "device".to_string(),
+                        task_data_path.to_string_lossy().to_string(),
+                    ),
+                ]),
+                labels: HashMap::new(),
+            })
+            .await?;
+
+        final_volumes.push((volume_name, "/data".to_string(), false));
+
+        // Create shared volume if it doesn't exist (idempotent)
+        let shared_path = self.safe_storage_path(&["shared"])?;
+        Self::create_secure_directory(&shared_path)?;
+
+        // Try to create shared volume, ignore if it already exists
+        match self
+            .docker
+            .create_volume(CreateVolumeOptions {
+                name: "shared_data".to_string(),
+                driver: "local".to_string(),
+                driver_opts: HashMap::from([
+                    ("type".to_string(), "none".to_string()),
+                    ("o".to_string(), "bind".to_string()),
+                    (
+                        "device".to_string(),
+                        shared_path.to_string_lossy().to_string(),
+                    ),
+                ]),
+                labels: HashMap::new(),
+            })
+            .await
+        {
+            Ok(_) => {
+                debug!("Shared volume 'shared_data' created successfully");
+            }
+            Err(DockerError::DockerResponseServerError {
+                status_code: 409, ..
+            }) => {
+                debug!("Shared volume 'shared_data' already exists, reusing");
+            }
+            Err(e) => {
+                error!("Failed to create shared volume: {}", e);
+                return Err(e);
+            }
         }
+
+        final_volumes.push(("shared_data".to_string(), "/shared".to_string(), false));
 
         self.pull_image(image).await?;
 
@@ -307,80 +317,56 @@ impl DockerManager {
                 .collect::<Vec<String>>();
 
             if let Some(vols) = volumes {
-                let processed_volumes: Vec<(String, String, bool)> = if let Some(_storage_path) =
-                    &self.storage_path
-                {
-                    vols.into_iter()
-                        .map(|(host_path, container_path, read_only, task_volume)| {
-                            if task_volume {
-                                // Create volume mount directory within the task's storage area
-                                // Remove leading slash and sanitize the path
-                                let sanitized_host_path =
-                                    host_path.trim_start_matches('/').replace('/', "_");
+                let processed_volumes: Vec<(String, String, bool)> = vols
+                    .into_iter()
+                    .map(|(host_path, container_path, read_only, task_volume)| {
+                        if task_volume {
+                            // Create volume mount directory within the task's storage area
+                            // Remove leading slash and sanitize the path
+                            let sanitized_host_path =
+                                host_path.trim_start_matches('/').replace('/', "_");
 
-                                let mount_dir_name = match TaskContainer::from_str(name) {
-                                    Ok(task_container) => task_container.data_dir_name(),
-                                    Err(_) => {
-                                        // Fallback to using full container name if extraction fails
-                                        name.trim_start_matches('/').to_string()
-                                    }
-                                };
+                            let mount_dir_name = match TaskContainer::from_str(name) {
+                                Ok(task_container) => task_container.data_dir_name(),
+                                Err(_) => {
+                                    // Fallback to using full container name if extraction fails
+                                    name.trim_start_matches('/').to_string()
+                                }
+                            };
 
-                                match self.safe_storage_path(&[
-                                    &mount_dir_name,
-                                    "mounts",
-                                    &sanitized_host_path,
-                                ]) {
-                                    Ok(volume_mount_dir) => {
-                                        // Create the directory
-                                        if let Err(e) =
-                                            Self::create_secure_directory(&volume_mount_dir)
-                                        {
-                                            error!(
-                                                "Failed to create volume mount directory {}: {}",
-                                                volume_mount_dir.display(),
-                                                e
-                                            );
-                                        }
-                                        (
-                                            volume_mount_dir.to_string_lossy().to_string(),
-                                            container_path,
-                                            read_only,
-                                        )
-                                    }
-                                    Err(e) => {
+                            match self.safe_storage_path(&[
+                                &mount_dir_name,
+                                "mounts",
+                                &sanitized_host_path,
+                            ]) {
+                                Ok(volume_mount_dir) => {
+                                    // Create the directory
+                                    if let Err(e) = Self::create_secure_directory(&volume_mount_dir)
+                                    {
                                         error!(
-                                            "Failed to create secure path for volume mount: {}",
+                                            "Failed to create volume mount directory {}: {}",
+                                            volume_mount_dir.display(),
                                             e
                                         );
-                                        // Fallback to original host path for non-task volumes
-                                        (host_path, container_path, read_only)
                                     }
+                                    (
+                                        volume_mount_dir.to_string_lossy().to_string(),
+                                        container_path,
+                                        read_only,
+                                    )
                                 }
-                            } else {
-                                // Use the original host path for non-task volumes
-                                (host_path, container_path, read_only)
-                            }
-                        })
-                        .collect()
-                } else {
-                    // If no storage path, handle task volumes differently
-                    vols.into_iter()
-                        .map(|(host_path, container_path, read_only, task_volume)| {
-                            if task_volume {
-                                // For task volumes without storage path, ensure no leading slash
-                                let clean_host_path = host_path.trim_start_matches('/');
-                                let path = Path::new(clean_host_path);
-                                if let Err(e) = Self::create_secure_directory(path) {
-                                    error!("Failed to create directory {}: {}", clean_host_path, e);
+                                Err(e) => {
+                                    error!("Failed to create secure path for volume mount: {}", e);
+                                    // Fallback to original host path for non-task volumes
+                                    (host_path, container_path, read_only)
                                 }
-                                (clean_host_path.to_string(), container_path, read_only)
-                            } else {
-                                (host_path, container_path, read_only)
                             }
-                        })
-                        .collect()
-                };
+                        } else {
+                            // Use the original host path for non-task volumes
+                            (host_path, container_path, read_only)
+                        }
+                    })
+                    .collect();
 
                 binds.extend(
                     processed_volumes
@@ -578,119 +564,118 @@ impl DockerManager {
             }
 
             // --- Step 4: Check if other containers with same task ID exist before removing directory ---
-            if self.storage_path.is_some() {
-                let should_remove_directory = if let Ok(task_container) =
-                    TaskContainer::from_str(trimmed_name)
-                {
-                    // Check if there are other containers with the same task ID
-                    match self.list_containers(true).await {
-                        Ok(containers) => {
-                            let other_containers_with_same_task = containers.iter().any(|c| {
-                                c.names.iter().any(|name| {
-                                    let clean_name = name.trim_start_matches('/');
-                                    if let Ok(other_task_container) = TaskContainer::from_str(name)
-                                    {
-                                        // Same task ID but different container (not the one being removed)
-                                        other_task_container.task_id == task_container.task_id
-                                            && clean_name != trimmed_name
-                                    } else {
-                                        false
-                                    }
-                                })
-                            });
+            let should_remove_directory = if let Ok(task_container) =
+                TaskContainer::from_str(trimmed_name)
+            {
+                // Check if there are other containers with the same task ID
+                match self.list_containers(true).await {
+                    Ok(containers) => {
+                        let other_containers_with_same_task = containers.iter().any(|c| {
+                            c.names.iter().any(|name| {
+                                let clean_name = name.trim_start_matches('/');
+                                if let Ok(other_task_container) = TaskContainer::from_str(name) {
+                                    // Same task ID but different container (not the one being removed)
+                                    other_task_container.task_id == task_container.task_id
+                                        && clean_name != trimmed_name
+                                } else {
+                                    false
+                                }
+                            })
+                        });
 
-                            if other_containers_with_same_task {
-                                info!("Other containers with task ID {} exist, keeping shared directory", task_container.task_id);
-                                false
-                            } else {
-                                info!("No other containers with task ID {} found, safe to remove directory", task_container.task_id);
-                                true
-                            }
-                        }
-                        Err(e) => {
-                            error!("Failed to list containers for cleanup check: {}", e);
-                            // Err on the side of caution - don't remove directory if we can't check
+                        if other_containers_with_same_task {
+                            info!(
+                                "Other containers with task ID {} exist, keeping shared directory",
+                                task_container.task_id
+                            );
                             false
+                        } else {
+                            info!("No other containers with task ID {} found, safe to remove directory", task_container.task_id);
+                            true
                         }
                     }
+                    Err(e) => {
+                        error!("Failed to list containers for cleanup check: {}", e);
+                        // Err on the side of caution - don't remove directory if we can't check
+                        false
+                    }
+                }
+            } else {
+                // If we can't extract task ID, use original behavior
+                true
+            };
+
+            if should_remove_directory {
+                let dir_name = if let Ok(task_container) = TaskContainer::from_str(trimmed_name) {
+                    task_container.data_dir_name()
                 } else {
-                    // If we can't extract task ID, use original behavior
-                    true
+                    trimmed_name.to_string()
                 };
 
-                if should_remove_directory {
-                    let dir_name = if let Ok(task_container) = TaskContainer::from_str(trimmed_name)
-                    {
-                        task_container.data_dir_name()
-                    } else {
-                        trimmed_name.to_string()
-                    };
+                match self.safe_storage_path(&[&dir_name]) {
+                    Ok(dir_path) => {
+                        // Check if directory exists before attempting to remove it
+                        if dir_path.exists() {
+                            let mut success = false;
 
-                    match self.safe_storage_path(&[&dir_name]) {
-                        Ok(dir_path) => {
-                            // Check if directory exists before attempting to remove it
-                            if dir_path.exists() {
-                                let mut success = false;
-
-                                for attempt in 0..max_retries {
-                                    match std::fs::remove_dir_all(&dir_path) {
-                                        Ok(_) => {
-                                            info!(
-                                                "Directory {} removed successfully",
-                                                dir_path.display()
-                                            );
-                                            success = true;
-                                            break;
-                                        }
-                                        Err(e) => {
-                                            debug!(
-                                                "Attempt {}/{} failed to remove dir {}: {}",
-                                                attempt + 1,
-                                                max_retries,
-                                                dir_path.display(),
-                                                e
-                                            );
-                                            tokio::time::sleep(Duration::from_secs(1)).await;
-                                        }
+                            for attempt in 0..max_retries {
+                                match std::fs::remove_dir_all(&dir_path) {
+                                    Ok(_) => {
+                                        info!(
+                                            "Directory {} removed successfully",
+                                            dir_path.display()
+                                        );
+                                        success = true;
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        debug!(
+                                            "Attempt {}/{} failed to remove dir {}: {}",
+                                            attempt + 1,
+                                            max_retries,
+                                            dir_path.display(),
+                                            e
+                                        );
+                                        tokio::time::sleep(Duration::from_secs(1)).await;
                                     }
                                 }
-
-                                if !success {
-                                    error!(
-                                        "Failed to remove directory {} after {} attempts — trying fallback",
-                                        dir_path.display(), max_retries
-                                    );
-
-                                    // Try `rm -rf` as fallback
-                                    match std::process::Command::new("rm")
-                                        .arg("-rf")
-                                        .arg(&dir_path)
-                                        .status()
-                                    {
-                                        Ok(status) if status.success() => {
-                                            info!(
-                                                "Fallback removal of {} succeeded",
-                                                dir_path.display()
-                                            );
-                                        }
-                                        Ok(status) => {
-                                            error!("Fallback rm -rf failed with status {}", status);
-                                        }
-                                        Err(e) => {
-                                            error!("Failed to execute fallback rm -rf: {}", e);
-                                        }
-                                    }
-                                }
-                            } else {
-                                debug!(
-                                    "Directory {} does not exist, skipping removal",
-                                    dir_path.display()
-                                );
                             }
+
+                            if !success {
+                                error!(
+                                    "Failed to remove directory {} after {} attempts — trying fallback",
+                                    dir_path.display(), max_retries
+                                );
+
+                                // Try `rm -rf` as fallback
+                                match std::process::Command::new("rm")
+                                    .arg("-rf")
+                                    .arg(&dir_path)
+                                    .status()
+                                {
+                                    Ok(status) if status.success() => {
+                                        info!(
+                                            "Fallback removal of {} succeeded",
+                                            dir_path.display()
+                                        );
+                                    }
+                                    Ok(status) => {
+                                        error!("Fallback rm -rf failed with status {}", status);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to execute fallback rm -rf: {}", e);
+                                    }
+                                }
+                            }
+                        } else {
+                            debug!(
+                                "Directory {} does not exist, skipping removal",
+                                dir_path.display()
+                            );
                         }
-                        Err(e) => {
-                            error!("Failed to create secure path for directory removal: {}", e);
-                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to create secure path for directory removal: {}", e);
                     }
                 }
             }

@@ -279,7 +279,7 @@ mod tests {
                 }),
                 ram_mb: Some(64000),
                 storage_gb: Some(500),
-                storage_path: None,
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -535,7 +535,7 @@ mod tests {
                 }),
                 ram_mb: Some(64000),
                 storage_gb: Some(500),
-                storage_path: None,
+                ..Default::default()
             }),
             ..Default::default()
         };

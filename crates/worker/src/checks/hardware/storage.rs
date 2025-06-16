@@ -7,6 +7,7 @@ use std::ffi::CString;
 #[cfg(target_os = "linux")]
 use std::fs;
 pub const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
+pub const APP_DIR_NAME: &str = "prime-worker";
 
 #[derive(Clone)]
 pub struct MountPoint {
@@ -69,7 +70,7 @@ pub fn get_storage_info() -> Result<(f64, f64), std::io::Error> {
 #[cfg(target_os = "linux")]
 pub fn find_largest_storage() -> Option<MountPoint> {
     const VALID_FS: [&str; 4] = ["ext4", "xfs", "btrfs", "zfs"];
-    const MIN_SPACE: u64 = 1_000_000_000;
+    const MIN_SPACE: u64 = 1_000_000_000; // 1GB minimum
 
     let mut mount_points = Vec::new();
     let username = std::env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
@@ -77,53 +78,162 @@ pub fn find_largest_storage() -> Option<MountPoint> {
     if let Ok(mounts) = fs::read_to_string("/proc/mounts") {
         for line in mounts.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 2 {
+            if parts.len() < 3 {
                 continue;
             }
 
-            let path = parts[1];
+            let mount_path = parts[1];
             let fstype = parts[2];
 
+            // Skip if not a valid filesystem type
             if !VALID_FS.contains(&fstype) {
                 continue;
             }
 
-            // Check available space
+            // Skip system/special mounts
+            if mount_path.starts_with("/proc")
+                || mount_path.starts_with("/sys")
+                || mount_path.starts_with("/dev")
+                || mount_path.starts_with("/run")
+            {
+                continue;
+            }
+
+            // Check available space on this mount point
             let mut stats: statvfs_t = unsafe { std::mem::zeroed() };
-            let path_c = CString::new(path).unwrap();
-            if unsafe { statvfs(path_c.as_ptr(), &mut stats) } == 0 {
-                let available = stats.f_bsize * stats.f_bavail;
-                if available <= MIN_SPACE {
-                    continue;
-                }
-                // Check common writable locations
-                let base_path = path.trim_end_matches('/');
-                let paths_to_check = vec![
-                    base_path.to_string(),
-                    format!("{}/home/{}", base_path, username),
-                    format!("{}/var/lib", base_path),
-                    format!("{}/workspace", base_path),
-                    format!("{}/ephemeral", base_path),
-                ];
-                for check_path in paths_to_check {
-                    if let Ok(check_path_c) = CString::new(check_path.clone()) {
-                        if unsafe { libc::access(check_path_c.as_ptr(), libc::W_OK) } == 0 {
-                            mount_points.push(MountPoint {
-                                path: check_path,
-                                available_space: available,
-                            });
-                        }
-                    }
-                }
+            let path_c = match CString::new(mount_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            if unsafe { statvfs(path_c.as_ptr(), &mut stats) } != 0 {
+                continue;
+            }
+
+            let available_space = stats.f_bsize * stats.f_bavail;
+            if available_space <= MIN_SPACE {
+                continue;
+            }
+
+            // Try to find the best writable location on this mount point
+            if let Some(best_path) = find_best_writable_path(mount_path, &username) {
+                mount_points.push(MountPoint {
+                    path: best_path,
+                    available_space,
+                });
             }
         }
     }
 
+    // Return the mount point with the most available space
     mount_points.into_iter().max_by_key(|m| m.available_space)
+}
+
+/// Find the best writable path on a given mount point
+#[cfg(target_os = "linux")]
+fn find_best_writable_path(mount_path: &str, username: &str) -> Option<String> {
+    // List of potential base directories to try, in order of preference
+    let potential_bases = vec![
+        // User home directory (highest preference if on this mount)
+        format!("{}/home/{}", mount_path.trim_end_matches('/'), username),
+        // Standard application directories
+        format!("{}/opt", mount_path.trim_end_matches('/')),
+        format!("{}/var/lib", mount_path.trim_end_matches('/')),
+        // Cloud/ephemeral storage (common in cloud environments)
+        format!("{}/workspace", mount_path.trim_end_matches('/')),
+        format!("{}/ephemeral", mount_path.trim_end_matches('/')),
+        format!("{}/tmp", mount_path.trim_end_matches('/')),
+        // Mount root as last resort
+        mount_path.trim_end_matches('/').to_string(),
+    ];
+
+    for base_dir in potential_bases {
+        // First check if the base directory exists and is writable
+        if !test_directory_writable(&base_dir) {
+            continue;
+        }
+
+        // Try to create our app directory within this base
+        let app_path = if base_dir == mount_path.trim_end_matches('/') {
+            // If using mount root, create the app directory directly
+            format!("{}/{}", base_dir, APP_DIR_NAME)
+        } else {
+            // Otherwise, nest it properly
+            format!("{}/{}", base_dir, APP_DIR_NAME)
+        };
+
+        // Test if we can create and write to our app directory
+        if test_or_create_app_directory(&app_path) {
+            return Some(app_path);
+        }
+    }
+
+    None
+}
+
+/// Test if a directory is writable
+#[cfg(target_os = "linux")]
+fn test_directory_writable(path: &str) -> bool {
+    // Check if directory exists
+    if !std::path::Path::new(path).is_dir() {
+        return false;
+    }
+
+    // Test write access using libc::access
+    match CString::new(path) {
+        Ok(path_c) => {
+            let result = unsafe { libc::access(path_c.as_ptr(), libc::W_OK) };
+            result == 0
+        }
+        Err(_) => false,
+    }
+}
+/// Test if we can create and use our app directory
+#[cfg(target_os = "linux")]
+fn test_or_create_app_directory(path: &str) -> bool {
+    let path_buf = std::path::Path::new(path);
+
+    // If directory doesn't exist, try to create it
+    if !path_buf.exists() && std::fs::create_dir_all(path_buf).is_err() {
+        return false;
+    }
+
+    // Verify it's a directory
+    if !path_buf.is_dir() {
+        return false;
+    }
+
+    // Test actual write permissions by creating a temporary file
+    let test_file = path_buf.join(".write_test");
+    match std::fs::write(&test_file, b"test") {
+        Ok(_) => {
+            // Clean up test file
+            let _ = std::fs::remove_file(&test_file);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
 pub fn find_largest_storage() -> Option<MountPoint> {
+    None
+}
+
+#[cfg(target_os = "linux")]
+pub fn get_available_space(path: &str) -> Option<u64> {
+    let mut stats: statvfs_t = unsafe { std::mem::zeroed() };
+    if let Ok(path_c) = CString::new(path) {
+        if unsafe { statvfs(path_c.as_ptr(), &mut stats) } == 0 {
+            let available = stats.f_bsize * stats.f_bavail;
+            return Some(available);
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn get_available_space(_path: &str) -> Option<u64> {
     None
 }
 

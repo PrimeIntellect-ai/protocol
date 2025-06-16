@@ -19,7 +19,7 @@ pub struct Node {
     pub worker_p2p_addresses: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ComputeSpecs {
     // GPU specifications
     pub gpu: Option<GpuSpecs>,
@@ -28,7 +28,19 @@ pub struct ComputeSpecs {
     // Memory and storage specifications
     pub ram_mb: Option<u32>,
     pub storage_gb: Option<u32>,
-    pub storage_path: Option<String>,
+    pub storage_path: String,
+}
+
+impl Default for ComputeSpecs {
+    fn default() -> Self {
+        Self {
+            gpu: None,
+            cpu: None,
+            ram_mb: None,
+            storage_gb: None,
+            storage_path: "/var/lib/prime-worker".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
@@ -612,7 +624,7 @@ mod tests {
             },
             ram_mb: ram,
             storage_gb: storage,
-            storage_path: None, // Assuming path isn't critical for these tests
+            storage_path: "/var/lib/prime-worker-test".to_string(),
         }
     }
 
@@ -904,7 +916,7 @@ mod tests {
             }),
             ram_mb: Some(64000),
             storage_gb: Some(500),
-            storage_path: None,
+            storage_path: "/var/lib/prime-worker-test".to_string(),
         };
         // Requirement needs specific memory
         let req_str_mem = "gpu:count=4;gpu:model=A100;gpu:memory_mb=40000";
@@ -932,7 +944,7 @@ mod tests {
             }),
             ram_mb: Some(64000),
             storage_gb: Some(500),
-            storage_path: None,
+            storage_path: "/var/lib/prime-worker-test".to_string(),
         };
 
         // Test case 1: Requirements with memory range that includes node's memory
