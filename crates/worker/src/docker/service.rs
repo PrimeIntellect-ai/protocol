@@ -194,8 +194,11 @@ impl DockerService {
                                         let cmd = match payload.cmd {
                                             Some(cmd_vec) => {
                                                 cmd_vec.into_iter().map(|arg| {
-                                                    // Replace ${SOCKET_PATH}
-                                                    arg.replace("${SOCKET_PATH}", &task_bridge_socket_path)
+                                                    let mut processed_arg = arg.replace("${SOCKET_PATH}", &task_bridge_socket_path);
+                                                    if let Some(seed) = p2p_seed {
+                                                        processed_arg = processed_arg.replace("${WORKER_P2P_SEED}", &seed.to_string());
+                                                    }
+                                                    processed_arg
                                                 }).collect()
                                             }
                                             None => vec!["sleep".to_string(), "infinity".to_string()],
@@ -205,7 +208,10 @@ impl DockerService {
                                         if let Some(env) = &payload.env_vars {
                                             // Clone env vars and replace ${SOCKET_PATH} in values
                                             for (key, value) in env.iter() {
-                                                let processed_value = value.replace("${SOCKET_PATH}", &task_bridge_socket_path);
+                                                let mut processed_value = value.replace("${SOCKET_PATH}", &task_bridge_socket_path);
+                                                if let Some(seed) = p2p_seed {
+                                                    processed_value = processed_value.replace("${WORKER_P2P_SEED}", &seed.to_string());
+                                                }
                                                 env_vars.insert(key.clone(), processed_value);
                                             }
                                         }
@@ -213,9 +219,6 @@ impl DockerService {
                                         env_vars.insert("NODE_ADDRESS".to_string(), node_address);
                                         env_vars.insert("PRIME_MONITOR__SOCKET__PATH".to_string(), task_bridge_socket_path.to_string());
                                         env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
-                                        if let Some(p2p_seed) = p2p_seed {
-                                            env_vars.insert("IROH_SEED".to_string(), p2p_seed.to_string());
-                                        }
 
                                         let mut volumes = vec![
                                             (
