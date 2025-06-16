@@ -1,8 +1,10 @@
 use super::storage;
+use super::storage::APP_DIR_NAME;
 use crate::{
     checks::issue::{IssueReport, IssueType},
     console::Console,
 };
+use log::info;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -57,20 +59,24 @@ impl StoragePathDetector {
     ) -> Result<(String, Option<u64>), Box<dyn std::error::Error>> {
         // First try automatic storage detection
         if let Some(mount_point) = storage::find_largest_storage() {
+            info!(
+                "Automatically found largest storage mount point: {}",
+                mount_point.path
+            );
             return Ok((mount_point.path, Some(mount_point.available_space)));
         }
 
         // Try fallback paths
         let fallback_paths = vec![
-            "/var/lib/prime-worker".to_string(),
-            "/opt/prime-worker".to_string(),
-            "/home/prime-worker".to_string(),
+            format!("/var/lib/{}", APP_DIR_NAME),
+            format!("/opt/{}", APP_DIR_NAME),
+            format!("/home/{}", APP_DIR_NAME),
         ];
 
         // Add user home directory option
         let mut all_paths = fallback_paths;
         if let Ok(home) = std::env::var("HOME") {
-            all_paths.push(format!("{}/prime-worker", home));
+            all_paths.push(format!("{}/{}", home, APP_DIR_NAME));
         }
 
         for path in all_paths {
@@ -95,8 +101,12 @@ impl StoragePathDetector {
 
         // Last resort - current directory
         let current_dir = std::env::current_dir()
-            .map(|p| p.join("prime-worker-data").to_string_lossy().to_string())
-            .unwrap_or_else(|_| "./prime-worker-data".to_string());
+            .map(|p| {
+                p.join(format!("{}-data", APP_DIR_NAME))
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .unwrap_or_else(|_| format!("./{}-data", APP_DIR_NAME));
 
         Console::warning(&format!(
             "Using current directory fallback: {}",
@@ -116,11 +126,15 @@ impl StoragePathDetector {
         // For non-Linux systems, try user directory first
         let default_path = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
-            .map(|home| format!("{}/prime-worker", home))
+            .map(|home| format!("{}/{}", home, APP_DIR_NAME))
             .unwrap_or_else(|_| {
                 std::env::current_dir()
-                    .map(|p| p.join("prime-worker-data").to_string_lossy().to_string())
-                    .unwrap_or_else(|_| "./prime-worker-data".to_string())
+                    .map(|p| {
+                        p.join(format!("{}-data", APP_DIR_NAME))
+                            .to_string_lossy()
+                            .to_string()
+                    })
+                    .unwrap_or_else(|_| format!("./{}-data", APP_DIR_NAME))
             });
 
         Console::info(

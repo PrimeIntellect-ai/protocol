@@ -37,7 +37,7 @@ impl DockerService {
         gpu: Option<GpuSpecs>,
         system_memory_mb: Option<u32>,
         task_bridge_socket_path: String,
-        storage_path: Option<String>,
+        storage_path: String,
         node_address: String,
         p2p_seed: Option<u64>,
     ) -> Self {
@@ -380,7 +380,7 @@ mod tests {
             None,
             Some(1024),
             "/tmp/com.prime.miner/metrics.sock".to_string(),
-            None,
+            "/tmp/test-storage".to_string(),
             Address::ZERO.to_string(),
             None,
         );

@@ -404,10 +404,12 @@ pub async fn execute_command(
             let bridge_contracts = contracts.clone();
             let bridge_wallet = node_wallet_instance.clone();
 
-            let docker_storage_path = match node_config.clone().compute_specs {
-                Some(specs) => Some(specs.storage_path.clone()),
-                None => None,
-            };
+            let docker_storage_path = node_config
+                .compute_specs
+                .as_ref()
+                .expect("Hardware check should have populated compute_specs")
+                .storage_path
+                .clone();
             let task_bridge = TaskBridge::new(
                 None,
                 metrics_store,
