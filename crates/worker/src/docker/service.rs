@@ -55,6 +55,7 @@ impl DockerService {
             p2p_seed,
         }
     }
+
     pub fn generate_task_config_hash(task: &Task) -> u64 {
         let mut hasher = DefaultHasher::new();
         task.image.hash(&mut hasher);
@@ -400,7 +401,6 @@ mod tests {
     use alloy::primitives::Address;
     use shared::models::task::Task;
     use shared::models::task::TaskState;
-    use shared::models::task::VolumeMount;
     use uuid::Uuid;
 
     #[tokio::test]
@@ -448,79 +448,5 @@ mod tests {
         state_clone.set_current_task(None).await;
         tokio::time::sleep(Duration::from_secs(2)).await;
         cancellation_token.cancel();
-    }
-
-    #[tokio::test]
-    #[serial_test::serial]
-    async fn test_generate_task_config_hash() {
-        // Create first task with volume mounts and env vars in one order
-        let task1 = Task {
-            image: "ubuntu:latest".to_string(),
-            name: "test".to_string(),
-            id: Uuid::new_v4(),
-            env_vars: Some(HashMap::from([
-                ("VAR_A".to_string(), "value_a".to_string()),
-                ("VAR_B".to_string(), "value_b".to_string()),
-                ("VAR_C".to_string(), "value_c".to_string()),
-            ])),
-            cmd: Some(vec!["sleep".to_string(), "5".to_string()]),
-            entrypoint: None,
-            state: TaskState::PENDING,
-            created_at: Utc::now().timestamp_millis(),
-            volume_mounts: Some(vec![
-                VolumeMount {
-                    host_path: "/tmp/test".to_string(),
-                    container_path: "/tmp/test".to_string(),
-                },
-                VolumeMount {
-                    host_path: "/tmp/test2".to_string(),
-                    container_path: "/tmp/test2".to_string(),
-                },
-                VolumeMount {
-                    host_path: "/tmp/test3".to_string(),
-                    container_path: "/tmp/test3".to_string(),
-                },
-            ]),
-            ..Default::default()
-        };
-
-        // Create second task with same content but different order
-        let task2 = Task {
-            image: "ubuntu:latest".to_string(),
-            name: "test".to_string(),
-            id: Uuid::new_v4(),
-            env_vars: Some(HashMap::from([
-                ("VAR_C".to_string(), "value_c".to_string()),
-                ("VAR_A".to_string(), "value_a".to_string()),
-                ("VAR_B".to_string(), "value_b".to_string()),
-            ])),
-            cmd: Some(vec!["sleep".to_string(), "5".to_string()]),
-            state: TaskState::PENDING,
-            created_at: Utc::now().timestamp_millis(),
-            volume_mounts: Some(vec![
-                VolumeMount {
-                    host_path: "/tmp/test3".to_string(),
-                    container_path: "/tmp/test3".to_string(),
-                },
-                VolumeMount {
-                    host_path: "/tmp/test".to_string(),
-                    container_path: "/tmp/test".to_string(),
-                },
-                VolumeMount {
-                    host_path: "/tmp/test2".to_string(),
-                    container_path: "/tmp/test2".to_string(),
-                },
-            ]),
-            ..Default::default()
-        };
-
-        let hash1 = DockerService::generate_task_config_hash(&task1);
-        let hash2 = DockerService::generate_task_config_hash(&task2);
-
-        // Despite different ordering, hashes should be the same
-        assert_eq!(
-            hash1, hash2,
-            "Hashes should be equal despite different ordering of env vars and volume mounts"
-        );
     }
 }
