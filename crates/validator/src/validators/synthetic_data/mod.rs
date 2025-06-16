@@ -396,6 +396,7 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
 
     /// Checks if a group is currently being tracked for incomplete recovery.
     ///Used in tests and debugging to verify that incomplete groups
+    #[cfg(test)]
     async fn is_group_being_tracked_as_incomplete(&self, group_key: &str) -> Result<bool, Error> {
         if self.incomplete_group_grace_period_minutes == 0 {
             return Ok(false); // Feature disabled
