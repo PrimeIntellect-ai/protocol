@@ -188,7 +188,6 @@ fn test_directory_writable(path: &str) -> bool {
         Err(_) => false,
     }
 }
-
 /// Test if we can create and use our app directory
 #[cfg(target_os = "linux")]
 fn test_or_create_app_directory(path: &str) -> bool {
@@ -196,7 +195,7 @@ fn test_or_create_app_directory(path: &str) -> bool {
 
     // If directory doesn't exist, try to create it
     if !path_buf.exists() {
-        if let Err(_) = std::fs::create_dir_all(path_buf) {
+        if std::fs::create_dir_all(path_buf).is_err() {
             return false;
         }
     }
