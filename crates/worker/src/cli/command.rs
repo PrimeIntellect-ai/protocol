@@ -211,7 +211,7 @@ pub async fn execute_command(
             };
 
             let mut recover_last_state = *auto_recover;
-            let version = env!("CARGO_PKG_VERSION");
+            let version = option_env!("WORKER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
             Console::section("🚀 PRIME WORKER INITIALIZATION - beta");
             Console::info("Version", version);
             /*

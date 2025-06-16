@@ -163,7 +163,11 @@ async fn send_heartbeat(
             task_id: Some(task.id.to_string()),
             task_state: Some(task.state.to_string()),
             metrics: Some(metrics_for_task),
-            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            version: Some(
+                option_env!("WORKER_VERSION")
+                    .unwrap_or(env!("CARGO_PKG_VERSION"))
+                    .to_string(),
+            ),
             timestamp: Some(ts),
             p2p_id,
         }
@@ -173,7 +177,11 @@ async fn send_heartbeat(
             task_id: None,
             task_state: None,
             metrics: None,
-            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            version: Some(
+                option_env!("WORKER_VERSION")
+                    .unwrap_or(env!("CARGO_PKG_VERSION"))
+                    .to_string(),
+            ),
             timestamp: Some(ts),
             p2p_id,
         }

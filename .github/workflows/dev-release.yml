@@ -31,6 +31,8 @@ jobs:
 
       # Use all available cores for the build
       - name: Build all workspace members
+        env:
+          WORKER_VERSION: ${{ steps.next_version.outputs.tag_name }}
         run: |
           export CARGO_BUILD_JOBS=$(nproc)
           cargo build --release --workspace
