@@ -217,12 +217,11 @@ impl PrimeNetworkContract<WalletProvider> {
             .watch()
             .await?;
 
-        let receipt = self
+        let _ = self
             .instance
             .provider()
             .get_transaction_receipt(whitelist_provider_tx)
             .await?;
-        println!("Receipt: {:?}", receipt);
 
         Ok(whitelist_provider_tx)
     }

@@ -120,6 +120,10 @@ struct Args {
     /// Node group management interval
     #[arg(long, default_value = "10")]
     node_group_management_interval: u64,
+
+    /// Max healthy nodes with same endpoint
+    #[arg(long, default_value = "1")]
+    max_healthy_nodes_with_same_endpoint: u32,
 }
 
 #[tokio::main]
@@ -313,6 +317,7 @@ async fn main() -> Result<()> {
                     args.discovery_url,
                     discovery_store_context.clone(),
                     discovery_heartbeats.clone(),
+                    args.max_healthy_nodes_with_same_endpoint,
                 );
                 monitor.run().await
             }

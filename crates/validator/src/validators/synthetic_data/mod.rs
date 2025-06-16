@@ -1338,8 +1338,21 @@ impl SyntheticDataValidator<WalletProvider> {
 
         #[cfg(not(test))]
         {
-            let data = hex::decode(work_key)
+            let work_info = self
+                .get_work_info_from_redis(work_key)
+                .await?
+                .ok_or_else(|| Error::msg("Work info not found for soft invalidation"))?;
+            let work_key_bytes = hex::decode(work_key)
                 .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+
+            // Create 64-byte payload: work_key (32 bytes) + work_units (32 bytes)
+            let mut data = Vec::with_capacity(64);
+            data.extend_from_slice(&work_key_bytes);
+
+            // Convert work_units to 32-byte representation
+            let work_units_bytes = work_info.work_units.to_be_bytes::<32>();
+            data.extend_from_slice(&work_units_bytes);
+
             match self
                 .prime_network
                 .soft_invalidate_work(self.pool_id, data)

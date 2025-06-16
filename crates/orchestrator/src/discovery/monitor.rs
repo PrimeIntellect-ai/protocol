@@ -24,6 +24,7 @@ pub struct DiscoveryMonitor {
     store_context: Arc<StoreContext>,
     heartbeats: Arc<LoopHeartbeats>,
     http_client: reqwest::Client,
+    max_healthy_nodes_with_same_endpoint: u32,
 }
 
 impl DiscoveryMonitor {
@@ -34,6 +35,7 @@ impl DiscoveryMonitor {
         discovery_url: String,
         store_context: Arc<StoreContext>,
         heartbeats: Arc<LoopHeartbeats>,
+        max_healthy_nodes_with_same_endpoint: u32,
     ) -> Self {
         Self {
             coordinator_wallet,
@@ -43,6 +45,7 @@ impl DiscoveryMonitor {
             store_context,
             heartbeats,
             http_client: reqwest::Client::new(),
+            max_healthy_nodes_with_same_endpoint,
         }
     }
 
@@ -127,19 +130,22 @@ impl DiscoveryMonitor {
         Ok(nodes)
     }
 
-    async fn has_healthy_node_with_same_endpoint(
+    async fn count_healthy_nodes_with_same_endpoint(
         &self,
         node_address: Address,
         ip_address: &str,
         port: u16,
-    ) -> Result<bool, Error> {
+    ) -> Result<u32, Error> {
         let nodes = self.store_context.node_store.get_nodes().await?;
-        Ok(nodes.iter().any(|other_node| {
-            other_node.address != node_address
-                && other_node.ip_address == ip_address
-                && other_node.port == port
-                && other_node.status == NodeStatus::Healthy
-        }))
+        Ok(nodes
+            .iter()
+            .filter(|other_node| {
+                other_node.address != node_address
+                    && other_node.ip_address == ip_address
+                    && other_node.port == port
+                    && other_node.status == NodeStatus::Healthy
+            })
+            .count() as u32)
     }
 
     async fn sync_single_node_with_discovery(
@@ -149,8 +155,8 @@ impl DiscoveryMonitor {
         let node_address = discovery_node.node.id.parse::<Address>()?;
 
         // Check if there's any healthy node with the same IP and port
-        let has_healthy_node_same_endpoint = self
-            .has_healthy_node_with_same_endpoint(
+        let count_healthy_nodes_with_same_endpoint = self
+            .count_healthy_nodes_with_same_endpoint(
                 node_address,
                 &discovery_node.node.ip_address,
                 discovery_node.node.port,
@@ -160,7 +166,9 @@ impl DiscoveryMonitor {
         match self.store_context.node_store.get_node(&node_address).await {
             Ok(Some(existing_node)) => {
                 // If there's a healthy node with same IP and port, and this node isn't healthy, mark it dead
-                if has_healthy_node_same_endpoint && existing_node.status != NodeStatus::Healthy {
+                if count_healthy_nodes_with_same_endpoint > 0
+                    && existing_node.status != NodeStatus::Healthy
+                {
                     info!(
                         "Node {} shares endpoint {}:{} with a healthy node, marking as dead",
                         node_address, discovery_node.node.ip_address, discovery_node.node.port
@@ -268,7 +276,9 @@ impl DiscoveryMonitor {
             }
             Ok(None) => {
                 // Don't add new node if there's already a healthy node with same IP and port
-                if has_healthy_node_same_endpoint {
+                if count_healthy_nodes_with_same_endpoint
+                    >= self.max_healthy_nodes_with_same_endpoint
+                {
                     info!(
                         "Skipping new node {} as endpoint {}:{} is already used by a healthy node",
                         node_address, discovery_node.node.ip_address, discovery_node.node.port
@@ -387,6 +397,7 @@ mod tests {
             "http://localhost:8080".to_string(),
             discovery_store_context,
             Arc::new(LoopHeartbeats::new(&mode)),
+            1,
         );
 
         let store_context_clone = store_context.clone();
@@ -466,6 +477,7 @@ mod tests {
             "http://localhost:8080".to_string(),
             store_context.clone(),
             Arc::new(LoopHeartbeats::new(&mode)),
+            1,
         );
 
         let time_before = Utc::now();
@@ -613,6 +625,7 @@ mod tests {
             "http://localhost:8080".to_string(),
             store_context.clone(),
             Arc::new(LoopHeartbeats::new(&mode)),
+            1,
         );
 
         // Try to sync the second node

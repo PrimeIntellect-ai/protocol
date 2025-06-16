@@ -15,7 +15,7 @@ def send_message(metrics, task_id=None):
     print(f"Thread {threading.current_thread().name}: Sending message to socket: {socket_path}")
     
     if task_id is None:
-        task_id = "f93f7b63-968e-41ec-8c0d-0c3c65050b4d"
+        task_id = "47131d6b-b893-46ad-8046-df4561eadddd"
     metrics["task_id"] = task_id
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
@@ -54,7 +54,7 @@ def send_file_info():
     """Simulates sending file info."""
     file_data = {
         "output/save_path": "/path/to/save/file.txt",
-        "output/sha256": "20638f48221b266635376b399254d0faf17f69da567fd0f5deb3d6775c7c7607",
+        "output/sha256": "1c4970c5032ba367efc537054d9d0f4595b8a7fe0901e8aa1b5c34c0c582ce84",
         "output/output_flops": 1500000,
         "output/input_flops": 500000
     }
