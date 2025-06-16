@@ -748,7 +748,10 @@ pub async fn execute_command(
 
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
-            if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone()) {
+
+            let pool_id = state.compute_pool_id.clone().unwrap_or("0".to_string());
+            if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone(), pool_id)
+            {
                 error!("❌ Failed to start node monitoring: {}", err);
                 std::process::exit(1);
             }

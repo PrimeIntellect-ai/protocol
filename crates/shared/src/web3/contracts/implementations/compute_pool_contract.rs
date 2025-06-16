@@ -1,7 +1,9 @@
 use crate::web3::contracts::constants::addresses::COMPUTE_POOL_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
 use crate::web3::contracts::helpers::utils::{get_selector, PrimeCallBuilder};
+use crate::web3::contracts::implementations::rewards_distributor_contract::RewardsDistributor;
 use crate::web3::contracts::structs::compute_pool::{PoolInfo, PoolStatus};
+use crate::web3::contracts::structs::rewards_distributor::{NodeRewards, PoolRewardsSummary};
 use crate::web3::wallet::WalletProvider;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, FixedBytes, U256};
@@ -91,7 +93,14 @@ impl<P: alloy_provider::Provider> ComputePool<P> {
             )?
             .call()
             .await?;
-        Ok(result.first().unwrap().as_bool().unwrap())
+
+        let is_blacklisted = result
+            .first()
+            .ok_or("Missing blacklist status in response")?
+            .as_bool()
+            .ok_or("Failed to parse blacklist status as bool")?;
+
+        Ok(is_blacklisted)
     }
 
     pub async fn get_blacklisted_nodes(
@@ -130,7 +139,175 @@ impl<P: alloy_provider::Provider> ComputePool<P> {
             .function("isNodeInPool", &[arg_pool_id.into(), node.into()])?
             .call()
             .await?;
-        Ok(result.first().unwrap().as_bool().unwrap())
+
+        let is_in_pool = result
+            .first()
+            .ok_or("Missing node-in-pool status in response")?
+            .as_bool()
+            .ok_or("Failed to parse node-in-pool status as bool")?;
+
+        Ok(is_in_pool)
+    }
+
+    /// Get the rewards distributor address for a specific pool
+    pub async fn get_reward_distributor_address(
+        &self,
+        pool_id: U256,
+    ) -> Result<Address, Box<dyn std::error::Error>> {
+        let result = self
+            .instance
+            .instance()
+            .function("getRewardDistributorForPool", &[pool_id.into()])?
+            .call()
+            .await?;
+
+        let address = result
+            .first()
+            .ok_or("Missing rewards distributor address in response")?
+            .as_address()
+            .ok_or("Failed to parse rewards distributor address")?;
+
+        Ok(address)
+    }
+
+    /// Calculate rewards for a specific node in a pool
+    pub async fn calculate_node_rewards(
+        &self,
+        pool_id: U256,
+        node: Address,
+    ) -> Result<(U256, U256), Box<dyn std::error::Error>> {
+        let distributor_address = self.get_reward_distributor_address(pool_id).await?;
+        let rewards_distributor = RewardsDistributor::new(
+            distributor_address,
+            self.instance.provider(),
+            "rewards_distributor.json",
+        );
+
+        rewards_distributor.calculate_rewards(node).await
+    }
+
+    /// Get detailed rewards information for a node in a pool
+    pub async fn get_node_rewards_details(
+        &self,
+        pool_id: U256,
+        node: Address,
+        provider: Address,
+    ) -> Result<NodeRewards, Box<dyn std::error::Error>> {
+        let distributor_address = self.get_reward_distributor_address(pool_id).await?;
+        let rewards_distributor = RewardsDistributor::new(
+            distributor_address,
+            self.instance.provider(),
+            "rewards_distributor.json",
+        );
+
+        rewards_distributor
+            .get_node_rewards_details(node, provider)
+            .await
+    }
+
+    /// Calculate rewards for all nodes in a pool
+    pub async fn calculate_pool_rewards(
+        &self,
+        pool_id: U256,
+    ) -> Result<PoolRewardsSummary, Box<dyn std::error::Error>> {
+        // Get all nodes in the pool
+        let nodes = self.get_compute_pool_nodes(pool_id).await?;
+        let distributor_address = self.get_reward_distributor_address(pool_id).await?;
+        let rewards_distributor = RewardsDistributor::new(
+            distributor_address,
+            self.instance.provider(),
+            "rewards_distributor.json",
+        );
+
+        let mut summary = PoolRewardsSummary {
+            total_claimable: U256::ZERO,
+            total_locked: U256::ZERO,
+            active_nodes: 0,
+            nodes: nodes.clone(),
+            node_rewards: Vec::new(),
+        };
+
+        for node in &nodes {
+            let (claimable, locked) = rewards_distributor.calculate_rewards(*node).await?;
+            let node_info = rewards_distributor.get_node_info(*node).await?;
+
+            let node_rewards = NodeRewards {
+                claimable_tokens: claimable,
+                locked_tokens: locked,
+                total_rewards: claimable + locked,
+                is_active: node_info.is_active,
+                provider: Address::ZERO, // This would need to be fetched from compute registry
+            };
+
+            summary.total_claimable += claimable;
+            summary.total_locked += locked;
+            if node_info.is_active {
+                summary.active_nodes += 1;
+            }
+            summary.node_rewards.push(node_rewards);
+        }
+
+        Ok(summary)
+    }
+
+    /// Check if a node has claimable rewards in a pool
+    pub async fn has_claimable_rewards(
+        &self,
+        pool_id: U256,
+        node: Address,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let distributor_address = self.get_reward_distributor_address(pool_id).await?;
+        let rewards_distributor = RewardsDistributor::new(
+            distributor_address,
+            self.instance.provider(),
+            "rewards_distributor.json",
+        );
+
+        rewards_distributor.has_claimable_rewards(node).await
+    }
+
+    /// Get the reward rate for a specific pool
+    pub async fn get_pool_reward_rate(
+        &self,
+        pool_id: U256,
+    ) -> Result<U256, Box<dyn std::error::Error>> {
+        let distributor_address = self.get_reward_distributor_address(pool_id).await?;
+        let rewards_distributor = RewardsDistributor::new(
+            distributor_address,
+            self.instance.provider(),
+            "rewards_distributor.json",
+        );
+
+        rewards_distributor.get_reward_rate().await
+    }
+
+    /// Get all nodes in a compute pool
+    pub async fn get_compute_pool_nodes(
+        &self,
+        pool_id: U256,
+    ) -> Result<Vec<Address>, Box<dyn std::error::Error>> {
+        let result = self
+            .instance
+            .instance()
+            .function("getComputePoolNodes", &[pool_id.into()])?
+            .call()
+            .await?;
+
+        let nodes_array = result
+            .first()
+            .ok_or("Missing nodes array in response")?
+            .as_array()
+            .ok_or("Failed to parse nodes as array")?;
+
+        let mut nodes = Vec::new();
+        for node_value in nodes_array {
+            let node_address = node_value
+                .as_address()
+                .ok_or("Failed to parse node address")?;
+            nodes.push(node_address);
+        }
+
+        Ok(nodes)
     }
 }
 
