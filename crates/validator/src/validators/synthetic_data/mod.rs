@@ -414,8 +414,48 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             .zscore("incomplete_groups", group_key)
             .await
             .map_err(|e| Error::msg(format!("Failed to check incomplete tracking: {}", e)))?;
-
         Ok(score.is_some())
+    }
+
+    /// Updates the grace period deadline for a tracked incomplete group.
+    /// Used in tests to simulate time passing by setting deadline relative to current time.
+    ///
+    /// # Arguments
+    /// * `group_key` - The group to update
+    /// * `minutes_from_now` - Minutes from current timestamp (negative for past, positive for future)
+    #[cfg(test)]
+    async fn update_incomplete_group_deadline_relative(
+        &self,
+        group_key: &str,
+        minutes_from_now: i64,
+    ) -> Result<(), Error> {
+        if self.incomplete_group_grace_period_minutes == 0 {
+            return Ok(()); // Feature disabled
+        }
+
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        let current_timestamp = chrono::Utc::now().timestamp();
+        let new_deadline = current_timestamp + (minutes_from_now * 60);
+
+        // Update the score (deadline) for the group in the sorted set
+        let _: () = con
+            .zadd("incomplete_groups", group_key, new_deadline)
+            .await
+            .map_err(|e| {
+                Error::msg(format!("Failed to update incomplete group deadline: {}", e))
+            })?;
+
+        debug!(
+            "Updated deadline for incomplete group {} to {} ({} minutes from now)",
+            group_key, new_deadline, minutes_from_now
+        );
+
+        Ok(())
     }
 
     /// Stops tracking a group (called when group becomes complete or is invalidated).
@@ -2315,11 +2355,32 @@ mod tests {
 
         // Process groups past grace period (this would normally find groups past deadline)
         // Since we can't easily simulate time passage in tests, we'll test the method exists
+
+        let tracking = validator
+            .is_group_being_tracked_as_incomplete(&group_key)
+            .await?;
+        assert!(tracking, "Group should still be tracked as incomplete");
+
+        // Update the deadline to simulate time passage
+        validator
+            .update_incomplete_group_deadline_relative(&group_key, -2)
+            .await?;
+
+        
+
         let result = validator.process_groups_past_grace_period().await;
         assert!(
             result.is_ok(),
             "Should process groups past grace period without error"
         );
+        let new_tracking = validator
+            .is_group_being_tracked_as_incomplete(&group_key)
+            .await?;
+        assert!(!new_tracking, "Group should no longer be tracked as incomplete");
+        let key_status = validator
+            .get_work_validation_status_from_redis(FILE_SHA_1)
+            .await?;
+        assert_eq!(key_status, Some(ValidationResult::IncompleteGroup));
 
         Ok(())
     }
