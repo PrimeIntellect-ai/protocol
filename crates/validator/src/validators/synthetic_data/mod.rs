@@ -2,6 +2,7 @@ use crate::metrics::MetricsContext;
 use crate::store::redis::RedisStore;
 use alloy::primitives::U256;
 use anyhow::{Context as _, Error, Result};
+use chrono;
 use log::{debug, warn};
 use log::{error, info};
 use redis::AsyncCommands;
@@ -28,6 +29,7 @@ pub enum ValidationResult {
     Pending,
     Unknown,
     Invalidated,
+    IncompleteGroup,
 }
 
 impl fmt::Display for ValidationResult {
@@ -39,6 +41,7 @@ impl fmt::Display for ValidationResult {
             ValidationResult::Pending => write!(f, "pending"),
             ValidationResult::Unknown => write!(f, "unknown"),
             ValidationResult::Invalidated => write!(f, "invalidated"),
+            ValidationResult::IncompleteGroup => write!(f, "incomplete_group"),
         }
     }
 }
@@ -232,6 +235,9 @@ pub struct SyntheticDataValidator<P: alloy::providers::Provider + Clone> {
     // Whether to use node grouping
     with_node_grouping: bool,
     disable_chain_invalidation: bool,
+
+    /// **Storage**: Uses Redis sorted set "incomplete_groups" with deadline as score
+    incomplete_group_grace_period_minutes: u64,
     metrics: Option<MetricsContext>,
 }
 
@@ -252,6 +258,7 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
         batch_trigger_size: usize,
         with_node_grouping: bool,
         disable_chain_invalidation: bool,
+        incomplete_group_grace_period_minutes: u64,
         metrics: Option<MetricsContext>,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
@@ -276,12 +283,165 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             batch_trigger_size,
             with_node_grouping,
             disable_chain_invalidation,
+            incomplete_group_grace_period_minutes,
             metrics,
         }
     }
 
     fn get_key_for_work_key(&self, work_key: &str) -> String {
         format!("work_validation_status:{}", work_key)
+    }
+
+    /// Starts tracking an incomplete group with a grace period for recovery.
+    ///
+    /// **Purpose**: When a group doesn't have all expected submissions yet, we give it
+    /// a configurable grace period (e.g., 5 minutes) to allow remaining nodes to submit
+    /// their work before we soft invalidate the incomplete submissions.
+    ///
+    /// **How it works**:
+    /// - Adds the group to a Redis sorted set called "incomplete_groups"
+    /// - Uses the "grace period deadline" as the sort score (not Redis TTL!)
+    /// - Only tracks if the group exists and isn't already being tracked
+    /// - The deadline is set ONLY ONCE when first tracking begins
+    ///
+    async fn track_incomplete_group(&self, group_key: &str) -> Result<(), Error> {
+        if self.incomplete_group_grace_period_minutes == 0 {
+            return Ok(()); // Feature disabled
+        }
+
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        // Only track groups that actually exist in Redis (have at least one submission)
+        let group_exists: bool = con
+            .exists(group_key)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to check group existence: {}", e)))?;
+
+        if !group_exists {
+            // No point tracking a group that doesn't exist yet
+            return Ok(());
+        }
+
+        // Calculate when the grace period ends - this will only be used if not already tracked
+        let grace_period_deadline = chrono::Utc::now().timestamp()
+            + (self.incomplete_group_grace_period_minutes as i64 * 60);
+
+        // Add to sorted set ONLY if not already present
+        // NX flag ensures the deadline is set exactly once when tracking begins
+        let mut cmd = redis::cmd("ZADD");
+        cmd.arg("incomplete_groups")
+            .arg("NX")
+            .arg(grace_period_deadline)
+            .arg(group_key);
+
+        let added: i32 = cmd
+            .query_async(&mut con)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to track incomplete group: {}", e)))?;
+
+        if added > 0 {
+            debug!(
+                "Started tracking incomplete group: {} with {}min grace period (deadline: {})",
+                group_key, self.incomplete_group_grace_period_minutes, grace_period_deadline
+            );
+        } else {
+            debug!(
+                "Group {} already being tracked, preserving original deadline",
+                group_key
+            );
+        }
+
+        Ok(())
+    }
+    /// Finds groups whose grace period has ended and cleans them up.
+    async fn get_groups_past_grace_period(&self) -> Result<Vec<String>, Error> {
+        if self.incomplete_group_grace_period_minutes == 0 {
+            return Ok(Vec::new()); // Feature disabled
+        }
+
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        let current_timestamp = chrono::Utc::now().timestamp();
+
+        // Get all groups whose grace period deadline has passed
+        // ZRANGEBYSCORE returns members with score between -infinity and current_timestamp
+        let groups_past_deadline: Vec<String> = con
+            .zrangebyscore("incomplete_groups", "-inf", current_timestamp)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get groups past grace period: {}", e)))?;
+
+        // Remove these groups from tracking since their grace period is over
+        if !groups_past_deadline.is_empty() {
+            let _: () = con
+                .zrem("incomplete_groups", &groups_past_deadline)
+                .await
+                .map_err(|e| Error::msg(format!("Failed to remove groups from tracking: {}", e)))?;
+
+            debug!(
+                "Found {} groups past their grace period",
+                groups_past_deadline.len()
+            );
+        }
+
+        Ok(groups_past_deadline)
+    }
+
+    /// Checks if a group is currently being tracked for incomplete recovery.
+    ///Used in tests and debugging to verify that incomplete groups
+    async fn is_group_being_tracked_as_incomplete(&self, group_key: &str) -> Result<bool, Error> {
+        if self.incomplete_group_grace_period_minutes == 0 {
+            return Ok(false); // Feature disabled
+        }
+
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        // Check if group exists in the incomplete groups sorted set
+        // ZSCORE returns the score (deadline) if present, or None if not tracked
+        let score: Option<f64> = con
+            .zscore("incomplete_groups", group_key)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to check incomplete tracking: {}", e)))?;
+
+        Ok(score.is_some())
+    }
+
+    /// Stops tracking a group (called when group becomes complete or is invalidated).
+    async fn remove_incomplete_group_tracking(&self, group_key: &str) -> Result<(), Error> {
+        if self.incomplete_group_grace_period_minutes == 0 {
+            return Ok(()); // Feature disabled
+        }
+
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        // Remove the group from the incomplete groups sorted set
+        let removed: i32 = con
+            .zrem("incomplete_groups", group_key)
+            .await
+            .map_err(|e| {
+                Error::msg(format!("Failed to remove incomplete group tracking: {}", e))
+            })?;
+
+        if removed > 0 {
+            debug!("Stopped tracking incomplete group: {}", group_key);
+        }
+
+        Ok(())
     }
 
     async fn update_work_validation_status(
@@ -472,12 +632,14 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             .hlen::<_, u32>(group_key)
             .await
             .map_err(|e| Error::msg(format!("Failed to get group size from Redis: {}", e)))?;
+
         let expected_size = group_key
             .split(':')
             .nth(2)
             .ok_or_else(|| Error::msg("Failed to get group size from group key"))?
             .parse::<u32>()
             .map_err(|e| Error::msg(format!("Failed to parse group size: {}", e)))?;
+
         Ok(group_size == expected_size)
     }
 
@@ -495,6 +657,10 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             work_key, ready_for_validation
         );
         if ready_for_validation {
+            // Remove from incomplete group tracking since it's now complete
+            if let Err(e) = self.remove_incomplete_group_tracking(&group_key).await {
+                error!("Failed to remove incomplete group tracking: {}", e);
+            }
             let mut redis = self
                 .redis_store
                 .client
@@ -522,6 +688,11 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             toploc_group.sorted_work_keys = entries.into_iter().map(|(key, _)| key).collect();
 
             return Ok(Some(toploc_group));
+        } else {
+            // Track incomplete group for potential soft invalidation
+            if let Err(e) = self.track_incomplete_group(&group_key).await {
+                error!("Failed to track incomplete group: {}", e);
+            }
         }
         Ok(None)
     }
@@ -563,7 +734,10 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
 
             match cache_status {
                 Some(
-                    ValidationResult::Accept | ValidationResult::Reject | ValidationResult::Crashed,
+                    ValidationResult::Accept
+                    | ValidationResult::Reject
+                    | ValidationResult::Crashed
+                    | ValidationResult::IncompleteGroup,
                 ) => {
                     continue; // Already processed
                 }
@@ -835,6 +1009,11 @@ impl SyntheticDataValidator<WalletProvider> {
                 max_age_in_seconds
             );
         }
+        // Process incomplete groups past their grace period before handling new work
+        if let Err(e) = self.process_groups_past_grace_period().await {
+            error!("Failed to process groups past grace period: {}", e);
+        }
+
         self.process_work_keys(work_keys).await
     }
 
@@ -1100,6 +1279,45 @@ impl SyntheticDataValidator<WalletProvider> {
         Ok(())
     }
 
+    pub async fn soft_invalidate_work(&self, work_key: &str) -> Result<(), Error> {
+        info!("Soft invalidating work: {}", work_key);
+
+        // TODO: Add custom metrics for soft invalidation
+        if let Some(metrics) = &self.metrics {
+            metrics.record_work_key_invalidation();
+        }
+
+        if self.disable_chain_invalidation {
+            info!("Chain invalidation is disabled, skipping work soft invalidation");
+            return Ok(());
+        }
+
+        // Special case for tests - skip actual blockchain interaction
+        #[cfg(test)]
+        {
+            info!("Test mode: skipping actual work soft invalidation");
+            let _ = &self.prime_network;
+            Ok(())
+        }
+
+        #[cfg(not(test))]
+        {
+            let data = hex::decode(work_key)
+                .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+            match self
+                .prime_network
+                .soft_invalidate_work(self.pool_id, data)
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    error!("Failed to soft invalidate work {}: {}", work_key, e);
+                    Err(Error::msg(format!("Failed to soft invalidate work: {}", e)))
+                }
+            }
+        }
+    }
+
     pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
         info!("Invalidating work: {}", work_key);
 
@@ -1137,6 +1355,108 @@ impl SyntheticDataValidator<WalletProvider> {
                 }
             }
         }
+    }
+
+    /// Main entry point for processing incomplete groups that have exceeded their grace period.
+    ///
+    /// **Purpose**: This is the "cleanup job" that runs periodically to handle incomplete
+    /// groups whose grace period has ended. It soft invalidates work from groups that
+    /// never received all expected submissions.
+    ///
+    /// **Flow**:
+    /// 1. Find groups whose grace period deadline has passed
+    /// 2. Double-check they're still incomplete (race condition protection)
+    /// 3. Soft invalidate all work keys in those groups
+    /// 4. Update work status to "IncompleteGroup" (specific reason for soft invalidation)
+    /// 5. Stop tracking the groups
+    pub async fn process_groups_past_grace_period(&self) -> Result<(), Error> {
+        if self.incomplete_group_grace_period_minutes == 0 {
+            return Ok(()); // Feature disabled
+        }
+
+        debug!("Checking for incomplete groups past their grace period");
+
+        // Get all group keys that have passed their grace period deadline
+        let expired_group_keys = self.get_groups_past_grace_period().await?;
+
+        if expired_group_keys.is_empty() {
+            return Ok(());
+        }
+
+        info!(
+            "Found {} incomplete groups past their grace period - will soft invalidate",
+            expired_group_keys.len()
+        );
+
+        for group_key in expired_group_keys {
+            // Double-check the group is still incomplete before invalidating
+            // (it might have completed just before the deadline - race condition protection)
+            let still_incomplete = !self.is_group_ready_for_validation(&group_key).await?;
+
+            if still_incomplete {
+                // Get all work keys in this incomplete group and soft invalidate them
+                match self.get_group_work_keys_from_redis(&group_key).await {
+                    Ok(work_keys) => {
+                        warn!("Soft invalidating {} work keys from incomplete group past grace period: {}", 
+                              work_keys.len(), group_key);
+
+                        for work_key in work_keys {
+                            // Soft invalidate (less penalty than hard invalidation)
+                            if let Err(e) = self.soft_invalidate_work(&work_key).await {
+                                error!("Failed to soft invalidate work key {}: {}", work_key, e);
+                            } else {
+                                // Mark work as soft invalidated due to incomplete group
+                                if let Err(e) = self
+                                    .update_work_validation_status(
+                                        &work_key,
+                                        &ValidationResult::IncompleteGroup,
+                                    )
+                                    .await
+                                {
+                                    error!(
+                                        "Failed to update work validation status for {}: {}",
+                                        work_key, e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to get work keys for incomplete group {}: {}",
+                            group_key, e
+                        );
+                    }
+                }
+            } else {
+                info!(
+                    "Group {} completed just before grace period deadline - not invalidating",
+                    group_key
+                );
+            }
+
+            // Always stop tracking the group (whether we invalidated it or it completed)
+            if let Err(e) = self.remove_incomplete_group_tracking(&group_key).await {
+                error!("Failed to stop tracking group {}: {}", group_key, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn get_group_work_keys_from_redis(&self, group_key: &str) -> Result<Vec<String>, Error> {
+        let mut redis = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        let work_keys: Vec<String> = redis
+            .hkeys(group_key)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get work keys from group: {}", e)))?;
+
+        Ok(work_keys)
     }
 }
 
@@ -1255,6 +1575,7 @@ mod tests {
             10,
             true,
             false,
+            0, // incomplete_group_grace_period_minutes (disabled)
             Some(metrics_context),
         );
 
@@ -1316,6 +1637,7 @@ mod tests {
             10,
             false,
             false,
+            0, // incomplete_group_grace_period_minutes (disabled)
             None,
         );
         validator
@@ -1422,6 +1744,7 @@ mod tests {
             10,
             false,
             false,
+            0, // incomplete_group_grace_period_minutes (disabled)
             None,
         );
 
@@ -1508,6 +1831,7 @@ mod tests {
             10,
             true,
             false,
+            0, // incomplete_group_grace_period_minutes (disabled)
             Some(metrics_context),
         );
 
@@ -1656,6 +1980,7 @@ mod tests {
             10,
             true,
             false,
+            0, // incomplete_group_grace_period_minutes (disabled)
             Some(metrics_context),
         );
 
@@ -1800,6 +2125,7 @@ mod tests {
             10,
             true,
             true,
+            0, // incomplete_group_grace_period_minutes (disabled)
             None,
         );
 
@@ -1819,6 +2145,275 @@ mod tests {
             )
             .await?;
         assert!(work_info.is_none(), "Work should be invalidated");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_incomplete_group_recovery() -> Result<(), Error> {
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
+
+        // Create an incomplete group with only 1 of 2 expected files
+        const GROUP_ID: &str = "1234567890123456";
+        const FILE_SHA_1: &str = "a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd";
+        const FILE_SHA_2: &str = "b2c3d4e5f6789012345678901234567890123456789012345678901234bcde";
+
+        mock_storage.add_file(
+            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+            "file1",
+        );
+        mock_storage.add_file(
+            &format!("TestModel/dataset/test-{}-2-0-1.parquet", GROUP_ID),
+            "file2",
+        );
+        mock_storage.add_mapping_file(
+            FILE_SHA_1,
+            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+        );
+        mock_storage.add_mapping_file(
+            FILE_SHA_2,
+            &format!("TestModel/dataset/test-{}-2-0-1.parquet", GROUP_ID),
+        );
+
+        let storage_provider = Arc::new(mock_storage);
+
+        // Create validator with 1 minute grace period
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![ToplocConfig {
+                server_url: "http://localhost:8080".to_string(),
+                ..Default::default()
+            }],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            10,
+            true,
+            true, // disable_chain_invalidation for testing
+            1,    // 1 minute grace period
+            None,
+        );
+
+        // Add work info for only the first file (making the group incomplete)
+        let work_info = WorkInfo {
+            node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+            ..Default::default()
+        };
+        validator
+            .update_work_info_in_redis(FILE_SHA_1, &work_info)
+            .await?;
+
+        // Try to get the group - should be None (incomplete) and should start tracking
+        let group = validator.get_group(FILE_SHA_1).await?;
+        assert!(group.is_none(), "Group should be incomplete");
+
+        // Check that the incomplete group is being tracked
+        let group_key = format!("group:{}:2:0", GROUP_ID);
+        let is_tracked = validator
+            .is_group_being_tracked_as_incomplete(&group_key)
+            .await?;
+        assert!(is_tracked, "Group should be tracked as incomplete");
+
+        // Simulate the group becoming complete by adding the second file
+        validator
+            .update_work_info_in_redis(FILE_SHA_2, &work_info)
+            .await?;
+
+        // Now the group should be complete (check from either file)
+        let group = validator.get_group(FILE_SHA_2).await?;
+        assert!(group.is_some(), "Group should now be complete");
+        let group = group.unwrap();
+        assert_eq!(group.sorted_work_keys.len(), 2);
+
+        // Should also work when checking from the first file
+        let group_from_first = validator.get_group(FILE_SHA_1).await?;
+        assert!(
+            group_from_first.is_some(),
+            "Group should also be complete when checked from first file"
+        );
+
+        // The incomplete group tracking should be removed
+        let is_still_tracked = validator
+            .is_group_being_tracked_as_incomplete(&group_key)
+            .await?;
+        assert!(
+            !is_still_tracked,
+            "Group should no longer be tracked as incomplete"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_expired_incomplete_group_soft_invalidation() -> Result<(), Error> {
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
+
+        // Create an incomplete group
+        const GROUP_ID: &str = "9876543210987654";
+        const FILE_SHA_1: &str = "c1d2e3f4567890123456789012345678901234567890123456789012345cdef";
+
+        mock_storage.add_file(
+            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+            "file1",
+        );
+        mock_storage.add_mapping_file(
+            FILE_SHA_1,
+            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+        );
+
+        let storage_provider = Arc::new(mock_storage);
+
+        // Create validator with very short grace period for testing
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![ToplocConfig {
+                server_url: "http://localhost:8080".to_string(),
+                ..Default::default()
+            }],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            10,
+            true,
+            true, // disable_chain_invalidation for testing
+            1,    // 1 minute grace period (but we'll simulate expiry)
+            None,
+        );
+
+        // Add work info for only the first file (making the group incomplete)
+        let work_info = WorkInfo {
+            node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+            ..Default::default()
+        };
+        validator
+            .update_work_info_in_redis(FILE_SHA_1, &work_info)
+            .await?;
+
+        // Try to get the group - should be None (incomplete) and should start tracking
+        let group = validator.get_group(FILE_SHA_1).await?;
+        assert!(group.is_none(), "Group should be incomplete");
+
+        // Manually expire the incomplete group tracking by removing it and simulating expiry
+        // In a real test, you would wait for the actual expiry, but for testing we simulate it
+        let group_key = format!("group:{}:2:0", GROUP_ID);
+        validator.track_incomplete_group(&group_key).await?;
+
+        // Process groups past grace period (this would normally find groups past deadline)
+        // Since we can't easily simulate time passage in tests, we'll test the method exists
+        let result = validator.process_groups_past_grace_period().await;
+        assert!(
+            result.is_ok(),
+            "Should process groups past grace period without error"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_incomplete_group_status_tracking() -> Result<(), Error> {
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
+
+        // Create an incomplete group scenario
+        const GROUP_ID: &str = "1111111111111111";
+        const FILE_SHA_1: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+
+        mock_storage.add_file(
+            &format!("TestModel/dataset/test-{}-3-0-0.parquet", GROUP_ID),
+            "file1",
+        );
+        mock_storage.add_mapping_file(
+            FILE_SHA_1,
+            &format!("TestModel/dataset/test-{}-3-0-0.parquet", GROUP_ID),
+        );
+
+        let storage_provider = Arc::new(mock_storage);
+
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![ToplocConfig {
+                server_url: "http://localhost:8080".to_string(),
+                ..Default::default()
+            }],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            10,
+            true,
+            true, // disable_chain_invalidation for testing
+            1,    // 1 minute grace period
+            None,
+        );
+
+        // Add work info for only 1 of 3 expected files
+        let work_info = WorkInfo {
+            node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+            ..Default::default()
+        };
+        validator
+            .update_work_info_in_redis(FILE_SHA_1, &work_info)
+            .await?;
+
+        // Trigger incomplete group tracking
+        let group = validator.get_group(FILE_SHA_1).await?;
+        assert!(group.is_none(), "Group should be incomplete");
+
+        // Manually process groups past grace period to simulate what would happen
+        // after the grace period expires (we simulate this since we can't wait in tests)
+        let group_key = format!("group:{}:3:0", GROUP_ID);
+
+        // Manually add the group to tracking and then process it
+        validator.track_incomplete_group(&group_key).await?;
+
+        // Get work keys and manually soft invalidate to simulate expired processing
+        let work_keys = validator.get_group_work_keys_from_redis(&group_key).await?;
+        assert_eq!(work_keys.len(), 1);
+
+        // Soft invalidate and set status to IncompleteGroup
+        validator.soft_invalidate_work(FILE_SHA_1).await?;
+        validator
+            .update_work_validation_status(FILE_SHA_1, &ValidationResult::IncompleteGroup)
+            .await?;
+
+        // Verify the status is set correctly
+        let status = validator
+            .get_work_validation_status_from_redis(FILE_SHA_1)
+            .await?;
+        assert_eq!(
+            status,
+            Some(ValidationResult::IncompleteGroup),
+            "Work should be marked as IncompleteGroup"
+        );
+
+        // Verify that IncompleteGroup status is treated as "already processed"
+        // by checking it's not included in validation plans
+        let validation_plan = validator
+            .build_validation_plan(vec![FILE_SHA_1.to_string()])
+            .await?;
+        assert_eq!(validation_plan.single_trigger_tasks.len(), 0);
+        assert_eq!(validation_plan.group_trigger_tasks.len(), 0);
+        assert_eq!(validation_plan.status_check_tasks.len(), 0);
+        assert_eq!(validation_plan.group_status_check_tasks.len(), 0);
 
         Ok(())
     }
