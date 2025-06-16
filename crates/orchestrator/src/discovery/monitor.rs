@@ -349,7 +349,7 @@ mod tests {
             cpu: None,
             ram_mb: Some(1024),
             storage_gb: Some(10),
-            storage_path: None,
+            ..Default::default()
         });
         let store = Arc::new(RedisStore::new_test());
         let mut con = store

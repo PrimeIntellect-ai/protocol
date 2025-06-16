@@ -3,6 +3,7 @@ use super::{
     interconnect::InterconnectCheck,
     memory::{convert_to_mb, get_memory_info, print_memory_info},
     storage::{get_storage_info, BYTES_TO_GB},
+    storage_path::StoragePathDetector,
 };
 use crate::{
     checks::issue::{IssueReport, IssueType},
@@ -31,18 +32,10 @@ impl HardwareChecker {
 
     pub async fn check_hardware(
         &mut self,
-        mut node_config: Node,
-    ) -> Result<Node, Box<dyn std::error::Error>> {
-        self.collect_system_info(&mut node_config, None).await?;
-        self.print_system_info(&node_config);
-        Ok(node_config)
-    }
-
-    pub async fn check_hardware_with_storage_path(
-        &mut self,
-        mut node_config: Node,
+        node_config: Node,
         storage_path_override: Option<String>,
     ) -> Result<Node, Box<dyn std::error::Error>> {
+        let mut node_config = node_config;
         self.collect_system_info(&mut node_config, storage_path_override)
             .await?;
         self.print_system_info(&node_config);
@@ -84,25 +77,17 @@ impl HardwareChecker {
             issue_tracker.add_issue(IssueType::NoGpu, "No GPU detected");
         }
 
-        let (storage_path, available_space) = if let Some(override_path) = storage_path_override {
-            // Use the user-provided storage path override
-            let available_space = if cfg!(target_os = "linux") {
-                super::storage::get_available_space(&override_path)
-            } else {
-                None
-            };
-            (Some(override_path), available_space)
-        } else if cfg!(target_os = "linux") {
-            // Use automatic storage selection
-            match super::storage::find_largest_storage() {
-                Some(mount_point) => (Some(mount_point.path), Some(mount_point.available_space)),
-                None => (None, None),
-            }
-        } else {
-            (None, None)
-        };
+        // Drop the write lock before calling async method
+        drop(issue_tracker);
+
+        // Detect storage path using dedicated detector
+        let storage_path_detector = StoragePathDetector::new(self.issues.clone());
+        let (storage_path, available_space) = storage_path_detector
+            .detect_storage_path(storage_path_override)
+            .await?;
 
         if available_space.is_some() && available_space.unwrap() < 1000 {
+            let issue_tracker = self.issues.write().await;
             issue_tracker.add_issue(
                 IssueType::InsufficientStorage,
                 "Minimum 1000GB storage required",
@@ -114,10 +99,6 @@ impl HardwareChecker {
             None => storage_gb,
         };
 
-        if storage_path.is_none() {
-            issue_tracker.add_issue(IssueType::NoStoragePath, "No storage mount found");
-        }
-
         // Check network speeds
         Console::title("Network Speed Test:");
         Console::progress("Starting network speed test...");
@@ -127,6 +108,7 @@ impl HardwareChecker {
                 Console::info("Upload Speed", &format!("{:.2} Mbps", upload_speed));
 
                 if download_speed < 50.0 || upload_speed < 50.0 {
+                    let issue_tracker = self.issues.write().await;
                     issue_tracker.add_issue(
                         IssueType::NetworkConnectivityIssue,
                         "Network speed below recommended 50Mbps",
@@ -134,6 +116,7 @@ impl HardwareChecker {
                 }
             }
             Err(_) => {
+                let issue_tracker = self.issues.write().await;
                 issue_tracker.add_issue(
                     IssueType::NetworkConnectivityIssue,
                     "Failed to perform network speed test",
@@ -207,9 +190,10 @@ impl HardwareChecker {
                 Console::title("Storage Information:");
                 Console::info("Total Storage", &format!("{} GB", storage_gb));
             }
-            if let Some(storage_path) = &compute_specs.storage_path {
-                Console::info("Storage Path for docker mounts", storage_path);
-            }
+            Console::info(
+                "Storage Path for docker mounts",
+                &compute_specs.storage_path,
+            );
         }
 
         // Print GPU Info

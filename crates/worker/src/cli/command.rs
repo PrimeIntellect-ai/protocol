@@ -322,13 +322,15 @@ pub async fn execute_command(
 
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
-            let mut node_config = if storage_path.is_some() {
-                hardware_check
-                    .check_hardware_with_storage_path(node_config, storage_path.clone())
-                    .await
-                    .unwrap()
-            } else {
-                hardware_check.check_hardware(node_config).await.unwrap()
+            let mut node_config = match hardware_check
+                .check_hardware(node_config, storage_path.clone())
+                .await
+            {
+                Ok(config) => config,
+                Err(e) => {
+                    Console::user_error(&format!("❌ Hardware check failed: {}", e));
+                    std::process::exit(1);
+                }
             };
             let software_checker = SoftwareChecker::new(Some(issue_tracker.clone()));
             if let Err(err) = software_checker.check_software(&node_config).await {
@@ -403,7 +405,7 @@ pub async fn execute_command(
             let bridge_wallet = node_wallet_instance.clone();
 
             let docker_storage_path = match node_config.clone().compute_specs {
-                Some(specs) => specs.storage_path.clone(),
+                Some(specs) => Some(specs.storage_path.clone()),
                 None => None,
             };
             let task_bridge = TaskBridge::new(
@@ -787,7 +789,7 @@ pub async fn execute_command(
                 worker_p2p_addresses: None,
             };
 
-            let node_config = match hardware_checker.check_hardware(node_config).await {
+            let node_config = match hardware_checker.check_hardware(node_config, None).await {
                 Ok(node_config) => node_config,
                 Err(err) => {
                     Console::user_error(&format!("❌ Hardware check failed: {}", err));
