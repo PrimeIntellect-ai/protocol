@@ -535,6 +535,8 @@ impl NodeGroupsPlugin {
             }
         }
 
+        groups.sort_by(|a, b| a.id.cmp(&b.id));
+
         debug!("Successfully loaded {} groups", groups.len());
         Ok(groups)
     }
