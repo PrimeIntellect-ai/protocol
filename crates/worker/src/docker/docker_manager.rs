@@ -1,3 +1,4 @@
+use crate::docker::task_container::TaskContainer;
 use bollard::container::{
     Config, CreateContainerOptions, ListContainersOptions, LogsOptions, StartContainerOptions,
 };
@@ -14,6 +15,7 @@ use log::{debug, error, info};
 use shared::models::node::GpuSpecs;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 use strip_ansi_escapes::strip;
 
@@ -215,9 +217,17 @@ impl DockerManager {
 
         let mut final_volumes = Vec::new();
         if self.storage_path.is_some() {
-            // Create task-specific data volume
             let volume_name = format!("{}_data", name);
-            let task_data_path = self.safe_storage_path(&[name.trim_start_matches('/'), "data"])?;
+
+            let data_dir_name = match TaskContainer::from_str(name) {
+                Ok(task_container) => task_container.data_dir_name(),
+                Err(_) => {
+                    // Fallback to using full container name if extraction fails
+                    name.trim_start_matches('/').to_string()
+                }
+            };
+
+            let task_data_path = self.safe_storage_path(&[&data_dir_name, "data"])?;
             Self::create_secure_directory(&task_data_path)?;
 
             self.docker
@@ -300,7 +310,6 @@ impl DockerManager {
                 let processed_volumes: Vec<(String, String, bool)> = if let Some(_storage_path) =
                     &self.storage_path
                 {
-                    // Create volume mount directories within storage path structure
                     vols.into_iter()
                         .map(|(host_path, container_path, read_only, task_volume)| {
                             if task_volume {
@@ -308,8 +317,17 @@ impl DockerManager {
                                 // Remove leading slash and sanitize the path
                                 let sanitized_host_path =
                                     host_path.trim_start_matches('/').replace('/', "_");
+
+                                let mount_dir_name = match TaskContainer::from_str(name) {
+                                    Ok(task_container) => task_container.data_dir_name(),
+                                    Err(_) => {
+                                        // Fallback to using full container name if extraction fails
+                                        name.trim_start_matches('/').to_string()
+                                    }
+                                };
+
                                 match self.safe_storage_path(&[
-                                    name.trim_start_matches('/'),
+                                    &mount_dir_name,
                                     "mounts",
                                     &sanitized_host_path,
                                 ]) {
@@ -559,72 +577,120 @@ impl DockerManager {
                 }
             }
 
-            // --- Step 4: Remove directory with retries ---
+            // --- Step 4: Check if other containers with same task ID exist before removing directory ---
             if self.storage_path.is_some() {
-                match self.safe_storage_path(&[trimmed_name]) {
-                    Ok(dir_path) => {
-                        // Check if directory exists before attempting to remove it
-                        if dir_path.exists() {
-                            let mut success = false;
+                let should_remove_directory = if let Ok(task_container) =
+                    TaskContainer::from_str(trimmed_name)
+                {
+                    // Check if there are other containers with the same task ID
+                    match self.list_containers(true).await {
+                        Ok(containers) => {
+                            let other_containers_with_same_task = containers.iter().any(|c| {
+                                c.names.iter().any(|name| {
+                                    let clean_name = name.trim_start_matches('/');
+                                    if let Ok(other_task_container) = TaskContainer::from_str(name)
+                                    {
+                                        // Same task ID but different container (not the one being removed)
+                                        other_task_container.task_id == task_container.task_id
+                                            && clean_name != trimmed_name
+                                    } else {
+                                        false
+                                    }
+                                })
+                            });
 
-                            for attempt in 0..max_retries {
-                                match std::fs::remove_dir_all(&dir_path) {
-                                    Ok(_) => {
-                                        info!(
-                                            "Directory {} removed successfully",
-                                            dir_path.display()
-                                        );
-                                        success = true;
-                                        break;
-                                    }
-                                    Err(e) => {
-                                        debug!(
-                                            "Attempt {}/{} failed to remove dir {}: {}",
-                                            attempt + 1,
-                                            max_retries,
-                                            dir_path.display(),
-                                            e
-                                        );
-                                        tokio::time::sleep(Duration::from_secs(1)).await;
-                                    }
-                                }
+                            if other_containers_with_same_task {
+                                info!("Other containers with task ID {} exist, keeping shared directory", task_container.task_id);
+                                false
+                            } else {
+                                info!("No other containers with task ID {} found, safe to remove directory", task_container.task_id);
+                                true
                             }
-
-                            if !success {
-                                error!(
-                                    "Failed to remove directory {} after {} attempts — trying fallback",
-                                    dir_path.display(), max_retries
-                                );
-
-                                // Try `rm -rf` as fallback
-                                match std::process::Command::new("rm")
-                                    .arg("-rf")
-                                    .arg(&dir_path)
-                                    .status()
-                                {
-                                    Ok(status) if status.success() => {
-                                        info!(
-                                            "Fallback removal of {} succeeded",
-                                            dir_path.display()
-                                        );
-                                    }
-                                    Ok(status) => {
-                                        error!("Fallback rm -rf failed with status {}", status);
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to execute fallback rm -rf: {}", e);
-                                    }
-                                }
-                            }
-                        } else {
-                            debug!(
-                                "Directory {} does not exist, skipping removal",
-                                dir_path.display()
-                            );
+                        }
+                        Err(e) => {
+                            error!("Failed to list containers for cleanup check: {}", e);
+                            // Err on the side of caution - don't remove directory if we can't check
+                            false
                         }
                     }
-                    Err(e) => {
-                        error!("Failed to create secure path for directory removal: {}", e);
+                } else {
+                    // If we can't extract task ID, use original behavior
+                    true
+                };
+
+                if should_remove_directory {
+                    let dir_name = if let Ok(task_container) = TaskContainer::from_str(trimmed_name)
+                    {
+                        task_container.data_dir_name()
+                    } else {
+                        trimmed_name.to_string()
+                    };
+
+                    match self.safe_storage_path(&[&dir_name]) {
+                        Ok(dir_path) => {
+                            // Check if directory exists before attempting to remove it
+                            if dir_path.exists() {
+                                let mut success = false;
+
+                                for attempt in 0..max_retries {
+                                    match std::fs::remove_dir_all(&dir_path) {
+                                        Ok(_) => {
+                                            info!(
+                                                "Directory {} removed successfully",
+                                                dir_path.display()
+                                            );
+                                            success = true;
+                                            break;
+                                        }
+                                        Err(e) => {
+                                            debug!(
+                                                "Attempt {}/{} failed to remove dir {}: {}",
+                                                attempt + 1,
+                                                max_retries,
+                                                dir_path.display(),
+                                                e
+                                            );
+                                            tokio::time::sleep(Duration::from_secs(1)).await;
+                                        }
+                                    }
+                                }
+
+                                if !success {
+                                    error!(
+                                        "Failed to remove directory {} after {} attempts — trying fallback",
+                                        dir_path.display(), max_retries
+                                    );
+
+                                    // Try `rm -rf` as fallback
+                                    match std::process::Command::new("rm")
+                                        .arg("-rf")
+                                        .arg(&dir_path)
+                                        .status()
+                                    {
+                                        Ok(status) if status.success() => {
+                                            info!(
+                                                "Fallback removal of {} succeeded",
+                                                dir_path.display()
+                                            );
+                                        }
+                                        Ok(status) => {
+                                            error!("Fallback rm -rf failed with status {}", status);
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to execute fallback rm -rf: {}", e);
+                                        }
+                                    }
+                                }
+                            } else {
+                                debug!(
+                                    "Directory {} does not exist, skipping removal",
+                                    dir_path.display()
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to create secure path for directory removal: {}", e);
+                        }
                     }
                 }
             }

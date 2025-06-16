@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use chrono::Utc;
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -181,6 +183,44 @@ pub struct Task {
     pub metadata: Option<TaskMetadata>,
     #[serde(default)]
     pub volume_mounts: Option<Vec<VolumeMount>>,
+}
+
+impl Task {
+    /// Generate a hash of the task configuration for comparison purposes
+    pub fn generate_config_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+
+        // Hash core configuration
+        self.image.hash(&mut hasher);
+        self.cmd.hash(&mut hasher);
+        self.entrypoint.hash(&mut hasher);
+
+        // Hash environment variables in sorted order for consistency
+        if let Some(env_vars) = &self.env_vars {
+            let mut sorted_env: Vec<_> = env_vars.iter().collect();
+            sorted_env.sort_by_key(|(k, _)| *k);
+            for (key, value) in sorted_env {
+                key.hash(&mut hasher);
+                value.hash(&mut hasher);
+            }
+        }
+
+        // Hash volume mounts in sorted order for consistency
+        if let Some(volume_mounts) = &self.volume_mounts {
+            let mut sorted_volumes: Vec<_> = volume_mounts.iter().collect();
+            sorted_volumes.sort_by(|a, b| {
+                a.host_path
+                    .cmp(&b.host_path)
+                    .then_with(|| a.container_path.cmp(&b.container_path))
+            });
+            for volume_mount in sorted_volumes {
+                volume_mount.host_path.hash(&mut hasher);
+                volume_mount.container_path.hash(&mut hasher);
+            }
+        }
+
+        hasher.finish()
+    }
 }
 
 impl Default for Task {
