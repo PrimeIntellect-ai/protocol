@@ -1,7 +1,7 @@
 use alloy::primitives::Address;
 use anyhow::Result;
 use iroh::endpoint::{RecvStream, SendStream};
-use iroh::{Endpoint, NodeAddr, NodeId, SecretKey};
+use iroh::{Endpoint, NodeAddr, NodeId, RelayMode, SecretKey};
 use log::{debug, info};
 use std::str::FromStr;
 use std::time::Duration;
@@ -28,6 +28,7 @@ impl P2PClient {
         let endpoint = Endpoint::builder()
             .secret_key(secret_key)
             .alpns(vec![PRIME_P2P_PROTOCOL.to_vec()])
+            .relay_mode(RelayMode::Default)
             .discovery_n0()
             .bind()
             .await?;
@@ -219,8 +220,6 @@ impl P2PClient {
         // Read response
         let response: P2PResponse = Self::read_message(&mut recv).await?;
 
-        // Close connection
-        connection.close(0u32.into(), b"request complete");
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         Ok(response.message)

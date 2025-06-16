@@ -6,7 +6,7 @@ use alloy::primitives::{Address, FixedBytes, U256};
 use anyhow::Result;
 use dashmap::DashMap;
 use iroh::endpoint::Incoming;
-use iroh::{Endpoint, SecretKey};
+use iroh::{Endpoint, RelayMode, SecretKey};
 use lazy_static::lazy_static;
 use log::{debug, error, info, warn};
 use rand_v8::Rng;
@@ -77,6 +77,7 @@ impl P2PService {
             .secret_key(secret_key)
             .alpns(vec![PRIME_P2P_PROTOCOL.to_vec()])
             .discovery_n0()
+            .relay_mode(RelayMode::Default)
             .bind()
             .await?;
 
@@ -158,9 +159,6 @@ impl P2PService {
                         }
                         // Wait a bit before closing to ensure client has processed response
                         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-                        // Properly close the connection after handling the stream
-                        connection.close(0u32.into(), b"stream complete");
                     }
                     Err(e) => {
                         error!("Failed to accept bi-stream: {}", e);
