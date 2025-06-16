@@ -809,4 +809,125 @@ impl DockerManager {
         debug!("Successfully retrieved logs for container {}", container_id);
         Ok(logs)
     }
+
+    /// List all containers with names matching the prime worker pattern
+    pub async fn list_prime_containers(&self) -> Result<Vec<ContainerInfo>, DockerError> {
+        debug!("Listing prime worker containers");
+        let containers = self.list_containers(true).await?;
+
+        // Filter containers that match the prime worker naming pattern
+        let prime_containers: Vec<ContainerInfo> = containers
+            .into_iter()
+            .filter(|container| {
+                container.names.iter().any(|name| {
+                    let trimmed_name = name.trim_start_matches('/');
+                    trimmed_name.starts_with("prime-task-")
+                })
+            })
+            .collect();
+
+        debug!("Found {} prime worker containers", prime_containers.len());
+        Ok(prime_containers)
+    }
+
+    /// Clean up task directories in common locations
+    pub async fn cleanup_task_directories(&self) -> Result<Vec<String>, DockerError> {
+        debug!("Cleaning up task directories");
+        let mut cleaned_dirs = Vec::new();
+
+        // Directories to search for task directories
+        let mut search_paths = Vec::new();
+
+        // Add configured storage path
+        search_paths.push(std::path::PathBuf::from(&self.storage_path));
+
+        // Add common locations where task directories might be created
+        if let Ok(current_dir) = std::env::current_dir() {
+            search_paths.push(current_dir);
+        }
+
+        // Also check /tmp for temporary task directories
+        search_paths.push(std::path::PathBuf::from("/tmp"));
+
+        // Check home directory
+        if let Some(home_dir) = std::env::var_os("HOME") {
+            search_paths.push(std::path::PathBuf::from(home_dir));
+        }
+
+        for storage_path in search_paths {
+            if !storage_path.exists() {
+                debug!("Search path does not exist: {}", storage_path.display());
+                continue;
+            }
+
+            debug!(
+                "Searching for task directories in: {}",
+                storage_path.display()
+            );
+
+            // Read the directory and find prime task directories
+            let entries = match std::fs::read_dir(&storage_path) {
+                Ok(entries) => entries,
+                Err(e) => {
+                    debug!("Failed to read directory {}: {}", storage_path.display(), e);
+                    continue;
+                }
+            };
+
+            for entry in entries {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        debug!("Failed to read directory entry: {}", e);
+                        continue;
+                    }
+                };
+
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                        // Check if this is a prime task directory
+                        if dir_name.starts_with("prime-task-") || dir_name == "shared" {
+                            debug!("Found task directory: {}", path.display());
+
+                            // Attempt to remove the directory
+                            match std::fs::remove_dir_all(&path) {
+                                Ok(_) => {
+                                    info!("Successfully removed directory: {}", path.display());
+                                    cleaned_dirs.push(path.display().to_string());
+                                }
+                                Err(e) => {
+                                    debug!("Failed to remove directory {}: {}", path.display(), e);
+
+                                    // Try fallback with rm -rf
+                                    match std::process::Command::new("rm")
+                                        .arg("-rf")
+                                        .arg(&path)
+                                        .status()
+                                    {
+                                        Ok(status) if status.success() => {
+                                            info!(
+                                                "Fallback removal of {} succeeded",
+                                                path.display()
+                                            );
+                                            cleaned_dirs.push(path.display().to_string());
+                                        }
+                                        Ok(status) => {
+                                            debug!("Fallback rm -rf failed with status {}", status);
+                                        }
+                                        Err(e) => {
+                                            debug!("Failed to execute fallback rm -rf: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        info!("Cleaned up {} task directories", cleaned_dirs.len());
+        Ok(cleaned_dirs)
+    }
 }
