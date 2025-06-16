@@ -429,7 +429,7 @@ mod tests {
             None,
             Some(1024),
             test_socket_path.to_string(),
-            None,
+            "/tmp/test-storage".to_string(),
             Address::ZERO.to_string(),
             Some(12345), // p2p_seed for testing
         );
