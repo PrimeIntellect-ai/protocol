@@ -194,10 +194,8 @@ fn test_or_create_app_directory(path: &str) -> bool {
     let path_buf = std::path::Path::new(path);
 
     // If directory doesn't exist, try to create it
-    if !path_buf.exists() {
-        if std::fs::create_dir_all(path_buf).is_err() {
-            return false;
-        }
+    if !path_buf.exists() && std::fs::create_dir_all(path_buf).is_err() {
+        return false;
     }
 
     // Verify it's a directory
