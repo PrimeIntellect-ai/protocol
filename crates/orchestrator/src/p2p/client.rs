@@ -61,7 +61,7 @@ impl P2PClient {
                 worker_addresses,
                 worker_wallet_address,
                 P2PMessage::GetTaskLogs,
-                15, // 15 second timeout for getting logs
+                20,
             )
             .await?;
 
