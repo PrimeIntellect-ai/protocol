@@ -13,6 +13,7 @@ env:
   BATCH_TRIGGER_SIZE: "10"
   DISABLE_HARDWARE_VALIDATION: "true"
   VALIDATOR_PENALTY: "200"
+  INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES: "0"
 
 secrets:
   validatorKey: "private key"

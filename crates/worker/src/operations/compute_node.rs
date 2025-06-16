@@ -28,13 +28,20 @@ impl<'c> ComputeNodeOperations<'c> {
             system_state,
         }
     }
-    pub fn start_monitoring(&self, cancellation_token: CancellationToken) -> Result<()> {
+
+    pub fn start_monitoring(
+        &self,
+        cancellation_token: CancellationToken,
+        pool_id: String,
+    ) -> Result<()> {
         let provider_address = self.provider_wallet.wallet.default_signer().address();
         let node_address = self.node_wallet.wallet.default_signer().address();
         let contracts = self.contracts.clone();
         let system_state = self.system_state.clone();
         let mut last_active = false;
         let mut last_validated = false;
+        let mut last_claimable = None;
+        let mut last_locked = None;
         let mut first_check = true;
         tokio::spawn(async move {
             loop {
@@ -76,6 +83,28 @@ impl<'c> ComputeNodeOperations<'c> {
                                     }
                                     last_validated = validated;
                                 }
+
+                                // Check rewards for the current compute pool
+                                if let Ok(pool_id_u32) = pool_id.parse::<u32>() {
+                                    match contracts.compute_pool.calculate_node_rewards(
+                                        U256::from(pool_id_u32),
+                                        node_address,
+                                    ).await {
+                                        Ok((claimable, locked)) => {
+                                            if last_claimable.is_none() || last_locked.is_none() || claimable != last_claimable.unwrap() || locked != last_locked.unwrap() {
+                                                last_claimable = Some(claimable);
+                                                last_locked = Some(locked);
+                                                let claimable_formatted = claimable.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0);
+                                                let locked_formatted = locked.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0);
+                                                Console::info("Rewards", &format!("{} claimable, {} locked", claimable_formatted, locked_formatted));
+                                            }
+                                        }
+                                        Err(e) => {
+                                            log::debug!("Failed to check rewards for pool {}: {}", pool_id_u32, e);
+                                        }
+                                    }
+                                }
+
                                 first_check = false;
                             }
                             Err(e) => {

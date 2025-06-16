@@ -71,8 +71,8 @@ pub enum Commands {
         disable_state_storing: bool,
 
         /// Auto recover from previous state
-        #[arg(long, default_value = "true")]
-        auto_recover: bool,
+        #[arg(long, default_value = "false")]
+        no_auto_recover: bool,
 
         /// Discovery service URL
         #[arg(long)]
@@ -179,7 +179,7 @@ pub async fn execute_command(
             discovery_url,
             state_dir_overwrite,
             disable_state_storing,
-            auto_recover,
+            no_auto_recover,
             private_key_provider,
             private_key_node,
             auto_accept,
@@ -189,9 +189,9 @@ pub async fn execute_command(
             log_level: _,
             storage_path,
         } => {
-            if *disable_state_storing && *auto_recover {
+            if *disable_state_storing && !(*no_auto_recover) {
                 Console::user_error(
-                    "Cannot disable state storing and enable auto recover at the same time.",
+                    "Cannot disable state storing and enable auto recover at the same time. Use --no-auto-recover to disable auto recover.",
                 );
                 std::process::exit(1);
             }
@@ -215,7 +215,7 @@ pub async fn execute_command(
                 std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
             };
 
-            let mut recover_last_state = *auto_recover;
+            let mut recover_last_state = !(*no_auto_recover);
             let version = option_env!("WORKER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
             Console::section("🚀 PRIME WORKER INITIALIZATION - beta");
             Console::info("Version", version);
@@ -748,7 +748,10 @@ pub async fn execute_command(
 
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
-            if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone()) {
+
+            let pool_id = state.compute_pool_id.clone().unwrap_or("0".to_string());
+            if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone(), pool_id)
+            {
                 error!("❌ Failed to start node monitoring: {}", err);
                 std::process::exit(1);
             }

@@ -57,20 +57,22 @@ impl SystemState {
         let mut p2p_seed: Option<u64> = None;
         let mut worker_p2p_seed: Option<u64> = None;
         // Try to load state, log info if creating new file
-        if let Some(path) = &state_path {
-            let state_file = path.join(STATE_FILENAME);
-            if !state_file.exists() {
-                debug!(
-                    "No state file found at {:?}, will create on first state change",
-                    state_file
-                );
-            } else if let Ok(Some(loaded_state)) = SystemState::load_state(path) {
-                debug!("Loaded previous state from {:?}", state_file);
-                endpoint = loaded_state.endpoint;
-                p2p_seed = loaded_state.p2p_seed;
-                worker_p2p_seed = loaded_state.worker_p2p_seed;
-            } else {
-                debug!("Failed to load state from {:?}", state_file);
+        if !disable_state_storing {
+            if let Some(path) = &state_path {
+                let state_file = path.join(STATE_FILENAME);
+                if !state_file.exists() {
+                    debug!(
+                        "No state file found at {:?}, will create on first state change",
+                        state_file
+                    );
+                } else if let Ok(Some(loaded_state)) = SystemState::load_state(path) {
+                    debug!("Loaded previous state from {:?}", state_file);
+                    endpoint = loaded_state.endpoint;
+                    p2p_seed = loaded_state.p2p_seed;
+                    worker_p2p_seed = loaded_state.worker_p2p_seed;
+                } else {
+                    debug!("Failed to load state from {:?}", state_file);
+                }
             }
         }
         if p2p_seed.is_none() {

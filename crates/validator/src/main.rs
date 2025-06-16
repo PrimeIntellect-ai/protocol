@@ -117,6 +117,10 @@ struct Args {
     #[arg(long, default_value = "false")]
     use_grouping: bool,
 
+    /// Grace period in minutes for incomplete groups to recover (0 = disabled)
+    #[arg(long, default_value = "0")]
+    incomplete_group_grace_period_minutes: u64,
+
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
     #[arg(long, default_value = "200")]
@@ -324,6 +328,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     args.batch_trigger_size,
                     args.use_grouping,
                     args.disable_toploc_invalidation,
+                    args.incomplete_group_grace_period_minutes,
                     Some(metrics_ctx.clone()),
                 ))
             }

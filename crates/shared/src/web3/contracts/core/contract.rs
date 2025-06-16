@@ -31,6 +31,9 @@ impl<P: alloy_provider::Provider> Contract<P> {
             "ai_token.json" => include_abi!("../../../../artifacts/abi/ai_token.json"),
             "prime_network.json" => include_abi!("../../../../artifacts/abi/prime_network.json"),
             "compute_pool.json" => include_abi!("../../../../artifacts/abi/compute_pool.json"),
+            "rewards_distributor.json" => {
+                include_abi!("../../../../artifacts/abi/rewards_distributor.json")
+            }
             "synthetic_data_work_validator.json" => {
                 include_abi!("../../../../artifacts/abi/synthetic_data_work_validator.json")
             }

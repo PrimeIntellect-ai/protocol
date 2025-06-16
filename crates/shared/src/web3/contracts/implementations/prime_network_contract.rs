@@ -217,12 +217,11 @@ impl PrimeNetworkContract<WalletProvider> {
             .watch()
             .await?;
 
-        let receipt = self
+        let _ = self
             .instance
             .provider()
             .get_transaction_receipt(whitelist_provider_tx)
             .await?;
-        println!("Receipt: {:?}", receipt);
 
         Ok(whitelist_provider_tx)
     }
@@ -246,6 +245,23 @@ impl PrimeNetworkContract<WalletProvider> {
             .await?;
 
         Ok(invalidate_work_tx)
+    }
+
+    pub async fn soft_invalidate_work(
+        &self,
+        pool_id: U256,
+        data: Vec<u8>,
+    ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
+        let soft_invalidate_work_tx = self
+            .instance
+            .instance()
+            .function("softInvalidateWork", &[pool_id.into(), data.into()])?
+            .send()
+            .await?
+            .watch()
+            .await?;
+
+        Ok(soft_invalidate_work_tx)
     }
 
     pub async fn reclaim_stake(
