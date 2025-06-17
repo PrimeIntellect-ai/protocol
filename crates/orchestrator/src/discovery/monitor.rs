@@ -204,18 +204,21 @@ impl DiscoveryMonitor {
         match self.store_context.node_store.get_node(&node_address).await {
             Ok(Some(existing_node)) => {
                 // If there's a healthy node with same IP and port, and this node isn't healthy, mark it dead
-                /*if count_healthy_nodes_with_same_endpoint > 0
+                if count_healthy_nodes_with_same_endpoint > 0
                     && existing_node.status != NodeStatus::Healthy
                 {
                     info!(
                         "Node {} shares endpoint {}:{} with a healthy node, marking as dead",
                         node_address, discovery_node.node.ip_address, discovery_node.node.port
                     );
-                    if let Err(e) = self.update_node_status(&node_address, NodeStatus::Dead).await {
+                    if let Err(e) = self
+                        .update_node_status(&node_address, NodeStatus::Dead)
+                        .await
+                    {
                         error!("Error updating node status: {}", e);
                     }
                     return Ok(());
-                }*/
+                }
 
                 if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
                     info!(
