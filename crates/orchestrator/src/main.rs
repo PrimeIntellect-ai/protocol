@@ -305,6 +305,19 @@ async fn main() -> Result<()> {
             });
         }
 
+        // Create status_update_plugins for discovery monitor
+        let mut discovery_status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
+
+        // Add webhook plugins to discovery status update plugins
+        for plugin in &webhook_plugins {
+            discovery_status_update_plugins.push(Box::new(plugin.clone()));
+        }
+
+        // Add node groups plugin if available
+        if let Some(group_plugin) = node_groups_plugin.clone() {
+            discovery_status_update_plugins.push(Box::new(group_plugin.as_ref().clone()));
+        }
+
         let discovery_store_context = store_context.clone();
         let discovery_heartbeats = heartbeats.clone();
         tasks.spawn({
@@ -318,6 +331,7 @@ async fn main() -> Result<()> {
                     discovery_store_context.clone(),
                     discovery_heartbeats.clone(),
                     args.max_healthy_nodes_with_same_endpoint,
+                    discovery_status_update_plugins,
                 );
                 monitor.run().await
             }
@@ -344,6 +358,19 @@ async fn main() -> Result<()> {
             }
         });
 
+        // Create status_update_plugins for status updater
+        let mut status_updater_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
+
+        // Add webhook plugins to status updater plugins
+        for plugin in &webhook_plugins {
+            status_updater_plugins.push(Box::new(plugin.clone()));
+        }
+
+        // Add node groups plugin if available
+        if let Some(group_plugin) = node_groups_plugin.clone() {
+            status_updater_plugins.push(Box::new(group_plugin.as_ref().clone()));
+        }
+
         let status_update_store_context = store_context.clone();
         let status_update_heartbeats = heartbeats.clone();
         tasks.spawn({
@@ -357,7 +384,7 @@ async fn main() -> Result<()> {
                     compute_pool_id,
                     args.disable_ejection,
                     status_update_heartbeats.clone(),
-                    status_update_plugins,
+                    status_updater_plugins,
                 );
                 status_updater.run().await
             }

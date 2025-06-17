@@ -186,21 +186,15 @@ impl NodeGroupsPlugin {
     ) -> Result<bool, Error> {
         // Check if task switching is enabled
         if !self.task_switching_policy.enabled {
-            println!("Task switching is disabled by policy");
             return Ok(false);
         }
 
         // Must be solo groups to consider switching
         if !current_groups.iter().all(|g| g.nodes.len() == 1) {
-            println!("Not all groups are solo groups, skipping task switching");
             return Ok(false);
         }
 
         if potential_merged_size < 2 {
-            println!(
-                "Merged group size ({}) too small to be beneficial",
-                potential_merged_size
-            );
             return Ok(false);
         }
 
@@ -388,10 +382,6 @@ impl NodeGroupsPlugin {
             .filter(|node| node.p2p_id.is_some())
             .filter(|node| !assigned_nodes.contains_key(&node.address.to_string()))
             .collect::<Vec<&OrchestratorNode>>();
-        println!(
-            "Found {} healthy nodes for potential group formation",
-            healthy_nodes.len()
-        );
         info!(
             "Found {} healthy nodes for potential group formation",
             healthy_nodes.len()
@@ -419,7 +409,6 @@ impl NodeGroupsPlugin {
                     }
                 }
 
-                println!("Available nodes: {:?}", available_nodes);
                 // Not enough nodes to form a group
                 if available_nodes.len() < config.min_group_size {
                     break;
@@ -506,10 +495,6 @@ impl NodeGroupsPlugin {
         // Quick optimization: check if there are any solo groups before proceeding
         let solo_groups_count = all_groups.iter().filter(|g| g.nodes.len() == 1).count();
         if solo_groups_count < 2 {
-            println!(
-                "Found {} solo groups, merging not beneficial",
-                solo_groups_count
-            );
             debug!(
                 "Found {} solo groups, merging not beneficial",
                 solo_groups_count
@@ -517,7 +502,6 @@ impl NodeGroupsPlugin {
             return Ok(merged_groups);
         }
 
-        println!("Checking if we can merge groups");
         let available_configurations = self.get_available_configurations().await;
 
         debug!(
@@ -534,7 +518,6 @@ impl NodeGroupsPlugin {
                 .await?;
             merged_groups.extend(config_merged_groups);
         }
-        println!("Merged groups: {:?}", merged_groups);
 
         if !merged_groups.is_empty() {
             info!(
@@ -559,21 +542,11 @@ impl NodeGroupsPlugin {
 
         // Find compatible solo groups (including those with tasks)
         let compatible_groups = self.find_compatible_solo_groups(all_groups, config).await?;
-        println!("Compatible groups: {:?}", compatible_groups);
-
-        println!(
-            "Found {} compatible solo groups for configuration {}",
-            compatible_groups.len(),
-            config.name
-        );
-        println!("Min group size: {:?}", config.min_group_size);
 
         if compatible_groups.len() < config.min_group_size {
-            println!("Not enough compatible groups to merge");
+            debug!("Not enough compatible groups to merge");
             return Ok(merged_groups);
         }
-
-        println!("Trying to merge groups for configuration: {:?}", config);
 
         // Group merging attempts
         let mut remaining_groups = compatible_groups;
@@ -581,8 +554,6 @@ impl NodeGroupsPlugin {
             let merge_result = self
                 .attempt_group_merge(&remaining_groups, config, conn)
                 .await?;
-
-            println!("Merge result: {:?}", merge_result);
 
             match merge_result {
                 Some((merged_group, used_group_ids)) => {
@@ -660,16 +631,11 @@ impl NodeGroupsPlugin {
             }
         }
 
-        println!("Merge batch: {:?}", merge_batch);
-        println!("Total nodes: {:?}", total_nodes);
-        println!("Groups to dissolve: {:?}", groups_to_dissolve);
-
         // Validate merge conditions
         if !self
             .is_merge_beneficial(&merge_batch, total_nodes.len())
             .await?
         {
-            println!("Merge not beneficial");
             return Ok(None);
         }
 
@@ -684,14 +650,9 @@ impl NodeGroupsPlugin {
         groups: &[NodeGroup],
         new_size: usize,
     ) -> Result<bool, Error> {
-        println!("Checking if merge is beneficial");
-        println!("Groups: {:?}", groups);
-        println!("New size: {:?}", new_size);
         if groups.len() < 2 || new_size < 2 {
             return Ok(false);
         }
-        println!("Merge is beneficial");
-        println!("checking task: {:?}", groups);
         // Check if task switching is beneficial
         self.should_switch_tasks(groups, new_size).await
     }
