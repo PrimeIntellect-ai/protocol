@@ -7,6 +7,7 @@ use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Error;
 use anyhow::Result;
 use log::{debug, error, info, warn};
+use rand::seq::IteratorRandom;
 use redis::{AsyncCommands, Script};
 use serde::{Deserialize, Serialize};
 use shared::models::node::ComputeRequirements;
@@ -68,6 +69,23 @@ pub struct NodeGroup {
     pub configuration_name: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaskSwitchingPolicy {
+    /// Whether to enable task switching at all
+    pub enabled: bool,
+    /// Prefer forming larger groups even if it means switching tasks
+    pub prefer_larger_groups: bool,
+}
+
+impl Default for TaskSwitchingPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            prefer_larger_groups: true,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct NodeGroupsPlugin {
     configuration_templates: Vec<NodeGroupConfiguration>,
@@ -75,6 +93,7 @@ pub struct NodeGroupsPlugin {
     store_context: Arc<StoreContext>,
     node_groups_heartbeats: Option<Arc<LoopHeartbeats>>,
     webhook_plugins: Option<Vec<WebhookPlugin>>,
+    task_switching_policy: TaskSwitchingPolicy,
 }
 
 impl NodeGroupsPlugin {
@@ -84,6 +103,24 @@ impl NodeGroupsPlugin {
         store_context: Arc<StoreContext>,
         node_groups_heartbeats: Option<Arc<LoopHeartbeats>>,
         webhook_plugins: Option<Vec<WebhookPlugin>>,
+    ) -> Self {
+        Self::new_with_policy(
+            configuration_templates,
+            store,
+            store_context,
+            node_groups_heartbeats,
+            webhook_plugins,
+            TaskSwitchingPolicy::default(),
+        )
+    }
+
+    pub fn new_with_policy(
+        configuration_templates: Vec<NodeGroupConfiguration>,
+        store: Arc<RedisStore>,
+        store_context: Arc<StoreContext>,
+        node_groups_heartbeats: Option<Arc<LoopHeartbeats>>,
+        webhook_plugins: Option<Vec<WebhookPlugin>>,
+        task_switching_policy: TaskSwitchingPolicy,
     ) -> Self {
         let mut sorted_configs = configuration_templates;
 
@@ -97,7 +134,21 @@ impl NodeGroupsPlugin {
             }
         }
 
-        sorted_configs.sort_by(|a, b| b.min_group_size.cmp(&a.min_group_size));
+        sorted_configs.sort_by(|a, b| {
+            // First priority: min_group_size (descending)
+            let size_cmp = b.min_group_size.cmp(&a.min_group_size);
+            if size_cmp != std::cmp::Ordering::Equal {
+                return size_cmp;
+            }
+
+            // Second priority: configurations with requirements come before those without
+            // This ensures specific configs (GPU, etc.) get processed before general configs
+            match (&a.compute_requirements, &b.compute_requirements) {
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                _ => std::cmp::Ordering::Equal,
+            }
+        });
 
         let plugin = Self {
             configuration_templates: sorted_configs,
@@ -105,6 +156,7 @@ impl NodeGroupsPlugin {
             store_context,
             node_groups_heartbeats,
             webhook_plugins,
+            task_switching_policy,
         };
 
         plugin
@@ -113,6 +165,88 @@ impl NodeGroupsPlugin {
             .add_observer(Arc::new(plugin.clone()));
 
         plugin
+    }
+
+    /// Check if a node is compatible with a configuration's compute requirements
+    fn is_node_compatible_with_config(
+        config: &NodeGroupConfiguration,
+        node: &OrchestratorNode,
+    ) -> bool {
+        match (&config.compute_requirements, &node.compute_specs) {
+            (Some(reqs), Some(specs)) => specs.meets(reqs),
+            (None, _) => true,
+            _ => false,
+        }
+    }
+    /// Determine if task switching is beneficial for group formation
+    async fn should_switch_tasks(
+        &self,
+        current_groups: &[NodeGroup],
+        potential_merged_size: usize,
+    ) -> Result<bool, Error> {
+        // Check if task switching is enabled
+        if !self.task_switching_policy.enabled {
+            println!("Task switching is disabled by policy");
+            return Ok(false);
+        }
+
+        // Must be solo groups to consider switching
+        if !current_groups.iter().all(|g| g.nodes.len() == 1) {
+            println!("Not all groups are solo groups, skipping task switching");
+            return Ok(false);
+        }
+
+        if potential_merged_size < 2 {
+            println!(
+                "Merged group size ({}) too small to be beneficial",
+                potential_merged_size
+            );
+            return Ok(false);
+        }
+
+        // If prefer_larger_groups is disabled and all groups have tasks, don't switch
+        if !self.task_switching_policy.prefer_larger_groups {
+            for group in current_groups {
+                if self.get_current_group_task(&group.id).await?.is_some() {
+                    debug!(
+                        "Group {} has task and prefer_larger_groups is disabled",
+                        group.id
+                    );
+                    return Ok(false);
+                }
+            }
+        }
+
+        debug!(
+            "Task switching beneficial: merging {} solo groups into group of size {} (policy: prefer_larger_groups={})",
+            current_groups.len(),
+            potential_merged_size,
+            self.task_switching_policy.prefer_larger_groups
+        );
+        Ok(true)
+    }
+
+    /// Atomically create a new group with Redis operations
+    async fn create_group_atomically(
+        &self,
+        group: &NodeGroup,
+        conn: &mut redis::aio::MultiplexedConnection,
+    ) -> Result<(), Error> {
+        let mut pipe = redis::pipe();
+        pipe.atomic();
+
+        // Store group data
+        let group_key = Self::get_group_key(&group.id);
+        let group_data = serde_json::to_string(group)?;
+        pipe.set(&group_key, group_data);
+
+        // Map nodes to group
+        for node in &group.nodes {
+            pipe.hset(NODE_GROUP_MAP_KEY, node, &group.id);
+        }
+
+        pipe.query_async::<()>(conn).await?;
+        Ok(())
     }
 
     fn generate_group_id() -> String {
@@ -274,12 +408,7 @@ impl NodeGroupsPlugin {
                 let mut nodes_to_remove = Vec::new();
 
                 for node in &healthy_nodes {
-                    let should_add_node = match (&config.compute_requirements, &node.compute_specs)
-                    {
-                        (Some(reqs), Some(specs)) => specs.meets(reqs),
-                        (None, _) => true,
-                        _ => false,
-                    };
+                    let should_add_node = Self::is_node_compatible_with_config(config, node);
 
                     if should_add_node {
                         available_nodes.insert(node.address.to_string());
@@ -308,28 +437,8 @@ impl NodeGroupsPlugin {
                 };
                 debug!("Created new group structure: {:?}", group);
 
-                // Use a Redis transaction to atomically create the group
-                let mut pipe = redis::pipe();
-                pipe.atomic();
-
-                // Store group data
-                let group_key = Self::get_group_key(&group_id);
-                let group_data = serde_json::to_string(&group)?;
-                debug!("Storing group data at key: {}", group_key);
-                pipe.set(&group_key, group_data);
-
-                // Map nodes to group
-                debug!(
-                    "Mapping {} nodes to group {}",
-                    available_nodes.len(),
-                    group_id
-                );
-                for node in &available_nodes {
-                    pipe.hset(NODE_GROUP_MAP_KEY, node, &group_id);
-                }
-
-                // Execute all operations atomically
-                pipe.query_async::<()>(&mut conn).await?;
+                // Use atomic group creation helper
+                self.create_group_atomically(&group, &mut conn).await?;
 
                 // Remove used nodes from healthy_nodes
                 let prev_healthy_count = healthy_nodes.len();
@@ -359,6 +468,7 @@ impl NodeGroupsPlugin {
                 }
             }
         }
+
         let webhook_groups = formed_groups.clone();
         for group in webhook_groups {
             if let Some(plugins) = &self.webhook_plugins {
@@ -384,9 +494,342 @@ impl NodeGroupsPlugin {
         Ok(formed_groups)
     }
 
-    #[cfg(test)]
-    pub async fn test_try_form_new_groups(&self) -> Result<Vec<NodeGroup>, Error> {
-        self.try_form_new_groups().await
+    /// Try to merge single-node groups when possible, including task switching
+    async fn try_merge_solo_groups(&self) -> Result<Vec<NodeGroup>, Error> {
+        debug!("Starting solo group merging process with task switching support");
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+        let mut merged_groups = Vec::new();
+
+        // Get all existing groups and available configurations
+        let all_groups = self.get_all_groups().await?;
+
+        // Quick optimization: check if there are any solo groups before proceeding
+        let solo_groups_count = all_groups.iter().filter(|g| g.nodes.len() == 1).count();
+        if solo_groups_count < 2 {
+            println!(
+                "Found {} solo groups, merging not beneficial",
+                solo_groups_count
+            );
+            debug!(
+                "Found {} solo groups, merging not beneficial",
+                solo_groups_count
+            );
+            return Ok(merged_groups);
+        }
+
+        println!("Checking if we can merge groups");
+        let available_configurations = self.get_available_configurations().await;
+
+        debug!(
+            "Found {} total groups ({} solo) for potential merging",
+            all_groups.len(),
+            solo_groups_count
+        );
+
+        for config in &available_configurations {
+            // up-to-date list of groups
+            let current_groups = self.get_all_groups().await?;
+            let config_merged_groups = self
+                .try_merge_groups_for_config(&current_groups, config, &mut conn)
+                .await?;
+            merged_groups.extend(config_merged_groups);
+        }
+        println!("Merged groups: {:?}", merged_groups);
+
+        if !merged_groups.is_empty() {
+            info!(
+                "Group merging completed: created {} new merged groups",
+                merged_groups.len()
+            );
+        } else {
+            debug!("No groups were merged");
+        }
+
+        Ok(merged_groups)
+    }
+
+    /// Try to merge groups for a specific configuration
+    async fn try_merge_groups_for_config(
+        &self,
+        all_groups: &[NodeGroup],
+        config: &NodeGroupConfiguration,
+        conn: &mut redis::aio::MultiplexedConnection,
+    ) -> Result<Vec<NodeGroup>, Error> {
+        let mut merged_groups = Vec::new();
+
+        // Find compatible solo groups (including those with tasks)
+        let compatible_groups = self.find_compatible_solo_groups(all_groups, config).await?;
+        println!("Compatible groups: {:?}", compatible_groups);
+
+        println!(
+            "Found {} compatible solo groups for configuration {}",
+            compatible_groups.len(),
+            config.name
+        );
+        println!("Min group size: {:?}", config.min_group_size);
+
+        if compatible_groups.len() < config.min_group_size {
+            println!("Not enough compatible groups to merge");
+            return Ok(merged_groups);
+        }
+
+        println!("Trying to merge groups for configuration: {:?}", config);
+
+        // Group merging attempts
+        let mut remaining_groups = compatible_groups;
+        while remaining_groups.len() >= config.min_group_size {
+            let merge_result = self
+                .attempt_group_merge(&remaining_groups, config, conn)
+                .await?;
+
+            println!("Merge result: {:?}", merge_result);
+
+            match merge_result {
+                Some((merged_group, used_group_ids)) => {
+                    merged_groups.push(merged_group);
+                    remaining_groups.retain(|g| !used_group_ids.contains(&g.id));
+                }
+                None => break, // No more merges possible
+            }
+        }
+
+        Ok(merged_groups)
+    }
+
+    /// Find solo groups compatible with a configuration
+    async fn find_compatible_solo_groups(
+        &self,
+        all_groups: &[NodeGroup],
+        config: &NodeGroupConfiguration,
+    ) -> Result<Vec<NodeGroup>, Error> {
+        let nodes = self.store_context.node_store.get_nodes().await?;
+        let node_specs: HashMap<String, &OrchestratorNode> = nodes
+            .iter()
+            .map(|node| (node.address.to_string(), node))
+            .collect();
+
+        let mut compatible_groups = Vec::new();
+
+        for group in all_groups {
+            if group.nodes.len() == 1
+                && self.is_group_compatible_with_config(group, config, &node_specs)
+            {
+                compatible_groups.push(group.clone());
+            }
+        }
+
+        Ok(compatible_groups)
+    }
+
+    /// Check if a group is compatible with a configuration
+    fn is_group_compatible_with_config(
+        &self,
+        group: &NodeGroup,
+        config: &NodeGroupConfiguration,
+        node_specs: &HashMap<String, &OrchestratorNode>,
+    ) -> bool {
+        group.nodes.iter().all(|node_addr| {
+            node_specs
+                .get(node_addr)
+                .map(|node| Self::is_node_compatible_with_config(config, node))
+                .unwrap_or(false)
+        })
+    }
+
+    /// Attempt to merge a group of compatible groups
+    async fn attempt_group_merge(
+        &self,
+        compatible_groups: &[NodeGroup],
+        config: &NodeGroupConfiguration,
+        conn: &mut redis::aio::MultiplexedConnection,
+    ) -> Result<Option<(NodeGroup, Vec<String>)>, Error> {
+        let mut merge_batch = Vec::new();
+        let mut total_nodes = BTreeSet::new();
+        let mut groups_to_dissolve = Vec::new();
+
+        // Select groups for merging
+        for group in compatible_groups {
+            if total_nodes.len() + group.nodes.len() <= config.max_group_size {
+                merge_batch.push(group.clone());
+                total_nodes.extend(group.nodes.iter().cloned());
+                groups_to_dissolve.push(group.id.clone());
+
+                if total_nodes.len() >= config.max_group_size {
+                    break;
+                }
+            }
+        }
+
+        println!("Merge batch: {:?}", merge_batch);
+        println!("Total nodes: {:?}", total_nodes);
+        println!("Groups to dissolve: {:?}", groups_to_dissolve);
+
+        // Validate merge conditions
+        if !self
+            .is_merge_beneficial(&merge_batch, total_nodes.len())
+            .await?
+        {
+            println!("Merge not beneficial");
+            return Ok(None);
+        }
+
+        // Perform the merge
+        self.execute_group_merge(&merge_batch, config, &total_nodes, conn)
+            .await
+    }
+
+    /// Check if merging these groups would be beneficial
+    async fn is_merge_beneficial(
+        &self,
+        groups: &[NodeGroup],
+        new_size: usize,
+    ) -> Result<bool, Error> {
+        println!("Checking if merge is beneficial");
+        println!("Groups: {:?}", groups);
+        println!("New size: {:?}", new_size);
+        if groups.len() < 2 || new_size < 2 {
+            return Ok(false);
+        }
+        println!("Merge is beneficial");
+        println!("checking task: {:?}", groups);
+        // Check if task switching is beneficial
+        self.should_switch_tasks(groups, new_size).await
+    }
+
+    /// Execute the actual group merge with Redis operations
+    async fn execute_group_merge(
+        &self,
+        groups_to_merge: &[NodeGroup],
+        config: &NodeGroupConfiguration,
+        merged_nodes: &BTreeSet<String>,
+        conn: &mut redis::aio::MultiplexedConnection,
+    ) -> Result<Option<(NodeGroup, Vec<String>)>, Error> {
+        let group_ids_to_dissolve: Vec<String> =
+            groups_to_merge.iter().map(|g| g.id.clone()).collect();
+
+        // Create new merged group
+        let new_group_id = Self::generate_group_id();
+        let merged_group = NodeGroup {
+            id: new_group_id.clone(),
+            nodes: merged_nodes.clone(),
+            created_at: chrono::Utc::now(),
+            configuration_name: config.name.clone(),
+        };
+
+        // Find the best task for the new group before starting transaction
+        let selected_task = self.find_best_task_for_group(&merged_group).await?;
+
+        // Begin atomic Redis transaction
+        let mut pipe = redis::pipe();
+        pipe.atomic();
+
+        // Dissolve old groups
+        for group_id in &group_ids_to_dissolve {
+            // Get group data for webhook notifications (done before deletion)
+            let group_key = Self::get_group_key(group_id);
+
+            // Remove nodes from group mapping
+            if let Some(old_group) = groups_to_merge.iter().find(|g| &g.id == group_id) {
+                for node in &old_group.nodes {
+                    pipe.hdel(NODE_GROUP_MAP_KEY, node);
+                }
+            }
+
+            // Delete group task assignment
+            let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
+            pipe.del(&task_key);
+
+            // Delete group
+            pipe.del(&group_key);
+        }
+
+        // Create new merged group
+        let group_key = Self::get_group_key(&new_group_id);
+        let group_data = serde_json::to_string(&merged_group)?;
+        pipe.set(&group_key, group_data);
+
+        // Map nodes to new group
+        for node in merged_nodes {
+            pipe.hset(NODE_GROUP_MAP_KEY, node, &new_group_id);
+        }
+
+        // Assign task to new group if one was found
+        if let Some(task) = &selected_task {
+            let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, new_group_id);
+            pipe.set_nx(&task_key, task.id.to_string());
+        }
+
+        // Execute all operations atomically
+        pipe.query_async::<()>(conn).await?;
+
+        // Log results
+        if let Some(task) = &selected_task {
+            info!(
+                "Successfully merged {} solo groups into group {} with {} nodes for configuration {} and assigned task {}",
+                groups_to_merge.len(),
+                new_group_id,
+                merged_nodes.len(),
+                config.name,
+                task.id
+            );
+        } else {
+            warn!(
+                "Successfully merged {} solo groups into group {} with {} nodes for configuration {} but NO TASK ASSIGNED - group will be idle",
+                groups_to_merge.len(),
+                new_group_id,
+                merged_nodes.len(),
+                config.name
+            );
+        }
+
+        // Send webhook notifications
+        self.send_merge_webhooks(groups_to_merge, &merged_group)
+            .await;
+
+        Ok(Some((merged_group, group_ids_to_dissolve)))
+    }
+
+    /// Send webhook notifications for group merging
+    async fn send_merge_webhooks(&self, dissolved_groups: &[NodeGroup], merged_group: &NodeGroup) {
+        if let Some(plugins) = &self.webhook_plugins {
+            // Send dissolved notifications
+            for group in dissolved_groups {
+                for plugin in plugins.iter() {
+                    let plugin_clone = plugin.clone();
+                    let group_clone = group.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = plugin_clone
+                            .send_group_destroyed(
+                                group_clone.id,
+                                group_clone.configuration_name,
+                                group_clone.nodes.iter().cloned().collect(),
+                            )
+                            .await
+                        {
+                            error!("Failed to send group dissolved webhook: {}", e);
+                        }
+                    });
+                }
+            }
+
+            // Send created notification
+            for plugin in plugins.iter() {
+                let plugin_clone = plugin.clone();
+                let group_clone = merged_group.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = plugin_clone
+                        .send_group_created(
+                            group_clone.id,
+                            group_clone.configuration_name,
+                            group_clone.nodes.iter().cloned().collect(),
+                        )
+                        .await
+                    {
+                        error!("Failed to send group created webhook: {}", e);
+                    }
+                });
+            }
+        }
     }
 
     pub async fn run_group_management_loop(&self, duration: u64) -> Result<(), Error> {
@@ -396,9 +839,15 @@ impl NodeGroupsPlugin {
             let start = std::time::Instant::now();
             interval.tick().await;
 
+            // First, form new groups with optimal sizing
             if let Err(e) = self.try_form_new_groups().await {
-                error!("Error in group management: {}", e);
+                error!("Error in group formation: {}", e);
             }
+
+            if let Err(e) = self.try_merge_solo_groups().await {
+                error!("Error in group merging: {}", e);
+            }
+
             if let Some(heartbeats) = &self.node_groups_heartbeats {
                 heartbeats.update_node_groups();
             }
@@ -597,6 +1046,162 @@ impl NodeGroupsPlugin {
             group_ids
         );
         Ok(group_ids)
+    }
+
+    /// Validate that a group still exists before task assignment (for scheduler integration)
+    pub async fn validate_group_exists(&self, group_id: &str) -> Result<bool, Error> {
+        let group = self.get_group_by_id(group_id).await?;
+        Ok(group.is_some())
+    }
+
+    /// Handle the case where a group was dissolved while processing - for scheduler integration
+    pub async fn handle_group_not_found(&self, group_id: &str, task_id: &str) -> Result<(), Error> {
+        warn!(
+            "Group {} not found during task assignment for task {}, attempting recovery",
+            group_id, task_id
+        );
+
+        // Try to find another suitable group for the task
+        let all_groups = self.get_all_groups().await?;
+
+        for group in all_groups {
+            // Check if group is idle and compatible
+            if self.get_current_group_task(&group.id).await?.is_none() {
+                // Try to assign the task to this group
+                match self.assign_task_to_group(&group.id, task_id).await {
+                    Ok(true) => {
+                        info!(
+                            "Successfully reassigned task {} from dissolved group {} to group {}",
+                            task_id, group_id, group.id
+                        );
+                        return Ok(());
+                    }
+                    Ok(false) => {
+                        debug!(
+                            "Group {} was assigned another task while trying to reassign task {}",
+                            group.id, task_id
+                        );
+                        continue;
+                    }
+                    Err(e) => {
+                        debug!(
+                            "Failed to assign task {} to group {}: {}",
+                            task_id, group.id, e
+                        );
+                        continue;
+                    }
+                }
+            }
+        }
+
+        warn!(
+            "Could not find alternative group for task {} after group {} was dissolved",
+            task_id, group_id
+        );
+        Ok(())
+    }
+
+    /// Find the best task for a newly merged group
+    async fn find_best_task_for_group(&self, group: &NodeGroup) -> Result<Option<Task>, Error> {
+        debug!(
+            "Finding best task for merged group {} with configuration {}",
+            group.id, group.configuration_name
+        );
+
+        // Get all available tasks
+        let all_tasks = self.store_context.task_store.get_all_tasks().await?;
+
+        // Filter tasks that are compatible with this group's configuration
+        let applicable_tasks: Vec<Task> = all_tasks
+            .into_iter()
+            .filter(|task| {
+                // Task is compatible if:
+                // 1. It has no topology restrictions (None) - can run anywhere
+                // 2. Its allowed_topologies list includes this group's configuration
+                match &task.scheduling_config {
+                    None => true, // No restrictions - compatible with any group
+                    Some(config) => {
+                        match config.plugins.as_ref().and_then(|p| p.get("node_groups")) {
+                            None => true, // No node_groups plugin config - compatible
+                            Some(node_config) => {
+                                match node_config.get("allowed_topologies") {
+                                    None => true, // No topology restrictions - compatible
+                                    Some(topologies) => {
+                                        // Task specifies allowed topologies - check if group's config is allowed
+                                        let compatible =
+                                            topologies.contains(&group.configuration_name);
+                                        debug!(
+                                            "Task {} topologies {:?} {} group config '{}'",
+                                            task.id,
+                                            topologies,
+                                            if compatible { "includes" } else { "excludes" },
+                                            group.configuration_name
+                                        );
+                                        compatible
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .collect();
+
+        if applicable_tasks.is_empty() {
+            warn!(
+                "No applicable tasks found for merged group {} with configuration {}",
+                group.id, group.configuration_name
+            );
+            return Ok(None);
+        }
+
+        // Select random task
+        let mut rng = rand::rng();
+        let selected_task = applicable_tasks.into_iter().choose(&mut rng);
+
+        if let Some(task) = selected_task {
+            debug!(
+                "Selected task {} for group {} (created_at: {})",
+                task.id, group.id, task.created_at
+            );
+            Ok(Some(task))
+        } else {
+            warn!("No task could be selected for merged group {}", group.id);
+            Ok(None)
+        }
+    }
+
+    #[cfg(test)]
+    pub async fn test_try_form_new_groups(&self) -> Result<Vec<NodeGroup>, Error> {
+        self.try_form_new_groups().await
+    }
+
+    #[cfg(test)]
+    pub async fn test_try_merge_solo_groups(&self) -> Result<Vec<NodeGroup>, Error> {
+        self.try_merge_solo_groups().await
+    }
+
+    #[cfg(test)]
+    pub async fn test_should_switch_tasks(
+        &self,
+        current_groups: &[NodeGroup],
+        potential_merged_size: usize,
+    ) -> Result<bool, Error> {
+        self.should_switch_tasks(current_groups, potential_merged_size)
+            .await
+    }
+
+    #[cfg(test)]
+    pub async fn test_find_best_task_for_group(
+        &self,
+        group: &NodeGroup,
+    ) -> Result<Option<Task>, Error> {
+        self.find_best_task_for_group(group).await
+    }
+
+    #[cfg(test)]
+    pub fn test_get_task_switching_policy(&self) -> &TaskSwitchingPolicy {
+        &self.task_switching_policy
     }
 }
 
