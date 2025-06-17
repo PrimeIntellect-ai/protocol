@@ -207,12 +207,25 @@ async fn send_heartbeat(
         .map_err(|e| {
             log::error!("Request failed: {:?}", e);
             HeartbeatError::RequestFailed
-        })?
-        .error_for_status()
-        .map_err(|e| {
-            log::error!("Error response received: {:?}", e);
-            HeartbeatError::RequestFailed
-        })?
+        })?;
+
+    let response = if response.status().is_success() {
+        response
+    } else {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error response".to_string());
+        log::error!(
+            "Error response received: status={}, body={}",
+            status,
+            error_text
+        );
+        return Err(HeartbeatError::RequestFailed);
+    };
+
+    let response = response
         .json::<ApiResponse<HeartbeatResponse>>()
         .await
         .map_err(|e| {
