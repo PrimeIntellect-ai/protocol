@@ -1,7 +1,8 @@
 use crate::events::TaskObserver;
 use crate::store::core::RedisStore;
+use anyhow::Result;
 use log::error;
-use redis::Commands;
+use redis::AsyncCommands;
 use shared::models::task::Task;
 use std::sync::{Arc, Mutex};
 
@@ -27,15 +28,15 @@ impl TaskStore {
         }
     }
 
-    pub fn add_task(&self, task: Task) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn add_task(&self, task: Task) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         // Store the task with its ID as key
         let task_key = format!("{}{}", TASK_KEY_PREFIX, task.id);
-        let _: () = con.set(&task_key, task.clone()).unwrap();
+        let _: () = con.set(&task_key, task.clone()).await?;
 
         // Add task ID to list of all tasks
-        let _: () = con.rpush(TASK_LIST_KEY, task.id.to_string()).unwrap();
+        let _: () = con.rpush(TASK_LIST_KEY, task.id.to_string()).await?;
 
         // Notify observers synchronously
         let observers = self.observers.lock().unwrap().clone();
@@ -44,39 +45,42 @@ impl TaskStore {
                 error!("Error notifying observer: {}", e);
             }
         }
+
+        Ok(())
     }
 
-    pub fn get_all_tasks(&self) -> Vec<Task> {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn get_all_tasks(&self) -> Result<Vec<Task>> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         // Get all task IDs
-        let task_ids: Vec<String> = con.lrange(TASK_LIST_KEY, 0, -1).unwrap();
+        let task_ids: Vec<String> = con.lrange(TASK_LIST_KEY, 0, -1).await?;
 
         // Get each task by ID and collect into vector
-        let mut tasks: Vec<Task> = task_ids
-            .iter()
-            .map(|id| {
-                let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
-                con.get(&task_key).unwrap()
-            })
-            .collect();
+        let mut tasks: Vec<Task> = Vec::new();
+        for id in task_ids {
+            let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
+            let task: Option<Task> = con.get(&task_key).await?;
+            if let Some(task) = task {
+                tasks.push(task);
+            }
+        }
 
         tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
-        tasks
+        Ok(tasks)
     }
 
-    pub fn delete_task(&self, id: String) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn delete_task(&self, id: String) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
-        let task = self.get_task(&id);
+        let task = self.get_task(&id).await?;
 
         // Delete task from individual storage
         let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
-        let _: () = con.del(&task_key).unwrap();
+        let _: () = con.del(&task_key).await?;
 
         // Remove task ID from list
-        let _: () = con.lrem(TASK_LIST_KEY, 0, id).unwrap();
+        let _: () = con.lrem(TASK_LIST_KEY, 0, id).await?;
 
         // Notify observers synchronously
         let observers = self.observers.lock().unwrap().clone();
@@ -85,12 +89,14 @@ impl TaskStore {
                 error!("Error notifying observer: {}", e);
             }
         }
+
+        Ok(())
     }
 
-    pub fn get_task(&self, id: &str) -> Option<Task> {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn get_task(&self, id: &str) -> Result<Option<Task>> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
-        let task: Option<Task> = con.get(&task_key).unwrap();
-        task
+        let task: Option<Task> = con.get(&task_key).await?;
+        Ok(task)
     }
 }

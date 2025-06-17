@@ -1,5 +1,6 @@
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
+use crate::p2p::client::P2PClient;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::utils::keccak256 as keccak;
@@ -10,9 +11,7 @@ use futures::stream;
 use futures::StreamExt;
 use hex;
 use log::{debug, error, info, warn};
-use reqwest::Client;
 use shared::models::invite::InviteRequest;
-use shared::security::request_signer::sign_request;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -20,26 +19,24 @@ use std::time::UNIX_EPOCH;
 use tokio::time::{interval, Duration};
 
 // Timeout constants
-const REQUEST_TIMEOUT: u64 = 15; // 15 seconds for HTTP requests
-const CONNECTION_TIMEOUT: u64 = 10; // 10 seconds for establishing connections
 const DEFAULT_INVITE_CONCURRENT_COUNT: usize = 32; // Max concurrent count of nodes being invited
 
 pub struct NodeInviter<'a> {
-    wallet: &'a Wallet,
+    wallet: Wallet,
     pool_id: u32,
     domain_id: u32,
     host: Option<&'a str>,
     port: Option<&'a u16>,
     url: Option<&'a str>,
     store_context: Arc<StoreContext>,
-    client: Client,
     heartbeats: Arc<LoopHeartbeats>,
+    p2p_client: Arc<P2PClient>,
 }
 
 impl<'a> NodeInviter<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        wallet: &'a Wallet,
+        wallet: Wallet,
         pool_id: u32,
         domain_id: u32,
         host: Option<&'a str>,
@@ -47,6 +44,7 @@ impl<'a> NodeInviter<'a> {
         url: Option<&'a str>,
         store_context: Arc<StoreContext>,
         heartbeats: Arc<LoopHeartbeats>,
+        p2p_client: Arc<P2PClient>,
     ) -> Self {
         Self {
             wallet,
@@ -57,11 +55,7 @@ impl<'a> NodeInviter<'a> {
             url,
             store_context,
             heartbeats,
-            client: Client::builder()
-                .timeout(Duration::from_secs(REQUEST_TIMEOUT))
-                .connect_timeout(Duration::from_secs(CONNECTION_TIMEOUT))
-                .build()
-                .unwrap(),
+            p2p_client,
         }
     }
 
@@ -110,16 +104,18 @@ impl<'a> NodeInviter<'a> {
     }
 
     async fn _send_invite(&self, node: &OrchestratorNode) -> Result<(), anyhow::Error> {
-        let node_url = format!("http://{}:{}", node.ip_address, node.port);
-        let invite_path = "/invite".to_string();
-        let invite_url = format!("{}{}", node_url, invite_path);
+        if node.worker_p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
+            return Err(anyhow::anyhow!("Node does not have p2p information"));
+        }
+        let p2p_id = node.worker_p2p_id.as_ref().unwrap();
+        let p2p_addresses = node.worker_p2p_addresses.as_ref().unwrap();
 
         // Generate random nonce and expiration
         let nonce: [u8; 32] = rand::random();
         let expiration: [u8; 32] = U256::from(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .map_err(|e| anyhow::anyhow!("System time error: {}", e))?
                 .as_secs()
                 + 1000,
         )
@@ -142,67 +138,38 @@ impl<'a> NodeInviter<'a> {
             },
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .map_err(|e| anyhow::anyhow!("System time error: {}", e))?
                 .as_secs(),
             expiration,
             nonce,
         };
-        let payload_json = serde_json::to_value(&payload).unwrap();
 
-        let message_signature = sign_request(&invite_path, self.wallet, Some(&payload_json))
-            .await
-            .unwrap();
-
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "x-address",
-            self.wallet
-                .wallet
-                .default_signer()
-                .address()
-                .to_string()
-                .parse()
-                .unwrap(),
-        );
-        headers.insert("x-signature", message_signature.parse().unwrap());
-
-        info!("Sending invite to node: {:?}", invite_url);
+        info!("Sending invite to node: {}", p2p_id);
 
         match self
-            .client
-            .post(invite_url)
-            .json(&payload)
-            .headers(headers)
-            .send()
+            .p2p_client
+            .invite_worker(node.address, p2p_id, p2p_addresses, payload)
             .await
         {
-            Ok(response) => {
-                let status = response.status();
-
-                if status.is_success() {
-                    info!("Successfully invited node");
-                    self.store_context
-                        .node_store
-                        .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat);
-                    self.store_context
-                        .heartbeat_store
-                        .clear_unhealthy_counter(&node.address);
-                    Ok(())
-                } else {
-                    let response_text = match response.text().await {
-                        Ok(text) => text,
-                        Err(e) => format!("Failed to get response text: {}", e),
-                    };
-                    warn!(
-                        "Received non-success status: {:?}. Response: {}",
-                        status, response_text
-                    );
-                    Err(anyhow::anyhow!(
-                        "Received non-success status: {:?}. Response: {}",
-                        status,
-                        response_text
-                    ))
+            Ok(_) => {
+                info!("Successfully invited node");
+                if let Err(e) = self
+                    .store_context
+                    .node_store
+                    .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat)
+                    .await
+                {
+                    error!("Error updating node status: {}", e);
                 }
+                if let Err(e) = self
+                    .store_context
+                    .heartbeat_store
+                    .clear_unhealthy_counter(&node.address)
+                    .await
+                {
+                    error!("Error clearing unhealthy counter: {}", e);
+                }
+                Ok(())
             }
             Err(e) => {
                 error!("Error sending invite to node: {:?}", e);
@@ -212,7 +179,7 @@ impl<'a> NodeInviter<'a> {
     }
 
     async fn process_uninvited_nodes(&self) -> Result<()> {
-        let nodes = self.store_context.node_store.get_uninvited_nodes();
+        let nodes = self.store_context.node_store.get_uninvited_nodes().await?;
 
         let invited_nodes = stream::iter(nodes.into_iter().map(|node| async move {
             info!("Processing node {:?}", node.address);

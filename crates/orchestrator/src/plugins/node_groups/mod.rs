@@ -7,13 +7,16 @@ use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Error;
 use anyhow::Result;
 use log::{debug, error, info, warn};
-use redis::{Commands, Script};
+use redis::{AsyncCommands, Script};
 use serde::{Deserialize, Serialize};
 use shared::models::node::ComputeRequirements;
 use shared::models::task::Task;
 use std::time::Duration;
 use std::{collections::BTreeSet, sync::Arc};
-use std::{collections::HashSet, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 pub mod scheduler_impl;
 pub mod status_update_impl;
@@ -122,13 +125,13 @@ impl NodeGroupsPlugin {
         format!("{}{}", GROUP_KEY_PREFIX, group_id)
     }
 
-    pub fn get_node_group(&self, node_addr: &str) -> Result<Option<NodeGroup>, Error> {
-        let mut conn = self.store.client.get_connection()?;
+    pub async fn get_node_group(&self, node_addr: &str) -> Result<Option<NodeGroup>, Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
-        let group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node_addr)?;
+        let group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node_addr).await?;
         if let Some(group_id) = group_id {
             let group_key = Self::get_group_key(&group_id);
-            let group_data: Option<String> = conn.get(&group_key)?;
+            let group_data: Option<String> = conn.get(&group_key).await?;
             if let Some(group_data) = group_data {
                 return Ok(Some(serde_json::from_str(&group_data)?));
             }
@@ -137,14 +140,15 @@ impl NodeGroupsPlugin {
         Ok(None)
     }
 
-    pub fn get_available_configurations(&self) -> Vec<NodeGroupConfiguration> {
-        let mut conn = match self.store.client.get_connection() {
+    pub async fn get_available_configurations(&self) -> Vec<NodeGroupConfiguration> {
+        let mut conn = match self.store.client.get_multiplexed_async_connection().await {
             Ok(conn) => conn,
             Err(_) => return vec![],
         };
 
         let available_configs: HashSet<String> = conn
             .smembers("available_node_group_configs")
+            .await
             .unwrap_or_default();
 
         let mut configs: Vec<NodeGroupConfiguration> = self
@@ -158,15 +162,21 @@ impl NodeGroupsPlugin {
         configs
     }
 
-    pub fn enable_configuration(&self, configuration_name: &str) -> Result<(), Error> {
-        let mut conn = self.store.client.get_connection()?;
-        conn.sadd::<_, _, ()>("available_node_group_configs", configuration_name)?;
+    pub fn get_all_configuration_templates(&self) -> Vec<NodeGroupConfiguration> {
+        self.configuration_templates.clone()
+    }
+
+    pub async fn enable_configuration(&self, configuration_name: &str) -> Result<(), Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+        conn.sadd::<_, _, ()>("available_node_group_configs", configuration_name)
+            .await?;
         Ok(())
     }
 
-    pub fn disable_configuration(&self, configuration_name: &str) -> Result<(), Error> {
-        let mut conn = self.store.client.get_connection()?;
-        conn.srem::<_, _, ()>("available_node_group_configs", configuration_name)?;
+    pub async fn disable_configuration(&self, configuration_name: &str) -> Result<(), Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+        conn.srem::<_, _, ()>("available_node_group_configs", configuration_name)
+            .await?;
         Ok(())
     }
 
@@ -182,13 +192,13 @@ impl NodeGroupsPlugin {
             .ok_or_else(|| anyhow::anyhow!("Node {} not found in group", node_addr))
     }
 
-    fn get_current_group_task(&self, group_id: &str) -> Result<Option<Task>, Error> {
-        let mut conn = self.store.client.get_connection()?;
+    async fn get_current_group_task(&self, group_id: &str) -> Result<Option<Task>, Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
         let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
-        let task_id: Option<String> = conn.get(&task_key)?;
+        let task_id: Option<String> = conn.get(&task_key).await?;
 
         if let Some(task_id) = task_id {
-            if let Some(task) = self.store_context.task_store.get_task(&task_id) {
+            if let Some(task) = self.store_context.task_store.get_task(&task_id).await? {
                 return Ok(Some(task));
             }
 
@@ -208,29 +218,33 @@ impl NodeGroupsPlugin {
         "#,
             );
 
-            let _: () = script.key(&task_key).arg(task_id).invoke(&mut conn)?;
+            let _: () = script
+                .key(&task_key)
+                .arg(task_id)
+                .invoke_async(&mut conn)
+                .await?;
         }
         Ok(None)
     }
 
-    fn assign_task_to_group(&self, group_id: &str, task_id: &str) -> Result<bool, Error> {
-        let mut conn = self.store.client.get_connection()?;
+    pub async fn assign_task_to_group(&self, group_id: &str, task_id: &str) -> Result<bool, Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
         let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
-        let result: bool = conn.set_nx::<_, _, bool>(&task_key, task_id)?;
+        let result: bool = conn.set_nx::<_, _, bool>(&task_key, task_id).await?;
         Ok(result)
     }
 
-    fn try_form_new_groups(&self) -> Result<Vec<NodeGroup>, Error> {
-        let mut conn = self.store.client.get_connection()?;
+    async fn try_form_new_groups(&self) -> Result<Vec<NodeGroup>, Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
         let mut formed_groups = Vec::new();
 
-        let available_configurations = self.get_available_configurations();
+        let available_configurations = self.get_available_configurations().await;
         debug!("Available configurations: {:?}", available_configurations);
 
-        let nodes = self.store_context.node_store.get_nodes();
+        let nodes = self.store_context.node_store.get_nodes().await?;
         let assigned_nodes: std::collections::HashMap<String, String> =
-            conn.hgetall(NODE_GROUP_MAP_KEY)?;
+            conn.hgetall(NODE_GROUP_MAP_KEY).await?;
 
         debug!("Assigned nodes: {:?}", assigned_nodes);
 
@@ -294,11 +308,15 @@ impl NodeGroupsPlugin {
                 };
                 debug!("Created new group structure: {:?}", group);
 
+                // Use a Redis transaction to atomically create the group
+                let mut pipe = redis::pipe();
+                pipe.atomic();
+
                 // Store group data
                 let group_key = Self::get_group_key(&group_id);
                 let group_data = serde_json::to_string(&group)?;
                 debug!("Storing group data at key: {}", group_key);
-                conn.set::<_, _, ()>(&group_key, group_data)?;
+                pipe.set(&group_key, group_data);
 
                 // Map nodes to group
                 debug!(
@@ -307,8 +325,11 @@ impl NodeGroupsPlugin {
                     group_id
                 );
                 for node in &available_nodes {
-                    conn.hset::<_, _, _, ()>(NODE_GROUP_MAP_KEY, node, &group_id)?;
+                    pipe.hset(NODE_GROUP_MAP_KEY, node, &group_id);
                 }
+
+                // Execute all operations atomically
+                pipe.query_async::<()>(&mut conn).await?;
 
                 // Remove used nodes from healthy_nodes
                 let prev_healthy_count = healthy_nodes.len();
@@ -364,8 +385,8 @@ impl NodeGroupsPlugin {
     }
 
     #[cfg(test)]
-    pub fn test_try_form_new_groups(&self) -> Result<Vec<NodeGroup>, Error> {
-        self.try_form_new_groups()
+    pub async fn test_try_form_new_groups(&self) -> Result<Vec<NodeGroup>, Error> {
+        self.try_form_new_groups().await
     }
 
     pub async fn run_group_management_loop(&self, duration: u64) -> Result<(), Error> {
@@ -375,7 +396,7 @@ impl NodeGroupsPlugin {
             let start = std::time::Instant::now();
             interval.tick().await;
 
-            if let Err(e) = self.try_form_new_groups() {
+            if let Err(e) = self.try_form_new_groups().await {
                 error!("Error in group management: {}", e);
             }
             if let Some(heartbeats) = &self.node_groups_heartbeats {
@@ -387,26 +408,38 @@ impl NodeGroupsPlugin {
         }
     }
 
-    fn dissolve_group(&self, group_id: &str) -> Result<(), Error> {
+    pub async fn dissolve_group(&self, group_id: &str) -> Result<(), Error> {
         debug!("Attempting to dissolve group: {}", group_id);
-        let mut conn = self.store.client.get_connection()?;
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
         let group_key = Self::get_group_key(group_id);
-        let group_data: Option<String> = conn.get(&group_key)?;
+        let group_data: Option<String> = conn.get(&group_key).await?;
 
         if let Some(group_data) = group_data {
             let group: NodeGroup = serde_json::from_str(&group_data)?;
             debug!("Found group to dissolve: {:?}", group);
 
+            // Use a Redis transaction to atomically dissolve the group
+            let mut pipe = redis::pipe();
+            pipe.atomic();
+
             // Remove all nodes from the group mapping
             debug!("Removing {} nodes from group mapping", group.nodes.len());
             for node in &group.nodes {
-                conn.hdel::<_, _, ()>(NODE_GROUP_MAP_KEY, node)?;
+                pipe.hdel(NODE_GROUP_MAP_KEY, node);
             }
+
+            // Delete group task assignment
+            let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
+            debug!("Deleting group task assignment from key: {}", task_key);
+            pipe.del(&task_key);
 
             // Delete group
             debug!("Deleting group data from key: {}", group_key);
-            conn.del::<_, ()>(&group_key)?;
+            pipe.del(&group_key);
+
+            // Execute all operations atomically
+            pipe.query_async::<()>(&mut conn).await?;
 
             info!(
                 "Dissolved group {} with {} nodes",
@@ -454,9 +487,9 @@ impl NodeGroupsPlugin {
         Ok(vec![])
     }
 
-    pub fn get_all_tasks_for_topology(&self, topology: &str) -> Result<Vec<Task>, Error> {
+    pub async fn get_all_tasks_for_topology(&self, topology: &str) -> Result<Vec<Task>, Error> {
         debug!("Getting all tasks for topology: {}", topology);
-        let all_tasks = self.store_context.task_store.get_all_tasks();
+        let all_tasks = self.store_context.task_store.get_all_tasks().await?;
         debug!("Found {} total tasks to check", all_tasks.len());
 
         let mut tasks = Vec::new();
@@ -470,26 +503,100 @@ impl NodeGroupsPlugin {
         Ok(tasks)
     }
 
-    pub fn get_all_groups_for_topology(&self, topology: &str) -> Result<Vec<NodeGroup>, Error> {
-        debug!("Getting all groups for topology: {}", topology);
-        let mut conn = self.store.client.get_connection()?;
+    pub async fn get_all_groups(&self) -> Result<Vec<NodeGroup>, Error> {
+        debug!("Getting all groups");
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
-        let pattern = format!("{}*", GROUP_KEY_PREFIX);
-        let group_keys: Vec<String> = conn.keys(&pattern)?;
-        debug!("Found {} potential group keys", group_keys.len());
+        // Get all node-to-group mappings
+        let node_mappings: HashMap<String, String> = conn.hgetall(NODE_GROUP_MAP_KEY).await?;
 
+        if node_mappings.is_empty() {
+            debug!("No node mappings found");
+            return Ok(Vec::new());
+        }
+
+        // Collect unique group IDs
+        let group_ids: HashSet<String> = node_mappings.values().cloned().collect();
+        debug!("Found {} unique group IDs", group_ids.len());
+
+        // Fetch each group's data
         let mut groups = Vec::new();
-        for group_key in group_keys {
-            if let Some(group_data) = conn.get::<_, Option<String>>(&group_key)? {
-                if let Ok(group) = serde_json::from_str::<NodeGroup>(&group_data) {
-                    if group.configuration_name == topology {
-                        groups.push(group);
+        for group_id in group_ids {
+            let group_key = Self::get_group_key(&group_id);
+            if let Some(group_data) = conn.get::<_, Option<String>>(&group_key).await? {
+                match serde_json::from_str::<NodeGroup>(&group_data) {
+                    Ok(group) => groups.push(group),
+                    Err(e) => {
+                        error!("Failed to parse group {} data: {}", group_id, e);
+                    }
+                }
+            } else {
+                warn!("Group {} exists in mapping but has no data", group_id);
+            }
+        }
+
+        groups.sort_by(|a, b| a.id.cmp(&b.id));
+
+        debug!("Successfully loaded {} groups", groups.len());
+        Ok(groups)
+    }
+
+    pub async fn get_group_by_id(&self, group_id: &str) -> Result<Option<NodeGroup>, Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+        let group_key = Self::get_group_key(group_id);
+
+        if let Some(group_data) = conn.get::<_, Option<String>>(&group_key).await? {
+            Ok(Some(serde_json::from_str(&group_data)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn get_all_node_group_mappings(&self) -> Result<HashMap<String, String>, Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+
+        let mappings: HashMap<String, String> = conn.hgetall(NODE_GROUP_MAP_KEY).await?;
+        Ok(mappings)
+    }
+
+    /// Get all groups assigned to a specific task
+    /// Returns a list of group IDs that are currently working on the given task
+    pub async fn get_groups_for_task(&self, task_id: &str) -> Result<Vec<String>, Error> {
+        debug!("Getting all groups for task: {}", task_id);
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+
+        // First, collect all group_task keys
+        let pattern = format!("{}*", GROUP_TASK_KEY_PREFIX);
+        let mut iter: redis::AsyncIter<String> = conn.scan_match(&pattern).await?;
+        let mut all_keys = Vec::new();
+
+        while let Some(key) = iter.next_item().await {
+            all_keys.push(key);
+        }
+
+        // Drop the iterator to release the borrow on conn
+        drop(iter);
+
+        // Now check which keys point to our task_id
+        let mut group_ids = Vec::new();
+        for key in all_keys {
+            if let Some(stored_task_id) = conn.get::<_, Option<String>>(&key).await? {
+                if stored_task_id == task_id {
+                    // Extract group_id from the key (remove the prefix)
+                    if let Some(group_id) = key.strip_prefix(GROUP_TASK_KEY_PREFIX) {
+                        group_ids.push(group_id.to_string());
                     }
                 }
             }
         }
-        debug!("Found {} groups for topology {}", groups.len(), topology);
-        Ok(groups)
+
+        debug!(
+            "Found {} groups for task {}: {:?}",
+            group_ids.len(),
+            task_id,
+            group_ids
+        );
+        Ok(group_ids)
     }
 }
 
@@ -503,7 +610,18 @@ impl TaskObserver for NodeGroupsPlugin {
 
         for topology in topologies {
             debug!("Enabling configuration for topology: {}", topology);
-            self.enable_configuration(&topology)?;
+            tokio::spawn({
+                let plugin = self.clone();
+                let topology = topology.clone();
+                async move {
+                    if let Err(e) = plugin.enable_configuration(&topology).await {
+                        error!(
+                            "Failed to enable configuration for topology {}: {}",
+                            topology, e
+                        );
+                    }
+                }
+            });
         }
 
         Ok(())
@@ -512,30 +630,78 @@ impl TaskObserver for NodeGroupsPlugin {
     fn on_task_deleted(&self, task: Option<Task>) -> Result<()> {
         if let Some(task) = task {
             debug!("Task deleted event received: {:?}", task);
+            let task_id = task.id.to_string();
             let topologies = self.get_task_topologies(&task)?;
-            debug!("Found {} topologies to check for cleanup", topologies.len());
+            debug!("Found {} topologies for task cleanup", topologies.len());
 
-            for topology in topologies {
-                debug!("Checking topology {} for cleanup", topology);
-                let tasks = self.get_all_tasks_for_topology(&topology)?;
-                if tasks.is_empty() {
-                    debug!(
-                        "No tasks remaining for topology {}, disabling configuration",
-                        topology
-                    );
-                    self.disable_configuration(&topology)?;
+            tokio::spawn({
+                let plugin = self.clone();
+                let task_id = task_id.clone();
+                let topologies = topologies.clone();
+                async move {
+                    // Immediately dissolve all groups assigned to this specific task
+                    debug!("Dissolving groups for deleted task: {}", task_id);
+                    let groups_for_task = match plugin.get_groups_for_task(&task_id).await {
+                        Ok(groups) => groups,
+                        Err(e) => {
+                            error!("Failed to get groups for task {}: {}", task_id, e);
+                            return;
+                        }
+                    };
 
-                    let groups = self.get_all_groups_for_topology(&topology)?;
-                    debug!(
-                        "Dissolving {} groups for topology {}",
-                        groups.len(),
-                        topology
-                    );
-                    for group in groups {
-                        self.dissolve_group(&group.id)?;
+                    if !groups_for_task.is_empty() {
+                        info!(
+                            "Dissolving {} groups for deleted task {}",
+                            groups_for_task.len(),
+                            task_id
+                        );
+
+                        for group_id in &groups_for_task {
+                            debug!("Dissolving group {} for deleted task {}", group_id, task_id);
+                            if let Err(e) = plugin.dissolve_group(group_id).await {
+                                error!(
+                                    "Failed to dissolve group {} for task {}: {}",
+                                    group_id, task_id, e
+                                );
+                            } else {
+                                info!(
+                                    "Successfully dissolved group {} for deleted task {}",
+                                    group_id, task_id
+                                );
+                            }
+                        }
+                    } else {
+                        debug!("No groups found for deleted task {}", task_id);
+                    }
+
+                    // Also check if we need to disable configurations when no tasks remain for a topology
+                    // This is secondary to the immediate group dissolution above
+                    for topology in topologies {
+                        debug!("Checking topology {} for configuration cleanup", topology);
+                        let remaining_tasks =
+                            match plugin.get_all_tasks_for_topology(&topology).await {
+                                Ok(tasks) => tasks,
+                                Err(e) => {
+                                    error!("Failed to get tasks for topology {}: {}", topology, e);
+                                    continue;
+                                }
+                            };
+
+                        if remaining_tasks.is_empty() {
+                            debug!(
+                                "No tasks remaining for topology {}, disabling configuration",
+                                topology
+                            );
+                            if let Err(e) = plugin.disable_configuration(&topology).await {
+                                error!(
+                                    "Failed to disable configuration for topology {}: {}",
+                                    topology, e
+                                );
+                            }
+                        }
                     }
                 }
-            }
+            });
         }
         Ok(())
     }

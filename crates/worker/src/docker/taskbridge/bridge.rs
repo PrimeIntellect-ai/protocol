@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
+use shared::web3::wallet::WalletProvider;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
@@ -22,10 +23,10 @@ const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.worker/";
 pub struct TaskBridge {
     pub socket_path: String,
     pub metrics_store: Arc<MetricsStore>,
-    pub contracts: Option<Arc<Contracts>>,
+    pub contracts: Option<Contracts<WalletProvider>>,
     pub node_config: Option<Node>,
-    pub node_wallet: Option<Arc<Wallet>>,
-    pub docker_storage_path: Option<String>,
+    pub node_wallet: Option<Wallet>,
+    pub docker_storage_path: String,
     pub state: Arc<SystemState>,
 }
 
@@ -41,10 +42,10 @@ impl TaskBridge {
     pub fn new(
         socket_path: Option<&str>,
         metrics_store: Arc<MetricsStore>,
-        contracts: Option<Arc<Contracts>>,
+        contracts: Option<Contracts<WalletProvider>>,
         node_config: Option<Node>,
-        node_wallet: Option<Arc<Wallet>>,
-        docker_storage_path: Option<String>,
+        node_wallet: Option<Wallet>,
+        docker_storage_path: String,
         state: Arc<SystemState>,
     ) -> Arc<Self> {
         let path = match socket_path {
@@ -91,36 +92,32 @@ impl TaskBridge {
 
             // Handle file upload if save_path is present
             if let Some(file_name) = file_info["output/save_path"].as_str() {
-                if let Some(storage_path) = self.docker_storage_path.clone() {
-                    info!(
-                        "Handling file upload for task_id: {}, file: {}",
-                        task_id, file_name
-                    );
+                info!(
+                    "Handling file upload for task_id: {}, file: {}",
+                    task_id, file_name
+                );
 
-                    let storage_path_inner = storage_path.clone();
-                    let task_id_inner = task_id.to_string();
-                    let file_name_inner = file_name.to_string();
-                    let wallet_inner = self.node_wallet.as_ref().unwrap().clone();
-                    let state_inner = self.state.clone();
+                let storage_path_inner = self.docker_storage_path.clone();
+                let task_id_inner = task_id.to_string();
+                let file_name_inner = file_name.to_string();
+                let wallet_inner = self.node_wallet.as_ref().unwrap().clone();
+                let state_inner = self.state.clone();
 
-                    tokio::spawn(async move {
-                        if let Err(e) = file_handler::handle_file_upload(
-                            &storage_path_inner,
-                            &task_id_inner,
-                            &file_name_inner,
-                            &wallet_inner,
-                            &state_inner,
-                        )
-                        .await
-                        {
-                            error!("Failed to handle file upload: {}", e);
-                        } else {
-                            info!("File upload handled successfully");
-                        }
-                    });
-                } else {
-                    error!("No storage path set");
-                }
+                tokio::spawn(async move {
+                    if let Err(e) = file_handler::handle_file_upload(
+                        &storage_path_inner,
+                        &task_id_inner,
+                        &file_name_inner,
+                        &wallet_inner,
+                        &state_inner,
+                    )
+                    .await
+                    {
+                        error!("Failed to handle file upload: {}", e);
+                    } else {
+                        info!("File upload handled successfully");
+                    }
+                });
             }
 
             // Handle file validation if sha256 is present
@@ -141,7 +138,7 @@ impl TaskBridge {
                     let contracts_inner = contracts_ref.clone();
                     let node_inner = node_ref.clone();
                     let provider = match self.node_wallet.as_ref() {
-                        Some(wallet) => wallet.provider.clone(),
+                        Some(wallet) => wallet.provider(),
                         None => {
                             error!("No wallet provider found");
                             return Err(anyhow::anyhow!("No wallet provider found"));
@@ -240,8 +237,8 @@ impl TaskBridge {
         };
 
         // allow both owner and group to read/write
-        match fs::set_permissions(socket_path, fs::Permissions::from_mode(0o660)) {
-            Ok(_) => debug!("Set socket permissions to 0o660"),
+        match fs::set_permissions(socket_path, fs::Permissions::from_mode(0o666)) {
+            Ok(_) => debug!("Set socket permissions to 0o666"),
             Err(e) => {
                 error!("Failed to set socket permissions: {}", e);
                 return Err(e.into());
@@ -360,7 +357,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            "test_storage_path".to_string(),
             state,
         );
 
@@ -372,7 +369,7 @@ mod tests {
         assert!(socket_path.exists());
         let metadata = fs::metadata(&socket_path)?;
         let permissions = metadata.permissions();
-        assert_eq!(permissions.mode() & 0o777, 0o660);
+        assert_eq!(permissions.mode() & 0o777, 0o666);
 
         // Cleanup
         bridge_handle.abort();
@@ -391,7 +388,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            "test_storage_path".to_string(),
             state,
         );
 
@@ -424,7 +421,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            "test_storage_path".to_string(),
             state,
         );
 
@@ -471,7 +468,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            "test_storage_path".to_string(),
             state,
         );
 
@@ -518,7 +515,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            "test_storage_path".to_string(),
             state,
         );
 

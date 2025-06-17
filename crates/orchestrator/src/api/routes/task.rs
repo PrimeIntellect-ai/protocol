@@ -9,8 +9,12 @@ use shared::models::task::TaskRequest;
 
 async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone();
-    let tasks = task_store.get_all_tasks();
-    HttpResponse::Ok().json(json!({"success": true, "tasks": tasks}))
+    let tasks = task_store.get_all_tasks().await;
+    match tasks {
+        Ok(tasks) => HttpResponse::Ok().json(json!({"success": true, "tasks": tasks})),
+        Err(e) => HttpResponse::InternalServerError()
+            .json(json!({"success": false, "error": e.to_string()})),
+    }
 }
 
 async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
@@ -37,13 +41,19 @@ async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) ->
         }
     }
 
-    task_store.add_task(task.clone());
+    if let Err(e) = task_store.add_task(task.clone()).await {
+        return HttpResponse::InternalServerError()
+            .json(json!({"success": false, "error": e.to_string()}));
+    }
     HttpResponse::Ok().json(json!({"success": true, "task": task}))
 }
 
 async fn delete_task(id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone();
-    task_store.delete_task(id.into_inner());
+    if let Err(e) = task_store.delete_task(id.into_inner()).await {
+        return HttpResponse::InternalServerError()
+            .json(json!({"success": false, "error": e.to_string()}));
+    }
     HttpResponse::Ok().json(json!({"success": true}))
 }
 
@@ -126,7 +136,7 @@ mod tests {
         .unwrap();
 
         let task_store = app_state.store_context.task_store.clone();
-        task_store.add_task(task);
+        let _ = task_store.add_task(task).await;
 
         let app = test::init_service(
             App::new()
@@ -160,7 +170,7 @@ mod tests {
         .unwrap();
 
         let task_store = app_state.store_context.task_store.clone();
-        task_store.add_task(task.clone());
+        let _ = task_store.add_task(task.clone()).await;
 
         let app = test::init_service(
             App::new()
@@ -175,7 +185,7 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let tasks = task_store.get_all_tasks();
+        let tasks = task_store.get_all_tasks().await.unwrap();
         assert_eq!(tasks.len(), 0);
     }
 
@@ -199,7 +209,7 @@ mod tests {
         }
         .try_into()
         .unwrap();
-        task_store.add_task(task1.clone());
+        let _ = task_store.add_task(task1.clone()).await;
 
         // Wait briefly to ensure different timestamps
         thread::sleep(Duration::from_millis(10));
@@ -212,7 +222,7 @@ mod tests {
         }
         .try_into()
         .unwrap();
-        task_store.add_task(task2.clone());
+        let _ = task_store.add_task(task2.clone()).await;
 
         // Test get all tasks - should be sorted by created_at descending
         let req = test::TestRequest::get().uri("/tasks").to_request();
@@ -242,16 +252,65 @@ mod tests {
             }
             .try_into()
             .unwrap();
-            task_store.add_task(task);
+            let _ = task_store.add_task(task).await;
             thread::sleep(Duration::from_millis(10));
         }
 
-        let tasks = task_store.get_all_tasks();
+        let tasks = task_store.get_all_tasks().await.unwrap();
 
         // Verify tasks are ordered by created_at descending
         assert_eq!(tasks.len(), 3);
         assert_eq!(tasks[0].image, "test3");
         assert_eq!(tasks[1].image, "test2");
         assert_eq!(tasks[2].image, "test1");
+    }
+
+    #[actix_web::test]
+    async fn test_create_task_with_metadata() {
+        let app_state = create_test_app_state().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .route("/tasks", post().to(create_task)),
+        )
+        .await;
+
+        let mut labels = std::collections::HashMap::new();
+        labels.insert("model".to_string(), "qwen3-4b".to_string());
+        labels.insert("dataset".to_string(), "intellect-2-rl-dataset".to_string());
+        labels.insert("version".to_string(), "v1".to_string());
+
+        let payload = TaskRequest {
+            image: "primeintellect/prime-rl:main".to_string(),
+            name: "Qwen3-4B:INTELLECT-2-RL-Dataset".to_string(),
+            metadata: Some(shared::models::task::TaskMetadata {
+                labels: Some(labels),
+            }),
+            ..Default::default()
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/tasks")
+            .set_json(payload)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(true));
+        assert!(json["task"]["id"].is_string());
+        assert_eq!(json["task"]["image"], "primeintellect/prime-rl:main");
+        assert_eq!(json["task"]["name"], "Qwen3-4B:INTELLECT-2-RL-Dataset");
+
+        // Verify metadata is preserved
+        assert!(json["task"]["metadata"].is_object());
+        assert!(json["task"]["metadata"]["labels"].is_object());
+        assert_eq!(json["task"]["metadata"]["labels"]["model"], "qwen3-4b");
+        assert_eq!(
+            json["task"]["metadata"]["labels"]["dataset"],
+            "intellect-2-rl-dataset"
+        );
+        assert_eq!(json["task"]["metadata"]["labels"]["version"], "v1");
     }
 }

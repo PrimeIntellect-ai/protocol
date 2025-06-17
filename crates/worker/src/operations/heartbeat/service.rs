@@ -20,7 +20,7 @@ pub struct HeartbeatService {
     client: Client,
     cancellation_token: CancellationToken,
     task_handles: TaskHandles,
-    node_wallet: Arc<Wallet>,
+    node_wallet: Wallet,
     docker_service: Arc<DockerService>,
     metrics_store: Arc<MetricsStore>,
 }
@@ -38,7 +38,7 @@ impl HeartbeatService {
         interval: Duration,
         cancellation_token: CancellationToken,
         task_handles: TaskHandles,
-        node_wallet: Arc<Wallet>,
+        node_wallet: Wallet,
         docker_service: Arc<DockerService>,
         metrics_store: Arc<MetricsStore>,
         state: Arc<SystemState>,
@@ -92,7 +92,7 @@ impl HeartbeatService {
                         if !state.is_running().await {
                             break;
                         }
-                        match Self::send_heartbeat(&client, state.get_heartbeat_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone(), state.get_p2p_id()).await {
+                        match send_heartbeat(&client, state.get_heartbeat_endpoint().await, wallet_clone.clone(), docker_service.clone(), metrics_store.clone(), state.get_p2p_id()).await {
                             Ok(_) => {
                                 state.update_last_heartbeat().await;
                                 if had_error {
@@ -135,113 +135,151 @@ impl HeartbeatService {
             log::error!("Failed to set running to false: {:?}", e);
         }
     }
+}
 
-    async fn send_heartbeat(
-        client: &Client,
-        endpoint: Option<String>,
-        wallet: Arc<Wallet>,
-        docker_service: Arc<DockerService>,
-        metrics_store: Arc<MetricsStore>,
-        p2p_id: Option<String>,
-    ) -> Result<HeartbeatResponse, HeartbeatError> {
-        if endpoint.is_none() {
-            return Err(HeartbeatError::RequestFailed);
-        }
-
-        let current_task_state = docker_service.state.get_current_task().await;
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let request = if let Some(task) = current_task_state {
-            let metrics_for_task = metrics_store
-                .get_metrics_for_task(task.id.to_string())
-                .await;
-            HeartbeatRequest {
-                address: wallet.address().to_string(),
-                task_id: Some(task.id.to_string()),
-                task_state: Some(task.state.to_string()),
-                metrics: Some(metrics_for_task),
-                version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                timestamp: Some(ts),
-                p2p_id,
-            }
-        } else {
-            HeartbeatRequest {
-                address: wallet.address().to_string(),
-                task_id: None,
-                task_state: None,
-                metrics: None,
-                version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                timestamp: Some(ts),
-                p2p_id,
-            }
-        };
-
-        let signature = sign_request(
-            "/heartbeat",
-            &wallet,
-            Some(&serde_json::to_value(&request).unwrap()),
-        )
-        .await
-        .unwrap();
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("x-address", wallet.address().to_string().parse().unwrap());
-        headers.insert("x-signature", signature.parse().unwrap());
-
-        let response = client
-            .post(endpoint.unwrap())
-            .json(&request)
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| {
-                log::error!("Request failed: {:?}", e);
-                HeartbeatError::RequestFailed
-            })?
-            .error_for_status()
-            .map_err(|e| {
-                log::error!("Error response received: {:?}", e);
-                HeartbeatError::RequestFailed
-            })?
-            .json::<ApiResponse<HeartbeatResponse>>()
-            .await
-            .map_err(|e| {
-                log::error!("Failed to parse response: {:?}", e);
-                HeartbeatError::RequestFailed
-            })?;
-
-        let heartbeat_response = response.data.clone();
-        log::debug!("Heartbeat response: {:?}", heartbeat_response);
-
-        // Get current task before updating
-        let current_task = docker_service.state.get_current_task().await;
-
-        let task = match heartbeat_response.current_task {
-            Some(task) => {
-                // Only log if task image changed or there was no previous task
-                if current_task
-                    .as_ref()
-                    .map(|t| t.image != task.image)
-                    .unwrap_or(true)
-                {
-                    log::info!("Current task is to run image: {:?}", task.image);
-                }
-                Some(task)
-            }
-            None => None,
-        };
-
-        docker_service.state.set_current_task(task).await;
-        let is_running = docker_service.state.get_is_running().await;
-        if !is_running {
-            tokio::spawn(async move {
-                if let Err(e) = docker_service.run().await {
-                    log::error!("❌ Docker service failed: {}", e);
-                }
-            });
-        }
-
-        Ok(response.data)
+async fn send_heartbeat(
+    client: &Client,
+    endpoint: Option<String>,
+    wallet: Wallet,
+    docker_service: Arc<DockerService>,
+    metrics_store: Arc<MetricsStore>,
+    p2p_id: Option<String>,
+) -> Result<HeartbeatResponse, HeartbeatError> {
+    if endpoint.is_none() {
+        return Err(HeartbeatError::RequestFailed);
     }
+
+    let current_task_state = docker_service.state.get_current_task().await;
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let request = if let Some(task) = current_task_state {
+        let metrics_for_task = metrics_store
+            .get_metrics_for_task(task.id.to_string())
+            .await;
+        HeartbeatRequest {
+            address: wallet.address().to_string(),
+            task_id: Some(task.id.to_string()),
+            task_state: Some(task.state.to_string()),
+            metrics: Some(metrics_for_task),
+            version: Some(
+                option_env!("WORKER_VERSION")
+                    .unwrap_or(env!("CARGO_PKG_VERSION"))
+                    .to_string(),
+            ),
+            timestamp: Some(ts),
+            p2p_id,
+        }
+    } else {
+        HeartbeatRequest {
+            address: wallet.address().to_string(),
+            task_id: None,
+            task_state: None,
+            metrics: None,
+            version: Some(
+                option_env!("WORKER_VERSION")
+                    .unwrap_or(env!("CARGO_PKG_VERSION"))
+                    .to_string(),
+            ),
+            timestamp: Some(ts),
+            p2p_id,
+        }
+    };
+
+    let signature = sign_request(
+        "/heartbeat",
+        &wallet,
+        Some(&serde_json::to_value(&request).unwrap()),
+    )
+    .await
+    .unwrap();
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("x-address", wallet.address().to_string().parse().unwrap());
+    headers.insert("x-signature", signature.parse().unwrap());
+
+    let response = client
+        .post(endpoint.unwrap())
+        .json(&request)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("Request failed: {:?}", e);
+            HeartbeatError::RequestFailed
+        })?;
+
+    let response = if response.status().is_success() {
+        response
+    } else {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error response".to_string());
+        log::error!(
+            "Error response received: status={}, body={}",
+            status,
+            error_text
+        );
+        return Err(HeartbeatError::RequestFailed);
+    };
+
+    let response = response
+        .json::<ApiResponse<HeartbeatResponse>>()
+        .await
+        .map_err(|e| {
+            log::error!("Failed to parse response: {:?}", e);
+            HeartbeatError::RequestFailed
+        })?;
+
+    let heartbeat_response = response.data.clone();
+    log::debug!("Heartbeat response: {:?}", heartbeat_response);
+
+    // Get current task before updating
+    let old_task = docker_service.state.get_current_task().await;
+
+    let new_task = match heartbeat_response.current_task {
+        Some(task) => {
+            // Only log if task image changed or there was no previous task
+            if old_task
+                .as_ref()
+                .map(|t| t.image != task.image)
+                .unwrap_or(true)
+            {
+                log::info!("Current task is to run image: {:?}", task.image);
+            }
+            Some(task)
+        }
+        None => None,
+    };
+
+    // Clear metrics for old task if task ID changed
+    if let (Some(old), Some(new)) = (&old_task, &new_task) {
+        if old.id != new.id {
+            log::info!("Clearing metrics for old task: {}", old.id);
+            metrics_store
+                .clear_metrics_for_task(&old.id.to_string())
+                .await;
+        }
+    } else if old_task.is_some() && new_task.is_none() {
+        // Clear metrics when transitioning from having a task to no task
+        let old = old_task.as_ref().unwrap();
+        log::info!("Clearing metrics for completed task: {}", old.id);
+        metrics_store
+            .clear_metrics_for_task(&old.id.to_string())
+            .await;
+    }
+
+    docker_service.state.set_current_task(new_task).await;
+    let is_running = docker_service.state.get_is_running().await;
+    if !is_running {
+        tokio::spawn(async move {
+            if let Err(e) = docker_service.run().await {
+                log::error!("❌ Docker service failed: {}", e);
+            }
+        });
+    }
+
+    Ok(response.data)
 }

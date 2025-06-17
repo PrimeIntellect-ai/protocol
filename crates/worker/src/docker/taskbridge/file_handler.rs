@@ -10,6 +10,7 @@ use shared::security::request_signer::sign_request;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::helpers::utils::retry_call;
 use shared::web3::wallet::{Wallet, WalletProvider};
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,7 +20,7 @@ pub async fn handle_file_upload(
     storage_path: &str,
     task_id: &str,
     file_name: &str,
-    wallet: &Arc<Wallet>,
+    wallet: &Wallet,
     state: &Arc<SystemState>,
 ) -> Result<()> {
     info!("📄 Received file upload request: {}", file_name);
@@ -42,11 +43,12 @@ pub async fn handle_file_upload(
     let clean_file_name = file_name.trim_start_matches("/data/");
     info!("Clean file name: {}", clean_file_name);
 
-    // Construct file path
-    let file = format!(
-        "{}/prime-task-{}/{}",
-        storage_path, task_id, clean_file_name
-    );
+    let task_dir = format!("prime-task-{}", task_id);
+    let file_path = Path::new(storage_path)
+        .join(&task_dir)
+        .join("data")
+        .join(clean_file_name);
+    let file = file_path.to_string_lossy().to_string();
     info!("Full file path: {}", file);
 
     // Get file size
@@ -309,10 +311,11 @@ pub async fn handle_file_upload(
         anyhow::anyhow!("Failed to upload file to S3 after {} attempts", MAX_RETRIES)
     }))
 }
+
 /// Handles a file validation request
 pub async fn handle_file_validation(
     file_sha: &str,
-    contracts: &Arc<Contracts>,
+    contracts: &Contracts<WalletProvider>,
     node: &Node,
     provider: &WalletProvider,
     work_units: f64,
@@ -357,7 +360,7 @@ pub async fn handle_file_validation(
         .await
         .unwrap();
 
-    let tx = retry_call(call, 5, None, provider.clone(), None)
+    let tx = retry_call(call, 20, provider.clone(), None)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to submit work: {}", e))?;
 

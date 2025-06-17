@@ -4,6 +4,7 @@ mod events;
 mod metrics;
 mod models;
 mod node;
+mod p2p;
 mod plugins;
 mod scheduler;
 mod status_update;
@@ -12,6 +13,7 @@ mod utils;
 use crate::api::server::start_server;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
+use crate::p2p::client::P2PClient;
 use crate::scheduler::Scheduler;
 use crate::status_update::NodeStatusUpdater;
 use crate::store::core::RedisStore;
@@ -25,6 +27,7 @@ use log::debug;
 use log::error;
 use log::info;
 use log::LevelFilter;
+use metrics::sync_service::MetricsSyncService;
 use metrics::webhook_sender::MetricsWebhookSender;
 use metrics::MetricsContext;
 use plugins::node_groups::NodeGroupConfiguration;
@@ -117,6 +120,10 @@ struct Args {
     /// Node group management interval
     #[arg(long, default_value = "10")]
     node_group_management_interval: u64,
+
+    /// Max healthy nodes with same endpoint
+    #[arg(long, default_value = "1")]
+    max_healthy_nodes_with_same_endpoint: u32,
 }
 
 #[tokio::main]
@@ -133,6 +140,11 @@ async fn main() -> Result<()> {
     env_logger::Builder::new()
         .filter_level(log_level)
         .format_timestamp(None)
+        .filter_module("iroh", log::LevelFilter::Warn)
+        .filter_module("iroh_net", log::LevelFilter::Warn)
+        .filter_module("iroh_quinn", log::LevelFilter::Warn)
+        .filter_module("iroh_base", log::LevelFilter::Warn)
+        .filter_module("tracing::span", log::LevelFilter::Warn)
         .init();
 
     let server_mode = match args.mode.as_str() {
@@ -156,27 +168,23 @@ async fn main() -> Result<()> {
 
     let mut tasks: JoinSet<Result<()>> = JoinSet::new();
 
-    let coordinator_wallet = Arc::new(Wallet::new(&coordinator_key, rpc_url).unwrap_or_else(
-        |err| {
-            error!("Error creating wallet: {:?}", err);
-            std::process::exit(1);
-        },
-    ));
+    let wallet = Wallet::new(&coordinator_key, rpc_url).unwrap_or_else(|err| {
+        error!("Error creating wallet: {:?}", err);
+        std::process::exit(1);
+    });
 
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
-    let wallet_clone = coordinator_wallet.clone();
-    let server_wallet = coordinator_wallet.clone();
 
-    let contracts = Arc::new(
-        ContractBuilder::new(&coordinator_wallet.clone())
-            .with_compute_registry()
-            .with_ai_token()
-            .with_prime_network()
-            .with_compute_pool()
-            .build()
-            .unwrap(),
-    );
+    let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
+
+    let contracts = ContractBuilder::new(wallet.provider())
+        .with_compute_registry()
+        .with_ai_token()
+        .with_prime_network()
+        .with_compute_pool()
+        .build()
+        .unwrap();
 
     match contracts
         .compute_pool
@@ -200,22 +208,23 @@ async fn main() -> Result<()> {
     let mut webhook_plugins: Vec<WebhookPlugin> = vec![];
 
     let configs = std::env::var("WEBHOOK_CONFIGS").unwrap_or_default();
-    match serde_json::from_str::<Vec<WebhookConfig>>(&configs) {
-        Ok(configs) if !configs.is_empty() => {
-            for config in configs {
-                let plugin = WebhookPlugin::new(config);
-                let plugin_clone = plugin.clone();
-                webhook_plugins.push(plugin_clone);
-                status_update_plugins.push(Box::new(plugin));
+    if !configs.is_empty() {
+        match serde_json::from_str::<Vec<WebhookConfig>>(&configs) {
+            Ok(configs) => {
+                for config in configs {
+                    let plugin = WebhookPlugin::new(config);
+                    let plugin_clone = plugin.clone();
+                    webhook_plugins.push(plugin_clone);
+                    status_update_plugins.push(Box::new(plugin));
+                    info!("Plugin: Webhook plugin initialized");
+                }
+            }
+            Err(e) => {
+                error!("Failed to parse webhook configs from environment: {}", e);
             }
         }
-        Ok(_) => {
-            info!("No webhook configurations provided");
-        }
-        Err(e) => {
-            error!("Failed to parse webhook configs from environment: {}", e);
-            std::process::exit(1);
-        }
+    } else {
+        info!("No webhook configurations provided");
     }
 
     let webhook_sender_store = store_context.clone();
@@ -225,6 +234,7 @@ async fn main() -> Result<()> {
             let mut webhook_sender = MetricsWebhookSender::new(
                 webhook_sender_store.clone(),
                 webhook_plugins_clone.clone(),
+                compute_pool_id,
             );
             if let Err(e) = webhook_sender.run().await {
                 error!("Error running webhook sender: {}", e);
@@ -234,8 +244,9 @@ async fn main() -> Result<()> {
     }
 
     // Load node group configurations from environment variable
-    if let Ok(configs_json) = std::env::var("NODE_GROUP_CONFIGS") {
-        match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&configs_json) {
+    let node_group_configs = std::env::var("NODE_GROUP_CONFIGS").unwrap_or_default();
+    if !node_group_configs.is_empty() {
+        match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&node_group_configs) {
             Ok(configs) if !configs.is_empty() => {
                 let node_groups_heartbeats = heartbeats.clone();
                 let group_plugin = NodeGroupsPlugin::new(
@@ -250,7 +261,7 @@ async fn main() -> Result<()> {
                 node_groups_plugin = Some(Arc::new(group_plugin_for_server));
                 scheduler_plugins.push(Box::new(group_plugin));
                 status_update_plugins.push(Box::new(status_group_plugin));
-                info!("Node group plugin initialized");
+                info!("Plugin: Node group plugin initialized");
             }
             Ok(_) => {
                 info!(
@@ -271,6 +282,21 @@ async fn main() -> Result<()> {
 
     // Only spawn processor tasks if in ProcessorOnly or Full mode
     if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+        // Start metrics sync service to centralize metrics from Redis to Prometheus
+        let metrics_sync_store_context = store_context.clone();
+        let metrics_sync_context = metrics_context.clone();
+        let metrics_sync_node_groups = node_groups_plugin.clone();
+        tasks.spawn(async move {
+            let sync_service = MetricsSyncService::new(
+                metrics_sync_store_context,
+                metrics_sync_context,
+                server_mode,
+                10,
+                metrics_sync_node_groups,
+            );
+            sync_service.run().await
+        });
+
         if let Some(group_plugin) = node_groups_plugin.clone() {
             tasks.spawn(async move {
                 group_plugin
@@ -281,50 +307,60 @@ async fn main() -> Result<()> {
 
         let discovery_store_context = store_context.clone();
         let discovery_heartbeats = heartbeats.clone();
-        tasks.spawn(async move {
-            let monitor = DiscoveryMonitor::new(
-                wallet_clone.as_ref(),
-                compute_pool_id,
-                args.discovery_refresh_interval,
-                args.discovery_url,
-                discovery_store_context.clone(),
-                discovery_heartbeats.clone(),
-            );
-            monitor.run().await
+        tasks.spawn({
+            let wallet = wallet.clone();
+            async move {
+                let monitor = DiscoveryMonitor::new(
+                    wallet,
+                    compute_pool_id,
+                    args.discovery_refresh_interval,
+                    args.discovery_url,
+                    discovery_store_context.clone(),
+                    discovery_heartbeats.clone(),
+                    args.max_healthy_nodes_with_same_endpoint,
+                );
+                monitor.run().await
+            }
         });
 
         let inviter_store_context = store_context.clone();
         let inviter_heartbeats = heartbeats.clone();
-        tasks.spawn(async move {
-            let inviter = NodeInviter::new(
-                coordinator_wallet.as_ref(),
-                compute_pool_id,
-                domain_id,
-                args.host.as_deref(),
-                Some(&args.port),
-                args.url.as_deref(),
-                inviter_store_context.clone(),
-                inviter_heartbeats.clone(),
-            );
-            inviter.run().await
+        tasks.spawn({
+            let wallet = wallet.clone();
+            let p2p_client = p2p_client.clone();
+            async move {
+                let inviter = NodeInviter::new(
+                    wallet,
+                    compute_pool_id,
+                    domain_id,
+                    args.host.as_deref(),
+                    Some(&args.port),
+                    args.url.as_deref(),
+                    inviter_store_context.clone(),
+                    inviter_heartbeats.clone(),
+                    p2p_client,
+                );
+                inviter.run().await
+            }
         });
 
         let status_update_store_context = store_context.clone();
         let status_update_heartbeats = heartbeats.clone();
-        let status_update_contracts = contracts.clone();
-
-        tasks.spawn(async move {
-            let status_updater = NodeStatusUpdater::new(
-                status_update_store_context.clone(),
-                15,
-                None,
-                status_update_contracts.clone(),
-                compute_pool_id,
-                args.disable_ejection,
-                status_update_heartbeats.clone(),
-                status_update_plugins,
-            );
-            status_updater.run().await
+        tasks.spawn({
+            let contracts = contracts.clone();
+            async move {
+                let status_updater = NodeStatusUpdater::new(
+                    status_update_store_context.clone(),
+                    15,
+                    None,
+                    contracts,
+                    compute_pool_id,
+                    args.disable_ejection,
+                    status_update_heartbeats.clone(),
+                    status_update_plugins,
+                );
+                status_updater.run().await
+            }
         });
     }
 
@@ -344,18 +380,18 @@ async fn main() -> Result<()> {
             "0.0.0.0",
             port,
             server_store_context.clone(),
-            server_wallet,
             args.admin_api_key,
             storage_provider,
             heartbeats.clone(),
             store.clone(),
             args.hourly_s3_upload_limit,
-            Some(contracts.clone()),
+            Some(contracts),
             compute_pool_id,
             server_mode,
             scheduler,
             node_groups_plugin,
             metrics_context,
+            p2p_client,
         ) => {
             if let Err(e) = res {
                 error!("Server error: {}", e);

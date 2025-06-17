@@ -2,21 +2,20 @@ use crate::console::Console;
 use alloy::primitives::{Address, U256};
 use log::error;
 use shared::web3::contracts::core::builder::Contracts;
-use shared::web3::wallet::Wallet;
+use shared::web3::wallet::{Wallet, WalletProvider};
 use std::io::Write;
-use std::sync::Arc;
 use std::{fmt, io};
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 
 pub struct ProviderOperations {
-    wallet: Arc<Wallet>,
-    contracts: Arc<Contracts>,
+    wallet: Wallet,
+    contracts: Contracts<WalletProvider>,
     auto_accept: bool,
 }
 
 impl ProviderOperations {
-    pub fn new(wallet: Arc<Wallet>, contracts: Arc<Contracts>, auto_accept: bool) -> Self {
+    pub fn new(wallet: Wallet, contracts: Contracts<WalletProvider>, auto_accept: bool) -> Self {
         Self {
             wallet,
             contracts,

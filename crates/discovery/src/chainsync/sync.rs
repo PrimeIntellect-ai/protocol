@@ -1,7 +1,9 @@
 use crate::store::node_store::NodeStore;
 use alloy::primitives::Address;
+use alloy::providers::RootProvider;
 use anyhow::Error;
-use log::error;
+use futures::stream::{self, StreamExt};
+use log::{debug, error, info, warn};
 use shared::models::node::DiscoveryNode;
 use shared::web3::contracts::core::builder::Contracts;
 use std::str::FromStr;
@@ -9,11 +11,14 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
+
+const MAX_CONCURRENT_SYNCS: usize = 50;
+
 pub struct ChainSync {
     pub node_store: Arc<NodeStore>,
     cancel_token: CancellationToken,
     chain_sync_interval: Duration,
-    contracts: Arc<Contracts>,
+    contracts: Contracts<RootProvider>,
     last_chain_sync: Arc<Mutex<Option<std::time::SystemTime>>>,
 }
 
@@ -22,7 +27,7 @@ impl ChainSync {
         node_store: Arc<NodeStore>,
         cancellation_token: CancellationToken,
         chain_sync_interval: Duration,
-        contracts: Arc<Contracts>,
+        contracts: Contracts<RootProvider>,
         last_chain_sync: Arc<Mutex<Option<std::time::SystemTime>>>,
     ) -> Self {
         Self {
@@ -36,19 +41,22 @@ impl ChainSync {
 
     async fn sync_single_node(
         node_store: Arc<NodeStore>,
-        contracts: Arc<Contracts>,
+        contracts: Contracts<RootProvider>,
         node: DiscoveryNode,
     ) -> Result<(), Error> {
         let mut n = node.clone();
 
         // Safely parse provider_address and node_address
         let provider_address = Address::from_str(&node.provider_address).map_err(|e| {
-            eprintln!("Failed to parse provider address: {}", e);
+            error!(
+                "Failed to parse provider address '{}': {}",
+                node.provider_address, e
+            );
             anyhow::anyhow!("Invalid provider address")
         })?;
 
         let node_address = Address::from_str(&node.id).map_err(|e| {
-            eprintln!("Failed to parse node address: {}", e);
+            error!("Failed to parse node address '{}': {}", node.id, e);
             anyhow::anyhow!("Invalid node address")
         })?;
 
@@ -57,7 +65,10 @@ impl ChainSync {
             .get_node(provider_address, node_address)
             .await
             .map_err(|e| {
-                eprintln!("Error retrieving node info: {}", e);
+                error!(
+                    "Error retrieving node info for provider {} and node {}: {}",
+                    provider_address, node_address, e
+                );
                 anyhow::anyhow!("Failed to retrieve node info")
             })?;
 
@@ -66,7 +77,10 @@ impl ChainSync {
             .get_provider(provider_address)
             .await
             .map_err(|e| {
-                eprintln!("Error retrieving provider info: {}", e);
+                error!(
+                    "Error retrieving provider info for {}: {}",
+                    provider_address, e
+                );
                 anyhow::anyhow!("Failed to retrieve provider info")
             })?;
 
@@ -81,54 +95,108 @@ impl ChainSync {
             .is_node_blacklisted(node.node.compute_pool_id, node_address)
             .await
             .map_err(|e| {
-                eprintln!("Error checking if node is blacklisted: {}", e);
+                error!(
+                    "Error checking if node {} is blacklisted in pool {}: {}",
+                    node_address, node.node.compute_pool_id, e
+                );
                 anyhow::anyhow!("Failed to check blacklist status")
             })?;
         n.is_blacklisted = is_blacklisted;
-        match node_store.update_node(n) {
-            Ok(_) => (),
+
+        match node_store.update_node(n).await {
+            Ok(_) => {
+                debug!("Successfully updated node {}", node.id);
+                Ok(())
+            }
             Err(e) => {
-                error!("Error updating node: {}", e);
+                error!("Error updating node {}: {}", node.id, e);
+                Err(anyhow::anyhow!("Failed to update node: {}", e))
             }
         }
-
-        Ok(())
     }
 
-    pub async fn run(&self) -> Result<(), Error> {
-        let node_store_clone = self.node_store.clone();
-        let contracts_clone = self.contracts.clone();
-        let cancel_token = self.cancel_token.clone();
-        let chain_sync_interval = self.chain_sync_interval;
-        let last_chain_sync = self.last_chain_sync.clone();
+    pub async fn run(self) -> Result<(), Error> {
+        let ChainSync {
+            node_store,
+            cancel_token,
+            chain_sync_interval,
+            last_chain_sync,
+            contracts,
+        } = self;
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(chain_sync_interval);
+            info!(
+                "Chain sync started with {} second interval",
+                chain_sync_interval.as_secs()
+            );
+
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        let nodes = node_store_clone.get_nodes();
+                        let sync_start = SystemTime::now();
+                        info!("Starting chain sync cycle");
+
+                        let nodes = node_store.get_nodes().await;
                         match nodes {
                             Ok(nodes) => {
-                                for node in nodes {
-                                    if let Err(e) = ChainSync::sync_single_node(node_store_clone.clone(), contracts_clone.clone(), node).await {
-                                        error!("Error syncing node: {}", e);
+                                let total_nodes = nodes.len();
+                                info!("Syncing {} nodes", total_nodes);
+
+                                // Process nodes in parallel with concurrency limit
+                                let results: Vec<Result<(), Error>> = stream::iter(nodes)
+                                    .map(|node| {
+                                        let node_store = node_store.clone();
+                                        let contracts = contracts.clone();
+                                        async move {
+                                            ChainSync::sync_single_node(node_store, contracts, node).await
+                                        }
+                                    })
+                                    .buffer_unordered(MAX_CONCURRENT_SYNCS)
+                                    .collect()
+                                    .await;
+
+                                // Count successes and failures
+                                let mut success_count = 0;
+                                let mut failure_count = 0;
+                                for result in results {
+                                    match result {
+                                        Ok(_) => success_count += 1,
+                                        Err(e) => {
+                                            failure_count += 1;
+                                            warn!("Node sync failed: {}", e);
+                                        }
                                     }
                                 }
+
                                 // Update the last chain sync time
                                 let mut last_sync = last_chain_sync.lock().await;
                                 *last_sync = Some(SystemTime::now());
+
+                                let sync_duration = SystemTime::now()
+                                    .duration_since(sync_start)
+                                    .unwrap_or_default();
+
+                                info!(
+                                    "Chain sync completed in {:.2}s: {} successful, {} failed out of {} total nodes",
+                                    sync_duration.as_secs_f64(),
+                                    success_count,
+                                    failure_count,
+                                    total_nodes
+                                );
                             }
                             Err(e) => {
-                                error!("Error getting nodes: {}", e);
+                                error!("Error getting nodes from store: {}", e);
                             }
                         }
                     }
                     _ = cancel_token.cancelled() => {
+                        info!("Chain sync cancelled, shutting down");
                         break;
                     }
                 }
             }
+            info!("Chain sync task ended");
         });
         Ok(())
     }

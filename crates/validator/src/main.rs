@@ -1,4 +1,5 @@
 pub mod metrics;
+pub mod p2p;
 pub mod store;
 pub mod validators;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
@@ -9,6 +10,7 @@ use clap::Parser;
 use log::{debug, LevelFilter};
 use log::{error, info};
 use metrics::MetricsContext;
+use p2p::P2PClient;
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
@@ -107,9 +109,17 @@ struct Args {
     #[arg(long, default_value = "false")]
     disable_toploc_invalidation: bool,
 
+    /// Optional: batch trigger size
+    #[arg(long, default_value = "10")]
+    batch_trigger_size: usize,
+
     /// Grouping
     #[arg(long, default_value = "false")]
     use_grouping: bool,
+
+    /// Grace period in minutes for incomplete groups to recover (0 = disabled)
+    #[arg(long, default_value = "0")]
+    incomplete_group_grace_period_minutes: u64,
 
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
@@ -142,6 +152,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     env_logger::Builder::new()
         .filter_level(log_level)
+        .filter_module("iroh", log::LevelFilter::Warn)
+        .filter_module("iroh_net", log::LevelFilter::Warn)
+        .filter_module("iroh_quinn", log::LevelFilter::Warn)
+        .filter_module("iroh_base", log::LevelFilter::Warn)
+        .filter_module("tracing::span", log::LevelFilter::Warn)
         .format_timestamp(None)
         .init();
 
@@ -209,7 +224,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let mut contract_builder = ContractBuilder::new(&validator_wallet)
+    let mut contract_builder = ContractBuilder::new(validator_wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
@@ -221,6 +236,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let metrics_ctx =
         MetricsContext::new(validator_wallet.address().to_string(), args.pool_id.clone());
+
+    // Initialize P2P client if enabled
+    let p2p_client = {
+        match P2PClient::new(validator_wallet.clone()).await {
+            Ok(client) => {
+                info!("P2P client initialized for testing");
+                Some(client)
+            }
+            Err(e) => {
+                error!("Failed to initialize P2P client: {}", e);
+                None
+            }
+        }
+    };
 
     if let Some(pool_id) = args.pool_id.clone() {
         let pool = match contracts
@@ -246,9 +275,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             contract_builder.with_synthetic_data_validator(Some(domain.validation_logic));
     }
 
-    let contracts = Arc::new(contract_builder.build().unwrap());
+    let contracts = contract_builder.build().unwrap();
 
-    let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
+    let hardware_validator =
+        HardwareValidator::new(&validator_wallet, contracts.clone(), p2p_client.as_ref());
 
     let synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
@@ -295,8 +325,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     args.toploc_work_validation_interval,
                     args.toploc_work_validation_unknown_status_expiry_seconds,
                     args.toploc_grace_interval,
+                    args.batch_trigger_size,
                     args.use_grouping,
                     args.disable_toploc_invalidation,
+                    args.incomplete_group_grace_period_minutes,
                     Some(metrics_ctx.clone()),
                 ))
             }
@@ -472,7 +504,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         metrics_ctx.record_validation_loop_duration(loop_duration.as_secs_f64());
         info!("Validation loop completed in {}ms", loop_duration_ms);
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
     Ok(())
 }

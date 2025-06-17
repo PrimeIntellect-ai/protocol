@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
 
     // Unfortunately have to build all contracts atm
     let contracts = Arc::new(
-        ContractBuilder::new(&wallet)
+        ContractBuilder::new(wallet.provider())
             .with_compute_registry()
             .with_ai_token()
             .with_prime_network()
@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
             .build_mint_call(address, amount)
             .unwrap();
 
-        let tx = retry_call(mint_call, 5, Some(1), wallet_one.provider.clone(), None)
+        let tx = retry_call(mint_call, 5, wallet_one.provider(), None)
             .await
             .unwrap();
         println!("Transaction hash I: {:?}", tx);
@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
             .ai_token
             .build_mint_call(address, amount)
             .unwrap();
-        let tx = retry_call(mint_call_two, 5, None, wallet_two.provider.clone(), None)
+        let tx = retry_call(mint_call_two, 5, wallet_two.provider(), None)
             .await
             .unwrap();
         println!("Transaction hash II: {:?}", tx);

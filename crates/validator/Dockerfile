@@ -18,8 +18,10 @@ ENV TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS="120"
 ENV TOPLOC_CONFIGS=""
 ENV DISABLE_HARDWARE_VALIDATION="false"
 ENV DISABLE_TOPLOC_INVALIDATION="false"
+ENV INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES="0"
 ENV VALIDATOR_PENALTY="1"
 ENV USE_GROUPING="false"
+ENV BATCH_TRIGGER_SIZE="10"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/validator \
@@ -31,10 +33,12 @@ $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 $([ ! -z "$REDIS_URL" ] && echo "--redis-url $REDIS_URL") \
 $([ ! -z "$TOPLOC_GRACE_INTERVAL" ] && echo "--toploc-grace-interval $TOPLOC_GRACE_INTERVAL") \
+$([ ! -z "$BATCH_TRIGGER_SIZE" ] && echo "--batch-trigger-size $BATCH_TRIGGER_SIZE") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_INTERVAL" ] && echo "--toploc-work-validation-interval $TOPLOC_WORK_VALIDATION_INTERVAL") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS" ] && echo "--toploc-work-validation-unknown-status-expiry-seconds $TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS") \
 $([ ! -z "$USE_GROUPING" ] && echo "--use-grouping") \
 $([ ! -z "$DISABLE_TOPLOC_INVALIDATION" ] && echo "--disable-toploc-invalidation") \
+$([ ! -z "$INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES" ] && echo "--incomplete-group-grace-period-minutes $INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES") \
 $([ ! -z "$VALIDATOR_PENALTY" ] && echo "--validator-penalty $VALIDATOR_PENALTY") \
 $([ "$DISABLE_HARDWARE_VALIDATION" = "true" ] && echo "--disable-hardware-validation") \
 "$@"' > /entrypoint.sh && \

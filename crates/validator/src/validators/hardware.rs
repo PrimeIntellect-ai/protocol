@@ -4,11 +4,15 @@ use futures::future::join_all;
 use log::{debug, error, info};
 use shared::{
     models::node::DiscoveryNode,
-    web3::{contracts::core::builder::Contracts, wallet::Wallet},
+    web3::{
+        contracts::core::builder::Contracts,
+        wallet::{Wallet, WalletProvider},
+    },
 };
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
+use crate::p2p::client::P2PClient;
 use crate::validators::hardware_challenge::HardwareChallenge;
 
 /// Hardware validator implementation
@@ -18,17 +22,27 @@ use crate::validators::hardware_challenge::HardwareChallenge;
 /// basic matrix multiplication challenges and does not verify actual hardware specs.
 pub struct HardwareValidator<'a> {
     wallet: &'a Wallet,
-    contracts: Arc<Contracts>,
+    contracts: Contracts<WalletProvider>,
+    p2p_client: Option<&'a P2PClient>,
 }
 
 impl<'a> HardwareValidator<'a> {
-    pub fn new(wallet: &'a Wallet, contracts: Arc<Contracts>) -> Self {
-        Self { wallet, contracts }
+    pub fn new(
+        wallet: &'a Wallet,
+        contracts: Contracts<WalletProvider>,
+        p2p_client: Option<&'a P2PClient>,
+    ) -> Self {
+        Self {
+            wallet,
+            contracts,
+            p2p_client,
+        }
     }
 
     async fn validate_node(
-        wallet: &'a Wallet,
-        contracts: Arc<Contracts>,
+        _wallet: &'a Wallet,
+        contracts: Contracts<WalletProvider>,
+        p2p_client: Option<&'a P2PClient>,
         node: DiscoveryNode,
     ) -> Result<()> {
         let node_address = match node.id.trim_start_matches("0x").parse::<Address>() {
@@ -49,16 +63,21 @@ impl<'a> HardwareValidator<'a> {
             }
         };
 
-        let challenge_route = "/challenge/submit";
-        let hardware_challenge = HardwareChallenge::new(wallet);
-        let challenge_result = hardware_challenge
-            .challenge_node(&node, challenge_route)
-            .await;
+        // Perform hardware challenge
+        if let Some(p2p_client) = p2p_client {
+            let hardware_challenge = HardwareChallenge::new(p2p_client);
+            let challenge_result = hardware_challenge.challenge_node(&node).await;
 
-        if let Err(e) = challenge_result {
-            println!("Challenge failed for node: {}, error: {}", node.id, e);
-            error!("Challenge failed for node: {}, error: {}", node.id, e);
-            return Err(anyhow::anyhow!("Failed to challenge node: {}", e));
+            if let Err(e) = challenge_result {
+                println!("Challenge failed for node: {}, error: {}", node.id, e);
+                error!("Challenge failed for node: {}, error: {}", node.id, e);
+                return Err(anyhow::anyhow!("Failed to challenge node: {}", e));
+            }
+        } else {
+            debug!(
+                "P2P client not available, skipping hardware challenge for node {}",
+                node.id
+            );
         }
 
         if let Err(e) = contracts
@@ -79,6 +98,7 @@ impl<'a> HardwareValidator<'a> {
         debug!("Non validated nodes: {:?}", non_validated);
         let contracts = self.contracts.clone();
         let wallet = self.wallet;
+        let p2p_client = self.p2p_client;
         let semaphore = Arc::new(Semaphore::new(10));
         let futures = non_validated
             .into_iter()
@@ -90,8 +110,13 @@ impl<'a> HardwareValidator<'a> {
                 async move {
                     let _permit = permit.acquire().await;
 
-                    match HardwareValidator::validate_node(wallet, contracts_clone, node_clone)
-                        .await
+                    match HardwareValidator::validate_node(
+                        wallet,
+                        contracts_clone,
+                        p2p_client,
+                        node_clone,
+                    )
+                    .await
                     {
                         Ok(_) => (),
                         Err(e) => {
@@ -122,7 +147,7 @@ mod tests {
 
         let coordinator_wallet = Arc::new(Wallet::new(coordinator_key, rpc_url).unwrap());
 
-        let contracts = ContractBuilder::new(&coordinator_wallet.clone())
+        let contracts = ContractBuilder::new(coordinator_wallet.provider())
             .with_compute_registry()
             .with_ai_token()
             .with_prime_network()
@@ -130,7 +155,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let validator = HardwareValidator::new(&coordinator_wallet, Arc::new(contracts));
+        let validator = HardwareValidator::new(&coordinator_wallet, contracts, None);
 
         let fake_discovery_node1 = DiscoveryNode {
             is_validated: false,
@@ -140,13 +165,12 @@ mod tests {
                 compute_pool_id: 1,
                 id: Address::ZERO.to_string(),
                 provider_address: Address::ZERO.to_string(),
-                compute_specs: None,
+                ..Default::default()
             },
             is_active: true,
             is_provider_whitelisted: true,
             is_blacklisted: false,
-            last_updated: None,
-            created_at: None,
+            ..Default::default()
         };
 
         let fake_discovery_node2 = DiscoveryNode {
@@ -157,13 +181,12 @@ mod tests {
                 compute_pool_id: 1,
                 id: Address::ZERO.to_string(),
                 provider_address: Address::ZERO.to_string(),
-                compute_specs: None,
+                ..Default::default()
             },
             is_active: true,
             is_provider_whitelisted: true,
             is_blacklisted: false,
-            last_updated: None,
-            created_at: None,
+            ..Default::default()
         };
 
         let nodes = vec![fake_discovery_node1, fake_discovery_node2];

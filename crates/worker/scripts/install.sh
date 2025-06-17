@@ -11,6 +11,7 @@ NC='\033[0m' # No Color
 # Configuration
 BINARY_NAME="prime-worker"
 RELEASE_URL="https://github.com/PrimeIntellect-ai/protocol/releases"
+S3_BASE_URL="https://storage.googleapis.com/protocol-repo-assets/builds"
 BINARY_URL="$RELEASE_URL/latest/download/worker-linux-x86_64"
 
 # Determine install directory - try system dir first, fall back to user dir if needed
@@ -25,12 +26,8 @@ fi
 
 # Check if dev flag is set
 if [[ "$1" == "--dev" ]]; then
-  LATEST_DEV_TAG=$(curl -s "$RELEASE_URL" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+-beta\.[0-9]\+' | head -1)
-  if [[ -z "$LATEST_DEV_TAG" ]]; then
-    echo -e "${RED}✗ Could not find latest dev release${NC}"
-    exit 1
-  fi
-  BINARY_URL="$RELEASE_URL/download/$LATEST_DEV_TAG/worker-linux-x86_64"
+  echo -e "${BLUE}→ Using latest dev build from S3...${NC}"
+  BINARY_URL="$S3_BASE_URL/latest/worker-linux-x86_64"
 fi
 
 # Print banner and download URL

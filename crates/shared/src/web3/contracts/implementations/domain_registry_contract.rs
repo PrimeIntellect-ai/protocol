@@ -1,6 +1,5 @@
 use crate::web3::contracts::constants::addresses::DOMAIN_REGISTRY_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
-use crate::web3::wallet::Wallet;
 use alloy::dyn_abi::DynSolValue;
 use alloy::primitives::{Address, U256};
 use anyhow::Error;
@@ -13,13 +12,13 @@ pub struct Domain {
 }
 
 #[derive(Clone)]
-pub struct DomainRegistryContract {
-    instance: Contract,
+pub struct DomainRegistryContract<P: alloy_provider::Provider> {
+    instance: Contract<P>,
 }
 
-impl DomainRegistryContract {
-    pub fn new(wallet: &Wallet, abi_file_path: &str) -> Self {
-        let instance = Contract::new(DOMAIN_REGISTRY_ADDRESS, wallet, abi_file_path);
+impl<P: alloy_provider::Provider> DomainRegistryContract<P> {
+    pub fn new(provider: P, abi_file_path: &str) -> Self {
+        let instance = Contract::new(DOMAIN_REGISTRY_ADDRESS, provider, abi_file_path);
         Self { instance }
     }
 

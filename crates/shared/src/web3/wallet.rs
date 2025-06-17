@@ -25,6 +25,7 @@ pub type WalletProvider = FillProvider<
     RootProvider,
 >;
 
+#[derive(Clone)]
 pub struct Wallet {
     pub wallet: EthereumWallet,
     pub signer: PrivateKeySigner,
@@ -59,5 +60,9 @@ impl Wallet {
         let balance = self.provider.get_balance(address).await?;
 
         Ok(balance)
+    }
+
+    pub fn provider(&self) -> WalletProvider {
+        self.provider.clone()
     }
 }

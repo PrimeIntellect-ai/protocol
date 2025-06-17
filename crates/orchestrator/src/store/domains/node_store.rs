@@ -2,8 +2,9 @@ use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::store::core::RedisStore;
 use alloy::primitives::Address;
+use anyhow::Result;
 use log::info;
-use redis::Commands;
+use redis::AsyncCommands;
 use redis::Value;
 use shared::models::task::TaskState;
 use std::sync::Arc;
@@ -18,13 +19,13 @@ impl NodeStore {
         Self { redis }
     }
 
-    pub fn get_nodes(&self) -> Vec<OrchestratorNode> {
-        let mut con = self.redis.client.get_connection().unwrap();
-        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).unwrap();
+    pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).await?;
         let mut nodes: Vec<OrchestratorNode> = Vec::new();
 
         for node in keys {
-            let node_string: String = con.get(node).unwrap();
+            let node_string: String = con.get(node).await?;
             let node: OrchestratorNode = OrchestratorNode::from_string(&node_string);
             nodes.push(node);
         }
@@ -42,85 +43,101 @@ impl NodeStore {
             _ => std::cmp::Ordering::Equal,
         });
 
-        nodes
+        Ok(nodes)
     }
 
-    pub fn add_node(&self, node: OrchestratorNode) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn add_node(&self, node: OrchestratorNode) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let _: () = con
             .set(
                 format!("{}:{}", ORCHESTRATOR_BASE_KEY, node.address),
                 node.to_string(),
             )
-            .unwrap();
+            .await?;
+        Ok(())
     }
 
-    pub fn get_node(&self, address: &Address) -> Option<OrchestratorNode> {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn get_node(&self, address: &Address) -> Result<Option<OrchestratorNode>> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
-        let node_string: Option<String> =
-            match con.get(format!("{}:{}", ORCHESTRATOR_BASE_KEY, address)) {
-                Ok(value) => value,
-                Err(_) => return None,
-            };
+        let node_string: Option<String> = match con
+            .get::<_, Option<String>>(format!("{}:{}", ORCHESTRATOR_BASE_KEY, address))
+            .await
+        {
+            Ok(value) => value,
+            Err(_) => return Ok(None),
+        };
 
-        node_string.map(|node_string| OrchestratorNode::from_string(&node_string))
+        Ok(node_string.map(|node_string| OrchestratorNode::from_string(&node_string)))
     }
 
-    pub fn get_uninvited_nodes(&self) -> Vec<OrchestratorNode> {
-        let mut con = self.redis.client.get_connection().unwrap();
-        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).unwrap();
-        let nodes: Vec<OrchestratorNode> = keys
-            .iter()
-            .filter_map(|key| con.get::<_, String>(key).ok())
-            .filter_map(|node_json| serde_json::from_str::<OrchestratorNode>(&node_json).ok())
-            .filter(|node| matches!(node.status, NodeStatus::Discovered))
-            .collect();
-        nodes
+    pub async fn get_uninvited_nodes(&self) -> Result<Vec<OrchestratorNode>> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).await?;
+        let mut nodes: Vec<OrchestratorNode> = Vec::new();
+
+        for key in keys {
+            if let Ok(node_string) = con.get::<_, String>(&key).await {
+                if let Ok(node) = serde_json::from_str::<OrchestratorNode>(&node_string) {
+                    if matches!(node.status, NodeStatus::Discovered) {
+                        nodes.push(node);
+                    }
+                }
+            }
+        }
+
+        Ok(nodes)
     }
 
-    pub fn update_node_status(&self, node_address: &Address, status: NodeStatus) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn update_node_status(
+        &self,
+        node_address: &Address,
+        status: NodeStatus,
+    ) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let node_key: String = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
-        let node_string: String = con.get(&node_key).unwrap();
-        let mut node: OrchestratorNode = serde_json::from_str(&node_string).unwrap();
+        let node_string: String = con.get(&node_key).await?;
+        let mut node: OrchestratorNode = serde_json::from_str(&node_string)?;
         node.status = status;
         node.last_status_change = Some(chrono::Utc::now());
         let node_string = node.to_string();
-        let _: () = con.set(&node_key, node_string).unwrap();
+        let _: () = con.set(&node_key, node_string).await?;
+        Ok(())
     }
 
-    pub fn update_node_version(&self, node_address: &Address, version: &str) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn update_node_version(&self, node_address: &Address, version: &str) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let node_key: String = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
-        let node_string: String = con.get(&node_key).unwrap();
-        let mut node: OrchestratorNode = serde_json::from_str(&node_string).unwrap();
+        let node_string: String = con.get(&node_key).await?;
+        let mut node: OrchestratorNode = serde_json::from_str(&node_string)?;
         node.version = Some(version.to_string());
         let node_string = node.to_string();
-        let _: () = con.set(&node_key, node_string).unwrap();
+        let _: () = con.set(&node_key, node_string).await?;
+        Ok(())
     }
 
-    pub fn update_node_p2p_id(&self, node_address: &Address, p2p_id: &str) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    pub async fn update_node_p2p_id(&self, node_address: &Address, p2p_id: &str) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let node_key: String = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
-        let node_string: String = con.get(&node_key).unwrap();
-        let mut node: OrchestratorNode = serde_json::from_str(&node_string).unwrap();
+        let node_string: String = con.get(&node_key).await?;
+        let mut node: OrchestratorNode = serde_json::from_str(&node_string)?;
         node.p2p_id = Some(p2p_id.to_string());
         let node_string = node.to_string();
-        let _: () = con.set(&node_key, node_string).unwrap();
+        let _: () = con.set(&node_key, node_string).await?;
+        Ok(())
     }
 
-    pub fn update_node_task(
+    pub async fn update_node_task(
         &self,
         node_address: Address,
         current_task: Option<String>,
         task_state: Option<String>,
-    ) {
-        let mut con = self.redis.client.get_connection().unwrap();
+    ) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         let node_value: Value = con
             .get(format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address))
-            .unwrap();
+            .await?;
 
         match node_value {
             Value::BulkString(node_string) => {
@@ -148,12 +165,13 @@ impl NodeStore {
                 }
                 let node_string = node.to_string();
                 let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
-                let _: () = con.set(&node_key, node_string).unwrap();
+                let _: () = con.set(&node_key, node_string).await?;
             }
             _ => {
                 info!("Cannot update node");
             }
         }
+        Ok(())
     }
 }
 
@@ -175,12 +193,7 @@ mod tests {
             ip_address: "192.168.1.1".to_string(),
             port: 8080,
             status: NodeStatus::Discovered,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
         let healthy_node = OrchestratorNode {
@@ -188,18 +201,13 @@ mod tests {
             ip_address: "192.168.1.2".to_string(),
             port: 8081,
             status: NodeStatus::Healthy,
-            task_id: None,
-            task_state: None,
-            version: None,
-            last_status_change: None,
-            p2p_id: None,
-            compute_specs: None,
+            ..Default::default()
         };
 
-        node_store.add_node(uninvited_node.clone());
-        node_store.add_node(healthy_node.clone());
+        node_store.add_node(uninvited_node.clone()).await.unwrap();
+        node_store.add_node(healthy_node.clone()).await.unwrap();
 
-        let uninvited_nodes = node_store.get_uninvited_nodes();
+        let uninvited_nodes = node_store.get_uninvited_nodes().await.unwrap();
         assert_eq!(uninvited_nodes.len(), 1);
         assert_eq!(uninvited_nodes[0].address, uninvited_node.address);
     }
@@ -215,43 +223,28 @@ mod tests {
                 ip_address: "192.168.1.3".to_string(),
                 port: 8082,
                 status: NodeStatus::Dead,
-                task_id: None,
-                task_state: None,
-                version: None,
-                p2p_id: None,
-                last_status_change: None,
-                compute_specs: None,
+                ..Default::default()
             },
             OrchestratorNode {
                 address: Address::from_str("0x0000000000000000000000000000000000000002").unwrap(),
                 ip_address: "192.168.1.2".to_string(),
                 port: 8081,
                 status: NodeStatus::Discovered,
-                task_id: None,
-                task_state: None,
-                version: None,
-                p2p_id: None,
-                last_status_change: None,
-                compute_specs: None,
+                ..Default::default()
             },
             OrchestratorNode {
                 address: Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
                 ip_address: "192.168.1.1".to_string(),
                 port: 8080,
                 status: NodeStatus::Healthy,
-                task_id: None,
-                task_state: None,
-                version: None,
-                p2p_id: None,
-                last_status_change: None,
-                compute_specs: None,
+                ..Default::default()
             },
         ];
         for node in nodes {
-            node_store.add_node(node);
+            node_store.add_node(node).await.unwrap();
         }
 
-        let nodes = node_store.get_nodes();
+        let nodes = node_store.get_nodes().await.unwrap();
         assert_eq!(nodes.len(), 3);
         assert_eq!(
             nodes[0].address,

@@ -1,10 +1,10 @@
-mod api;
 mod checks;
 mod cli;
 mod console;
 mod docker;
 mod metrics;
 mod operations;
+mod p2p;
 mod services;
 mod state;
 mod utils;

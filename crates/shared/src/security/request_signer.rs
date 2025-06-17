@@ -1,6 +1,7 @@
 // request_signer.rs
 use crate::web3::wallet::Wallet;
 use alloy::signers::Signer;
+
 pub async fn sign_request(
     endpoint: &str,
     wallet: &Wallet,
@@ -26,6 +27,20 @@ pub async fn sign_request(
     } else {
         format!("{}{}", endpoint, request_data_string)
     };
+    let signature = wallet
+        .signer
+        .sign_message(message.as_bytes())
+        .await?
+        .as_bytes();
+    let signature_string = format!("0x{}", hex::encode(signature));
+
+    Ok(signature_string)
+}
+
+pub async fn sign_message(
+    message: &str,
+    wallet: &Wallet,
+) -> Result<String, Box<dyn std::error::Error>> {
     let signature = wallet
         .signer
         .sign_message(message.as_bytes())
@@ -121,5 +136,24 @@ mod tests {
 
         // Signatures should be identical since keys are sorted
         assert_eq!(sig1, sig2);
+    }
+
+    #[tokio::test]
+    async fn test_sign_message() {
+        let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
+        let wallet = Wallet::new(
+            private_key,
+            Url::parse("https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161").unwrap(),
+        )
+        .unwrap();
+
+        let message = "Hello, world!";
+        let signature = sign_message(message, &wallet).await.unwrap();
+
+        // Verify signature starts with "0x"
+        assert!(signature.starts_with("0x"));
+
+        // Verify signature length (0x + 130 hex chars for 65 bytes)
+        assert_eq!(signature.len(), 132);
     }
 }

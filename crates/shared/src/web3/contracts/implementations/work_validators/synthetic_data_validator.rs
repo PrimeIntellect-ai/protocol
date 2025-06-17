@@ -1,5 +1,4 @@
 use crate::web3::contracts::core::contract::Contract;
-use crate::web3::wallet::Wallet;
 use alloy::{
     dyn_abi::{DynSolValue, Word},
     primitives::{Address, U256},
@@ -10,8 +9,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Clone)]
-pub struct SyntheticDataWorkValidator {
-    pub instance: Contract,
+pub struct SyntheticDataWorkValidator<P: alloy_provider::Provider> {
+    pub instance: Contract<P>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -22,9 +21,9 @@ pub struct WorkInfo {
     pub work_units: U256,
 }
 
-impl SyntheticDataWorkValidator {
-    pub fn new(address: Address, wallet: &Wallet, abi_file_path: &str) -> Self {
-        let instance = Contract::new(address, wallet, abi_file_path);
+impl<P: alloy_provider::Provider> SyntheticDataWorkValidator<P> {
+    pub fn new(address: Address, provider: P, abi_file_path: &str) -> Self {
+        let instance = Contract::new(address, provider, abi_file_path);
         Self { instance }
     }
 

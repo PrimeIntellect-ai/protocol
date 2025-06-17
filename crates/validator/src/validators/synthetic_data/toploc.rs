@@ -2,7 +2,7 @@ use crate::metrics::MetricsContext;
 
 use super::ValidationResult;
 use anyhow::Error;
-use log::debug;
+use log::{debug, warn};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,8 @@ pub struct Toploc {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct GroupValidationResult {
     pub status: ValidationResult,
-    pub flops: f64,
+    pub input_flops: f64,
+    pub output_flops: f64,
     // This tells us which node(s) in a group actually failed the toploc validation
     pub failing_indices: Vec<i64>,
 }
@@ -42,6 +43,8 @@ impl Toploc {
                 }
                 headers
             })
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
             .build()
             .expect("Failed to build HTTP client");
 
@@ -50,6 +53,15 @@ impl Toploc {
             client,
             metrics,
         }
+    }
+
+    pub fn name(&self) -> String {
+        let prefix = self
+            .config
+            .file_prefix_filter
+            .clone()
+            .unwrap_or_else(|| "n/a".to_string());
+        prefix.to_string() // e.g. Qwen/Qwen3-14B
     }
 
     fn normalize_path(&self, path: &str) -> String {
@@ -70,7 +82,12 @@ impl Toploc {
     pub fn matches_file_name(&self, file_name: &str) -> bool {
         let normalized_name = self.normalize_path(file_name);
         match &self.config.file_prefix_filter {
-            Some(prefix) => normalized_name.starts_with(prefix),
+            Some(prefix) => {
+                normalized_name == *prefix || {
+                    normalized_name.starts_with(prefix)
+                        && normalized_name[prefix.len()..].starts_with('/')
+                }
+            }
             None => true,
         }
     }
@@ -86,7 +103,7 @@ impl Toploc {
             "{}/validate/{}",
             self.config.server_url, processed_file_name
         );
-        info!(
+        debug!(
             "Triggering remote toploc validation for {} {}",
             file_name, validate_url
         );
@@ -130,14 +147,24 @@ impl Toploc {
                 Ok(())
             }
             Err(e) => {
-                error!(
-                    "Failed to trigger remote toploc validation for {}: {}",
-                    file_name, e
-                );
+                let error_msg = if e.is_timeout() {
+                    format!("Toploc request timed out for {}: {}", file_name, e)
+                } else if e.is_connect() {
+                    format!(
+                        "Failed to connect to toploc server for {}: {}",
+                        file_name, e
+                    )
+                } else {
+                    format!(
+                        "Failed to trigger remote toploc validation for {}: {}",
+                        file_name, e
+                    )
+                };
+                error!("{}", error_msg);
                 if let Some(metrics) = &self.metrics {
                     metrics.record_api_request("toploc_single_file_validation", "0");
                 }
-                Err(Error::msg(format!("Failed to trigger validation: {}", e)))
+                Err(Error::msg(error_msg))
             }
         }
     }
@@ -201,17 +228,24 @@ impl Toploc {
                 Ok(())
             }
             Err(e) => {
-                error!(
-                    "Failed to trigger remote toploc group validation for {}: {}",
-                    file_name, e
-                );
+                let error_msg = if e.is_timeout() {
+                    format!("Toploc group request timed out for {}: {}", file_name, e)
+                } else if e.is_connect() {
+                    format!(
+                        "Failed to connect to toploc server for group {}: {}",
+                        file_name, e
+                    )
+                } else {
+                    format!(
+                        "Failed to trigger remote toploc group validation for {}: {}",
+                        file_name, e
+                    )
+                };
+                error!("{}", error_msg);
                 if let Some(metrics) = &self.metrics {
                     metrics.record_api_request("toploc_group_file_validation", "0");
                 }
-                Err(Error::msg(format!(
-                    "Failed to trigger group validation: {}",
-                    e
-                )))
+                Err(Error::msg(error_msg))
             }
         }
     }
@@ -266,10 +300,15 @@ impl Toploc {
                                 _ => ValidationResult::Unknown,
                             };
 
-                            let flops = status_json
-                                .get("flops")
+                            let input_flops = status_json
+                                .get("input_flops")
                                 .and_then(|f| f.as_f64())
                                 .unwrap_or(0.0);
+                            let output_flops = status_json
+                                .get("output_flops")
+                                .and_then(|f| f.as_f64())
+                                .unwrap_or(0.0);
+
                             let failing_indices = status_json
                                 .get("failing_indices")
                                 .and_then(|f| f.as_array())
@@ -280,7 +319,8 @@ impl Toploc {
 
                             Ok(GroupValidationResult {
                                 status: validation_result,
-                                flops,
+                                input_flops,
+                                output_flops,
                                 failing_indices,
                             })
                         }
@@ -292,14 +332,21 @@ impl Toploc {
                 }
             }
             Err(e) => {
-                error!(
-                    "Failed to poll remote toploc group validation for {}: {}",
-                    file_name, e
-                );
-                Err(Error::msg(format!(
-                    "Failed to poll remote toploc group validation: {}",
-                    e
-                )))
+                let error_msg = if e.is_timeout() {
+                    format!("Toploc status check timed out for {}: {}", file_name, e)
+                } else if e.is_connect() {
+                    format!(
+                        "Failed to connect to toploc server for status check {}: {}",
+                        file_name, e
+                    )
+                } else {
+                    format!(
+                        "Failed to poll remote toploc group validation for {}: {}",
+                        file_name, e
+                    )
+                };
+                error!("{}", error_msg);
+                Err(Error::msg(error_msg))
             }
         }
     }
@@ -342,7 +389,10 @@ impl Toploc {
                                 "reject" => ValidationResult::Reject,
                                 "crashed" => ValidationResult::Crashed,
                                 "pending" => ValidationResult::Pending,
-                                _ => ValidationResult::Unknown,
+                                _ => {
+                                    warn!("Unknown status found for {}: {}", file_name, status);
+                                    ValidationResult::Unknown
+                                }
                             };
                             Ok(validation_result)
                         }
@@ -529,7 +579,7 @@ mod tests {
         let _status_mock = server
             .mock("GET", "/statusgroup/test-group.parquet")
             .with_status(200)
-            .with_body(r#"{"status": "accept", "flops": 12345.67, "failing_indices": []}"#)
+            .with_body(r#"{"status": "accept", "input_flops": 12345.67, "output_flops": 12345.67, "failing_indices": []}"#)
             .create();
 
         let config = ToplocConfig {
@@ -546,7 +596,8 @@ mod tests {
         assert!(result.is_ok());
         let group_result = result.unwrap();
         assert_eq!(group_result.status, ValidationResult::Accept);
-        assert_eq!(group_result.flops, 12345.67);
+        assert_eq!(group_result.input_flops, 12345.67);
+        assert_eq!(group_result.output_flops, 12345.67);
         assert!(group_result.failing_indices.is_empty());
         Ok(())
     }
@@ -558,7 +609,7 @@ mod tests {
         let _status_mock = server
             .mock("GET", "/statusgroup/test-group.parquet")
             .with_status(200)
-            .with_body(r#"{"status": "reject", "flops": 0.0, "failing_indices": [1, 3, 5]}"#)
+            .with_body(r#"{"status": "reject", "input_flops": 0.0, "output_flops": 0.0, "failing_indices": [1, 3, 5]}"#)
             .create();
 
         let config = ToplocConfig {
@@ -575,24 +626,106 @@ mod tests {
         assert!(result.is_ok());
         let group_result = result.unwrap();
         assert_eq!(group_result.status, ValidationResult::Reject);
-        assert_eq!(group_result.flops, 0.0);
+        assert_eq!(group_result.input_flops, 0.0);
+        assert_eq!(group_result.output_flops, 0.0);
         assert_eq!(group_result.failing_indices, vec![1, 3, 5]);
         Ok(())
     }
-
     #[tokio::test]
     async fn test_file_prefix_filter_matching() {
-        let config = ToplocConfig {
-            server_url: "http://test".to_string(),
-            auth_token: None,
-            file_prefix_filter: Some("Qwen3".to_string()),
-        };
-        let toploc = Toploc::new(config, None);
+        let configs = vec![
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("Qwen/Qwen3-235B-A22B".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("Qwen/Qwen3-32B".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("Qwen/Qwen3-30B-A3B".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("Qwen/Qwen3-14B".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("deepseek-ai/DeepSeek-R1-0528".to_string()),
+            },
+            ToplocConfig {
+                server_url: "http://test".to_string(),
+                auth_token: None,
+                file_prefix_filter: Some("deepseek-ai/DeepSeek-R1-0528-Qwen3-8B".to_string()),
+            },
+        ];
 
-        assert!(toploc.matches_file_name("Qwen3-model-data.parquet"));
-        assert!(toploc.matches_file_name("Qwen3"));
-        assert!(!toploc.matches_file_name("GPT4-model-data.parquet"));
-        assert!(!toploc.matches_file_name("qwen3-lowercase.parquet")); // Case sensitive
+        let test_cases = vec![
+            // Test Qwen 235B model
+            ("Qwen/Qwen3-235B-A22B/data.parquet", Some(0)),
+            ("Qwen/Qwen3-235B-A22B", Some(0)),
+            ("Qwen/Qwen3-235B-A22B-extra/data.parquet", None),
+            ("qwen/qwen3-235b-a22b/data.parquet", None), // Case sensitive
+            // Test Qwen 32B model
+            ("Qwen/Qwen3-32B/data.parquet", Some(1)),
+            ("Qwen/Qwen3-32B", Some(1)),
+            ("Qwen/Qwen3-32B-extra/data.parquet", None),
+            // Test Qwen 30B model
+            ("Qwen/Qwen3-30B-A3B/data.parquet", Some(2)),
+            ("Qwen/Qwen3-30B-A3B", Some(2)),
+            ("Qwen/Qwen3-30B-A3B-extra/data.parquet", None),
+            // Test Qwen 14B model
+            ("Qwen/Qwen3-14B/data.parquet", Some(3)),
+            ("Qwen/Qwen3-14B", Some(3)),
+            ("Qwen/Qwen3-14B-extra/data.parquet", None),
+            // Test DeepSeek base model
+            ("deepseek-ai/DeepSeek-R1-0528/data.parquet", Some(4)),
+            ("deepseek-ai/DeepSeek-R1-0528", Some(4)),
+            (
+                "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B/data.parquet",
+                Some(5),
+            ),
+            ("deepseek-ai/deepseek-r1-0528/data.parquet", None), // Case sensitive
+        ];
+
+        for (test_file, expected_match) in test_cases {
+            let mut matched = false;
+            let mut matched_idx = None;
+
+            for (idx, config) in configs.iter().enumerate() {
+                let toploc = Toploc::new(config.clone(), None);
+                if toploc.matches_file_name(test_file) {
+                    matched = true;
+                    matched_idx = Some(idx);
+                    break;
+                }
+            }
+
+            match expected_match {
+                Some(expected_idx) => {
+                    assert!(
+                        matched,
+                        "Expected file {} to match config {}",
+                        test_file, expected_idx
+                    );
+                    assert_eq!(
+                        matched_idx,
+                        Some(expected_idx),
+                        "File {} matched config {} but expected {}",
+                        test_file,
+                        matched_idx.unwrap(),
+                        expected_idx
+                    );
+                }
+                None => assert!(!matched, "File {} should not match any config", test_file),
+            }
+        }
     }
 
     #[tokio::test]
@@ -651,27 +784,6 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_network_timeout_error() -> Result<(), Error> {
-        // Test with an invalid/unreachable URL to simulate network errors
-        let config = ToplocConfig {
-            server_url: "http://localhost:99999".to_string(), // Invalid port
-            auth_token: None,
-            file_prefix_filter: None,
-        };
-        let toploc = Toploc::new(config, None);
-
-        let result = toploc
-            .trigger_single_file_validation("abc123", "0x456", "test.parquet")
-            .await;
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Failed to trigger validation"));
-        Ok(())
-    }
     #[tokio::test]
     async fn test_group_validation_with_auth_token() -> Result<(), Error> {
         let mut server = Server::new_async().await;

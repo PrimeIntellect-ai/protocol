@@ -13,12 +13,14 @@ directories = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
+iroh = { workspace = true }
+rand_v8 = { workspace = true }
 lazy_static = "1.5.0"
 log = { workspace = true }
 nalgebra = { workspace = true }
 prometheus = "0.14.0"
 rand = "0.9.0"
-redis = { workspace = true }
+redis = { workspace = true, features = ["tokio-comp"] }
 redis-test = { workspace = true }
 regex = "1.11.1"
 reqwest = { workspace = true }

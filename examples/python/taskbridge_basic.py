@@ -15,7 +15,7 @@ def send_message(metrics, task_id=None):
     print(f"Thread {threading.current_thread().name}: Sending message to socket: {socket_path}")
     
     if task_id is None:
-        task_id = "f93f7b63-968e-41ec-8c0d-0c3c65050b4d"
+        task_id = "ac05530d-6f13-4b7b-9f18-36de020d71b3"
     metrics["task_id"] = task_id
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
@@ -51,10 +51,16 @@ def send_metrics():
     send_message(metrics)
 
 def send_file_info():
-    """Simulates sending file info."""
+    """Simulates sending file info.
+
+    To simulate a submission with groups, simply create a file in s3/mappings.
+    Sample: 
+    - Filename: 1c4970c5032ba367efc537054d9d0f4595b8a7fe0901e8aa1b5c34c0c582ce84 
+    - Content for a group of size 2: Qwen0.6/PrimeIntellect/INTELLECT-2-RL-Dataset/8-18084400840775688168-2-0-0.parquet
+    """
     file_data = {
         "output/save_path": "/path/to/save/file.txt",
-        "output/sha256": "20638f48221b266635376b399254d0faf17f69da567fd0f5deb3d6775c7c7607",
+        "output/sha256": "1c4970c5032ba367efc537054d9d0f4595b8a7fe0901e8aa1b5c34c0c582ce84",
         "output/output_flops": 1500000,
         "output/input_flops": 500000
     }

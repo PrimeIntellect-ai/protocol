@@ -64,9 +64,17 @@ spec:
             - name: TOPLOC_GRACE_INTERVAL
               value: "{{ .Values.env.TOPLOC_GRACE_INTERVAL }}"
             {{- end }}
+            {{- if .Values.env.BATCH_TRIGGER_SIZE }}
+            - name: BATCH_TRIGGER_SIZE
+              value: "{{ .Values.env.BATCH_TRIGGER_SIZE }}"
+            {{- end }}
             {{- if .Values.env.TOPLOC_WORK_VALIDATION_INTERVAL }}
             - name: TOPLOC_WORK_VALIDATION_INTERVAL
               value: "{{ .Values.env.TOPLOC_WORK_VALIDATION_INTERVAL }}"
+            {{- end }}
+            {{- if .Values.env.INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES }}
+            - name: INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES
+              value: "{{ .Values.env.INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES }}"
             {{- end }}
             - name: DISABLE_HARDWARE_VALIDATION
               value: "{{ .Values.env.DISABLE_HARDWARE_VALIDATION }}"

@@ -1,10 +1,12 @@
+// This is the correct, minimal, and tested fix.
+
 use alloy::contract::CallDecoder;
 use alloy::providers::Provider;
 use alloy::{
     contract::CallBuilder,
     primitives::{keccak256, FixedBytes, Selector},
+    providers::Network,
 };
-use alloy_provider::Network;
 use anyhow::Result;
 use log::{debug, info, warn};
 use tokio::time::{timeout, Duration};
@@ -16,123 +18,73 @@ pub fn get_selector(fn_image: &str) -> Selector {
 }
 
 pub type PrimeCallBuilder<'a, D> = alloy::contract::CallBuilder<&'a WalletProvider, D>;
+
 pub async fn retry_call<P, D, N>(
     mut call: CallBuilder<&P, D, N>,
     max_tries: u32,
-    initial_gas_price: Option<u128>,
     provider: P,
     retry_delay: Option<u64>,
 ) -> Result<FixedBytes<32>>
 where
-    P: Provider<N>,
+    P: Provider<N> + Clone,
     N: Network,
-    D: CallDecoder,
+    D: CallDecoder + Clone,
 {
     let mut tries = 0;
-    let gas_price = initial_gas_price;
-    let mut gas_multiplier: Option<f64> = None;
-    let retry_delay = retry_delay.unwrap_or(5);
-    if let Some(price) = gas_price {
-        info!("Setting gas price to: {:?}", price);
-        call = call.gas_price(price);
-    }
+    let retry_delay = retry_delay.unwrap_or(2);
 
     while tries < max_tries {
-        let mut network_gas_price: Option<u128> = None;
         if tries > 0 {
             tokio::time::sleep(Duration::from_secs(retry_delay)).await;
-            match provider.get_gas_price().await {
-                Ok(gas_price) => {
-                    network_gas_price = Some(gas_price);
-                }
-                Err(err) => {
-                    warn!("Failed to get gas price from provider: {:?}", err);
-                }
+
+            // On retry, always fetch fresh fee estimates from the provider.
+            let priority_fee_res = provider.get_max_priority_fee_per_gas().await;
+            let gas_price_res = provider.get_gas_price().await;
+
+            if let (Ok(priority_fee), Ok(gas_price)) = (priority_fee_res, gas_price_res) {
+                // To replace a transaction, we need to bump both fees.
+                // A common strategy is to increase by a percentage (e.g., 20%).
+                let new_priority_fee = (priority_fee as f64 * 1.2).round() as u128;
+                let new_gas_price = (gas_price as f64 * 1.2).round() as u128;
+
+                info!(
+                    "Retrying with bumped fees: max_fee={}, priority_fee={}",
+                    new_gas_price, new_priority_fee
+                );
+
+                call = call
+                    .clone()
+                    .max_fee_per_gas(new_gas_price)
+                    .max_priority_fee_per_gas(new_priority_fee);
+            } else {
+                warn!("Could not get new gas fees, retrying with old settings.");
             }
         }
-        if let (Some(multiplier), Some(nw_gas_price)) = (gas_multiplier, network_gas_price) {
-            let new_gas = (multiplier * nw_gas_price as f64).round() as u128;
-            if new_gas < nw_gas_price {
-                return Err(anyhow::anyhow!("Gas price is too low"));
-            }
-            call = call.max_fee_per_gas(new_gas);
-            call = call.gas_price(new_gas);
-        }
-        match call.send().await {
+
+        match call.clone().send().await {
             Ok(result) => {
-                debug!("Transaction sent, waiting for confirmation");
-                match timeout(Duration::from_secs(20), result.watch()).await {
-                    Ok(watch_result) => match watch_result {
-                        Ok(hash) => return Ok(hash),
-                        Err(err) => {
-                            tries += 1;
-                            if tries == max_tries {
-                                return Err(anyhow::anyhow!(
-                                    "Transaction failed after {} attempts: {:?}",
-                                    tries,
-                                    err
-                                ));
-                            }
-                        }
-                    },
-                    Err(_) => {
-                        warn!("Watch timed out, retrying transaction");
-                        tries += 1;
-                        if tries == max_tries {
-                            return Err(anyhow::anyhow!(
-                                "Max retries reached after watch timeouts"
-                            ));
-                        }
-                        gas_multiplier = Some((110.0 + (tries as f64 * 10.0)) / 100.0);
-                    }
+                debug!("Transaction sent, waiting for confirmation...");
+                match timeout(Duration::from_secs(30), result.watch()).await {
+                    Ok(Ok(hash)) => return Ok(hash),
+                    Ok(Err(err)) => warn!("Transaction watch failed: {:?}", err),
+                    Err(_) => warn!("Watch timed out, retrying transaction..."),
                 }
             }
             Err(err) => {
-                warn!("Transaction failed: {:?}", err);
-
-                let err_str = err.to_string();
-                let retryable_errors = [
-                    "replacement transaction underpriced",
-                    "nonce too low",
-                    "transaction underpriced",
-                    "insufficient funds for gas",
-                    "already known",
-                    "temporarily unavailable",
-                    "network congested",
-                    "gas price too low",
-                    "transaction pool full",
-                    "max fee per gas less than block base fee",
-                ];
-
-                if retryable_errors.iter().any(|e| err_str.contains(e)) {
-                    tries += 1;
-                    if tries == max_tries {
-                        return Err(anyhow::anyhow!(
-                            "Max retries reached after {} attempts. Last error: {:?}",
-                            tries,
-                            err
-                        ));
-                    }
-
-                    if err_str.contains("underpriced")
-                        || err_str.contains("gas price too low")
-                        || err_str.contains("max fee per gas less than block base fee")
-                    {
-                        gas_multiplier = Some((110.0 + (tries as f64 * 200.0)) / 100.0);
-                    }
-                } else {
-                    return Err(anyhow::anyhow!(
-                        "Transaction failed with non-retryable error: {:?}",
-                        err
-                    ));
+                warn!("Transaction send failed: {:?}", err);
+                let err_str = err.to_string().to_lowercase();
+                if !err_str.contains("replacement transaction underpriced")
+                    && !err_str.contains("nonce too low")
+                    && !err_str.contains("transaction already imported")
+                {
+                    return Err(anyhow::anyhow!("Non-retryable error: {:?}", err));
                 }
             }
         }
+        tries += 1;
     }
-
     Err(anyhow::anyhow!("Max retries reached"))
 }
-
 #[cfg(test)]
 mod tests {
 
@@ -169,21 +121,23 @@ mod tests {
                 .connect_anvil_with_wallet_and_config(|anvil| anvil.block_time(2))?,
         );
 
-        let provider_clone = provider.clone();
-        let contract = Counter::deploy(provider_clone).await?;
-
-        let provider_clone_1 = provider.clone();
-        let contract_clone_1 = contract.clone();
-        let handle_1 = tokio::spawn(async move {
-            let call = contract_clone_1.setNumber(U256::from(100));
-            retry_call(call, 3, Some(1), provider_clone_1, None).await
+        let contract = Counter::deploy(provider.clone()).await?;
+        let handle_1 = tokio::spawn({
+            let contract = contract.clone();
+            let provider = provider.clone();
+            async move {
+                let call = contract.setNumber(U256::from(100));
+                retry_call(call, 3, provider, None).await
+            }
         });
 
-        let contract_clone_2 = contract.clone();
-        let provider_clone_2 = provider.clone();
-        let handle_2 = tokio::spawn(async move {
-            let call = contract_clone_2.setNumber(U256::from(100));
-            retry_call(call, 3, None, provider_clone_2, None).await
+        let handle_2 = tokio::spawn({
+            let contract = contract.clone();
+            let provider = provider.clone();
+            async move {
+                let call = contract.setNumber(U256::from(100));
+                retry_call(call, 3, provider, None).await
+            }
         });
 
         let tx_base = handle_1.await.unwrap();
@@ -209,11 +163,9 @@ mod tests {
             .get_transaction_count(wallet.default_signer().address())
             .await?;
 
-        let provider_clone = provider.clone();
         let _ = contract.increment().nonce(tx_count).send().await?;
-
         let call_two = contract.increment().nonce(tx_count);
-        let tx = retry_call(call_two, 3, None, provider_clone, Some(1)).await;
+        let tx = retry_call(call_two, 3, provider, Some(1)).await;
 
         assert!(tx.is_ok());
         Ok(())

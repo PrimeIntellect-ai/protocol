@@ -3,6 +3,7 @@ use actix_web::{
     web::{self, delete, get, post, Data, Path},
     HttpResponse, Scope,
 };
+use log::error;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -19,15 +20,34 @@ struct DeleteMetricRequest {
 }
 
 async fn get_metrics(app_state: Data<AppState>) -> HttpResponse {
-    let metrics = app_state
+    let metrics = match app_state
         .store_context
         .metrics_store
-        .get_aggregate_metrics_for_all_tasks();
+        .get_aggregate_metrics_for_all_tasks()
+        .await
+    {
+        Ok(metrics) => metrics,
+        Err(e) => {
+            error!("Error getting aggregate metrics for all tasks: {}", e);
+            Default::default()
+        }
+    };
     HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
 
 async fn get_all_metrics(app_state: Data<AppState>) -> HttpResponse {
-    let metrics = app_state.store_context.metrics_store.get_all_metrics();
+    let metrics = match app_state
+        .store_context
+        .metrics_store
+        .get_all_metrics()
+        .await
+    {
+        Ok(metrics) => metrics,
+        Err(e) => {
+            error!("Error getting all metrics: {}", e);
+            Default::default()
+        }
+    };
     HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
 
@@ -48,10 +68,14 @@ async fn create_metric(
     app_state: Data<AppState>,
     metric: web::Json<ManualMetricEntry>,
 ) -> HttpResponse {
-    app_state
+    if let Err(e) = app_state
         .store_context
         .metrics_store
-        .store_manual_metrics(metric.label.clone(), metric.value);
+        .store_manual_metrics(metric.label.clone(), metric.value)
+        .await
+    {
+        error!("Error storing manual metric: {}", e);
+    }
     HttpResponse::Ok().json(json!({"success": true}))
 }
 
@@ -60,11 +84,18 @@ async fn delete_metric(
     task_id: Path<String>,
     body: web::Json<DeleteMetricRequest>,
 ) -> HttpResponse {
-    let success =
-        app_state
-            .store_context
-            .metrics_store
-            .delete_metric(&task_id, &body.label, &body.address);
+    let success = match app_state
+        .store_context
+        .metrics_store
+        .delete_metric(&task_id, &body.label, &body.address)
+        .await
+    {
+        Ok(success) => success,
+        Err(e) => {
+            error!("Error deleting metric: {}", e);
+            false
+        }
+    };
 
     HttpResponse::Ok().json(json!({
         "success": success
