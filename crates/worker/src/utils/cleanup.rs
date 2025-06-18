@@ -35,12 +35,12 @@ impl CleanupManager {
 
     fn get_default_storage_path() -> String {
         const APP_DIR_NAME: &str = "prime-worker";
-        
+
         // Try user home directory first
         if let Ok(home) = std::env::var("HOME") {
             return format!("{}/{}", home, APP_DIR_NAME);
         }
-        
+
         // Fallback to current directory
         std::env::current_dir()
             .map(|p| {
