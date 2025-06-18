@@ -669,7 +669,7 @@ mod tests {
 
         // Register first node - should succeed
         let json1 = serde_json::to_value(node1.clone()).unwrap();
-        let signature1 = sign_request(
+        let signature1 = sign_request_with_nonce(
             "/nodes",
             &Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap(),
             Some(&json1),
@@ -679,9 +679,9 @@ mod tests {
 
         let req1 = test::TestRequest::put()
             .uri("/nodes")
-            .set_json(json1)
+            .set_json(signature1.data)
             .insert_header(("x-address", node1.id.clone()))
-            .insert_header(("x-signature", signature1))
+            .insert_header(("x-signature", signature1.signature))
             .to_request();
 
         let resp1 = test::call_service(&app, req1).await;
@@ -689,7 +689,7 @@ mod tests {
 
         // Try to register same node again - should succeed (update)
         let json1_duplicate = serde_json::to_value(node1.clone()).unwrap();
-        let signature1_duplicate = sign_request(
+        let signature1_duplicate = sign_request_with_nonce(
             "/nodes",
             &Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap(),
             Some(&json1_duplicate),
@@ -699,9 +699,9 @@ mod tests {
 
         let req1_duplicate = test::TestRequest::put()
             .uri("/nodes")
-            .set_json(json1_duplicate)
+            .set_json(signature1_duplicate.data)
             .insert_header(("x-address", node1.id.clone()))
-            .insert_header(("x-signature", signature1_duplicate))
+            .insert_header(("x-signature", signature1_duplicate.signature))
             .to_request();
 
         let resp1_duplicate = test::call_service(&app, req1_duplicate).await;
@@ -709,7 +709,7 @@ mod tests {
 
         // Register second node with different ID - should succeed
         let json2 = serde_json::to_value(node2.clone()).unwrap();
-        let signature2 = sign_request(
+        let signature2 = sign_request_with_nonce(
             "/nodes",
             &Wallet::new(private_key_2, Url::parse("http://localhost:8080").unwrap()).unwrap(),
             Some(&json2),
@@ -719,9 +719,9 @@ mod tests {
 
         let req2 = test::TestRequest::put()
             .uri("/nodes")
-            .set_json(json2)
+            .set_json(signature2.data)
             .insert_header(("x-address", node2.id.clone()))
-            .insert_header(("x-signature", signature2))
+            .insert_header(("x-signature", signature2.signature))
             .to_request();
 
         let resp2 = test::call_service(&app, req2).await;
@@ -745,7 +745,7 @@ mod tests {
 
         // Register third node - should fail (exceeds max_nodes_per_ip)
         let json3 = serde_json::to_value(node3.clone()).unwrap();
-        let signature3 = sign_request(
+        let signature3 = sign_request_with_nonce(
             "/nodes",
             &Wallet::new(private_key_3, Url::parse("http://localhost:8080").unwrap()).unwrap(),
             Some(&json3),
@@ -755,9 +755,9 @@ mod tests {
 
         let req3 = test::TestRequest::put()
             .uri("/nodes")
-            .set_json(json3)
+            .set_json(signature3.data)
             .insert_header(("x-address", node3.id.clone()))
-            .insert_header(("x-signature", signature3))
+            .insert_header(("x-signature", signature3.signature))
             .to_request();
 
         let resp3 = test::call_service(&app, req3).await;
