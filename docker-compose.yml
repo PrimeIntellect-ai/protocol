@@ -76,6 +76,7 @@ services:
       - RPC_URL=http://reth:8545
       - REDIS_URL=redis://redis:6379
       - PLATFORM_API_KEY=prime
+      - MAX_NODES_PER_IP=3
     networks:
       - prime
     depends_on:

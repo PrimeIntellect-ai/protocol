@@ -68,6 +68,10 @@
     - name: NODE_GROUP_CONFIGS
       value: {{ .root.Values.env.NODE_GROUP_CONFIGS | quote }}
     {{- end }}
+    {{- if .root.Values.env.MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT }}
+    - name: MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT
+      value: "{{ .root.Values.env.MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT }}"
+    {{- end }}
 {{- end }}
 
 apiVersion: apps/v1
