@@ -31,6 +31,7 @@ pub enum ValidationResult {
     Unknown,
     Invalidated,
     IncompleteGroup,
+    FileNameResolutionFailed,
 }
 
 impl fmt::Display for ValidationResult {
@@ -43,6 +44,7 @@ impl fmt::Display for ValidationResult {
             ValidationResult::Unknown => write!(f, "unknown"),
             ValidationResult::Invalidated => write!(f, "invalidated"),
             ValidationResult::IncompleteGroup => write!(f, "incomplete_group"),
+            ValidationResult::FileNameResolutionFailed => write!(f, "filename_resolution_failed"),
         }
     }
 }
@@ -338,6 +340,55 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
 
         Ok(())
     }
+}
+
+impl SyntheticDataValidator<WalletProvider> {
+    pub async fn soft_invalidate_work(&self, work_key: &str) -> Result<(), Error> {
+        info!("Soft invalidating work: {}", work_key);
+
+        if self.disable_chain_invalidation {
+            info!("Chain invalidation is disabled, skipping work soft invalidation");
+            return Ok(());
+        }
+
+        // Special case for tests - skip actual blockchain interaction
+        #[cfg(test)]
+        {
+            info!("Test mode: skipping actual work soft invalidation");
+            let _ = &self.prime_network;
+            Ok(())
+        }
+
+        #[cfg(not(test))]
+        {
+            let work_info = self
+                .get_work_info_from_redis(work_key)
+                .await?
+                .ok_or_else(|| Error::msg("Work info not found for soft invalidation"))?;
+            let work_key_bytes = hex::decode(work_key)
+                .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+
+            // Create 64-byte payload: work_key (32 bytes) + work_units (32 bytes)
+            let mut data = Vec::with_capacity(64);
+            data.extend_from_slice(&work_key_bytes);
+
+            // Convert work_units to 32-byte representation
+            let work_units_bytes = work_info.work_units.to_be_bytes::<32>();
+            data.extend_from_slice(&work_units_bytes);
+
+            match self
+                .prime_network
+                .soft_invalidate_work(self.pool_id, data)
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    error!("Failed to soft invalidate work {}: {}", work_key, e);
+                    Err(Error::msg(format!("Failed to soft invalidate work: {}", e)))
+                }
+            }
+        }
+    }
     /// Finds groups whose grace period has ended and cleans them up.
     async fn get_groups_past_grace_period(&self) -> Result<Vec<String>, Error> {
         if self.incomplete_group_grace_period_minutes == 0 {
@@ -567,6 +618,7 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
         work_key: &str,
     ) -> Result<String, ProcessWorkKeyError> {
         let redis_key = format!("file_name:{}", work_key);
+        let attempts_key = format!("file_name_attempts:{}", work_key);
         let mut con = self
             .redis_store
             .client
@@ -580,6 +632,46 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
             .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
         if let Some(cached_file_name) = file_name {
             return Ok(cached_file_name);
+        }
+
+        // Increment attempts counter
+        let attempts: i64 = con
+            .incr(&attempts_key, 1)
+            .await
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+
+        // Set expiry on attempts counter (24 hours)
+        let _: () = con
+            .expire(&attempts_key, 24 * 60 * 60)
+            .await
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+
+        const MAX_ATTEMPTS: i64 = 60;
+        if attempts >= MAX_ATTEMPTS {
+            // If we've tried too many times, soft invalidate the work and update its status
+            if let Err(e) = self.soft_invalidate_work(work_key).await {
+                error!(
+                    "Failed to soft invalidate work after max filename resolution attempts: {}",
+                    e
+                );
+            }
+            // Set the validation status to FileNameResolutionFailed to prevent future processing
+            if let Err(e) = self
+                .update_work_validation_status(
+                    work_key,
+                    &ValidationResult::FileNameResolutionFailed,
+                )
+                .await
+            {
+                error!(
+                    "Failed to update validation status after max attempts: {}",
+                    e
+                );
+            }
+            return Err(ProcessWorkKeyError::MaxAttemptsReached(format!(
+                "Failed to resolve filename after {} attempts for work key: {}",
+                MAX_ATTEMPTS, work_key
+            )));
         }
 
         let original_file_name = self
@@ -611,17 +703,34 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
             .await
             .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
 
+        // Reset attempts counter on success
+        let _: () = con
+            .del(&attempts_key)
+            .await
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+
         Ok(cleaned_file_name.to_string())
     }
 
     async fn build_group_for_key(&self, work_key: &str) -> Result<String, Error> {
-        let file = self
-            .get_file_name_for_work_key(work_key)
-            .await
-            .map_err(|e| {
+        let file = match self.get_file_name_for_work_key(work_key).await {
+            Ok(name) => name,
+            Err(ProcessWorkKeyError::MaxAttemptsReached(_)) => {
+                // Status is already set in get_file_name_for_work_key
+                return Err(Error::msg(format!(
+                    "Failed to resolve filename after max attempts for work key: {}",
+                    work_key
+                )));
+            }
+            Err(e) => {
                 error!("Failed to get file name for work key: {}", e);
-                Error::msg(format!("Failed to get file name for work key: {}", e))
-            })?;
+                return Err(Error::msg(format!(
+                    "Failed to get file name for work key: {}",
+                    e
+                )));
+            }
+        };
+
         let group_info = GroupInformation::from_str(&file)?;
         let group_key: String = format!(
             "group:{}:{}:{}",
@@ -1368,53 +1477,6 @@ impl SyntheticDataValidator<WalletProvider> {
         }
 
         Ok(())
-    }
-
-    pub async fn soft_invalidate_work(&self, work_key: &str) -> Result<(), Error> {
-        info!("Soft invalidating work: {}", work_key);
-
-        if self.disable_chain_invalidation {
-            info!("Chain invalidation is disabled, skipping work soft invalidation");
-            return Ok(());
-        }
-
-        // Special case for tests - skip actual blockchain interaction
-        #[cfg(test)]
-        {
-            info!("Test mode: skipping actual work soft invalidation");
-            let _ = &self.prime_network;
-            Ok(())
-        }
-
-        #[cfg(not(test))]
-        {
-            let work_info = self
-                .get_work_info_from_redis(work_key)
-                .await?
-                .ok_or_else(|| Error::msg("Work info not found for soft invalidation"))?;
-            let work_key_bytes = hex::decode(work_key)
-                .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
-
-            // Create 64-byte payload: work_key (32 bytes) + work_units (32 bytes)
-            let mut data = Vec::with_capacity(64);
-            data.extend_from_slice(&work_key_bytes);
-
-            // Convert work_units to 32-byte representation
-            let work_units_bytes = work_info.work_units.to_be_bytes::<32>();
-            data.extend_from_slice(&work_units_bytes);
-
-            match self
-                .prime_network
-                .soft_invalidate_work(self.pool_id, data)
-                .await
-            {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    error!("Failed to soft invalidate work {}: {}", work_key, e);
-                    Err(Error::msg(format!("Failed to soft invalidate work: {}", e)))
-                }
-            }
-        }
     }
 
     pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
@@ -2526,6 +2588,62 @@ mod tests {
         assert_eq!(validation_plan.group_trigger_tasks.len(), 0);
         assert_eq!(validation_plan.status_check_tasks.len(), 0);
         assert_eq!(validation_plan.group_status_check_tasks.len(), 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_filename_resolution_retries_and_soft_invalidation() -> Result<(), Error> {
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
+        let storage_provider = Arc::new(mock_storage);
+
+        const WORK_KEY: &str = "1234567890123456789012345678901234567890123456789012345678901234";
+
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![ToplocConfig {
+                server_url: "http://localhost:8080".to_string(),
+                ..Default::default()
+            }],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            10,
+            true,
+            true, // disable_chain_invalidation for testing
+            1,    // 1 minute grace period
+            None,
+        );
+
+        // Try 59 times to reach just before max attempts (60)
+        for _ in 0..59 {
+            let result = validator.get_file_name_for_work_key(WORK_KEY).await;
+            assert!(result.is_err());
+            assert!(matches!(
+                result.unwrap_err(),
+                ProcessWorkKeyError::FileNameResolutionError(_)
+            ));
+        }
+
+        // 60th attempt should trigger soft invalidation and return MaxAttemptsReached
+        let result = validator.get_file_name_for_work_key(WORK_KEY).await;
+        assert!(matches!(
+            result.unwrap_err(),
+            ProcessWorkKeyError::MaxAttemptsReached(_)
+        ));
+
+        // Verify work was marked as invalidated
+        let status = validator
+            .get_work_validation_status_from_redis(WORK_KEY)
+            .await?;
+        assert!(status.is_some());
 
         Ok(())
     }
