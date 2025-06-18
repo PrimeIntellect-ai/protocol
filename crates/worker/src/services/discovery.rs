@@ -40,12 +40,15 @@ impl DiscoveryService {
         );
         headers.insert("x-signature", signed_request.signature.parse().unwrap());
         let request_url = format!("{}{}", self.base_url, &self.endpoint);
-
         let client = reqwest::Client::new();
         let response = client
             .put(&request_url)
             .headers(headers)
-            .json(&signed_request.data.unwrap())
+            .json(
+                &signed_request
+                    .data
+                    .expect("Signed request data should always be present for discovery upload"),
+            )
             .send()
             .await?;
 
