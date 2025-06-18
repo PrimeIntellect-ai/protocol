@@ -500,6 +500,7 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
         Ok(())
     }
 
+    #[cfg(test)]
     async fn get_work_validation_status_from_redis(
         &self,
         work_key: &str,
