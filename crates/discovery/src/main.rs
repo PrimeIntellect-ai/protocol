@@ -34,9 +34,9 @@ struct Args {
     #[arg(short = 'P', long, default_value = "8089")]
     port: u16,
 
-    /// Only one node per IP address
-    #[arg(long)]
-    only_one_node_per_ip: Option<bool>,
+    /// Maximum number of nodes allowed per IP address
+    #[arg(long, default_value = "3")]
+    max_nodes_per_ip: u32,
 }
 
 #[tokio::main]
@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
         contracts,
         args.platform_api_key,
         last_chain_sync,
-        args.only_one_node_per_ip.unwrap_or(false),
+        args.max_nodes_per_ip,
     )
     .await
     {

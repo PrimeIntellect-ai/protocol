@@ -33,17 +33,13 @@ impl NodeStore {
 
     pub async fn get_active_node_by_ip(&self, ip: String) -> Result<Option<DiscoveryNode>, Error> {
         let mut con = self.get_connection().await?;
-
-        // Get all node IDs from the set
         let node_ids: Vec<String> = con.smembers("node:ids").await?;
 
         if node_ids.is_empty() {
             return Ok(None);
         }
 
-        // Build keys from IDs
         let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{}", id)).collect();
-
         let serialized_nodes: Vec<String> =
             redis::pipe().get(&node_keys).query_async(&mut con).await?;
 
@@ -54,6 +50,28 @@ impl NodeStore {
             }
         }
         Ok(None)
+    }
+
+    pub async fn count_active_nodes_by_ip(&self, ip: String) -> Result<u32, Error> {
+        let mut con = self.get_connection().await?;
+        let node_ids: Vec<String> = con.smembers("node:ids").await?;
+
+        if node_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{}", id)).collect();
+        let serialized_nodes: Vec<String> =
+            redis::pipe().get(&node_keys).query_async(&mut con).await?;
+
+        let mut count = 0;
+        for serialized_node in serialized_nodes {
+            let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node)?;
+            if deserialized_node.ip_address == ip && deserialized_node.is_active {
+                count += 1;
+            }
+        }
+        Ok(count)
     }
 
     pub async fn register_node(&self, node: Node) -> Result<(), Error> {
@@ -99,15 +117,12 @@ impl NodeStore {
 
     pub async fn get_nodes(&self) -> Result<Vec<DiscoveryNode>, Error> {
         let mut con = self.get_connection().await?;
-
-        // Get all node IDs from the set
         let node_ids: Vec<String> = con.smembers("node:ids").await?;
 
         if node_ids.is_empty() {
             return Ok(Vec::new());
         }
 
-        // Build keys from IDs
         let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{}", id)).collect();
 
         let mut pipe = redis::pipe();

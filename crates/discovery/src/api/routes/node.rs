@@ -4,7 +4,7 @@ use actix_web::{
     HttpResponse, Scope,
 };
 use alloy::primitives::U256;
-use log::{debug, warn};
+use log::warn;
 use shared::models::api::ApiResponse;
 use shared::models::node::{ComputeRequirements, Node};
 use std::str::FromStr;
@@ -90,25 +90,39 @@ pub async fn register_node(
         }
     }
 
-    // Check if any other node is on this same IP with different address
-    let existing_node_by_ip = data
+    let active_nodes_count = data
         .node_store
-        .get_active_node_by_ip(update_node.ip_address.clone())
+        .count_active_nodes_by_ip(update_node.ip_address.clone())
         .await;
-    if data.only_one_node_per_ip {
-        if let Ok(Some(existing_node)) = existing_node_by_ip {
-            if existing_node.id != update_node.id {
-                warn!(
-                "Node {} tried to change discovery but another active node is already registered to this IP address",
-                update_node.id
+
+    if let Ok(count) = active_nodes_count {
+        let existing_node_by_ip = data
+            .node_store
+            .get_active_node_by_ip(update_node.ip_address.clone())
+            .await;
+
+        let is_existing_node = existing_node_by_ip
+            .map(|result| {
+                result
+                    .map(|node| node.id == update_node.id)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
+
+        let effective_count = if is_existing_node { count - 1 } else { count };
+
+        if effective_count >= data.max_nodes_per_ip {
+            warn!(
+                "Node {} registration would exceed IP limit. Current active nodes on IP {}: {}, max allowed: {}",
+                update_node.id, update_node.ip_address, count, data.max_nodes_per_ip
             );
-                debug!("Existing node: {:?}", existing_node);
-                debug!("Update node: {:?}", update_node);
-                return HttpResponse::BadRequest().json(ApiResponse::new(
-                    false,
-                    "Another active Node is already registered to this IP address",
-                ));
-            }
+            return HttpResponse::BadRequest().json(ApiResponse::new(
+                false,
+                &format!(
+                    "IP address {} already has {} active nodes (max allowed: {})",
+                    update_node.ip_address, count, data.max_nodes_per_ip
+                ),
+            ));
         }
     }
 
@@ -233,7 +247,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
-            only_one_node_per_ip: true,
+            max_nodes_per_ip: 1,
         };
 
         let app = test::init_service(
@@ -290,7 +304,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
-            only_one_node_per_ip: true,
+            max_nodes_per_ip: 1,
         };
 
         let validate_signatures =
@@ -415,7 +429,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
-            only_one_node_per_ip: true,
+            max_nodes_per_ip: 1,
         };
 
         let validate_signatures =
@@ -480,7 +494,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
-            only_one_node_per_ip: true,
+            max_nodes_per_ip: 1,
         };
 
         let validate_signatures =
@@ -544,7 +558,7 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
-            only_one_node_per_ip: true,
+            max_nodes_per_ip: 1,
         };
 
         app_state
