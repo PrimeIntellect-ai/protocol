@@ -295,11 +295,6 @@ impl DockerService {
                                         consecutive_failures += 1;
                                         Console::info("DockerService", &format!("Task failed (attempt {}), waiting with exponential backoff before restart", consecutive_failures));
 
-                                        // Don't remove the container on failure - let the retry logic handle it
-                                        // The container will be cleaned up when:
-                                        // 1. The task changes (handled by old_tasks cleanup)
-                                        // 2. The task is cancelled (current_task becomes None)
-                                        // This allows retry attempts to work properly without volume mount errors
                                     } else if task_state_live == TaskState::RUNNING {
                                         // Reset failure counter when container runs successfully
                                         consecutive_failures = 0;
