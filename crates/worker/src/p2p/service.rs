@@ -509,9 +509,6 @@ impl P2PService {
             Self::write_response(&mut send, response).await?;
         }
 
-        // Finish the send stream
-        send.finish()?;
-
         Ok(())
     }
 
@@ -704,7 +701,6 @@ mod tests {
     #[serial]
     async fn test_ping() {
         let (service, client, _, worker_wallet_address) = setup_test_service(true).await;
-        println!("worker_wallet_address: {:?}", worker_wallet_address);
         let node_id = service.node_id().to_string();
         let addresses = service.listening_addresses().to_vec();
         let random_nonce = rand_v8::thread_rng().gen::<u64>();

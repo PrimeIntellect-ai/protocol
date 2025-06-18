@@ -320,6 +320,7 @@ impl DockerService {
             Some(task) => {
                 let config_hash = task.generate_config_hash();
                 let container_id = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
+
                 let logs = self
                     .docker_manager
                     .get_container_logs(&container_id, None)
