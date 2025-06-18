@@ -14,6 +14,7 @@ use p2p::P2PClient;
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
+use shared::security::api_key_middleware::ApiKeyMiddleware;
 use shared::security::request_signer::sign_request_with_nonce;
 use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
@@ -382,11 +383,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start HTTP server with access to the validator
     let validator_for_server = synthetic_validator.clone();
     tokio::spawn(async move {
+        let api_key_middleware = Arc::new(ApiKeyMiddleware::new("VALIDATOR_API_KEY".to_string()));
+
         if let Err(e) = HttpServer::new(move || {
             App::new()
                 .app_data(web::Data::new(validator_for_server.clone()))
                 .route("/health", web::get().to(health_check))
-                .route("/rejections", web::get().to(get_rejections))
+                .route(
+                    "/rejections",
+                    web::get()
+                        .to(get_rejections)
+                        .wrap(api_key_middleware.clone()),
+                )
                 .route(
                     "/metrics",
                     web::get().to(|| async {
