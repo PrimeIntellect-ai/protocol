@@ -93,9 +93,9 @@ struct Args {
     #[arg(short = 's', long, default_value = "redis://localhost:6380")]
     redis_store_url: String,
 
-    /// Discovery url
-    #[arg(long, default_value = "http://localhost:8089")]
-    discovery_url: String,
+    /// Discovery URLs (comma-separated)
+    #[arg(long, default_value = "http://localhost:8089", value_delimiter = ',')]
+    discovery_urls: Vec<String>,
 
     /// Admin api key
     #[arg(short = 'a', long, default_value = "admin")]
@@ -327,7 +327,7 @@ async fn main() -> Result<()> {
                     wallet,
                     compute_pool_id,
                     args.discovery_refresh_interval,
-                    args.discovery_url,
+                    args.discovery_urls,
                     discovery_store_context.clone(),
                     discovery_heartbeats.clone(),
                     args.max_healthy_nodes_with_same_endpoint,

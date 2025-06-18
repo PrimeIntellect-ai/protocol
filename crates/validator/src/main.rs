@@ -79,9 +79,9 @@ struct Args {
     #[arg(short = 'k', long)]
     validator_key: String,
 
-    /// Discovery url
-    #[arg(long, default_value = "http://localhost:8089")]
-    discovery_url: String,
+    /// Discovery URLs (comma-separated)
+    #[arg(long, default_value = "http://localhost:8089", value_delimiter = ',')]
+    discovery_urls: Vec<String>,
 
     /// Ability to disable hardware validation
     #[arg(long, default_value = "false")]
@@ -187,7 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let private_key_validator = args.validator_key;
     let rpc_url: Url = args.rpc_url.parse().unwrap();
-    let discovery_url = args.discovery_url;
+    let discovery_urls = args.discovery_urls;
 
     let redis_store = RedisStore::new(&args.redis_url);
 
@@ -364,7 +364,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if !args.disable_hardware_validation {
-            let nodes = match async {
+            async fn _fetch_nodes_from_discovery_url(
+                discovery_url: &str,
+                validator_wallet: &Wallet,
+            ) -> Result<Vec<DiscoveryNode>> {
                 let address = validator_wallet
                     .wallet
                     .default_signer()
@@ -372,7 +375,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .to_string();
 
                 let discovery_route = "/api/validator";
-                let signature = sign_request_with_nonce(discovery_route, &validator_wallet, None)
+                let signature = sign_request_with_nonce(discovery_route, validator_wallet, None)
                     .await
                     .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -407,11 +410,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     serde_json::from_str(&response_text).context("Failed to parse response")?;
 
                 if !parsed_response.success {
-                    error!("Failed to fetch nodes: {:?}", parsed_response);
-                    return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
+                    error!(
+                        "Failed to fetch nodes from {}: {:?}",
+                        discovery_url, parsed_response
+                    );
+                    return Ok(vec![]);
                 }
 
                 Ok(parsed_response.data)
+            }
+
+            let nodes = match async {
+                let mut all_nodes = Vec::new();
+                let mut any_success = false;
+
+                for discovery_url in &discovery_urls {
+                    match _fetch_nodes_from_discovery_url(discovery_url, &validator_wallet).await {
+                        Ok(nodes) => {
+                            debug!(
+                                "Successfully fetched {} nodes from {}",
+                                nodes.len(),
+                                discovery_url
+                            );
+                            all_nodes.extend(nodes);
+                            any_success = true;
+                        }
+                        Err(e) => {
+                            error!("Failed to fetch nodes from {}: {:#}", discovery_url, e);
+                        }
+                    }
+                }
+
+                if !any_success {
+                    error!("Failed to fetch nodes from all discovery services");
+                    return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
+                }
+
+                // Remove duplicates based on node ID
+                let mut unique_nodes = Vec::new();
+                let mut seen_ids = std::collections::HashSet::new();
+                for node in all_nodes {
+                    if seen_ids.insert(node.node.id.clone()) {
+                        unique_nodes.push(node);
+                    }
+                }
+
+                debug!(
+                    "Total unique nodes after deduplication: {}",
+                    unique_nodes.len()
+                );
+                Ok(unique_nodes)
             }
             .await
             {

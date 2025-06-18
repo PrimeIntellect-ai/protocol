@@ -268,8 +268,11 @@ pub async fn execute_command(
                 compute_node_state,
             );
 
+            let discovery_urls = vec![discovery_url
+                .clone()
+                .unwrap_or("http://localhost:8089".to_string())];
             let discovery_service =
-                DiscoveryService::new(node_wallet_instance.clone(), discovery_url.clone(), None);
+                DiscoveryService::new(node_wallet_instance.clone(), discovery_urls, None);
             let discovery_state = state.clone();
             let discovery_updater =
                 DiscoveryUpdater::new(discovery_service.clone(), discovery_state.clone());
