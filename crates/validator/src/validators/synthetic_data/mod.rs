@@ -1050,7 +1050,6 @@ impl SyntheticDataValidator<WalletProvider> {
             pipe.get(status_key);
         }
 
-
         let results: Vec<Option<String>> = pipe
             .query_async(&mut con)
             .await
@@ -1076,7 +1075,8 @@ impl SyntheticDataValidator<WalletProvider> {
 
         for (i, work_key) in work_keys.iter().enumerate() {
             if let Some(Some(status_str)) = results.get(i + work_keys_len) {
-                if let Ok(validation_info) = serde_json::from_str::<WorkValidationInfo>(status_str) {
+                if let Ok(validation_info) = serde_json::from_str::<WorkValidationInfo>(status_str)
+                {
                     status_map.insert(work_key.clone(), validation_info.status);
                 } else {
                     // Fall back to old format (just ValidationResult)
