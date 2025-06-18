@@ -1050,6 +1050,7 @@ impl SyntheticDataValidator<WalletProvider> {
             pipe.get(status_key);
         }
 
+
         let results: Vec<Option<String>> = pipe
             .query_async(&mut con)
             .await
@@ -1075,12 +1076,17 @@ impl SyntheticDataValidator<WalletProvider> {
 
         for (i, work_key) in work_keys.iter().enumerate() {
             if let Some(Some(status_str)) = results.get(i + work_keys_len) {
-                match serde_json::from_str::<ValidationResult>(status_str) {
-                    Ok(status) => {
-                        status_map.insert(work_key.clone(), status);
-                    }
-                    Err(e) => {
-                        debug!("Failed to parse validation status for {}: {}", work_key, e);
+                if let Ok(validation_info) = serde_json::from_str::<WorkValidationInfo>(status_str) {
+                    status_map.insert(work_key.clone(), validation_info.status);
+                } else {
+                    // Fall back to old format (just ValidationResult)
+                    match serde_json::from_str::<ValidationResult>(status_str) {
+                        Ok(status) => {
+                            status_map.insert(work_key.clone(), status);
+                        }
+                        Err(e) => {
+                            debug!("Failed to parse validation status for {}: {}", work_key, e);
+                        }
                     }
                 }
             }
@@ -2297,7 +2303,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_group_e2e() -> Result<(), Error> {
+    async fn test_group_e2e_accept() -> Result<(), Error> {
         let mut server = Server::new_async().await;
         let (store, contracts) = setup_test_env()?;
 
