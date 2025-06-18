@@ -110,5 +110,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => (),
         Err(_) => log::warn!("Timeout waiting for tasks to cleanup"),
     }
+
+    // Prompt for cleanup after graceful shutdown
+    use crate::utils::cleanup::CleanupManager;
+    let cleanup_manager = CleanupManager::new(None);
+    if !cleanup_manager.prompt_and_cleanup().await {
+        log::warn!("Cleanup failed or was cancelled");
+    }
+
     Ok(())
 }

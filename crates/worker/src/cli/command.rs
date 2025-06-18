@@ -162,6 +162,25 @@ pub enum Commands {
         #[arg(long)]
         compute_pool_id: u64,
     },
+
+    /// Clean up worker containers and task directories
+    Cleanup {
+        /// Force cleanup without prompting
+        #[arg(long, default_value = "false")]
+        force: bool,
+
+        /// Clean up containers only
+        #[arg(long, default_value = "false")]
+        containers_only: bool,
+
+        /// Clean up directories only
+        #[arg(long, default_value = "false")]
+        directories_only: bool,
+
+        /// Optional state storage directory overwrite
+        #[arg(long)]
+        state_dir_overwrite: Option<String>,
+    },
 }
 
 pub async fn execute_command(
@@ -219,9 +238,6 @@ pub async fn execute_command(
             let version = option_env!("WORKER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
             Console::section("🚀 PRIME WORKER INITIALIZATION - beta");
             Console::info("Version", version);
-            /*
-             Initialize Wallet instances
-            */
             let provider_wallet_instance =
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
@@ -240,9 +256,6 @@ pub async fn execute_command(
                     }
                 };
 
-            /*
-             Initialize dependencies - services, contracts, operations
-            */
             let contracts = ContractBuilder::new(provider_wallet_instance.provider())
                 .with_compute_registry()
                 .with_ai_token()
@@ -960,9 +973,6 @@ pub async fn execute_command(
                     }
                 };
             let state = Arc::new(SystemState::new(None, true, None));
-            /*
-             Initialize dependencies - services, contracts, operations
-            */
 
             let contracts = ContractBuilder::new(provider_wallet_instance.provider())
                 .with_compute_registry()
@@ -1034,6 +1044,179 @@ pub async fn execute_command(
                 }
             } else {
                 Console::success("Compute node is not registered");
+            }
+
+            Ok(())
+        }
+        Commands::Cleanup {
+            force,
+            containers_only,
+            directories_only,
+            state_dir_overwrite,
+        } => {
+            use crate::docker::docker_manager::DockerManager;
+            use crate::state::system_state::SystemState;
+
+            Console::section("🧹 PRIME WORKER CLEANUP");
+
+            // Load system state to get storage path configuration
+            let _state = Arc::new(SystemState::new(
+                state_dir_overwrite.clone(),
+                false, // Don't disable state storing for cleanup
+                None,
+            ));
+
+            // For now, we'll ask the docker manager to cleanup what it can find
+            // The storage path will be determined by examining existing containers and volumes
+            let storage_path: Option<String> = None;
+
+            // Use default storage path when none is provided
+            let effective_storage_path = match &storage_path {
+                Some(path) => path.clone(),
+                None => {
+                    // Default to user home directory or current directory
+                    const APP_DIR_NAME: &str = "prime-worker";
+                    if let Ok(home) = std::env::var("HOME") {
+                        format!("{}/{}", home, APP_DIR_NAME)
+                    } else {
+                        std::env::current_dir()
+                            .map(|p| {
+                                p.join(format!("{}-data", APP_DIR_NAME))
+                                    .to_string_lossy()
+                                    .to_string()
+                            })
+                            .unwrap_or_else(|_| format!("./{}-data", APP_DIR_NAME))
+                    }
+                }
+            };
+
+            let docker_manager = match DockerManager::new(effective_storage_path) {
+                Ok(manager) => manager,
+                Err(e) => {
+                    Console::user_error(&format!("❌ Failed to initialize Docker manager: {}", e));
+                    std::process::exit(1);
+                }
+            };
+
+            // Show what will be cleaned up
+            let will_clean_containers = !directories_only;
+            let will_clean_directories = !containers_only;
+
+            if !force {
+                Console::warning("This will clean up:");
+                if will_clean_containers {
+                    Console::info("", "• All worker containers (prime-task-*)");
+                    Console::info("", "• Associated Docker volumes");
+                }
+                if will_clean_directories {
+                    Console::info("", "• Task directories");
+                    if let Some(path) = &storage_path {
+                        Console::info("", &format!("• Storage path: {}", path));
+                    }
+                }
+
+                print!("\nDo you want to continue? [y/N]: ");
+                use std::io::{self, Write};
+                io::stdout().flush().unwrap();
+
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).unwrap();
+                let input = input.trim().to_lowercase();
+
+                if input != "y" && input != "yes" {
+                    Console::info("", "Cleanup cancelled.");
+                    return Ok(());
+                }
+            }
+
+            let mut cleanup_results = Vec::new();
+
+            // Clean up containers
+            if will_clean_containers {
+                Console::title("🐳 Cleaning up containers");
+                match docker_manager.list_prime_containers().await {
+                    Ok(containers) => {
+                        if containers.is_empty() {
+                            Console::info("", "No prime worker containers found");
+                        } else {
+                            Console::info(
+                                "",
+                                &format!("Found {} prime worker containers", containers.len()),
+                            );
+                            for container in containers {
+                                Console::info(
+                                    "",
+                                    &format!("Removing container: {}", container.names.join(", ")),
+                                );
+                                match docker_manager.remove_container(&container.id).await {
+                                    Ok(_) => {
+                                        Console::success(&format!(
+                                            "✅ Removed container: {}",
+                                            container.id
+                                        ));
+                                        cleanup_results
+                                            .push(format!("Container {} removed", container.id));
+                                    }
+                                    Err(e) => {
+                                        Console::user_error(&format!(
+                                            "❌ Failed to remove container {}: {}",
+                                            container.id, e
+                                        ));
+                                        cleanup_results.push(format!(
+                                            "Failed to remove container {}: {}",
+                                            container.id, e
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        Console::user_error(&format!("❌ Failed to list containers: {}", e));
+                        cleanup_results.push(format!("Failed to list containers: {}", e));
+                    }
+                }
+            }
+
+            // Clean up directories
+            if will_clean_directories {
+                Console::title("📁 Cleaning up directories");
+                if let Some(_storage_path) = &storage_path {
+                    match docker_manager.cleanup_task_directories().await {
+                        Ok(cleaned_dirs) => {
+                            if cleaned_dirs.is_empty() {
+                                Console::info("", "No task directories found to clean");
+                            } else {
+                                Console::success(&format!(
+                                    "✅ Cleaned {} task directories",
+                                    cleaned_dirs.len()
+                                ));
+                                for dir in cleaned_dirs {
+                                    cleanup_results.push(format!("Directory {} cleaned", dir));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            Console::user_error(&format!("❌ Failed to clean directories: {}", e));
+                            cleanup_results.push(format!("Failed to clean directories: {}", e));
+                        }
+                    }
+                } else {
+                    Console::warning("No storage path configured - skipping directory cleanup");
+                    cleanup_results
+                        .push("No storage path configured for directory cleanup".to_string());
+                }
+            }
+
+            // Summary
+            Console::section("📋 Cleanup Summary");
+            if cleanup_results.is_empty() {
+                Console::info("", "No cleanup actions were performed");
+            } else {
+                for result in cleanup_results {
+                    Console::info("", &format!("• {}", result));
+                }
+                Console::success("🎉 Cleanup completed");
             }
 
             Ok(())
