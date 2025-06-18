@@ -57,10 +57,21 @@ async fn heartbeat(
     if let Err(e) = app_state
         .store_context
         .node_store
-        .update_node_task(node_address, task_info.task_id, task_info.task_state)
+        .update_node_task(
+            node_address,
+            task_info.task_id.clone(),
+            task_info.task_state.clone(),
+        )
         .await
     {
         error!("Error updating node task: {}", e);
+    }
+
+    // Record task state metric if task information is available
+    if let (Some(task_id), Some(task_state)) = (&task_info.task_id, &task_info.task_state) {
+        app_state
+            .metrics
+            .set_task_state(&heartbeat.address, task_id, task_state);
     }
 
     if let Some(p2p_id) = &heartbeat.p2p_id {
