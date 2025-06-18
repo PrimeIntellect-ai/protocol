@@ -2,7 +2,7 @@ pub mod metrics;
 pub mod p2p;
 pub mod store;
 pub mod validators;
-use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use alloy::primitives::utils::Unit;
 use alloy::primitives::{Address, U256};
 use anyhow::{Context, Result};
@@ -14,6 +14,7 @@ use p2p::P2PClient;
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
+use shared::security::api_key_middleware::ApiKeyMiddleware;
 use shared::security::request_signer::sign_request_with_nonce;
 use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
@@ -36,6 +37,63 @@ static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 const MAX_VALIDATION_INTERVAL_SECS: i64 = 120;
 // Track the last loop duration in milliseconds
 static LAST_LOOP_DURATION_MS: AtomicI64 = AtomicI64::new(0);
+
+async fn get_rejections(
+    req: HttpRequest,
+    validator: web::Data<Option<SyntheticDataValidator<shared::web3::wallet::WalletProvider>>>,
+) -> impl Responder {
+    match validator.as_ref() {
+        Some(validator) => {
+            // Parse query parameters
+            let query = req.query_string();
+            let limit = parse_limit_param(query).unwrap_or(100); // Default limit of 100
+
+            let result = if limit > 0 && limit < 1000 {
+                // Use the optimized recent rejections method for reasonable limits
+                validator.get_recent_rejections(limit as isize).await
+            } else {
+                // Fallback to all rejections (but warn about potential performance impact)
+                if limit >= 1000 {
+                    info!(
+                        "Large limit requested ({}), this may impact performance",
+                        limit
+                    );
+                }
+                validator.get_all_rejections().await
+            };
+
+            match result {
+                Ok(rejections) => HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: rejections,
+                }),
+                Err(e) => {
+                    error!("Failed to get rejections: {}", e);
+                    HttpResponse::InternalServerError().json(ApiResponse {
+                        success: false,
+                        data: format!("Failed to get rejections: {}", e),
+                    })
+                }
+            }
+        }
+        None => HttpResponse::ServiceUnavailable().json(ApiResponse {
+            success: false,
+            data: "Synthetic data validator not available",
+        }),
+    }
+}
+
+fn parse_limit_param(query: &str) -> Option<u32> {
+    for pair in query.split('&') {
+        if let Some((key, value)) = pair.split_once('=') {
+            if key == "limit" {
+                return value.parse::<u32>().ok();
+            }
+        }
+    }
+    None
+}
+
 async fn health_check() -> impl Responder {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -196,34 +254,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     });
 
-    tokio::spawn(async {
-        if let Err(e) = HttpServer::new(|| {
-            App::new()
-                .route("/health", web::get().to(health_check))
-                .route(
-                    "/metrics",
-                    web::get().to(|| async {
-                        match metrics::export_metrics() {
-                            Ok(metrics) => {
-                                HttpResponse::Ok().content_type("text/plain").body(metrics)
-                            }
-                            Err(e) => {
-                                error!("Error exporting metrics: {:?}", e);
-                                HttpResponse::InternalServerError().finish()
-                            }
-                        }
-                    }),
-                )
-        })
-        .bind("0.0.0.0:9879")
-        .expect("Failed to bind health check server")
-        .run()
-        .await
-        {
-            error!("Actix server error: {:?}", e);
-        }
-    });
-
     let mut contract_builder = ContractBuilder::new(validator_wallet.provider())
         .with_compute_registry()
         .with_ai_token()
@@ -340,6 +370,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+
+    // Run rejection data migration if validator exists
+    if let Some(validator) = &synthetic_validator {
+        info!("Running rejection data migration...");
+        if let Err(e) = validator.migrate_rejection_data().await {
+            error!("Failed to migrate rejection data: {}", e);
+            // Don't exit - this is not critical for startup
+        }
+    }
+
+    // Start HTTP server with access to the validator
+    let validator_for_server = synthetic_validator.clone();
+    tokio::spawn(async move {
+        let key = std::env::var("VALIDATOR_API_KEY").unwrap_or_default();
+        let api_key_middleware = Arc::new(ApiKeyMiddleware::new(key));
+
+        if let Err(e) = HttpServer::new(move || {
+            App::new()
+                .app_data(web::Data::new(validator_for_server.clone()))
+                .route("/health", web::get().to(health_check))
+                .route(
+                    "/rejections",
+                    web::get()
+                        .to(get_rejections)
+                        .wrap(api_key_middleware.clone()),
+                )
+                .route(
+                    "/metrics",
+                    web::get().to(|| async {
+                        match metrics::export_metrics() {
+                            Ok(metrics) => {
+                                HttpResponse::Ok().content_type("text/plain").body(metrics)
+                            }
+                            Err(e) => {
+                                error!("Error exporting metrics: {:?}", e);
+                                HttpResponse::InternalServerError().finish()
+                            }
+                        }
+                    }),
+                )
+        })
+        .bind("0.0.0.0:9879")
+        .expect("Failed to bind health check server")
+        .run()
+        .await
+        {
+            error!("Actix server error: {:?}", e);
+        }
+    });
 
     loop {
         if cancellation_token_clone.is_cancelled() {

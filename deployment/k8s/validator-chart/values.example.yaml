@@ -17,5 +17,6 @@ env:
 
 secrets:
   validatorKey: "private key"
+  validatorApiKey: "your-secure-api-key-here"
   s3Credentials: "base64EncodedS3CredentialsGoHere"
   toplocConfigs: "toploc configs"

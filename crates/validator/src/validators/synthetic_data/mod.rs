@@ -8,6 +8,7 @@ use log::{debug, warn};
 use log::{error, info};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use shared::utils::StorageProvider;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::{
@@ -22,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 pub mod toploc;
 use toploc::{GroupValidationResult, Toploc, ToplocConfig};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum ValidationResult {
     Accept,
     Reject,
@@ -47,6 +48,19 @@ impl fmt::Display for ValidationResult {
             ValidationResult::FileNameResolutionFailed => write!(f, "filename_resolution_failed"),
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkValidationInfo {
+    pub status: ValidationResult,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RejectionInfo {
+    pub work_key: String,
+    pub reason: Option<String>,
+    pub timestamp: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -522,7 +536,23 @@ impl SyntheticDataValidator<WalletProvider> {
         work_key: &str,
         status: &ValidationResult,
     ) -> Result<(), Error> {
-        let expiry = match status {
+        self.update_work_validation_info(
+            work_key,
+            &WorkValidationInfo {
+                status: status.clone(),
+                reason: None,
+            },
+        )
+        .await
+    }
+
+    async fn update_work_validation_info(
+        &self,
+        work_key: &str,
+        validation_info: &WorkValidationInfo,
+    ) -> Result<(), Error> {
+        let expiry = match validation_info.status {
+            // Must switch to pending within 60 seconds otherwise we resubmit it
             ValidationResult::Unknown => self.unknown_status_expiry_seconds,
             _ => 0,
         };
@@ -532,22 +562,62 @@ impl SyntheticDataValidator<WalletProvider> {
             .get_multiplexed_async_connection()
             .await?;
         let key = self.get_key_for_work_key(work_key);
-        let status = serde_json::to_string(&status)?;
+        let validation_data = serde_json::to_string(&validation_info)?;
+
         if expiry > 0 {
             let _: () = con
                 .set_options(
                     &key,
-                    status,
+                    &validation_data,
                     redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(expiry)),
                 )
                 .await
                 .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
         } else {
             let _: () = con
-                .set(&key, status)
+                .set(&key, &validation_data)
                 .await
                 .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
         }
+
+        // Manage rejection tracking for efficient querying
+        self.update_rejection_tracking(&mut con, work_key, validation_info)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn update_rejection_tracking(
+        &self,
+        con: &mut redis::aio::MultiplexedConnection,
+        work_key: &str,
+        validation_info: &WorkValidationInfo,
+    ) -> Result<(), Error> {
+        let rejection_set_key = "work_rejections";
+        let rejection_data_key = format!("work_rejection_data:{}", work_key);
+        let is_rejected = validation_info.status == ValidationResult::Reject;
+
+        if is_rejected {
+            // Add to rejections set with current timestamp
+            let timestamp = chrono::Utc::now().timestamp() as f64;
+            let _: () = con
+                .zadd(rejection_set_key, work_key, timestamp)
+                .await
+                .map_err(|e| Error::msg(format!("Failed to add to rejections set: {}", e)))?;
+
+            // Store rejection details if reason exists
+            if let Some(reason) = &validation_info.reason {
+                let rejection_detail = serde_json::json!({
+                    "reason": reason,
+                    "timestamp": timestamp
+                });
+                let _: () = con
+                    .set(&rejection_data_key, rejection_detail.to_string())
+                    .await
+                    .map_err(|e| Error::msg(format!("Failed to set rejection data: {}", e)))?;
+            }
+        }
+
         Ok(())
     }
 
@@ -556,23 +626,46 @@ impl SyntheticDataValidator<WalletProvider> {
         &self,
         work_key: &str,
     ) -> Result<Option<ValidationResult>, Error> {
+        let validation_info = self.get_work_validation_info_from_redis(work_key).await?;
+        Ok(validation_info.map(|info| info.status))
+    }
+    #[cfg(test)]
+    async fn get_work_validation_info_from_redis(
+        &self,
+        work_key: &str,
+    ) -> Result<Option<WorkValidationInfo>, Error> {
         let mut con = self
             .redis_store
             .client
             .get_multiplexed_async_connection()
             .await?;
         let key = self.get_key_for_work_key(work_key);
-        let status: Option<String> = con
+        let data: Option<String> = con
             .get(key)
             .await
             .map_err(|e| Error::msg(format!("Failed to get work validation status: {}", e)))?;
-        status
-            .map(|status| {
-                serde_json::from_str(&status).map_err(|e| {
-                    Error::msg(format!("Failed to parse work validation status: {}", e))
-                })
-            })
-            .transpose()
+
+        match data {
+            Some(data) => {
+                // Try to parse as WorkValidationInfo first (new format)
+                if let Ok(validation_info) = serde_json::from_str::<WorkValidationInfo>(&data) {
+                    Ok(Some(validation_info))
+                } else {
+                    // Fall back to old format (just ValidationResult)
+                    match serde_json::from_str::<ValidationResult>(&data) {
+                        Ok(status) => Ok(Some(WorkValidationInfo {
+                            status,
+                            reason: None,
+                        })),
+                        Err(e) => Err(Error::msg(format!(
+                            "Failed to parse work validation data: {}",
+                            e
+                        ))),
+                    }
+                }
+            }
+            None => Ok(None),
+        }
     }
 
     async fn update_work_info_in_redis(
@@ -982,12 +1075,18 @@ impl SyntheticDataValidator<WalletProvider> {
 
         for (i, work_key) in work_keys.iter().enumerate() {
             if let Some(Some(status_str)) = results.get(i + work_keys_len) {
-                match serde_json::from_str::<ValidationResult>(status_str) {
-                    Ok(status) => {
-                        status_map.insert(work_key.clone(), status);
-                    }
-                    Err(e) => {
-                        debug!("Failed to parse validation status for {}: {}", work_key, e);
+                if let Ok(validation_info) = serde_json::from_str::<WorkValidationInfo>(status_str)
+                {
+                    status_map.insert(work_key.clone(), validation_info.status);
+                } else {
+                    // Fall back to old format (just ValidationResult)
+                    match serde_json::from_str::<ValidationResult>(status_str) {
+                        Ok(status) => {
+                            status_map.insert(work_key.clone(), status);
+                        }
+                        Err(e) => {
+                            debug!("Failed to parse validation status for {}: {}", work_key, e);
+                        }
                     }
                 }
             }
@@ -1210,6 +1309,269 @@ impl SyntheticDataValidator<WalletProvider> {
 
         Ok(nodes_with_wrong_work_unit_claims)
     }
+
+    pub async fn get_all_rejections(&self) -> Result<Vec<RejectionInfo>, Error> {
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        let rejection_set_key = "work_rejections";
+
+        let work_keys_with_scores: Vec<(String, f64)> = con
+            .zrange_withscores(rejection_set_key, 0, -1)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get rejections from set: {}", e)))?;
+
+        if work_keys_with_scores.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let work_keys: Vec<&String> = work_keys_with_scores.iter().map(|(key, _)| key).collect();
+
+        // Batch fetch rejection details using MGET for efficiency
+        let rejection_data_keys: Vec<String> = work_keys
+            .iter()
+            .map(|key| format!("work_rejection_data:{}", key))
+            .collect();
+
+        let rejection_details: Vec<Option<String>> = con
+            .mget(&rejection_data_keys)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to batch get rejection details: {}", e)))?;
+
+        let mut rejections = Vec::new();
+
+        for (i, (work_key, score_timestamp)) in work_keys_with_scores.into_iter().enumerate() {
+            let mut reason = None;
+            let mut timestamp = Some(score_timestamp as i64);
+
+            if let Some(Some(detail_json)) = rejection_details.get(i) {
+                if let Ok(detail) = serde_json::from_str::<serde_json::Value>(detail_json) {
+                    reason = detail
+                        .get("reason")
+                        .and_then(|r| r.as_str())
+                        .map(|s| s.to_string());
+                    if let Some(stored_timestamp) = detail.get("timestamp").and_then(|t| t.as_i64())
+                    {
+                        timestamp = Some(stored_timestamp);
+                    }
+                }
+            }
+
+            rejections.push(RejectionInfo {
+                work_key,
+                reason,
+                timestamp,
+            });
+        }
+
+        Ok(rejections)
+    }
+
+    pub async fn get_recent_rejections(&self, limit: isize) -> Result<Vec<RejectionInfo>, Error> {
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        let rejection_set_key = "work_rejections";
+
+        // Get most recent rejections (sorted by timestamp in descending order)
+        let work_keys: Vec<String> = con
+            .zrevrange(rejection_set_key, 0, limit - 1)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get recent rejections: {}", e)))?;
+
+        if work_keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Batch fetch rejection details
+        let rejection_data_keys: Vec<String> = work_keys
+            .iter()
+            .map(|key| format!("work_rejection_data:{}", key))
+            .collect();
+
+        let rejection_details: Vec<Option<String>> = con
+            .mget(&rejection_data_keys)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to batch get rejection details: {}", e)))?;
+
+        let mut rejections = Vec::new();
+
+        for (i, work_key) in work_keys.into_iter().enumerate() {
+            let mut reason = None;
+            let mut timestamp = None;
+
+            if let Some(Some(detail_json)) = rejection_details.get(i) {
+                if let Ok(detail) = serde_json::from_str::<serde_json::Value>(detail_json) {
+                    reason = detail
+                        .get("reason")
+                        .and_then(|r| r.as_str())
+                        .map(|s| s.to_string());
+                    timestamp = detail.get("timestamp").and_then(|t| t.as_i64());
+                }
+            }
+
+            rejections.push(RejectionInfo {
+                work_key,
+                reason,
+                timestamp,
+            });
+        }
+
+        Ok(rejections)
+    }
+
+    /// Idempotent migration of old rejection data to new optimized format.
+    /// Safe to run multiple times - uses migration marker to avoid duplicate work.
+    pub async fn migrate_rejection_data(&self) -> Result<(), Error> {
+        let migration_key = "rejection_migration_completed";
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        // Check if migration was already completed
+        let migration_completed: Option<String> = con
+            .get(migration_key)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to check migration status: {}", e)))?;
+
+        if migration_completed.is_some() {
+            debug!("Rejection data migration already completed, skipping");
+            return Ok(());
+        }
+
+        info!("Starting rejection data migration...");
+        warn!("Migration uses KEYS command - this is a one-time operation during startup");
+
+        // Get all work validation status keys
+        let keys: Vec<String> = con
+            .keys("work_validation_status:*")
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get validation status keys: {}", e)))?;
+
+        if keys.is_empty() {
+            info!("No validation status keys found, migration completed");
+            // Still mark as completed
+            let completion_timestamp = chrono::Utc::now().to_rfc3339();
+            let _: () = con
+                .set(migration_key, &completion_timestamp)
+                .await
+                .map_err(|e| Error::msg(format!("Failed to mark migration complete: {}", e)))?;
+            return Ok(());
+        }
+
+        info!("Found {} validation status keys to check", keys.len());
+
+        // Process in batches to avoid overwhelming Redis
+        let batch_size = 100;
+        let mut migrated_count = 0;
+
+        for batch in keys.chunks(batch_size) {
+            // Batch fetch validation data
+            let validation_data: Vec<Option<String>> = con
+                .mget(batch)
+                .await
+                .map_err(|e| Error::msg(format!("Failed to batch get validation data: {}", e)))?;
+
+            // Process each key in this batch
+            for (i, key) in batch.iter().enumerate() {
+                if let Some(Some(data)) = validation_data.get(i) {
+                    if let Ok(validation_info) = self.parse_validation_data(data) {
+                        if validation_info.status == ValidationResult::Reject {
+                            let work_key =
+                                key.strip_prefix("work_validation_status:").unwrap_or(key);
+
+                            // Check if already in rejection set (idempotency)
+                            let exists: bool = con
+                                .zscore("work_rejections", work_key)
+                                .await
+                                .map(|score: Option<f64>| score.is_some())
+                                .unwrap_or(false);
+
+                            if !exists {
+                                // Add to rejection set with current timestamp
+                                let timestamp = chrono::Utc::now().timestamp() as f64;
+                                let _: () = con
+                                    .zadd("work_rejections", work_key, timestamp)
+                                    .await
+                                    .map_err(|e| {
+                                        Error::msg(format!("Failed to migrate rejection: {}", e))
+                                    })?;
+
+                                // Create rejection detail if reason exists (unlikely for old data)
+                                if let Some(reason) = &validation_info.reason {
+                                    let rejection_detail = serde_json::json!({
+                                        "reason": reason,
+                                        "timestamp": timestamp
+                                    });
+                                    let rejection_data_key =
+                                        format!("work_rejection_data:{}", work_key);
+                                    let _: () = con
+                                        .set(&rejection_data_key, rejection_detail.to_string())
+                                        .await
+                                        .map_err(|e| {
+                                            Error::msg(format!(
+                                                "Failed to set migrated rejection data: {}",
+                                                e
+                                            ))
+                                        })?;
+                                }
+
+                                migrated_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Progress reporting and throttling
+            if migrated_count > 0 && migrated_count % 100 == 0 {
+                info!("Migration progress: {} rejections migrated", migrated_count);
+            }
+
+            // Small delay between batches to avoid overwhelming Redis
+            tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+        }
+
+        // Mark migration as completed with timestamp
+        let completion_timestamp = chrono::Utc::now().to_rfc3339();
+        let _: () = con
+            .set(migration_key, &completion_timestamp)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to mark migration complete: {}", e)))?;
+
+        info!(
+            "Rejection data migration completed: {} rejections migrated",
+            migrated_count
+        );
+        Ok(())
+    }
+
+    fn parse_validation_data(&self, data: &str) -> Result<WorkValidationInfo, Error> {
+        // Try to parse as WorkValidationInfo first (new format)
+        if let Ok(validation_info) = serde_json::from_str::<WorkValidationInfo>(data) {
+            Ok(validation_info)
+        } else {
+            // Fall back to old format (just ValidationResult)
+            match serde_json::from_str::<ValidationResult>(data) {
+                Ok(status) => Ok(WorkValidationInfo {
+                    status,
+                    reason: None,
+                }),
+                Err(e) => Err(Error::msg(format!(
+                    "Failed to parse validation data: {}",
+                    e
+                ))),
+            }
+        }
+    }
 }
 
 impl SyntheticDataValidator<WalletProvider> {
@@ -1312,11 +1674,23 @@ impl SyntheticDataValidator<WalletProvider> {
             let work_info = self.get_work_info_from_redis(work_key).await?;
             if let Some(work_info) = work_info {
                 if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
-                    self.update_work_validation_status(work_key, &ValidationResult::Reject)
-                        .await?;
+                    self.update_work_validation_info(
+                        work_key,
+                        &WorkValidationInfo {
+                            status: ValidationResult::Reject,
+                            reason: status.reason.clone(),
+                        },
+                    )
+                    .await?;
                 } else {
-                    self.update_work_validation_status(work_key, &status.status)
-                        .await?;
+                    self.update_work_validation_info(
+                        work_key,
+                        &WorkValidationInfo {
+                            status: status.status.clone(),
+                            reason: status.reason.clone(),
+                        },
+                    )
+                    .await?;
                 }
             }
         }
@@ -1929,7 +2303,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_group_e2e() -> Result<(), Error> {
+    async fn test_group_e2e_accept() -> Result<(), Error> {
         let mut server = Server::new_async().await;
         let (store, contracts) = setup_test_env()?;
 
@@ -2592,7 +2966,6 @@ mod tests {
 
         Ok(())
     }
-
     #[tokio::test]
     async fn test_filename_resolution_retries_and_soft_invalidation() -> Result<(), Error> {
         let (store, contracts) = setup_test_env()?;
@@ -2645,6 +3018,182 @@ mod tests {
             .get_work_validation_status_from_redis(WORK_KEY)
             .await?;
         assert!(status.is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_all_rejections() -> Result<(), Error> {
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
+        let storage_provider = Arc::new(mock_storage);
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.unwrap(),
+            contracts.prime_network,
+            vec![],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            10,
+            true,
+            true, // disable_chain_invalidation for testing
+            1,    // 1 minute grace period
+            None,
+        );
+
+        // Add some test rejection data
+        validator
+            .update_work_validation_info(
+                "test_work_key_1",
+                &WorkValidationInfo {
+                    status: ValidationResult::Reject,
+                    reason: Some("Validation failed due to timeout".to_string()),
+                },
+            )
+            .await?;
+
+        validator
+            .update_work_validation_info(
+                "test_work_key_2",
+                &WorkValidationInfo {
+                    status: ValidationResult::Accept,
+                    reason: None,
+                },
+            )
+            .await?;
+
+        validator
+            .update_work_validation_info(
+                "test_work_key_3",
+                &WorkValidationInfo {
+                    status: ValidationResult::Reject,
+                    reason: Some("Output mismatch detected".to_string()),
+                },
+            )
+            .await?;
+
+        // Get all rejections
+        let rejections = validator.get_all_rejections().await?;
+
+        // Should only return the 2 rejected items
+        assert_eq!(rejections.len(), 2);
+
+        let rejection_keys: Vec<&str> = rejections.iter().map(|r| r.work_key.as_str()).collect();
+        assert!(rejection_keys.contains(&"test_work_key_1"));
+        assert!(rejection_keys.contains(&"test_work_key_3"));
+
+        // Check reasons are preserved
+        for rejection in &rejections {
+            if rejection.work_key == "test_work_key_1" {
+                assert_eq!(
+                    rejection.reason,
+                    Some("Validation failed due to timeout".to_string())
+                );
+                assert!(rejection.timestamp.is_some());
+            } else if rejection.work_key == "test_work_key_3" {
+                assert_eq!(
+                    rejection.reason,
+                    Some("Output mismatch detected".to_string())
+                );
+                assert!(rejection.timestamp.is_some());
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_migration_idempotency() -> Result<(), Error> {
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
+        let storage_provider = Arc::new(mock_storage);
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.unwrap(),
+            contracts.prime_network,
+            vec![],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            10,
+            false,
+            false,
+            0,
+            None,
+        );
+
+        // Create some old-format rejection data manually
+        let mut con = validator
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        // Old format: just ValidationResult enum
+        let _: () = con
+            .set("work_validation_status:old_reject_1", "\"Reject\"")
+            .await?;
+        let _: () = con
+            .set("work_validation_status:old_reject_2", "\"Reject\"")
+            .await?;
+        let _: () = con
+            .set("work_validation_status:old_accept_1", "\"Accept\"")
+            .await?;
+
+        // Run migration first time
+        validator.migrate_rejection_data().await?;
+
+        // Check rejections were migrated
+        let rejections_first = validator.get_all_rejections().await?;
+        assert_eq!(rejections_first.len(), 2);
+
+        let rejection_keys: Vec<&str> = rejections_first
+            .iter()
+            .map(|r| r.work_key.as_str())
+            .collect();
+        assert!(rejection_keys.contains(&"old_reject_1"));
+        assert!(rejection_keys.contains(&"old_reject_2"));
+
+        // Run migration second time (should be idempotent)
+        validator.migrate_rejection_data().await?;
+
+        // Check rejections are still the same (no duplicates)
+        let rejections_second = validator.get_all_rejections().await?;
+        assert_eq!(rejections_second.len(), 2);
+
+        // Add some new rejection data in new format
+        validator
+            .update_work_validation_info(
+                "new_reject_1",
+                &WorkValidationInfo {
+                    status: ValidationResult::Reject,
+                    reason: Some("New rejection".to_string()),
+                },
+            )
+            .await?;
+
+        // Run migration third time (should skip already-migrated data)
+        validator.migrate_rejection_data().await?;
+
+        // Check we have all rejections (old + new)
+        let rejections_final = validator.get_all_rejections().await?;
+        assert_eq!(rejections_final.len(), 3);
+
+        // Verify the new rejection has a reason
+        let new_rejection = rejections_final
+            .iter()
+            .find(|r| r.work_key == "new_reject_1")
+            .expect("New rejection should exist");
+        assert_eq!(new_rejection.reason, Some("New rejection".to_string()));
 
         Ok(())
     }

@@ -80,6 +80,11 @@ spec:
               value: "{{ .Values.env.DISABLE_HARDWARE_VALIDATION }}"
             - name: VALIDATOR_PENALTY
               value: "{{ .Values.env.VALIDATOR_PENALTY }}"
+            - name: VALIDATOR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "validator.secretName" . }}
+                  key: validatorApiKey
               
             {{- if .Values.secrets.s3Credentials }}
             - name: S3_CREDENTIALS
