@@ -238,9 +238,6 @@ pub async fn execute_command(
             let version = option_env!("WORKER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
             Console::section("🚀 PRIME WORKER INITIALIZATION - beta");
             Console::info("Version", version);
-            /*
-             Initialize Wallet instances
-            */
             let provider_wallet_instance =
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
@@ -259,9 +256,6 @@ pub async fn execute_command(
                     }
                 };
 
-            /*
-             Initialize dependencies - services, contracts, operations
-            */
             let contracts = ContractBuilder::new(provider_wallet_instance.provider())
                 .with_compute_registry()
                 .with_ai_token()
@@ -973,9 +967,6 @@ pub async fn execute_command(
                     }
                 };
             let state = Arc::new(SystemState::new(None, true, None));
-            /*
-             Initialize dependencies - services, contracts, operations
-            */
 
             let contracts = ContractBuilder::new(provider_wallet_instance.provider())
                 .with_compute_registry()
@@ -1102,10 +1093,10 @@ pub async fn execute_command(
             };
 
             // Show what will be cleaned up
-            let will_clean_containers = !*directories_only;
-            let will_clean_directories = !*containers_only;
+            let will_clean_containers = !directories_only;
+            let will_clean_directories = !containers_only;
 
-            if !*force {
+            if !force {
                 Console::warning("This will clean up:");
                 if will_clean_containers {
                     Console::info("", "• All worker containers (prime-task-*)");
