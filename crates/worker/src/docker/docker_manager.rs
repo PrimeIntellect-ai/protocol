@@ -742,7 +742,6 @@ impl DockerManager {
         container_id: &str,
         tail: Option<i64>,
     ) -> Result<String, DockerError> {
-        debug!("Fetching logs for container: {}", container_id);
         let tail_value = tail.unwrap_or(Self::DEFAULT_LOG_TAIL).to_string();
         let options = LogsOptions::<String> {
             stdout: true,

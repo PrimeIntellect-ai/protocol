@@ -215,12 +215,13 @@ impl P2PClient {
         // Now send the actual request
         let request = P2PRequest::new(message);
         Self::write_message(&mut send, &request).await?;
-        send.finish()?;
 
         // Read response
         let response: P2PResponse = Self::read_message(&mut recv).await?;
 
         tokio::time::sleep(Duration::from_millis(50)).await;
+
+        send.finish()?;
 
         Ok(response.message)
     }
