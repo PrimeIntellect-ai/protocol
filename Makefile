@@ -75,13 +75,17 @@ watch-discovery:
 	set -a; source .env; set +a; \
 	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL} --max-nodes-per-ip $${MAX_NODES_PER_IP:-2}"
 
+watch-test-tui:
+	set -a; source ${ENV_FILE}; set +a; \
+	RUST_LOG=info cargo watch -w crates/worker/src -x "run --bin worker -- test-tui"
+
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8091 --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
+	RUST_LOG=info cargo watch -w crates/worker/src -x "run --bin worker -- run --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks --rpc-url $${RPC_URL:-http://localhost:8545} --auto-accept" 
 
 watch-worker-two:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8092 --private-key-node $${PRIVATE_KEY_NODE_2} --private-key-provider $${PRIVATE_KEY_PROVIDER} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info} --disable-state-storing --no-auto-recover"
+	RUST_LOG=info cargo watch -w crates/worker/src -x "run --bin worker -- run --private-key-node $${PRIVATE_KEY_NODE_2} --private-key-provider $${PRIVATE_KEY_PROVIDER} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks --rpc-url $${RPC_URL:-http://localhost:8545} --disable-state-storing --no-auto-recover"
 
 watch-check:
 	cargo watch -w crates/worker/src -x "run --bin worker -- check"	

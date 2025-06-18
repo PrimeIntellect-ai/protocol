@@ -1,85 +1,617 @@
-use console::{style, Term};
-use std::cmp;
-use unicode_width::UnicodeWidthStr;
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{
+    backend::CrosstermBackend,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    Frame, Terminal,
+};
+use std::{
+    collections::VecDeque,
+    io,
+    sync::{Arc, Mutex, RwLock},
+    time::{Duration, Instant},
+};
+use tokio::sync::mpsc;
+use tracing::{
+    field::{Field, Visit},
+    Event as TracingEvent, Level, Subscriber,
+};
+use tracing_subscriber::{
+    layer::{Context, SubscriberExt},
+    Layer,
+};
 
-pub struct Console;
+#[derive(Debug, Clone)]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Success,
+    Progress,
+}
 
-impl Console {
-    /// Maximum content width for the box.
-    const MAX_WIDTH: usize = 80;
-
-    /// Calculates the content width for boxes.
-    /// It uses the available terminal width (minus a margin) and caps it at MAX_WIDTH.
-    fn get_content_width() -> usize {
-        let term_width = Term::stdout().size().1 as usize;
-        // Leave a margin of 10 columns.
-        let available = if term_width > 10 {
-            term_width - 10
-        } else {
-            term_width
-        };
-        cmp::min(available, Self::MAX_WIDTH)
+impl From<&Level> for LogLevel {
+    fn from(level: &Level) -> Self {
+        match *level {
+            Level::TRACE => LogLevel::Trace,
+            Level::DEBUG => LogLevel::Debug,
+            Level::INFO => LogLevel::Info,
+            Level::WARN => LogLevel::Warn,
+            Level::ERROR => LogLevel::Error,
+        }
     }
+}
 
-    /// Centers a given text within a given width based on its display width.
-    fn center_text(text: &str, width: usize) -> String {
-        let text_width = UnicodeWidthStr::width(text);
-        if width > text_width {
-            let total_padding = width - text_width;
-            let left = total_padding / 2;
-            let right = total_padding - left;
-            format!("{}{}{}", " ".repeat(left), text, " ".repeat(right))
-        } else {
-            text.to_string()
+#[derive(Debug, Clone)]
+pub struct LogMessage {
+    pub level: LogLevel,
+    pub message: String,
+    pub timestamp: Instant,
+    pub target: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AppState {
+    pub current_task: String,
+    pub compute_pool_id: u64,
+    pub current_reward: u64,
+    pub logs: Arc<RwLock<VecDeque<LogMessage>>>,
+    pub is_running: bool,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            current_task: "None".to_string(),
+            compute_pool_id: 0,
+            current_reward: 100,
+            logs: Arc::new(RwLock::new(VecDeque::with_capacity(1000))),
+            is_running: true,
+        }
+    }
+}
+
+impl AppState {
+    pub fn add_log(&self, level: LogLevel, message: String, target: Option<String>) {
+        if let Ok(mut logs) = self.logs.write() {
+            logs.push_back(LogMessage {
+                level,
+                message,
+                timestamp: Instant::now(),
+                target,
+            });
+            while logs.len() > 1000 {
+                logs.pop_front();
+            }
         }
     }
 
-    /// Prints a section header as an aligned box.
+    pub fn set_current_task(&mut self, task: String) {
+        self.current_task = task;
+    }
+
+    pub fn set_compute_pool_id(&mut self, pool_id: u64) {
+        self.compute_pool_id = pool_id;
+    }
+
+    pub fn set_current_reward(&mut self, reward: u64) {
+        self.current_reward = reward;
+    }
+}
+
+// A unified event type for the TUI channel
+#[derive(Debug, Clone)]
+pub enum TuiEvent {
+    Log(LogMessage),
+    Input(event::KeyEvent),
+}
+
+pub struct Console {
+    state: Arc<Mutex<AppState>>,
+    log_sender: Option<mpsc::UnboundedSender<TuiEvent>>,
+    _tui_active: bool,
+}
+
+// Helper visitor to extract formatted messages from tracing events
+struct EventVisitor<'a>(&'a mut String);
+impl<'a> Visit for EventVisitor<'a> {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            *self.0 = format!("{:?}", value);
+        } else {
+            if !self.0.is_empty() {
+                self.0.push(' ');
+            }
+            self.0.push_str(&format!("{}={:?}", field.name(), value));
+        }
+    }
+}
+
+// Custom tracing layer that captures logs for the TUI
+#[derive(Clone)]
+pub struct TuiTracingLayer {
+    state: Arc<Mutex<AppState>>,
+    log_sender: Option<mpsc::UnboundedSender<TuiEvent>>,
+}
+
+impl TuiTracingLayer {
+    pub fn new(state: Arc<Mutex<AppState>>) -> Self {
+        Self {
+            state,
+            log_sender: None,
+        }
+    }
+
+    pub fn set_sender(&mut self, sender: mpsc::UnboundedSender<TuiEvent>) {
+        self.log_sender = Some(sender);
+    }
+
+    pub fn set_state(&mut self, state: Arc<Mutex<AppState>>) {
+        self.state = state;
+    }
+}
+
+impl<S> Layer<S> for TuiTracingLayer
+where
+    S: Subscriber,
+{
+    fn on_event(&self, event: &TracingEvent<'_>, _ctx: Context<'_, S>) {
+        let mut message = String::new();
+        event.record(&mut EventVisitor(&mut message));
+        message = message.trim_matches('"').to_string();
+        if message.is_empty() {
+            message = format!("{}", event.metadata().name());
+        }
+
+        let log_msg = LogMessage {
+            level: event.metadata().level().into(),
+            message,
+            timestamp: Instant::now(),
+            target: Some(event.metadata().target().to_string()),
+        };
+
+        if let Some(sender) = &self.log_sender {
+            let _ = sender.send(TuiEvent::Log(log_msg.clone()));
+        }
+
+        if let Ok(state) = self.state.lock() {
+            state.add_log(log_msg.level, log_msg.message, log_msg.target);
+        }
+    }
+}
+
+impl Console {
+    pub fn new() -> Self {
+        let state = Arc::new(Mutex::new(AppState::default()));
+        if let Ok(mut layer) = TUI_TRACING_LAYER.write() {
+            layer.set_state(state.clone());
+        }
+        Self {
+            state,
+            log_sender: None,
+            _tui_active: false,
+        }
+    }
+
+    pub fn start_tui(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
+
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        self.log_sender = Some(event_tx.clone());
+
+        if let Ok(mut layer) = TUI_TRACING_LAYER.write() {
+            layer.set_sender(event_tx.clone());
+        }
+
+        let key_event_tx = event_tx.clone();
+        std::thread::spawn(move || loop {
+            if let Ok(CrosstermEvent::Key(key)) = event::read() {
+                if key_event_tx.send(TuiEvent::Input(key)).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let state = self.state.clone();
+        self._tui_active = true;
+
+        tokio::spawn(async move {
+            let tick_rate = Duration::from_millis(250);
+            loop {
+                terminal
+                    .draw(|f| {
+                        if let Ok(state) = state.lock() {
+                            ui(f, &state);
+                        }
+                    })
+                    .unwrap();
+
+                match tokio::time::timeout(tick_rate, event_rx.recv()).await {
+                    Ok(Some(TuiEvent::Log(log_msg))) => {
+                        if let Ok(state) = state.lock() {
+                            state.add_log(log_msg.level, log_msg.message, log_msg.target);
+                        }
+                    }
+                    Ok(Some(TuiEvent::Input(key))) => {
+                        if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
+                            break;
+                        }
+                    }
+                    Ok(None) | Err(_) => {
+                        // Channel closed or timeout, continue to redraw
+                    }
+                }
+            }
+
+            disable_raw_mode().unwrap();
+            execute!(
+                terminal.backend_mut(),
+                LeaveAlternateScreen,
+                DisableMouseCapture
+            )
+            .unwrap();
+            terminal.show_cursor().unwrap();
+        });
+
+        Ok(())
+    }
+
+    pub fn test_tui_blocking() -> Result<(), Box<dyn std::error::Error>> {
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
+
+        let state = AppState::default();
+        state.add_log(
+            LogLevel::Info,
+            "🎨 TUI Test Started".to_string(),
+            Some("test".to_string()),
+        );
+        state.add_log(
+            LogLevel::Success,
+            "✓ This is a success message".to_string(),
+            Some("test".to_string()),
+        );
+        state.add_log(
+            LogLevel::Warn,
+            "⚠ This is a warning message".to_string(),
+            Some("test".to_string()),
+        );
+        state.add_log(
+            LogLevel::Error,
+            "✗ This is an error message".to_string(),
+            Some("test".to_string()),
+        );
+
+        loop {
+            terminal.draw(|f| {
+                ui(f, &state);
+            })?;
+            if event::poll(Duration::from_millis(100))? {
+                if let CrosstermEvent::Key(key) = event::read()? {
+                    if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
+                        break;
+                    }
+                }
+            }
+        }
+
+        disable_raw_mode()?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
+        terminal.show_cursor()?;
+        Ok(())
+    }
+
     pub fn section(title: &str) {
-        let content_width = Self::get_content_width();
-        let top_border = format!("╔{}╗", "═".repeat(content_width));
-        let centered_title = Self::center_text(title, content_width);
-        let middle_line = format!("║{}║", centered_title);
-        let bottom_border = format!("╚{}╝", "═".repeat(content_width));
-
-        println!();
-        println!("{}", style(top_border).white().bold());
-        println!("{}", style(middle_line).white().bold());
-        println!("{}", style(bottom_border).white().bold());
+        Self::log_to_tui(
+            LogLevel::Info,
+            format!("=== {} ===", title),
+            Some("console".to_string()),
+        );
     }
-
-    /// Prints a sub-title.
     pub fn title(text: &str) {
-        println!();
-        println!("{}", style(text).white().bold());
+        Self::log_to_tui(
+            LogLevel::Info,
+            text.to_string(),
+            Some("console".to_string()),
+        );
     }
-
-    /// Prints an informational message.
     pub fn info(label: &str, value: &str) {
-        println!("{}: {}", style(label).dim().white(), style(value).white());
+        Self::log_to_tui(
+            LogLevel::Info,
+            format!("{}: {}", label, value),
+            Some("console".to_string()),
+        );
     }
-
-    /// Prints a success message.
     pub fn success(text: &str) {
-        println!("{} {}", style("✓").green().bold(), style(text).green());
+        let msg = format!("✓ {}", text);
+        Self::log_to_tui(LogLevel::Success, msg.clone(), Some("console".to_string()));
     }
-
-    /// Prints a warning message.
     pub fn warning(text: &str) {
-        println!("{} {}", style("⚠").yellow().bold(), style(text).yellow());
+        let msg = format!("⚠ {}", text);
+        Self::log_to_tui(LogLevel::Warn, msg.clone(), Some("console".to_string()));
     }
-
-    /// Prints a user error message.
-    /// This is a special case where the error is user-facing (e.g., missing GPU, configuration issues)
-    /// rather than a system error. These errors are not logged to central logging systems
-    /// and are only displayed to the user to help them resolve the issue.
-    /// For actual system errors that should be tracked, use proper error logging instead.
     pub fn user_error(text: &str) {
-        println!("{} {}", style("✗").red().bold(), style(text).red());
+        let msg = format!("✗ {}", text);
+        Self::log_to_tui(LogLevel::Error, msg.clone(), Some("console".to_string()));
+    }
+    pub fn progress(text: &str) {
+        let msg = format!("→ {}", text);
+        Self::log_to_tui(LogLevel::Progress, msg.clone(), Some("console".to_string()));
     }
 
-    /// Prints a progress message.
-    pub fn progress(text: &str) {
-        println!("{} {}", style("→").cyan().bold(), style(text).cyan());
+    pub fn update_task(&self, task: String) {
+        if let Ok(mut state) = self.state.lock() {
+            state.set_current_task(task);
+        }
+    }
+    pub fn update_compute_pool(&self, pool_id: u64) {
+        if let Ok(mut state) = self.state.lock() {
+            state.set_compute_pool_id(pool_id);
+        }
+    }
+    pub fn update_reward(&self, reward: u64) {
+        if let Ok(mut state) = self.state.lock() {
+            state.set_current_reward(reward);
+        }
+    }
+
+    pub fn log_to_tui(level: LogLevel, message: String, target: Option<String>) {
+        if let Ok(console) = CONSOLE_INSTANCE.lock() {
+            if let Some(sender) = &console.log_sender {
+                let _ = sender.send(TuiEvent::Log(LogMessage {
+                    level,
+                    message,
+                    timestamp: Instant::now(),
+                    target,
+                }));
+            }
+        }
+    }
+
+    pub fn get_log_sender(&self) -> Option<mpsc::UnboundedSender<TuiEvent>> {
+        self.log_sender.clone()
+    }
+}
+
+// UI Rendering functions (unchanged)
+fn ui(f: &mut Frame, app: &AppState) {
+    let size = f.area();
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(7), // Logo section
+            Constraint::Length(8), // Status section
+            Constraint::Min(10),   // Logs section
+        ])
+        .split(size);
+    render_logo(f, chunks[0]);
+    render_status(f, chunks[1], app);
+    render_logs(f, chunks[2], app);
+}
+fn render_logo(f: &mut Frame, area: Rect) {
+    let logo_text = vec![
+        Line::from(vec![Span::styled(
+            "██████╗ ██████╗ ██╗███╗   ███╗███████╗",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![Span::styled(
+            "██╔══██╗██╔══██╗██║████╗ ████║██╔════╝",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![Span::styled(
+            "██████╔╝██████╔╝██║██╔████╔██║█████╗  ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![Span::styled(
+            "██╔═══╝ ██╔══██╗██║██║╚██╔╝██║██╔══╝  ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![Span::styled(
+            "██║     ██║  ██║██║██║ ╚═╝ ██║███████╗",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![Span::styled(
+            "╚═╝     ╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚══════╝",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]),
+    ];
+    let logo = Paragraph::new(logo_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::Cyan)),
+        )
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true });
+    f.render_widget(logo, area);
+}
+fn render_status(f: &mut Frame, area: Rect, app: &AppState) {
+    let status_text = vec![
+        Line::from(vec![
+            Span::styled(
+                "Current Task: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(&app.current_task, Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Current Compute Pool: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                app.compute_pool_id.to_string(),
+                Style::default().fg(Color::White),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Current Reward: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                app.current_reward.to_string(),
+                Style::default().fg(Color::Green),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Status: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                if app.is_running {
+                    "🟢 Running"
+                } else {
+                    "🔴 Stopped"
+                },
+                Style::default().fg(if app.is_running {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
+            ),
+        ]),
+        Line::from(vec![Span::styled(
+            "Press 'q' or 'Esc' to quit",
+            Style::default()
+                .fg(Color::Gray)
+                .add_modifier(Modifier::ITALIC),
+        )]),
+    ];
+    let status = Paragraph::new(status_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Status")
+                .style(Style::default().fg(Color::Yellow)),
+        )
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: true });
+    f.render_widget(status, area);
+}
+fn render_logs(f: &mut Frame, area: Rect, app: &AppState) {
+    let logs = match app.logs.read() {
+        Ok(logs) => logs,
+        Err(_) => {
+            let empty_widget = List::new(Vec::<ListItem>::new()).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Logs (Error)")
+                    .style(Style::default().fg(Color::Red)),
+            );
+            f.render_widget(empty_widget, area);
+            return;
+        }
+    };
+    // Take only the most recent logs to fit the display area
+    let max_logs = area.height.saturating_sub(2) as usize; // Account for borders
+    let recent_logs: Vec<_> = if logs.len() > max_logs {
+        logs.iter().skip(logs.len() - max_logs).collect()
+    } else {
+        logs.iter().collect()
+    };
+
+    let items: Vec<ListItem> = recent_logs
+        .iter()
+        .map(|log| {
+            let (style, icon) = match log.level {
+                LogLevel::Trace | LogLevel::Debug => (Style::default().fg(Color::DarkGray), "•"),
+                LogLevel::Info => (Style::default().fg(Color::White), "ℹ"),
+                LogLevel::Warn => (Style::default().fg(Color::Yellow), "⚠"),
+                LogLevel::Error => (Style::default().fg(Color::Red), "✗"),
+                LogLevel::Success => (Style::default().fg(Color::Green), "✓"),
+                LogLevel::Progress => (Style::default().fg(Color::Cyan), "→"),
+            };
+            let elapsed = log.timestamp.elapsed();
+            let time_str = if elapsed.as_secs() < 60 {
+                format!("{}s ago", elapsed.as_secs())
+            } else {
+                format!("{}m ago", elapsed.as_secs() / 60)
+            };
+            let target_str = if let Some(target) = &log.target {
+                if target != "worker" && target.len() < 20 {
+                    format!("[{}] ", target)
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("[{}] ", time_str), Style::default().fg(Color::Gray)),
+                Span::styled(format!("{} ", icon), style.add_modifier(Modifier::BOLD)),
+                Span::styled(target_str, Style::default().fg(Color::DarkGray)),
+                Span::styled(&log.message, style),
+            ]))
+        })
+        .collect();
+
+    let logs_widget = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Logs")
+            .style(Style::default().fg(Color::Magenta)),
+    );
+
+    // Always render without state to show the newest logs at the bottom
+    f.render_widget(logs_widget, area);
+}
+
+// Global instances
+lazy_static::lazy_static! {
+    static ref TUI_TRACING_LAYER: RwLock<TuiTracingLayer> = {
+        let state = Arc::new(Mutex::new(AppState::default()));
+        RwLock::new(TuiTracingLayer::new(state))
+    };
+    static ref CONSOLE_INSTANCE: Mutex<Console> = Mutex::new(Console::new());
+}
+
+pub fn get_tui_tracing_layer() -> &'static RwLock<TuiTracingLayer> {
+    &TUI_TRACING_LAYER
+}
+
+impl Console {
+    pub fn get_instance() -> &'static Mutex<Console> {
+        &CONSOLE_INSTANCE
     }
 }

@@ -1,6 +1,6 @@
 use crate::console::Console;
 use alloy::primitives::{Address, U256};
-use log::error;
+use log::{error, warn};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::{Wallet, WalletProvider};
 use std::io::Write;
@@ -384,7 +384,7 @@ impl ProviderOperations {
         let stake_tx = match self.contracts.prime_network.stake(additional_stake).await {
             Ok(tx) => tx,
             Err(e) => {
-                println!("Failed to increase stake: {:?}", e);
+                warn!("Failed to increase stake: {:?}", e);
                 return Err(ProviderError::Other);
             }
         };
@@ -402,7 +402,7 @@ impl ProviderOperations {
         let reclaim_tx = match self.contracts.prime_network.reclaim_stake(amount).await {
             Ok(tx) => tx,
             Err(e) => {
-                println!("Failed to reclaim stake: {:?}", e);
+                warn!("Failed to reclaim stake: {:?}", e);
                 return Err(ProviderError::Other);
             }
         };

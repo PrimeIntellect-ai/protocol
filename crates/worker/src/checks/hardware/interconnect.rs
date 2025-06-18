@@ -81,7 +81,6 @@ mod tests {
     #[tokio::test]
     async fn test_check_speeds() {
         let result = InterconnectCheck::check_speeds().await;
-        println!("Test Result: {:?}", result);
 
         // Verify the result is Ok and contains expected tuple structure
         assert!(result.is_ok());

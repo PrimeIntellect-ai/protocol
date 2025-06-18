@@ -2,7 +2,7 @@ use crate::checks::hardware::HardwareChecker;
 use crate::checks::issue::IssueReport;
 use crate::checks::software::SoftwareChecker;
 use crate::checks::stun::StunCheck;
-use crate::console::Console;
+use crate::console::{get_tui_tracing_layer, Console, LogLevel};
 use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
@@ -112,6 +112,9 @@ pub enum Commands {
     },
     Check {},
 
+    /// Test TUI interface
+    TestTui {},
+
     /// Generate new wallets for provider and node
     GenerateWallets {},
 
@@ -189,6 +192,10 @@ pub async fn execute_command(
             log_level: _,
             storage_path,
         } => {
+            if let Ok(mut console) = Console::get_instance().lock() {
+                console.start_tui().unwrap();
+            }
+
             if *disable_state_storing && !(*no_auto_recover) {
                 Console::user_error(
                     "Cannot disable state storing and enable auto recover at the same time. Use --no-auto-recover to disable auto recover.",
@@ -217,8 +224,10 @@ pub async fn execute_command(
 
             let mut recover_last_state = !(*no_auto_recover);
             let version = option_env!("WORKER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
-            Console::section("🚀 PRIME WORKER INITIALIZATION - beta");
-            Console::info("Version", version);
+
+            let msg = format!("🚀 PRIME WORKER INITIALIZATION - Version {}", version);
+            tracing::info!("{}", msg);
+            Console::log_to_tui(LogLevel::Info, msg, Some("worker".to_string()));
             /*
              Initialize Wallet instances
             */
@@ -474,7 +483,9 @@ pub async fn execute_command(
             };
             let compute_units = U256::from(std::cmp::max(1, gpu_count * 1000));
 
-            Console::section("Syncing with Network");
+            let msg = "🔗 Syncing with Network".to_string();
+            tracing::info!("{}", msg);
+            Console::log_to_tui(LogLevel::Info, msg, Some("worker".to_string()));
 
             // Check if provider exists first
             let provider_exists = match provider_ops.check_provider_exists().await {
@@ -493,7 +504,9 @@ pub async fn execute_command(
                 }
             };
 
-            Console::title("Provider Status");
+            let msg = "📋 Checking Provider Status".to_string();
+            tracing::info!("{}", msg);
+            Console::log_to_tui(LogLevel::Info, msg, Some("worker".to_string()));
             let is_whitelisted = match provider_ops.check_provider_whitelisted().await {
                 Ok(is_whitelisted) => is_whitelisted,
                 Err(e) => {
@@ -504,6 +517,9 @@ pub async fn execute_command(
 
             if provider_exists && is_whitelisted {
                 Console::success("Provider is registered and whitelisted");
+                if let Ok(console) = Console::get_instance().lock() {
+                    console.update_task("Provider verified".to_string());
+                }
             } else {
                 let required_stake = match stake_manager
                     .calculate_stake(compute_units, U256::from(0))
@@ -601,7 +617,9 @@ pub async fn execute_command(
                 }
             }
 
-            Console::title("Compute Node Status");
+            let msg = "💻 Checking Compute Node Status".to_string();
+            tracing::info!("{}", msg);
+            Console::log_to_tui(LogLevel::Info, msg, Some("worker".to_string()));
             if compute_node_exists {
                 // TODO: What if we have two nodes?
                 Console::success("Compute node is registered");
@@ -623,7 +641,9 @@ pub async fn execute_command(
             }
 
             // Start P2P service
-            Console::title("🔗 Starting P2P Service");
+            let msg = "🔗 Starting P2P Service".to_string();
+            tracing::info!("{}", msg);
+            Console::log_to_tui(LogLevel::Info, msg, Some("worker".to_string()));
             let heartbeat = match heartbeat_service.clone() {
                 Ok(service) => service,
                 Err(e) => {
@@ -696,7 +716,9 @@ pub async fn execute_command(
             let mut attempts = 0;
             let max_attempts = 100;
             while attempts < max_attempts {
-                Console::title("📦 Uploading discovery info");
+                let msg = "📦 Uploading discovery info".to_string();
+                tracing::info!("{}", msg);
+                Console::log_to_tui(LogLevel::Info, msg, Some("worker".to_string()));
                 match discovery_service.upload_discovery_info(&node_config).await {
                     Ok(_) => break,
                     Err(e) => {
@@ -744,7 +766,9 @@ pub async fn execute_command(
 
             Console::success("Discovery info uploaded");
 
-            Console::section("Starting Worker with Task Bridge");
+            let msg = "🚀 Starting Worker with Task Bridge".to_string();
+            tracing::info!("{}", msg);
+            Console::log_to_tui(LogLevel::Info, msg, Some("worker".to_string()));
 
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
@@ -759,12 +783,23 @@ pub async fn execute_command(
             discovery_updater.start_auto_update(node_config);
 
             if recover_last_state {
-                info!("Recovering from previous state: {}", recover_last_state);
+                tracing::info!("Recovering from previous state: {}", recover_last_state);
                 heartbeat.activate_heartbeat_if_endpoint_exists().await;
+
+                // Update TUI to show we're recovering
+                if let Ok(console) = Console::get_instance().lock() {
+                    console.update_task("Recovering from previous state".to_string());
+                }
             }
 
-            // Keep the worker running and listening for P2P connections
-            Console::success("Worker is now running and listening for P2P connections...");
+            // Final message - worker is ready
+            let msg = "🚀 Worker is now running and listening for P2P connections...".to_string();
+            tracing::info!("{}", msg);
+            Console::log_to_tui(LogLevel::Info, msg, Some("worker".to_string()));
+            // Update TUI to show we're fully operational
+            if let Ok(console) = Console::get_instance().lock() {
+                console.update_task("Listening for P2P connections".to_string());
+            }
 
             // Wait for cancellation signal to gracefully shutdown
             cancellation_token.cancelled().await;
@@ -815,6 +850,13 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
+            Ok(())
+        }
+        Commands::TestTui {} => {
+            if let Err(e) = Console::test_tui_blocking() {
+                eprintln!("TUI test failed: {}", e);
+                std::process::exit(1);
+            }
             Ok(())
         }
         Commands::GenerateWallets {} => {

@@ -1,40 +1,64 @@
-use log::{debug, LevelFilter};
-use tracing_subscriber::filter::EnvFilter as TracingEnvFilter;
-use tracing_subscriber::fmt;
-use tracing_subscriber::prelude::*;
-use url::Url;
-
 use crate::cli::command::Commands;
 use crate::cli::Cli;
 use anyhow::Result;
+use log::{debug, LevelFilter};
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::macros::format_description;
+use tracing_subscriber::filter::EnvFilter as TracingEnvFilter;
+use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::time::FormatTime;
+use tracing_subscriber::prelude::*;
+use url::Url;
 
 struct SimpleTimeFormatter;
 
 impl FormatTime for SimpleTimeFormatter {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
-        // Get current time
         let now = SystemTime::now();
         let timestamp = now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-
-        // Convert to time::OffsetDateTime
         let datetime = time::OffsetDateTime::from_unix_timestamp(timestamp as i64)
             .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
-
-        // Format as hh:mm:ss
         let format = format_description!("[hour]:[minute]:[second]");
         let formatted = datetime
             .format(format)
             .unwrap_or_else(|_| String::from("??:??:??"));
-
         write!(w, "{}", formatted)
     }
 }
 
+// Helper function to create the Loki layer to avoid code duplication
+fn create_loki_layer(
+    loki_url_str: &str,
+    external_ip: Option<Option<String>>,
+    compute_pool: Option<u64>,
+    port: Option<u16>,
+) -> Result<
+    (tracing_loki::Layer, impl std::future::Future<Output = ()>),
+    Box<dyn std::error::Error + Send + Sync>,
+> {
+    let loki_url_parsed = Url::parse(loki_url_str)?;
+    let ip: String = match external_ip {
+        Some(Some(ip_addr)) => ip_addr,
+        _ => "Unknown".to_string(),
+    };
+    let (loki_layer, task) = tracing_loki::builder()
+        .label("app", "prime-worker")?
+        .label("version", env!("CARGO_PKG_VERSION"))?
+        .label("external_ip", ip)?
+        .label("compute_pool", compute_pool.unwrap_or_default().to_string())?
+        .label("port", port.unwrap_or_default().to_string())?
+        .build_url(loki_url_parsed)?;
+    Ok((loki_layer, task))
+}
+
 pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Default log level
+    // Determine if we are in a mode that uses the TUI.
+    let is_tui_mode = if let Some(cli) = cli {
+        matches!(cli.command, Commands::Run { .. } | Commands::TestTui { .. })
+    } else {
+        false
+    };
+
     let mut log_level = LevelFilter::Info;
     let mut loki_url: Option<String> = None;
     let mut external_ip = None;
@@ -55,21 +79,16 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
             compute_pool = Some(*cmd_compute_pool_id);
             external_ip = Some(cmd_external_ip.clone());
             port = Some(*cmd_port);
-            match cmd_loki_url {
-                Some(url) => loki_url = Some(url.clone()),
-                None => loki_url = None,
-            }
-            match cmd_log_level {
-                Some(level) => {
-                    log_level = level.parse()?;
-                }
-                None => log_level = LevelFilter::Info,
+            loki_url = cmd_loki_url.clone();
+            if let Some(level) = cmd_log_level {
+                log_level = level.parse()?;
             }
         }
     }
 
     let env_filter = TracingEnvFilter::from_default_env()
-        .add_directive(format!("{}", log_level).parse()?)
+        .add_directive(format!("worker={}", log_level).parse()?) // Target your crate specifically
+        .add_directive("shared=warn".parse()?) // Example: set shared crate to warn
         .add_directive("reqwest=warn".parse()?)
         .add_directive("hyper=warn".parse()?)
         .add_directive("hyper_util=warn".parse()?)
@@ -83,42 +102,43 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
         .add_directive("quinn_proto=error".parse()?)
         .add_directive("tracing::span=warn".parse()?);
 
-    let fmt_layer = fmt::layer()
-        .with_target(false)
-        .with_level(true)
-        .with_ansi(true)
-        .with_thread_ids(false)
-        .with_thread_names(false)
-        .with_file(false)
-        .with_line_number(false)
-        .with_timer(SimpleTimeFormatter)
-        .compact();
+    let subscriber_builder = tracing_subscriber::registry().with(env_filter);
 
-    let registry = tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt_layer);
-
-    if let Some(loki_url_str) = loki_url {
-        let loki_url_parsed = Url::parse(&loki_url_str)?;
-
-        let ip: String = match external_ip {
-            Some(Some(ip_addr)) => ip_addr.to_string(),
-            _ => "Unknown".to_string(),
-        };
-
-        let (loki_layer, task) = tracing_loki::builder()
-            .label("app", "prime-worker")?
-            .label("version", env!("CARGO_PKG_VERSION"))?
-            .label("external_ip", ip)?
-            .label("compute_pool", compute_pool.unwrap_or_default().to_string())?
-            .label("port", port.unwrap_or_default().to_string())?
-            .build_url(loki_url_parsed)?;
-
-        tokio::spawn(task);
-        registry.with(loki_layer).init();
-        debug!("Logging to console and Loki at {}", loki_url_str);
+    if is_tui_mode {
+        // In TUI mode, we do NOT add the `fmt_layer` for console output.
+        // The TUI's own logger will handle rendering logs.
+        if let Some(loki_url_str) = loki_url {
+            let (loki_layer, task) =
+                create_loki_layer(&loki_url_str, external_ip, compute_pool, port)?;
+            tokio::spawn(task);
+            subscriber_builder.with(loki_layer).init();
+        } else {
+            subscriber_builder.init();
+        }
     } else {
-        registry.init();
+        // For non-TUI commands (like `check`), set up the normal console logger.
+        let fmt_layer = fmt::layer()
+            .with_target(true)
+            .with_level(true)
+            .with_ansi(true)
+            .with_thread_ids(false)
+            .with_thread_names(false)
+            .with_file(false)
+            .with_line_number(false)
+            .with_timer(SimpleTimeFormatter)
+            .compact();
+
+        let subscriber_with_fmt = subscriber_builder.with(fmt_layer);
+
+        if let Some(loki_url_str) = loki_url {
+            let (loki_layer, task) =
+                create_loki_layer(&loki_url_str, external_ip, compute_pool, port)?;
+            tokio::spawn(task);
+            subscriber_with_fmt.with(loki_layer).init();
+            debug!("Logging to console and Loki at {}", loki_url_str);
+        } else {
+            subscriber_with_fmt.init();
+        }
     }
 
     Ok(())

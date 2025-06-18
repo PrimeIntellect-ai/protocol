@@ -50,10 +50,8 @@ mod tests {
     fn test_deterministic_generation() {
         // Same seed should generate same node_id
         let seed = generate_random_seed();
-        println!("seed: {}", seed);
         let result1 = generate_iroh_node_id_from_seed(seed).unwrap();
         let result2 = generate_iroh_node_id_from_seed(seed).unwrap();
-        println!("result1: {}", result1);
 
         assert_eq!(result1, result2);
     }
