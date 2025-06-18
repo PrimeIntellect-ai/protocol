@@ -77,11 +77,11 @@ watch-discovery:
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8091 --discovery-urls $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
+	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8091 --discovery-url $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
 
 watch-worker-two:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8092 --discovery-urls $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --private-key-node $${PRIVATE_KEY_NODE_2} --private-key-provider $${PRIVATE_KEY_PROVIDER} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info} --disable-state-storing --no-auto-recover"
+	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8092 --discovery-url $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --private-key-node $${PRIVATE_KEY_NODE_2} --private-key-provider $${PRIVATE_KEY_PROVIDER} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info} --disable-state-storing --no-auto-recover"
 
 watch-check:
 	cargo watch -w crates/worker/src -x "run --bin worker -- check"	
