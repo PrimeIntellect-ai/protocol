@@ -163,10 +163,10 @@ pub struct TaskMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Task {
+    pub name: String,
     #[serde(default = "Uuid::new_v4")]
     pub id: Uuid,
     pub image: String,
-    pub name: String,
     pub env_vars: Option<std::collections::HashMap<String, String>>,
     pub cmd: Option<Vec<String>>,
     pub entrypoint: Option<Vec<String>>,
@@ -226,9 +226,9 @@ impl Task {
 impl Default for Task {
     fn default() -> Self {
         Self {
+            name: String::new(),
             id: Uuid::new_v4(),
             image: String::new(),
-            name: String::new(),
             env_vars: None,
             cmd: None,
             entrypoint: None,
@@ -290,9 +290,9 @@ impl TryFrom<TaskRequest> for Task {
         }
 
         Ok(Task {
+            name: request.name,
             id: Uuid::new_v4(),
             image: request.image,
-            name: request.name,
             cmd: request.cmd,
             entrypoint: request.entrypoint,
             env_vars: request.env_vars,

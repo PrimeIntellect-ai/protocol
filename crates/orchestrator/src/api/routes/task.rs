@@ -18,14 +18,31 @@ async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
 }
 
 async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
-    let task = match Task::try_from(task.into_inner()) {
+    let task_request = task.into_inner();
+    let task_store = app_state.store_context.task_store.clone();
+
+    // Check if a task with the same name already exists
+    match task_store.task_name_exists(&task_request.name).await {
+        Ok(exists) => {
+            if exists {
+                return HttpResponse::BadRequest()
+                    .json(json!({"success": false, "error": format!("Task with name '{}' already exists", task_request.name)}));
+            }
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(
+                json!({"success": false, "error": format!("Failed to check task name: {}", e)}),
+            );
+        }
+    }
+
+    let task = match Task::try_from(task_request) {
         Ok(task) => task,
         Err(e) => {
             return HttpResponse::BadRequest()
                 .json(json!({"success": false, "error": e.to_string()}));
         }
     };
-    let task_store = app_state.store_context.task_store.clone();
 
     if let Some(group_plugin) = &app_state.node_groups_plugin {
         match group_plugin.get_task_topologies(&task) {
@@ -312,5 +329,45 @@ mod tests {
             "intellect-2-rl-dataset"
         );
         assert_eq!(json["task"]["metadata"]["labels"]["version"], "v1");
+    }
+
+    #[actix_web::test]
+    async fn test_create_task_with_duplicate_name() {
+        let app_state = create_test_app_state().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .route("/tasks", post().to(create_task)),
+        )
+        .await;
+
+        // Create first task
+        let payload = TaskRequest {
+            image: "test".to_string(),
+            name: "duplicate-test".to_string(),
+            ..Default::default()
+        };
+        let req = test::TestRequest::post()
+            .uri("/tasks")
+            .set_json(&payload)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Try to create second task with same name
+        let req2 = test::TestRequest::post()
+            .uri("/tasks")
+            .set_json(&payload)
+            .to_request();
+        let resp2 = test::call_service(&app, req2).await;
+        assert_eq!(resp2.status(), StatusCode::BAD_REQUEST);
+
+        let body = test::read_body(resp2).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(false));
+        assert!(json["error"]
+            .as_str()
+            .unwrap()
+            .contains("Task with name 'duplicate-test' already exists"));
     }
 }
