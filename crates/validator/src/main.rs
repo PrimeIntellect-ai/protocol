@@ -375,7 +375,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .to_string();
 
                 let discovery_route = "/api/validator";
-                let signature = sign_request_with_nonce(discovery_route, &validator_wallet, None)
+                let signature = sign_request_with_nonce(discovery_route, validator_wallet, None)
                     .await
                     .map_err(|e| anyhow::anyhow!("{}", e))?;
 
