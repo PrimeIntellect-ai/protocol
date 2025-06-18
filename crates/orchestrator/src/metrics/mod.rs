@@ -13,6 +13,7 @@ pub struct MetricsContext {
     pub groups_total: GaugeVec,
     pub heartbeat_requests_total: CounterVec,
     pub nodes_per_task: GaugeVec,
+    pub task_state: GaugeVec,
 }
 
 impl MetricsContext {
@@ -90,6 +91,15 @@ impl MetricsContext {
         )
         .unwrap();
 
+        let task_state = GaugeVec::new(
+            Opts::new(
+                "orchestrator_task_state",
+                "Task state reported from nodes (1 for active state, 0 for inactive)",
+            ),
+            &["node_address", "task_id", "task_state", "pool_id"],
+        )
+        .unwrap();
+
         let registry = Registry::new();
         let _ = registry.register(Box::new(compute_task_gauges.clone()));
         let _ = registry.register(Box::new(task_info.clone()));
@@ -99,6 +109,7 @@ impl MetricsContext {
         let _ = registry.register(Box::new(groups_total.clone()));
         let _ = registry.register(Box::new(heartbeat_requests_total.clone()));
         let _ = registry.register(Box::new(nodes_per_task.clone()));
+        let _ = registry.register(Box::new(task_state.clone()));
 
         Self {
             compute_task_gauges,
@@ -111,6 +122,7 @@ impl MetricsContext {
             groups_total,
             heartbeat_requests_total,
             nodes_per_task,
+            task_state,
         }
     }
 
@@ -187,6 +199,12 @@ impl MetricsContext {
             .set(1.0);
     }
 
+    pub fn set_task_state(&self, node_address: &str, task_id: &str, task_state: &str) {
+        self.task_state
+            .with_label_values(&[node_address, task_id, task_state, &self.pool_id])
+            .set(1.0);
+    }
+
     pub fn export_metrics(&self) -> Result<String, prometheus::Error> {
         let encoder = TextEncoder::new();
         let metric_families = self.registry.gather();
@@ -207,5 +225,6 @@ impl MetricsContext {
         self.groups_total.reset();
         self.nodes_per_task.reset();
         self.task_info.reset();
+        self.task_state.reset();
     }
 }
