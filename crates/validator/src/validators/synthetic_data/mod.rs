@@ -1348,15 +1348,16 @@ impl SyntheticDataValidator<WalletProvider> {
 
         let rejection_set_key = "work_rejections";
 
-        // Get all work keys from the rejections sorted set (O(log(N)+M) where M = result count)
-        let work_keys: Vec<String> = con
-            .zrange(rejection_set_key, 0, -1)
+        let work_keys_with_scores: Vec<(String, f64)> = con
+            .zrange_withscores(rejection_set_key, 0, -1)
             .await
             .map_err(|e| Error::msg(format!("Failed to get rejections from set: {}", e)))?;
 
-        if work_keys.is_empty() {
+        if work_keys_with_scores.is_empty() {
             return Ok(Vec::new());
         }
+
+        let work_keys: Vec<&String> = work_keys_with_scores.iter().map(|(key, _)| key).collect();
 
         // Batch fetch rejection details using MGET for efficiency
         let rejection_data_keys: Vec<String> = work_keys
@@ -1371,9 +1372,9 @@ impl SyntheticDataValidator<WalletProvider> {
 
         let mut rejections = Vec::new();
 
-        for (i, work_key) in work_keys.into_iter().enumerate() {
+        for (i, (work_key, score_timestamp)) in work_keys_with_scores.into_iter().enumerate() {
             let mut reason = None;
-            let mut timestamp = None;
+            let mut timestamp = Some(score_timestamp as i64);
 
             if let Some(Some(detail_json)) = rejection_details.get(i) {
                 if let Ok(detail) = serde_json::from_str::<serde_json::Value>(detail_json) {
@@ -1381,7 +1382,10 @@ impl SyntheticDataValidator<WalletProvider> {
                         .get("reason")
                         .and_then(|r| r.as_str())
                         .map(|s| s.to_string());
-                    timestamp = detail.get("timestamp").and_then(|t| t.as_i64());
+                    if let Some(stored_timestamp) = detail.get("timestamp").and_then(|t| t.as_i64())
+                    {
+                        timestamp = Some(stored_timestamp);
+                    }
                 }
             }
 
