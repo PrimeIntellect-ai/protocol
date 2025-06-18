@@ -629,7 +629,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let validation_info = self.get_work_validation_info_from_redis(work_key).await?;
         Ok(validation_info.map(|info| info.status))
     }
-
+    #[cfg(test)]
     async fn get_work_validation_info_from_redis(
         &self,
         work_key: &str,
