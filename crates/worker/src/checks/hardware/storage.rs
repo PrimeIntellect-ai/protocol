@@ -95,7 +95,7 @@ pub fn find_largest_storage() -> Option<MountPoint> {
                 || mount_path.starts_with("/sys")
                 || mount_path.starts_with("/dev")
                 || mount_path.starts_with("/run")
-                || mount_path.starts_with("/var/lib/docker/volumes") // Skip Docker volume paths
+                || mount_path.starts_with("/var/lib/docker/volumes")
             {
                 continue;
             }
