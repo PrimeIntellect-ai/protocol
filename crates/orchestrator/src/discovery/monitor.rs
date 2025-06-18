@@ -11,7 +11,7 @@ use log::{error, info};
 use serde_json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
-use shared::security::request_signer::sign_request;
+use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -110,13 +110,14 @@ impl DiscoveryMonitor {
         let discovery_route = format!("/api/pool/{}", self.compute_pool_id);
         let address = self.coordinator_wallet.address().to_string();
 
-        let signature = match sign_request(&discovery_route, &self.coordinator_wallet, None).await {
-            Ok(sig) => sig,
-            Err(e) => {
-                error!("Failed to sign discovery request: {}", e);
-                return Ok(Vec::new());
-            }
-        };
+        let signature =
+            match sign_request_with_nonce(&discovery_route, &self.coordinator_wallet, None).await {
+                Ok(sig) => sig,
+                Err(e) => {
+                    error!("Failed to sign discovery request: {}", e);
+                    return Ok(Vec::new());
+                }
+            };
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -125,12 +126,13 @@ impl DiscoveryMonitor {
         );
         headers.insert(
             "x-signature",
-            reqwest::header::HeaderValue::from_str(&signature)?,
+            reqwest::header::HeaderValue::from_str(&signature.signature)?,
         );
 
         let response = match self
             .http_client
             .get(format!("{}{}", self.discovery_url, discovery_route))
+            .query(&[("nonce", signature.nonce)])
             .headers(headers)
             .send()
             .await
