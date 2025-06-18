@@ -1,22 +1,38 @@
 // request_signer.rs
 use crate::web3::wallet::Wallet;
 use alloy::signers::Signer;
+use uuid::Uuid;
 
-pub async fn sign_request(
+#[derive(Clone)]
+pub struct SignedRequest {
+    pub signature: String,
+    pub data: Option<serde_json::Value>,
+    pub nonce: String,
+}
+
+pub async fn sign_request_with_nonce(
     endpoint: &str,
     wallet: &Wallet,
     data: Option<&serde_json::Value>,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<SignedRequest, Box<dyn std::error::Error>> {
+    let nonce = Uuid::new_v4().to_string();
+    let mut modified_data = None;
+
     let request_data_string = if let Some(data) = data {
         let mut request_data = serde_json::to_value(data)?;
         if let Some(obj) = request_data.as_object_mut() {
+            obj.insert(
+                "nonce".to_string(),
+                serde_json::Value::String(nonce.clone()),
+            );
+
             let sorted_keys: Vec<String> = obj.keys().cloned().collect();
             *obj = sorted_keys
                 .into_iter()
                 .map(|key| (key.clone(), obj.remove(&key).unwrap()))
                 .collect();
         }
-
+        modified_data = Some(request_data.clone());
         serde_json::to_string(&request_data)?
     } else {
         String::new()
@@ -34,7 +50,20 @@ pub async fn sign_request(
         .as_bytes();
     let signature_string = format!("0x{}", hex::encode(signature));
 
-    Ok(signature_string)
+    Ok(SignedRequest {
+        signature: signature_string,
+        data: modified_data,
+        nonce,
+    })
+}
+
+pub async fn sign_request(
+    endpoint: &str,
+    wallet: &Wallet,
+    data: Option<&serde_json::Value>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let signed_request = sign_request_with_nonce(endpoint, wallet, data).await?;
+    Ok(signed_request.signature)
 }
 
 pub async fn sign_message(

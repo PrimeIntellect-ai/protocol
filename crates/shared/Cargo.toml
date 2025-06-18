@@ -22,7 +22,7 @@ actix-web = { workspace = true }
 futures-util = { workspace = true }
 hex = { workspace = true }
 uuid = { workspace = true }
-redis = { workspace = true }
+redis = { workspace = true, features = ["aio", "tokio-comp"] }
 dashmap = "6.1.0"
 anyhow = { workspace = true }
 nalgebra = { workspace = true }

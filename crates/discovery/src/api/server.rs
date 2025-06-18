@@ -1,6 +1,7 @@
 use crate::api::routes::get_nodes::{get_node_by_subkey, get_nodes, get_nodes_for_pool};
 use crate::api::routes::node::node_routes;
 use crate::store::node_store::NodeStore;
+use crate::store::redis::RedisStore;
 use actix_web::middleware::{Compress, NormalizePath, TrailingSlash};
 use actix_web::HttpResponse;
 use actix_web::{
@@ -71,10 +72,12 @@ async fn health_check(app_state: web::Data<AppState>) -> HttpResponse {
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_server(
     host: &str,
     port: u16,
     node_store: Arc<NodeStore>,
+    redis_store: Arc<RedisStore>,
     contracts: Contracts<RootProvider>,
     platform_api_key: String,
     last_chain_sync: Arc<Mutex<Option<SystemTime>>>,
@@ -97,11 +100,23 @@ pub async fn start_server(
         max_nodes_per_ip,
     };
 
-    // it seems we have a validator for the validator
-    let validator_validator = Arc::new(ValidatorState::new(validators));
-
-    // All nodes can register as long as they have a valid signature
-    let validate_signatures = Arc::new(ValidatorState::new(vec![]).with_validator(move |_| true));
+    let validator_validator = Arc::new(
+        ValidatorState::new(validators)
+            .with_redis(redis_store.client.clone())
+            .await
+            .map_err(|e| {
+                std::io::Error::other(format!("Failed to initialize Redis connection pool: {}", e))
+            })?,
+    );
+    let validate_signatures = Arc::new(
+        ValidatorState::new(vec![])
+            .with_redis(redis_store.client.clone())
+            .await
+            .map_err(|e| {
+                std::io::Error::other(format!("Failed to initialize Redis connection pool: {}", e))
+            })?
+            .with_validator(move |_| true),
+    );
     let api_key_middleware = Arc::new(ApiKeyMiddleware::new(platform_api_key));
 
     HttpServer::new(move || {

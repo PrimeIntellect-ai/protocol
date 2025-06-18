@@ -48,8 +48,8 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let redis_store = RedisStore::new(&args.redis_url);
-    let node_store = Arc::new(NodeStore::new(redis_store));
+    let redis_store = Arc::new(RedisStore::new(&args.redis_url));
+    let node_store = Arc::new(NodeStore::new(redis_store.as_ref().clone()));
     let endpoint = match args.rpc_url.parse() {
         Ok(url) => url,
         Err(_) => {
@@ -82,6 +82,7 @@ async fn main() -> Result<()> {
         "0.0.0.0",
         args.port,
         node_store,
+        redis_store,
         contracts,
         args.platform_api_key,
         last_chain_sync,
