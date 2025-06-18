@@ -1,22 +1,48 @@
 // request_signer.rs
 use crate::web3::wallet::Wallet;
 use alloy::signers::Signer;
+use uuid::Uuid;
 
-pub async fn sign_request(
+#[derive(Clone)]
+pub struct SignedRequest {
+    pub signature: String,
+    pub data: Option<serde_json::Value>,
+    pub nonce: String,
+}
+
+pub async fn sign_request_with_nonce(
     endpoint: &str,
     wallet: &Wallet,
     data: Option<&serde_json::Value>,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<SignedRequest, Box<dyn std::error::Error>> {
+    let nonce = Uuid::new_v4().to_string();
+    sign_request_with_custom_nonce(endpoint, wallet, data, &nonce).await
+}
+
+pub async fn sign_request_with_custom_nonce(
+    endpoint: &str,
+    wallet: &Wallet,
+    data: Option<&serde_json::Value>,
+    nonce: &str,
+) -> Result<SignedRequest, Box<dyn std::error::Error>> {
+    let mut modified_data = None;
+
     let request_data_string = if let Some(data) = data {
         let mut request_data = serde_json::to_value(data)?;
         if let Some(obj) = request_data.as_object_mut() {
-            let sorted_keys: Vec<String> = obj.keys().cloned().collect();
+            obj.insert(
+                "nonce".to_string(),
+                serde_json::Value::String(nonce.to_string()),
+            );
+
+            let mut sorted_keys: Vec<String> = obj.keys().cloned().collect();
+            sorted_keys.sort();
             *obj = sorted_keys
                 .into_iter()
                 .map(|key| (key.clone(), obj.remove(&key).unwrap()))
                 .collect();
         }
-
+        modified_data = Some(request_data.clone());
         serde_json::to_string(&request_data)?
     } else {
         String::new()
@@ -34,7 +60,20 @@ pub async fn sign_request(
         .as_bytes();
     let signature_string = format!("0x{}", hex::encode(signature));
 
-    Ok(signature_string)
+    Ok(SignedRequest {
+        signature: signature_string,
+        data: modified_data,
+        nonce: nonce.to_string(),
+    })
+}
+
+pub async fn sign_request(
+    endpoint: &str,
+    wallet: &Wallet,
+    data: Option<&serde_json::Value>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let signed_request = sign_request_with_nonce(endpoint, wallet, data).await?;
+    Ok(signed_request.signature)
 }
 
 pub async fn sign_message(
@@ -119,6 +158,7 @@ mod tests {
         .unwrap();
 
         let endpoint = "/api/test";
+        let test_nonce = "test-nonce-123";
 
         // Create two objects with same data but different key order
         let data1 = json!({
@@ -131,11 +171,17 @@ mod tests {
             "a": "1"
         });
 
-        let sig1 = sign_request(endpoint, &wallet, Some(&data1)).await.unwrap();
-        let sig2 = sign_request(endpoint, &wallet, Some(&data2)).await.unwrap();
+        let signed_req1 =
+            sign_request_with_custom_nonce(endpoint, &wallet, Some(&data1), test_nonce)
+                .await
+                .unwrap();
+        let signed_req2 =
+            sign_request_with_custom_nonce(endpoint, &wallet, Some(&data2), test_nonce)
+                .await
+                .unwrap();
 
-        // Signatures should be identical since keys are sorted
-        assert_eq!(sig1, sig2);
+        // Signatures should be identical since keys are sorted and nonce is the same
+        assert_eq!(signed_req1.signature, signed_req2.signature);
     }
 
     #[tokio::test]

@@ -7,7 +7,7 @@ use log::info;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
 use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
-use shared::security::request_signer::sign_request;
+use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -187,20 +187,27 @@ async fn send_heartbeat(
         }
     };
 
-    let signature = sign_request(
+    let signature = sign_request_with_nonce(
         "/heartbeat",
         &wallet,
-        Some(&serde_json::to_value(&request).unwrap()),
+        Some(&serde_json::to_value(&request).map_err(|e| {
+            log::error!("Failed to serialize request: {:?}", e);
+            HeartbeatError::RequestFailed
+        })?),
     )
     .await
-    .unwrap();
+    .map_err(|e| {
+        log::error!("Failed to sign request: {:?}", e);
+        HeartbeatError::RequestFailed
+    })?;
+
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-address", wallet.address().to_string().parse().unwrap());
-    headers.insert("x-signature", signature.parse().unwrap());
+    headers.insert("x-signature", signature.signature.parse().unwrap());
 
     let response = client
         .post(endpoint.unwrap())
-        .json(&request)
+        .json(&signature.data)
         .headers(headers)
         .send()
         .await

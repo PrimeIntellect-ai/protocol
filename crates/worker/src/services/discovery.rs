@@ -1,5 +1,5 @@
 use shared::models::node::Node;
-use shared::security::request_signer::sign_request;
+use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::wallet::Wallet;
 
 pub struct DiscoveryService {
@@ -24,8 +24,8 @@ impl DiscoveryService {
         let request_data = serde_json::to_value(node_config)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
-        let signature_string =
-            sign_request(&self.endpoint, &self.wallet, Some(&request_data)).await?;
+        let signed_request =
+            sign_request_with_nonce(&self.endpoint, &self.wallet, Some(&request_data)).await?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -38,14 +38,17 @@ impl DiscoveryService {
                 .parse()
                 .unwrap(),
         );
-        headers.insert("x-signature", signature_string.parse().unwrap());
+        headers.insert("x-signature", signed_request.signature.parse().unwrap());
         let request_url = format!("{}{}", self.base_url, &self.endpoint);
-
         let client = reqwest::Client::new();
         let response = client
             .put(&request_url)
             .headers(headers)
-            .json(&request_data)
+            .json(
+                &signed_request
+                    .data
+                    .expect("Signed request data should always be present for discovery upload"),
+            )
             .send()
             .await?;
 

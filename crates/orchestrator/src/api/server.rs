@@ -72,18 +72,22 @@ pub async fn start_server(
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
-    let validator_state = Arc::new(ValidatorState::new(vec![]).with_async_validator(
-        move |address| {
-            let address = *address;
-            let node_store = node_store_clone.clone();
-            Box::pin(async move {
-                match node_store.get_node(&address).await {
-                    Ok(Some(node)) => node.status != NodeStatus::Ejected,
-                    _ => false,
-                }
-            })
-        },
-    ));
+    let validator_state = Arc::new(
+        ValidatorState::new(vec![])
+            .with_redis(app_state.redis_store.client.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to initialize Redis connection pool: {}", e))?
+            .with_async_validator(move |address| {
+                let address = *address;
+                let node_store = node_store_clone.clone();
+                Box::pin(async move {
+                    match node_store.get_node(&address).await {
+                        Ok(Some(node)) => node.status != NodeStatus::Ejected,
+                        _ => false,
+                    }
+                })
+            }),
+    );
 
     let api_key_middleware = Arc::new(ApiKeyMiddleware::new(admin_api_key));
     HttpServer::new(move || {

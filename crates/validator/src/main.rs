@@ -14,7 +14,7 @@ use p2p::P2PClient;
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
-use shared::security::request_signer::sign_request;
+use shared::security::request_signer::sign_request_with_nonce;
 use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
@@ -364,24 +364,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if !args.disable_hardware_validation {
-            async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
-                let signature = sign_request(message, wallet, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{}", e))?;
-                Ok(signature)
-            }
-
             let nodes = match async {
-                let discovery_route = "/api/validator";
                 let address = validator_wallet
                     .wallet
                     .default_signer()
                     .address()
                     .to_string();
 
-                let signature = _generate_signature(&validator_wallet, discovery_route)
+                let discovery_route = "/api/validator";
+                let signature = sign_request_with_nonce(discovery_route, &validator_wallet, None)
                     .await
-                    .context("Failed to generate signature")?;
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
 
                 let mut headers = reqwest::header::HeaderMap::new();
                 headers.insert(
@@ -391,13 +384,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 headers.insert(
                     "x-signature",
-                    reqwest::header::HeaderValue::from_str(&signature)
+                    reqwest::header::HeaderValue::from_str(&signature.signature)
                         .context("Failed to create signature header")?,
                 );
 
                 debug!("Fetching nodes from: {}{}", discovery_url, discovery_route);
                 let response = reqwest::Client::new()
                     .get(format!("{}{}", discovery_url, discovery_route))
+                    .query(&[("nonce", signature.nonce)])
                     .headers(headers)
                     .timeout(Duration::from_secs(10))
                     .send()
