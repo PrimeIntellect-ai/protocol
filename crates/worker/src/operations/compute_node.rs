@@ -94,6 +94,12 @@ impl<'c> ComputeNodeOperations<'c> {
                                             if last_claimable.is_none() || last_locked.is_none() || claimable != last_claimable.unwrap() || locked != last_locked.unwrap() {
                                                 last_claimable = Some(claimable);
                                                 last_locked = Some(locked);
+                                                let total = claimable.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0) + locked.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0);
+
+                                                if let Ok(console) = Console::get_instance().lock() {
+                                                    console.update_reward(format!("{:.2}", total));
+                                                }
+
                                                 let claimable_formatted = claimable.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0);
                                                 let locked_formatted = locked.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0);
                                                 Console::info("Rewards", &format!("{} claimable, {} locked", claimable_formatted, locked_formatted));

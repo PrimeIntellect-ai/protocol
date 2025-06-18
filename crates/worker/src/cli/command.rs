@@ -2,7 +2,7 @@ use crate::checks::hardware::HardwareChecker;
 use crate::checks::issue::IssueReport;
 use crate::checks::software::SoftwareChecker;
 use crate::checks::stun::StunCheck;
-use crate::console::{get_tui_tracing_layer, Console, LogLevel};
+use crate::console::{Console, LogLevel};
 use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
@@ -300,6 +300,10 @@ pub async fn execute_command(
                     }
                 }
             };
+
+            if let Ok(console) = Console::get_instance().lock() {
+                console.update_compute_pool(pool_info.pool_name.clone());
+            }
 
             let stun_check = StunCheck::new(Duration::from_secs(5), 0);
             let detected_external_ip = match stun_check.get_public_ip().await {

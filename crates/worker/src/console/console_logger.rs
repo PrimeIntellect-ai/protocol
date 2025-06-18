@@ -22,10 +22,7 @@ use tracing::{
     field::{Field, Visit},
     Event as TracingEvent, Level, Subscriber,
 };
-use tracing_subscriber::{
-    layer::{Context, SubscriberExt},
-    Layer,
-};
+use tracing_subscriber::{layer::Context, Layer};
 
 #[derive(Debug, Clone)]
 pub enum LogLevel {
@@ -61,8 +58,8 @@ pub struct LogMessage {
 #[derive(Clone)]
 pub struct AppState {
     pub current_task: String,
-    pub compute_pool_id: u64,
-    pub current_reward: u64,
+    pub compute_pool_name: String,
+    pub current_reward: String,
     pub logs: Arc<RwLock<VecDeque<LogMessage>>>,
     pub is_running: bool,
 }
@@ -71,8 +68,8 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             current_task: "None".to_string(),
-            compute_pool_id: 0,
-            current_reward: 100,
+            compute_pool_name: "None".to_string(),
+            current_reward: "0.0".to_string(),
             logs: Arc::new(RwLock::new(VecDeque::with_capacity(1000))),
             is_running: true,
         }
@@ -98,11 +95,11 @@ impl AppState {
         self.current_task = task;
     }
 
-    pub fn set_compute_pool_id(&mut self, pool_id: u64) {
-        self.compute_pool_id = pool_id;
+    pub fn set_compute_pool_name(&mut self, pool_name: String) {
+        self.compute_pool_name = pool_name;
     }
 
-    pub fn set_current_reward(&mut self, reward: u64) {
+    pub fn set_current_reward(&mut self, reward: String) {
         self.current_reward = reward;
     }
 }
@@ -168,7 +165,7 @@ where
         event.record(&mut EventVisitor(&mut message));
         message = message.trim_matches('"').to_string();
         if message.is_empty() {
-            message = format!("{}", event.metadata().name());
+            message = event.metadata().name().to_string();
         }
 
         let log_msg = LogMessage {
@@ -363,12 +360,12 @@ impl Console {
             state.set_current_task(task);
         }
     }
-    pub fn update_compute_pool(&self, pool_id: u64) {
+    pub fn update_compute_pool(&self, pool_name: String) {
         if let Ok(mut state) = self.state.lock() {
-            state.set_compute_pool_id(pool_id);
+            state.set_compute_pool_name(pool_name);
         }
     }
-    pub fn update_reward(&self, reward: u64) {
+    pub fn update_reward(&self, reward: String) {
         if let Ok(mut state) = self.state.lock() {
             state.set_current_reward(reward);
         }
@@ -386,13 +383,8 @@ impl Console {
             }
         }
     }
-
-    pub fn get_log_sender(&self) -> Option<mpsc::UnboundedSender<TuiEvent>> {
-        self.log_sender.clone()
-    }
 }
 
-// UI Rendering functions (unchanged)
 fn ui(f: &mut Frame, app: &AppState) {
     let size = f.area();
     let chunks = Layout::default()
@@ -400,49 +392,51 @@ fn ui(f: &mut Frame, app: &AppState) {
         .constraints([
             Constraint::Length(7), // Logo section
             Constraint::Length(8), // Status section
+            Constraint::Length(3), // Disclaimer section
             Constraint::Min(10),   // Logs section
         ])
         .split(size);
     render_logo(f, chunks[0]);
     render_status(f, chunks[1], app);
-    render_logs(f, chunks[2], app);
+    render_disclaimer(f, chunks[2]);
+    render_logs(f, chunks[3], app);
 }
 fn render_logo(f: &mut Frame, area: Rect) {
     let logo_text = vec![
         Line::from(vec![Span::styled(
             "██████╗ ██████╗ ██╗███╗   ███╗███████╗",
             Style::default()
-                .fg(Color::Cyan)
+            .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         )]),
         Line::from(vec![Span::styled(
             "██╔══██╗██╔══██╗██║████╗ ████║██╔════╝",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         )]),
         Line::from(vec![Span::styled(
             "██████╔╝██████╔╝██║██╔████╔██║█████╗  ",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         )]),
         Line::from(vec![Span::styled(
             "██╔═══╝ ██╔══██╗██║██║╚██╔╝██║██╔══╝  ",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         )]),
         Line::from(vec![Span::styled(
             "██║     ██║  ██║██║██║ ╚═╝ ██║███████╗",
             Style::default()
-                .fg(Color::Cyan)
+            .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         )]),
         Line::from(vec![Span::styled(
             "╚═╝     ╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚══════╝",
             Style::default()
-                .fg(Color::Cyan)
+            .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         )]),
     ];
@@ -450,7 +444,7 @@ fn render_logo(f: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::Cyan)),
+                .style(Style::default().fg(Color::DarkGray)),
         )
         .alignment(Alignment::Center)
         .wrap(Wrap { trim: true });
@@ -462,7 +456,7 @@ fn render_status(f: &mut Frame, area: Rect, app: &AppState) {
             Span::styled(
                 "Current Task: ",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(&app.current_task, Style::default().fg(Color::White)),
@@ -471,11 +465,11 @@ fn render_status(f: &mut Frame, area: Rect, app: &AppState) {
             Span::styled(
                 "Current Compute Pool: ",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                app.compute_pool_id.to_string(),
+                app.compute_pool_name.to_string(),
                 Style::default().fg(Color::White),
             ),
         ]),
@@ -483,38 +477,38 @@ fn render_status(f: &mut Frame, area: Rect, app: &AppState) {
             Span::styled(
                 "Current Reward: ",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 app.current_reward.to_string(),
-                Style::default().fg(Color::Green),
+                Style::default().fg(Color::White),
             ),
         ]),
         Line::from(vec![
             Span::styled(
                 "Status: ",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 if app.is_running {
-                    "🟢 Running"
+                    "● Running"
                 } else {
-                    "🔴 Stopped"
+                    "● Stopped"
                 },
                 Style::default().fg(if app.is_running {
-                    Color::Green
+                    Color::White
                 } else {
-                    Color::Red
+                    Color::DarkGray
                 }),
             ),
         ]),
         Line::from(vec![Span::styled(
             "Press 'q' or 'Esc' to quit",
             Style::default()
-                .fg(Color::Gray)
+                .fg(Color::DarkGray)
                 .add_modifier(Modifier::ITALIC),
         )]),
     ];
@@ -523,11 +517,28 @@ fn render_status(f: &mut Frame, area: Rect, app: &AppState) {
             Block::default()
                 .borders(Borders::ALL)
                 .title("Status")
-                .style(Style::default().fg(Color::Yellow)),
+                .style(Style::default().fg(Color::DarkGray)),
         )
         .alignment(Alignment::Left)
         .wrap(Wrap { trim: true });
     f.render_widget(status, area);
+}
+fn render_disclaimer(f: &mut Frame, area: Rect) {
+    let disclaimer_text = vec![Line::from(vec![Span::styled(
+        "Any compute contributed to this pool is purely a donation and for testing purposes only.",
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::ITALIC),
+    )])];
+    let disclaimer = Paragraph::new(disclaimer_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::DarkGray)),
+        )
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true });
+    f.render_widget(disclaimer, area);
 }
 fn render_logs(f: &mut Frame, area: Rect, app: &AppState) {
     let logs = match app.logs.read() {
@@ -537,7 +548,7 @@ fn render_logs(f: &mut Frame, area: Rect, app: &AppState) {
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Logs (Error)")
-                    .style(Style::default().fg(Color::Red)),
+                    .style(Style::default().fg(Color::DarkGray)),
             );
             f.render_widget(empty_widget, area);
             return;
@@ -556,11 +567,11 @@ fn render_logs(f: &mut Frame, area: Rect, app: &AppState) {
         .map(|log| {
             let (style, icon) = match log.level {
                 LogLevel::Trace | LogLevel::Debug => (Style::default().fg(Color::DarkGray), "•"),
-                LogLevel::Info => (Style::default().fg(Color::White), "ℹ"),
-                LogLevel::Warn => (Style::default().fg(Color::Yellow), "⚠"),
-                LogLevel::Error => (Style::default().fg(Color::Red), "✗"),
-                LogLevel::Success => (Style::default().fg(Color::Green), "✓"),
-                LogLevel::Progress => (Style::default().fg(Color::Cyan), "→"),
+                LogLevel::Info => (Style::default().fg(Color::White), "•"),
+                LogLevel::Warn => (Style::default().fg(Color::White), "!"),
+                LogLevel::Error => (Style::default().fg(Color::White), "✗"),
+                LogLevel::Success => (Style::default().fg(Color::White), "✓"),
+                LogLevel::Progress => (Style::default().fg(Color::White), "→"),
             };
             let elapsed = log.timestamp.elapsed();
             let time_str = if elapsed.as_secs() < 60 {
@@ -578,7 +589,7 @@ fn render_logs(f: &mut Frame, area: Rect, app: &AppState) {
                 String::new()
             };
             ListItem::new(Line::from(vec![
-                Span::styled(format!("[{}] ", time_str), Style::default().fg(Color::Gray)),
+                Span::styled(format!("[{}] ", time_str), Style::default().fg(Color::DarkGray)),
                 Span::styled(format!("{} ", icon), style.add_modifier(Modifier::BOLD)),
                 Span::styled(target_str, Style::default().fg(Color::DarkGray)),
                 Span::styled(&log.message, style),
@@ -590,7 +601,7 @@ fn render_logs(f: &mut Frame, area: Rect, app: &AppState) {
         Block::default()
             .borders(Borders::ALL)
             .title("Logs")
-            .style(Style::default().fg(Color::Magenta)),
+            .style(Style::default().fg(Color::DarkGray)),
     );
 
     // Always render without state to show the newest logs at the bottom
@@ -604,10 +615,6 @@ lazy_static::lazy_static! {
         RwLock::new(TuiTracingLayer::new(state))
     };
     static ref CONSOLE_INSTANCE: Mutex<Console> = Mutex::new(Console::new());
-}
-
-pub fn get_tui_tracing_layer() -> &'static RwLock<TuiTracingLayer> {
-    &TUI_TRACING_LAYER
 }
 
 impl Console {
