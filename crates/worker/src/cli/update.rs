@@ -1,6 +1,7 @@
 use crate::console::Console;
 use log::{error, info, warn};
 use reqwest::Client;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -214,9 +215,19 @@ impl UpdateService {
     }
 
     fn is_newer_version(&self, latest_version: &str) -> bool {
-        let current = self.normalize_version(&self.current_version);
-        let latest = self.normalize_version(latest_version);
-        latest > current
+        let current_normalized = self.normalize_version(&self.current_version);
+        let latest_normalized = self.normalize_version(latest_version);
+
+        match (
+            Version::parse(&current_normalized),
+            Version::parse(&latest_normalized),
+        ) {
+            (Ok(current_ver), Ok(latest_ver)) => latest_ver > current_ver,
+            _ => {
+                warn!("Failed to parse versions as semver, falling back to string comparison");
+                latest_normalized > current_normalized
+            }
+        }
     }
 
     fn normalize_version(&self, version: &str) -> String {

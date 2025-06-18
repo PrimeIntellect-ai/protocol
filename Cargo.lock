@@ -8393,6 +8393,7 @@ dependencies = [
  "rand_core 0.6.4",
  "regex",
  "reqwest",
+ "semver 1.0.26",
  "serde",
  "serde_json",
  "serial_test",

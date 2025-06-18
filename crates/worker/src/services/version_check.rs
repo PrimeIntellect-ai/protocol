@@ -1,6 +1,7 @@
 use crate::TaskHandles;
 use log::{error, info, warn};
 use reqwest::Client;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -196,16 +197,22 @@ impl VersionCheckService {
     }
 
     fn is_newer_version(&self, latest_version: &str) -> bool {
-        let current = self.normalize_version(&self.current_version);
-        let latest = self.normalize_version(latest_version);
+        let current_normalized = self.normalize_version(&self.current_version);
+        let latest_normalized = self.normalize_version(latest_version);
 
-        // Simple string comparison for version ordering
-        // This works for semver-like versions: v0.1.0, v0.1.0-beta.1, etc.
-        latest > current
+        match (
+            Version::parse(&current_normalized),
+            Version::parse(&latest_normalized),
+        ) {
+            (Ok(current_ver), Ok(latest_ver)) => latest_ver > current_ver,
+            _ => {
+                warn!("Failed to parse versions as semver, falling back to string comparison");
+                latest_normalized > current_normalized
+            }
+        }
     }
 
     fn normalize_version(&self, version: &str) -> String {
-        // Remove 'v' prefix if present
         version.strip_prefix('v').unwrap_or(version).to_string()
     }
 
