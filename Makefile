@@ -73,7 +73,7 @@ whitelist-provider:
 
 watch-discovery:
 	set -a; source .env; set +a; \
-	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL}"
+	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL} --max-nodes-per-ip $${MAX_NODES_PER_IP:-2}"
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
