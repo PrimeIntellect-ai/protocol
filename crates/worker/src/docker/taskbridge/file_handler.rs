@@ -6,7 +6,7 @@ use reqwest::header::HeaderValue;
 use reqwest::Client;
 use shared::models::node::Node;
 use shared::models::storage::RequestUploadRequest;
-use shared::security::request_signer::{sign_request, sign_request_with_nonce};
+use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::helpers::utils::retry_call;
 use shared::web3::wallet::{Wallet, WalletProvider};
