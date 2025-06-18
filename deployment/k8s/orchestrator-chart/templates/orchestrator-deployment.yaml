@@ -31,8 +31,8 @@
       value: {{ .mode }}
     - name: REDIS_STORE_URL
       value: "redis://{{ include "orchestrator.redisName" .root }}:6379"
-    - name: DISCOVERY_URL
-      value: {{ .root.Values.env.DISCOVERY_URL }}
+    - name: DISCOVERY_URLS
+      value: {{ .root.Values.env.DISCOVERY_URLS }}
     - name: COORDINATOR_KEY
       valueFrom:
         secretKeyRef:

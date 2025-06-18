@@ -74,9 +74,9 @@ pub enum Commands {
         #[arg(long, default_value = "false")]
         no_auto_recover: bool,
 
-        /// Discovery service URL
-        #[arg(long)]
-        discovery_url: Option<String>,
+        /// Discovery service URLs (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        discovery_urls: Option<Vec<String>>,
 
         /// Private key for the provider (not recommended, use environment variable PRIVATE_KEY_PROVIDER instead)
         #[arg(long)]
@@ -176,7 +176,7 @@ pub async fn execute_command(
             compute_pool_id,
             dry_run: _,
             rpc_url,
-            discovery_url,
+            discovery_urls,
             state_dir_overwrite,
             disable_state_storing,
             no_auto_recover,
@@ -268,8 +268,13 @@ pub async fn execute_command(
                 compute_node_state,
             );
 
-            let discovery_service =
-                DiscoveryService::new(node_wallet_instance.clone(), discovery_url.clone(), None);
+            let discovery_service = DiscoveryService::new(
+                node_wallet_instance.clone(),
+                discovery_urls
+                    .clone()
+                    .unwrap_or_else(|| vec!["http://localhost:8089".to_string()]),
+                None,
+            );
             let discovery_state = state.clone();
             let discovery_updater =
                 DiscoveryUpdater::new(discovery_service.clone(), discovery_state.clone());

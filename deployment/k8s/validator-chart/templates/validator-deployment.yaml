@@ -45,8 +45,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "validator.secretName" . }}
                   key: validatorKey
-            - name: DISCOVERY_URL
-              value: {{ .Values.env.DISCOVERY_URL }}
+            - name: DISCOVERY_URLS
+              value: {{ .Values.env.DISCOVERY_URLS }}
             - name: REDIS_URL
               value: "redis://{{ include "validator.redisName" . }}:6379"
             {{- if .Values.secrets.toplocConfigs }}
