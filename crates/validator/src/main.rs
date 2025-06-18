@@ -383,7 +383,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start HTTP server with access to the validator
     let validator_for_server = synthetic_validator.clone();
     tokio::spawn(async move {
-        let api_key_middleware = Arc::new(ApiKeyMiddleware::new("VALIDATOR_API_KEY".to_string()));
+        let key = std::env::var("VALIDATOR_API_KEY").unwrap_or_default();
+        let api_key_middleware = Arc::new(ApiKeyMiddleware::new(key));
 
         if let Err(e) = HttpServer::new(move || {
             App::new()
