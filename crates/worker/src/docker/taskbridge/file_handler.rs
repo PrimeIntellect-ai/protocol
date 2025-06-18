@@ -6,7 +6,7 @@ use reqwest::header::HeaderValue;
 use reqwest::Client;
 use shared::models::node::Node;
 use shared::models::storage::RequestUploadRequest;
-use shared::security::request_signer::sign_request;
+use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::helpers::utils::retry_call;
 use shared::web3::wallet::{Wallet, WalletProvider};
@@ -125,9 +125,11 @@ pub async fn handle_file_upload(
         };
 
         let signature =
-            match sign_request("/storage/request-upload", wallet, Some(&request_value)).await {
+            match sign_request_with_nonce("/storage/request-upload", wallet, Some(&request_value))
+                .await
+            {
                 Ok(sig) => {
-                    debug!("Request signed successfully: {}", sig);
+                    debug!("Request signed successfully: {}", sig.signature);
                     sig
                 }
                 Err(e) => {
@@ -153,7 +155,7 @@ pub async fn handle_file_upload(
             }
         }
 
-        match HeaderValue::from_str(&signature) {
+        match HeaderValue::from_str(&signature.signature) {
             Ok(val) => {
                 headers.insert("x-signature", val);
                 debug!("Added x-signature header");
@@ -178,7 +180,7 @@ pub async fn handle_file_upload(
         );
         let response = match client
             .post(&upload_url)
-            .json(&request)
+            .json(&signature.data)
             .headers(headers)
             .send()
             .await
