@@ -1,5 +1,6 @@
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
+use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::Address;
@@ -25,9 +26,11 @@ pub struct DiscoveryMonitor {
     heartbeats: Arc<LoopHeartbeats>,
     http_client: reqwest::Client,
     max_healthy_nodes_with_same_endpoint: u32,
+    status_change_handlers: Vec<Box<dyn StatusUpdatePlugin>>,
 }
 
 impl DiscoveryMonitor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         coordinator_wallet: Wallet,
         compute_pool_id: u32,
@@ -36,6 +39,7 @@ impl DiscoveryMonitor {
         store_context: Arc<StoreContext>,
         heartbeats: Arc<LoopHeartbeats>,
         max_healthy_nodes_with_same_endpoint: u32,
+        status_change_handlers: Vec<Box<dyn StatusUpdatePlugin>>,
     ) -> Self {
         Self {
             coordinator_wallet,
@@ -46,7 +50,41 @@ impl DiscoveryMonitor {
             heartbeats,
             http_client: reqwest::Client::new(),
             max_healthy_nodes_with_same_endpoint,
+            status_change_handlers,
         }
+    }
+
+    async fn handle_status_change(&self, node: &OrchestratorNode, old_status: NodeStatus) {
+        for handler in &self.status_change_handlers {
+            if let Err(e) = handler.handle_status_change(node, &old_status).await {
+                error!("Status change handler failed: {}", e);
+            }
+        }
+    }
+
+    async fn update_node_status(
+        &self,
+        node_address: &Address,
+        new_status: NodeStatus,
+    ) -> Result<(), Error> {
+        // Get the current node to know the old status
+        let old_status = match self.store_context.node_store.get_node(node_address).await? {
+            Some(node) => node.status,
+            None => return Err(anyhow::anyhow!("Node not found: {}", node_address)),
+        };
+
+        // Update the status in the store
+        self.store_context
+            .node_store
+            .update_node_status(node_address, new_status.clone())
+            .await?;
+
+        // Get the updated node and trigger status change handlers
+        if let Some(updated_node) = self.store_context.node_store.get_node(node_address).await? {
+            self.handle_status_change(&updated_node, old_status).await;
+        }
+
+        Ok(())
     }
 
     pub async fn run(&self) -> Result<(), Error> {
@@ -174,8 +212,6 @@ impl DiscoveryMonitor {
                         node_address, discovery_node.node.ip_address, discovery_node.node.port
                     );
                     if let Err(e) = self
-                        .store_context
-                        .node_store
                         .update_node_status(&node_address, NodeStatus::Dead)
                         .await
                     {
@@ -190,8 +226,6 @@ impl DiscoveryMonitor {
                         node_address
                     );
                     if let Err(e) = self
-                        .store_context
-                        .node_store
                         .update_node_status(&node_address, NodeStatus::Ejected)
                         .await
                     {
@@ -210,8 +244,6 @@ impl DiscoveryMonitor {
                         node_address
                     );
                     if let Err(e) = self
-                        .store_context
-                        .node_store
                         .update_node_status(&node_address, NodeStatus::Dead)
                         .await
                     {
@@ -228,16 +260,12 @@ impl DiscoveryMonitor {
                     );
                     if !discovery_node.is_provider_whitelisted {
                         if let Err(e) = self
-                            .store_context
-                            .node_store
                             .update_node_status(&node_address, NodeStatus::Ejected)
                             .await
                         {
                             error!("Error updating node status: {}", e);
                         }
                     } else if let Err(e) = self
-                        .store_context
-                        .node_store
                         .update_node_status(&node_address, NodeStatus::Dead)
                         .await
                     {
@@ -263,8 +291,6 @@ impl DiscoveryMonitor {
                         if last_change < last_updated {
                             info!("Node {} is dead but has been updated on discovery, marking as discovered", node_address);
                             if let Err(e) = self
-                                .store_context
-                                .node_store
                                 .update_node_status(&node_address, NodeStatus::Discovered)
                                 .await
                             {
@@ -398,6 +424,7 @@ mod tests {
             discovery_store_context,
             Arc::new(LoopHeartbeats::new(&mode)),
             1,
+            vec![],
         );
 
         let store_context_clone = store_context.clone();
@@ -478,6 +505,7 @@ mod tests {
             store_context.clone(),
             Arc::new(LoopHeartbeats::new(&mode)),
             1,
+            vec![],
         );
 
         let time_before = Utc::now();
@@ -626,6 +654,7 @@ mod tests {
             store_context.clone(),
             Arc::new(LoopHeartbeats::new(&mode)),
             1,
+            vec![],
         );
 
         // Try to sync the second node

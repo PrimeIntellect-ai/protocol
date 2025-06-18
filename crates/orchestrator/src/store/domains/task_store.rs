@@ -99,4 +99,9 @@ impl TaskStore {
         let task: Option<Task> = con.get(&task_key).await?;
         Ok(task)
     }
+
+    pub async fn task_name_exists(&self, name: &str) -> Result<bool> {
+        let tasks = self.get_all_tasks().await?;
+        Ok(tasks.iter().any(|task| task.name == name))
+    }
 }
