@@ -14,7 +14,7 @@ ENV URL=""
 ENV HOST=""
 ENV DISCOVERY_REFRESH_INTERVAL="10"
 ENV REDIS_STORE_URL="redis://localhost:6380"
-ENV DISCOVERY_URL="http://localhost:8089"
+ENV DISCOVERY_URLS="http://localhost:8089"
 ENV ADMIN_API_KEY="admin"
 ENV DISABLE_EJECTION="false"
 ENV S3_CREDENTIALS=""
@@ -38,7 +38,7 @@ $([ ! -z "$URL" ] && echo "--url $URL") \
 $([ ! -z "$HOST" ] && echo "--host $HOST") \
 --discovery-refresh-interval "$DISCOVERY_REFRESH_INTERVAL" \
 --redis-store-url "$REDIS_STORE_URL" \
---discovery-url "$DISCOVERY_URL" \
+--discovery-urls "$DISCOVERY_URLS" \
 --admin-api-key "$ADMIN_API_KEY" \
 --mode "$MODE" \
 $([ "$DISABLE_EJECTION" = "true" ] && echo "--disable-ejection") \
