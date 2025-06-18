@@ -34,8 +34,6 @@ pub enum UpdateError {
     ParseFailed(String),
     #[error("No update available")]
     NoUpdateAvailable,
-    #[error("Checksum verification failed")]
-    ChecksumFailed,
 }
 
 pub struct UpdateService {

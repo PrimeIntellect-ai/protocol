@@ -41,11 +41,11 @@ pub struct VersionCheckService {
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum VersionCheckError {
     #[error("HTTP request failed: {0}")]
-    RequestFailed(String),
+    Request(String),
     #[error("Service initialization failed")]
-    InitFailed,
+    Init,
     #[error("JSON parsing failed: {0}")]
-    ParseFailed(String),
+    Parse(String),
 }
 
 impl VersionCheckService {
@@ -58,7 +58,7 @@ impl VersionCheckService {
             .timeout(Duration::from_secs(30))
             .user_agent("protocol-worker-version-checker")
             .build()
-            .map_err(|_| VersionCheckError::InitFailed)?;
+            .map_err(|_| VersionCheckError::Init)?;
 
         let current_version = option_env!("WORKER_VERSION")
             .unwrap_or(env!("CARGO_PKG_VERSION"))
@@ -155,10 +155,10 @@ impl VersionCheckService {
             .get(&self.gcs_url)
             .send()
             .await
-            .map_err(|e| VersionCheckError::RequestFailed(e.to_string()))?;
+            .map_err(|e| VersionCheckError::Request(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(VersionCheckError::RequestFailed(format!(
+            return Err(VersionCheckError::Request(format!(
                 "HTTP {}",
                 response.status()
             )));
@@ -167,7 +167,7 @@ impl VersionCheckService {
         let manifest: Manifest = response
             .json()
             .await
-            .map_err(|e| VersionCheckError::ParseFailed(e.to_string()))?;
+            .map_err(|e| VersionCheckError::Parse(e.to_string()))?;
 
         Ok(Some(manifest.version))
     }
@@ -178,10 +178,10 @@ impl VersionCheckService {
             .get(&self.github_url)
             .send()
             .await
-            .map_err(|e| VersionCheckError::RequestFailed(e.to_string()))?;
+            .map_err(|e| VersionCheckError::Request(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(VersionCheckError::RequestFailed(format!(
+            return Err(VersionCheckError::Request(format!(
                 "HTTP {}",
                 response.status()
             )));
@@ -190,7 +190,7 @@ impl VersionCheckService {
         let release: GitHubRelease = response
             .json()
             .await
-            .map_err(|e| VersionCheckError::ParseFailed(e.to_string()))?;
+            .map_err(|e| VersionCheckError::Parse(e.to_string()))?;
 
         Ok(Some(release.tag_name))
     }
