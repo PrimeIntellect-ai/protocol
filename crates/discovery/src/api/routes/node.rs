@@ -619,4 +619,152 @@ mod tests {
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, node.id);
     }
+
+    #[actix_web::test]
+    async fn test_register_node_with_max_nodes_per_ip() {
+        let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
+        let private_key_2 = "0000000000000000000000000000000000000000000000000000000000000002";
+        let private_key_3 = "0000000000000000000000000000000000000000000000000000000000000003";
+
+        let node1 = Node {
+            id: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf".to_string(),
+            provider_address: "0x32A8dFdA26948728e5351e61d62C190510CF1C88".to_string(),
+            ip_address: "127.0.0.1".to_string(),
+            port: 8089,
+            compute_pool_id: 0,
+            ..Default::default()
+        };
+
+        let node2 = Node {
+            id: "0x2546BcD3c84621e976D8185a91A922aE77ECEc30".to_string(),
+            provider_address: "0x2546BcD3c84621e976D8185a91A922aE77ECEc30".to_string(),
+            ip_address: "127.0.0.1".to_string(),
+            port: 8090,
+            compute_pool_id: 0,
+            ..Default::default()
+        };
+
+        let node3 = Node {
+            id: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC".to_string(),
+            provider_address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC".to_string(),
+            ip_address: "127.0.0.1".to_string(),
+            port: 8091,
+            compute_pool_id: 0,
+            ..Default::default()
+        };
+
+        let app_state = AppState {
+            node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
+            contracts: None,
+            last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            max_nodes_per_ip: 2,
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(app_state.clone()))
+                .route("/nodes", put().to(register_node)),
+        )
+        .await;
+
+        // Register first node - should succeed
+        let json1 = serde_json::to_value(node1.clone()).unwrap();
+        let signature1 = sign_request(
+            "/nodes",
+            &Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap(),
+            Some(&json1),
+        )
+        .await
+        .unwrap();
+
+        let req1 = test::TestRequest::put()
+            .uri("/nodes")
+            .set_json(json1)
+            .insert_header(("x-address", node1.id.clone()))
+            .insert_header(("x-signature", signature1))
+            .to_request();
+
+        let resp1 = test::call_service(&app, req1).await;
+        assert_eq!(resp1.status(), StatusCode::OK);
+
+        // Try to register same node again - should succeed (update)
+        let json1_duplicate = serde_json::to_value(node1.clone()).unwrap();
+        let signature1_duplicate = sign_request(
+            "/nodes",
+            &Wallet::new(private_key, Url::parse("http://localhost:8080").unwrap()).unwrap(),
+            Some(&json1_duplicate),
+        )
+        .await
+        .unwrap();
+
+        let req1_duplicate = test::TestRequest::put()
+            .uri("/nodes")
+            .set_json(json1_duplicate)
+            .insert_header(("x-address", node1.id.clone()))
+            .insert_header(("x-signature", signature1_duplicate))
+            .to_request();
+
+        let resp1_duplicate = test::call_service(&app, req1_duplicate).await;
+        assert_eq!(resp1_duplicate.status(), StatusCode::OK);
+
+        // Register second node with different ID - should succeed
+        let json2 = serde_json::to_value(node2.clone()).unwrap();
+        let signature2 = sign_request(
+            "/nodes",
+            &Wallet::new(private_key_2, Url::parse("http://localhost:8080").unwrap()).unwrap(),
+            Some(&json2),
+        )
+        .await
+        .unwrap();
+
+        let req2 = test::TestRequest::put()
+            .uri("/nodes")
+            .set_json(json2)
+            .insert_header(("x-address", node2.id.clone()))
+            .insert_header(("x-signature", signature2))
+            .to_request();
+
+        let resp2 = test::call_service(&app, req2).await;
+        assert_eq!(resp2.status(), StatusCode::OK);
+
+        // Make node 1 and two active
+        let mut node1_active = DiscoveryNode::from(node1.clone());
+        node1_active.is_active = true;
+        app_state
+            .node_store
+            .update_node(node1_active)
+            .await
+            .unwrap();
+        let mut node2_active = DiscoveryNode::from(node2.clone());
+        node2_active.is_active = true;
+        app_state
+            .node_store
+            .update_node(node2_active)
+            .await
+            .unwrap();
+
+        // Register third node - should fail (exceeds max_nodes_per_ip)
+        let json3 = serde_json::to_value(node3.clone()).unwrap();
+        let signature3 = sign_request(
+            "/nodes",
+            &Wallet::new(private_key_3, Url::parse("http://localhost:8080").unwrap()).unwrap(),
+            Some(&json3),
+        )
+        .await
+        .unwrap();
+
+        let req3 = test::TestRequest::put()
+            .uri("/nodes")
+            .set_json(json3)
+            .insert_header(("x-address", node3.id.clone()))
+            .insert_header(("x-signature", signature3))
+            .to_request();
+
+        let resp3 = test::call_service(&app, req3).await;
+        assert_eq!(resp3.status(), StatusCode::BAD_REQUEST);
+
+        // Verify only 2 nodes are registered
+        let nodes = app_state.node_store.get_nodes().await.unwrap();
+        assert_eq!(nodes.len(), 2);
+    }
 }

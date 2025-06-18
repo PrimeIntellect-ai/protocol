@@ -25,6 +25,7 @@ ENV MODE="full"
 ENV NODE_GROUP_CONFIGS=""
 ENV NODE_GROUP_MANAGEMENT_INTERVAL="10"
 ENV WEBHOOK_CONFIGS=""
+ENV MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT="1"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/orchestrator \
@@ -45,6 +46,7 @@ $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \
 $([ ! -z "$HOURLY_S3_UPLOAD_LIMIT" ] && echo "--hourly-s3-upload-limit $HOURLY_S3_UPLOAD_LIMIT") \
 $([ ! -z "$NODE_GROUP_MANAGEMENT_INTERVAL" ] && echo "--node-group-management-interval $NODE_GROUP_MANAGEMENT_INTERVAL") \
+$([ ! -z "$MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT" ] && echo "--max-healthy-nodes-with-same-endpoint $MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 

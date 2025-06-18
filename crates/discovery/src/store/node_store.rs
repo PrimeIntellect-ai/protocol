@@ -61,14 +61,15 @@ impl NodeStore {
         }
 
         let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{}", id)).collect();
-        let serialized_nodes: Vec<String> =
-            redis::pipe().get(&node_keys).query_async(&mut con).await?;
 
         let mut count = 0;
-        for serialized_node in serialized_nodes {
-            let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node)?;
-            if deserialized_node.ip_address == ip && deserialized_node.is_active {
-                count += 1;
+        for key in node_keys {
+            let serialized_node: Option<String> = con.get(&key).await?;
+            if let Some(serialized_node) = serialized_node {
+                let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node)?;
+                if deserialized_node.ip_address == ip && deserialized_node.is_active {
+                    count += 1;
+                }
             }
         }
         Ok(count)

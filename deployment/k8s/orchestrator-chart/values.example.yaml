@@ -12,6 +12,7 @@ env:
   LOG_LEVEL: "info"
   NODE_GROUP_CONFIGS: '[{"name": "h100-config", "min_group_size": 1, "max_group_size": 1, "compute_requirements": "gpu:model=h100"}, {"name": "a100-config", "min_group_size": 2, "max_group_size": 2, "compute_requirements": "gpu:model=a100"}]'
   WEBHOOK_CONFIGS: '[{"url": "https://your-webhook-url.example.com", "bearer_token": "your-bearer-token"}]'
+  MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT: "1"
 secrets:
   coordinatorKey: "your-coordinator-private-key"
   adminApiKey: "your-admin-api-key"

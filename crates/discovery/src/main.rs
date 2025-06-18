@@ -34,8 +34,8 @@ struct Args {
     #[arg(short = 'P', long, default_value = "8089")]
     port: u16,
 
-    /// Maximum number of nodes allowed per IP address
-    #[arg(long, default_value = "3")]
+    /// Maximum number of nodes allowed per IP address (active state)
+    #[arg(long, default_value = "1")]
     max_nodes_per_ip: u32,
 }
 
