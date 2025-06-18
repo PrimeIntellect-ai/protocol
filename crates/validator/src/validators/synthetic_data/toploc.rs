@@ -27,6 +27,7 @@ pub struct GroupValidationResult {
     pub output_flops: f64,
     // This tells us which node(s) in a group actually failed the toploc validation
     pub failing_indices: Vec<i64>,
+    pub reason: Option<String>,
 }
 
 impl Toploc {
@@ -317,11 +318,17 @@ impl Toploc {
                                 })
                                 .unwrap_or_default();
 
+                            let reason = status_json
+                                .get("reason")
+                                .and_then(|r| r.as_str())
+                                .map(|s| s.to_string());
+
                             Ok(GroupValidationResult {
                                 status: validation_result,
                                 input_flops,
                                 output_flops,
                                 failing_indices,
+                                reason,
                             })
                         }
                         None => {
@@ -579,7 +586,7 @@ mod tests {
         let _status_mock = server
             .mock("GET", "/statusgroup/test-group.parquet")
             .with_status(200)
-            .with_body(r#"{"status": "accept", "input_flops": 12345.67, "output_flops": 12345.67, "failing_indices": []}"#)
+            .with_body(r#"{"status": "accept", "input_flops": 12345.67, "output_flops": 12345.67, "failing_indices": [], "reason": null}"#)
             .create();
 
         let config = ToplocConfig {
@@ -599,6 +606,7 @@ mod tests {
         assert_eq!(group_result.input_flops, 12345.67);
         assert_eq!(group_result.output_flops, 12345.67);
         assert!(group_result.failing_indices.is_empty());
+        assert_eq!(group_result.reason, None);
         Ok(())
     }
 
@@ -609,7 +617,7 @@ mod tests {
         let _status_mock = server
             .mock("GET", "/statusgroup/test-group.parquet")
             .with_status(200)
-            .with_body(r#"{"status": "reject", "input_flops": 0.0, "output_flops": 0.0, "failing_indices": [1, 3, 5]}"#)
+            .with_body(r#"{"status": "reject", "input_flops": 0.0, "output_flops": 0.0, "failing_indices": [1, 3, 5], "reason": "Validation failed due to mismatched outputs"}"#)
             .create();
 
         let config = ToplocConfig {
@@ -629,6 +637,10 @@ mod tests {
         assert_eq!(group_result.input_flops, 0.0);
         assert_eq!(group_result.output_flops, 0.0);
         assert_eq!(group_result.failing_indices, vec![1, 3, 5]);
+        assert_eq!(
+            group_result.reason,
+            Some("Validation failed due to mismatched outputs".to_string())
+        );
         Ok(())
     }
     #[tokio::test]
