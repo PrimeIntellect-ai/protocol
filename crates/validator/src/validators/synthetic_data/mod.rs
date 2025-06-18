@@ -564,9 +564,6 @@ impl SyntheticDataValidator<WalletProvider> {
         let key = self.get_key_for_work_key(work_key);
         let validation_data = serde_json::to_string(&validation_info)?;
 
-        // Get current status to handle rejection set updates
-        let current_status = self.get_work_validation_info_from_redis(work_key).await?;
-
         if expiry > 0 {
             let _: () = con
                 .set_options(
@@ -584,7 +581,7 @@ impl SyntheticDataValidator<WalletProvider> {
         }
 
         // Manage rejection tracking for efficient querying
-        self.update_rejection_tracking(&mut con, work_key, &current_status, validation_info)
+        self.update_rejection_tracking(&mut con, work_key, validation_info)
             .await?;
 
         Ok(())
@@ -594,20 +591,13 @@ impl SyntheticDataValidator<WalletProvider> {
         &self,
         con: &mut redis::aio::MultiplexedConnection,
         work_key: &str,
-        current_status: &Option<WorkValidationInfo>,
-        new_status: &WorkValidationInfo,
+        validation_info: &WorkValidationInfo,
     ) -> Result<(), Error> {
         let rejection_set_key = "work_rejections";
         let rejection_data_key = format!("work_rejection_data:{}", work_key);
+        let is_rejected = validation_info.status == ValidationResult::Reject;
 
-        // Check if status changed from non-reject to reject
-        let was_rejected = current_status
-            .as_ref()
-            .map(|s| s.status == ValidationResult::Reject)
-            .unwrap_or(false);
-        let is_rejected = new_status.status == ValidationResult::Reject;
-
-        if is_rejected && !was_rejected {
+        if is_rejected {
             // Add to rejections set with current timestamp
             let timestamp = chrono::Utc::now().timestamp() as f64;
             let _: () = con
@@ -616,7 +606,7 @@ impl SyntheticDataValidator<WalletProvider> {
                 .map_err(|e| Error::msg(format!("Failed to add to rejections set: {}", e)))?;
 
             // Store rejection details if reason exists
-            if let Some(reason) = &new_status.reason {
+            if let Some(reason) = &validation_info.reason {
                 let rejection_detail = serde_json::json!({
                     "reason": reason,
                     "timestamp": timestamp
@@ -625,31 +615,6 @@ impl SyntheticDataValidator<WalletProvider> {
                     .set(&rejection_data_key, rejection_detail.to_string())
                     .await
                     .map_err(|e| Error::msg(format!("Failed to set rejection data: {}", e)))?;
-            }
-        } else if !is_rejected && was_rejected {
-            // Remove from rejections set if status changed away from reject
-            let _: () = con
-                .zrem(rejection_set_key, work_key)
-                .await
-                .map_err(|e| Error::msg(format!("Failed to remove from rejections set: {}", e)))?;
-
-            // Remove rejection details
-            let _: () = con
-                .del(&rejection_data_key)
-                .await
-                .map_err(|e| Error::msg(format!("Failed to delete rejection data: {}", e)))?;
-        } else if is_rejected && was_rejected {
-            // Update rejection details if reason changed
-            if let Some(reason) = &new_status.reason {
-                let timestamp = chrono::Utc::now().timestamp() as f64;
-                let rejection_detail = serde_json::json!({
-                    "reason": reason,
-                    "timestamp": timestamp
-                });
-                let _: () = con
-                    .set(&rejection_data_key, rejection_detail.to_string())
-                    .await
-                    .map_err(|e| Error::msg(format!("Failed to update rejection data: {}", e)))?;
             }
         }
 
