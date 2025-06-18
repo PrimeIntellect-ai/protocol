@@ -883,7 +883,8 @@ impl SyntheticDataValidator<WalletProvider> {
                     ValidationResult::Accept
                     | ValidationResult::Reject
                     | ValidationResult::Crashed
-                    | ValidationResult::IncompleteGroup,
+                    | ValidationResult::IncompleteGroup
+                    | ValidationResult::FileNameResolutionFailed,
                 ) => {
                     continue; // Already processed
                 }
