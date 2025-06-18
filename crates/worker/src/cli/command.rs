@@ -2,6 +2,7 @@ use crate::checks::hardware::HardwareChecker;
 use crate::checks::issue::IssueReport;
 use crate::checks::software::SoftwareChecker;
 use crate::checks::stun::StunCheck;
+use crate::cli::update::UpdateService;
 use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
@@ -13,13 +14,14 @@ use crate::p2p::P2PContext;
 use crate::p2p::P2PService;
 use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
+use crate::services::version_check::VersionCheckService;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
-use log::{error, info};
+use log::{error, info, warn};
 use shared::models::node::ComputeRequirements;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
@@ -109,8 +111,15 @@ pub enum Commands {
         /// Storage path for worker data (overrides automatic selection)
         #[arg(long)]
         storage_path: Option<String>,
+
+        /// Version check interval in minutes (0 to disable, default: 10)
+        #[arg(long, default_value = "10")]
+        version_check_interval: u64,
     },
     Check {},
+
+    /// Update worker to latest version
+    Update {},
 
     /// Generate new wallets for provider and node
     GenerateWallets {},
@@ -188,6 +197,7 @@ pub async fn execute_command(
             loki_url: _,
             log_level: _,
             storage_path,
+            version_check_interval,
         } => {
             if *disable_state_storing && !(*no_auto_recover) {
                 Console::user_error(
@@ -463,6 +473,23 @@ pub async fn execute_command(
                 heartbeat_metrics_clone.clone(),
                 heartbeat_state,
             );
+
+            let version_check_service = if *version_check_interval > 0 {
+                match VersionCheckService::new(
+                    Duration::from_secs(version_check_interval * 60),
+                    cancellation_token.clone(),
+                    task_handles.clone(),
+                ) {
+                    Ok(service) => Some(service),
+                    Err(e) => {
+                        warn!("⚠️ Failed to create version check service: {}", e);
+                        warn!("Continuing without version check functionality");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
 
             let gpu_count: u32 = match &node_config.compute_specs {
                 Some(specs) => specs
@@ -758,6 +785,14 @@ pub async fn execute_command(
 
             discovery_updater.start_auto_update(node_config);
 
+            // Start version check service if enabled
+            if let Some(version_service) = version_check_service {
+                if let Err(e) = version_service.start().await {
+                    warn!("⚠️ Failed to start version check service: {}", e);
+                    warn!("Continuing without version check functionality");
+                }
+            }
+
             if recover_last_state {
                 info!("Recovering from previous state: {}", recover_last_state);
                 heartbeat.activate_heartbeat_if_endpoint_exists().await;
@@ -774,6 +809,19 @@ pub async fn execute_command(
                 "Gracefully shutting down worker...",
             );
 
+            Ok(())
+        }
+        Commands::Update {} => {
+            let update_service = UpdateService::new();
+            match update_service.update().await {
+                Ok(()) => {
+                    Console::success("Update completed");
+                }
+                Err(e) => {
+                    error!("Update failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
             Ok(())
         }
         Commands::Check {} => {

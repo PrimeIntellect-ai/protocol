@@ -108,6 +108,34 @@ jobs:
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
       
+      - name: Create manifest.json
+        run: |
+          # Create manifest.json for version checking
+          cat > manifest.json << EOF
+          {
+            "version": "${{ steps.next_version.outputs.tag_name }}",
+            "release_date": "$(date -u -Iseconds)",
+            "binaries": {
+              "worker": {
+                "url": "https://storage.googleapis.com/protocol-repo-assets/builds/latest/worker-linux-x86_64",
+                "checksum": "$(cat release-artifacts/worker-linux-x86_64.checksum 2>/dev/null || echo '')"
+              },
+              "validator": {
+                "url": "https://storage.googleapis.com/protocol-repo-assets/builds/latest/validator-linux-x86_64",
+                "checksum": "$(cat release-artifacts/validator-linux-x86_64.checksum 2>/dev/null || echo '')"
+              },
+              "orchestrator": {
+                "url": "https://storage.googleapis.com/protocol-repo-assets/builds/latest/orchestrator-linux-x86_64",
+                "checksum": "$(cat release-artifacts/orchestrator-linux-x86_64.checksum 2>/dev/null || echo '')"
+              },
+              "discovery": {
+                "url": "https://storage.googleapis.com/protocol-repo-assets/builds/latest/discovery-linux-x86_64",
+                "checksum": "$(cat release-artifacts/discovery-linux-x86_64.checksum 2>/dev/null || echo '')"
+              }
+            }
+          }
+          EOF
+
       - name: Upload binaries to GCS
         run: |
           # Upload binaries to versioned folder
@@ -115,10 +143,14 @@ jobs:
     
           # Also upload to 'latest' for easy access to newest dev build
           gsutil -m cp release-artifacts/* gs://protocol-repo-assets/builds/latest/
+          
+          # Upload manifest.json to latest folder
+          gsutil cp manifest.json gs://protocol-repo-assets/builds/latest/manifest.json
     
           echo "Binaries uploaded to:"
           echo "- gs://protocol-repo-assets/builds/${{ steps.next_version.outputs.tag_name }}/"
           echo "- gs://protocol-repo-assets/builds/latest/"
+          echo "- Manifest: gs://protocol-repo-assets/builds/latest/manifest.json"
       
       - name: Generate Docker metadata
         id: meta
