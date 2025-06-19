@@ -100,37 +100,7 @@ async fn main() -> Result<()> {
     info!("Starting discovery service in {:?} mode", args.mode);
 
     match args.mode {
-        ServiceMode::Processor => {
-            let chain_sync = ChainSync::new(
-                node_store.clone(),
-                cancellation_token.clone(),
-                Duration::from_secs(10),
-                contracts.clone(),
-                last_chain_sync.clone(),
-            );
-            chain_sync.run().await?;
-
-            tokio::signal::ctrl_c().await?;
-            cancellation_token.cancel();
-        }
-        ServiceMode::Api => {
-            if let Err(err) = start_server(
-                "0.0.0.0",
-                args.port,
-                node_store,
-                redis_store,
-                contracts,
-                args.platform_api_key,
-                last_chain_sync,
-                args.max_nodes_per_ip,
-                false,
-            )
-            .await
-            {
-                error!("❌ Failed to start server: {}", err);
-            }
-        }
-        ServiceMode::Full => {
+        ServiceMode::Processor | ServiceMode::Full => {
             let chain_sync = ChainSync::new(
                 node_store.clone(),
                 cancellation_token.clone(),
@@ -156,7 +126,25 @@ async fn main() -> Result<()> {
                 error!("❌ Failed to start server: {}", err);
             }
 
+            tokio::signal::ctrl_c().await?;
             cancellation_token.cancel();
+        }
+        ServiceMode::Api => {
+            if let Err(err) = start_server(
+                "0.0.0.0",
+                args.port,
+                node_store,
+                redis_store,
+                contracts,
+                args.platform_api_key,
+                last_chain_sync,
+                args.max_nodes_per_ip,
+                false,
+            )
+            .await
+            {
+                error!("❌ Failed to start server: {}", err);
+            }
         }
     }
 
