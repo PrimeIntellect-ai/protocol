@@ -49,12 +49,9 @@ spec:
               value: {{ .Values.env.DISCOVERY_URLS }}
             - name: REDIS_URL
               value: "redis://{{ include "validator.redisName" . }}:6379"
-            {{- if .Values.secrets.toplocConfigs }}
+            {{- if .Values.env.TOPLOC_CONFIGS }}
             - name: TOPLOC_CONFIGS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "validator.secretName" . }}
-                  key: toplocConfigs
+              value: {{ .Values.env.TOPLOC_CONFIGS | quote }}
             {{- end }}
             - name: LOG_LEVEL
               value: "{{ .Values.env.LOG_LEVEL }}"
