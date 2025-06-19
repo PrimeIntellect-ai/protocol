@@ -1425,25 +1425,6 @@ impl SyntheticDataValidator<WalletProvider> {
 
         Ok(rejections)
     }
-
-    fn parse_validation_data(&self, data: &str) -> Result<WorkValidationInfo, Error> {
-        // Try to parse as WorkValidationInfo first (new format)
-        if let Ok(validation_info) = serde_json::from_str::<WorkValidationInfo>(data) {
-            Ok(validation_info)
-        } else {
-            // Fall back to old format (just ValidationResult)
-            match serde_json::from_str::<ValidationResult>(data) {
-                Ok(status) => Ok(WorkValidationInfo {
-                    status,
-                    reason: None,
-                }),
-                Err(e) => Err(Error::msg(format!(
-                    "Failed to parse validation data: {}",
-                    e
-                ))),
-            }
-        }
-    }
 }
 
 impl SyntheticDataValidator<WalletProvider> {
@@ -2979,5 +2960,3 @@ mod tests {
         Ok(())
     }
 }
-
-  
