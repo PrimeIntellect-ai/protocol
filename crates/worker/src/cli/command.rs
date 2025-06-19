@@ -13,6 +13,7 @@ use crate::p2p::P2PContext;
 use crate::p2p::P2PService;
 use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
+use crate::services::version_checker::VersionChecker;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::U256;
@@ -169,6 +170,10 @@ pub async fn execute_command(
     cancellation_token: CancellationToken,
     task_handles: TaskHandles,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Check for updates once per day on first CLI usage
+    let version_checker = VersionChecker::new();
+    version_checker.check_for_updates_if_needed().await;
+
     match command {
         Commands::Run {
             port: _,
