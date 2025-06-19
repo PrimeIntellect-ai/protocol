@@ -9,7 +9,8 @@ use std::fs;
 use std::path::PathBuf;
 use tokio::time::Duration;
 
-const GITHUB_API_URL: &str = "https://api.github.com/repos/PrimeIntellect-ai/protocol/releases/latest";
+const GITHUB_API_URL: &str =
+    "https://api.github.com/repos/PrimeIntellect-ai/protocol/releases/latest";
 const VERSION_CHECK_FILE: &str = ".prime_worker_version_check";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -38,7 +39,7 @@ impl VersionChecker {
             .to_string();
 
         let cache_file_path = UserDirs::new()
-            .and_then(|dirs| Some(dirs.home_dir().to_path_buf()))
+            .map(|dirs| dirs.home_dir().to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."))
             .join(VERSION_CHECK_FILE);
 
@@ -155,7 +156,7 @@ impl VersionChecker {
             .take(3)
             .map(|s| s.parse().unwrap_or(0))
             .collect();
-        
+
         let latest_parts: Vec<u32> = latest
             .split('.')
             .take(3)
@@ -163,12 +164,14 @@ impl VersionChecker {
             .collect();
 
         // Pad with zeros to ensure we have exactly 3 numbers [major, minor, patch]
+        #[allow(clippy::get_first)]
         let current_parts = [
             current_parts.get(0).copied().unwrap_or(0),
             current_parts.get(1).copied().unwrap_or(0),
             current_parts.get(2).copied().unwrap_or(0),
         ];
-        
+
+        #[allow(clippy::get_first)]
         let latest_parts = [
             latest_parts.get(0).copied().unwrap_or(0),
             latest_parts.get(1).copied().unwrap_or(0),
@@ -180,9 +183,7 @@ impl VersionChecker {
 
     fn show_update_notification(&self, latest_version: &str, download_url: &str) {
         Console::section("📦 UPDATE AVAILABLE");
-        Console::warning(&format!(
-            "A newer version of Prime Worker is available!"
-        ));
+        Console::warning("A newer version of Prime Worker is available!");
         Console::info("Current Version", &self.current_version);
         Console::info("Latest Version", latest_version);
         Console::info("Update Command", "curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/main/crates/worker/scripts/install.sh | bash");
@@ -218,10 +219,10 @@ mod tests {
         assert!(checker.compare_versions("0.2.11", "0.2.12").unwrap());
         assert!(checker.compare_versions("0.2.11", "0.3.0").unwrap());
         assert!(checker.compare_versions("1.0.0", "1.0.1").unwrap());
-        
+
         // Test equal versions
         assert!(!checker.compare_versions("0.2.12", "0.2.12").unwrap());
-        
+
         // Test current is newer
         assert!(!checker.compare_versions("0.2.12", "0.2.11").unwrap());
         assert!(!checker.compare_versions("1.0.0", "0.9.9").unwrap());
@@ -230,7 +231,7 @@ mod tests {
     #[test]
     fn test_clean_version_tag() {
         let checker = VersionChecker::new();
-        
+
         assert_eq!(checker.clean_version_tag("v0.2.12"), "0.2.12");
         assert_eq!(checker.clean_version_tag("0.2.12"), "0.2.12");
         assert_eq!(checker.clean_version_tag("v1.0.0-beta"), "1.0.0-beta");
@@ -240,6 +241,9 @@ mod tests {
     async fn test_version_checker_creation() {
         let checker = VersionChecker::new();
         assert!(!checker.current_version.is_empty());
-        assert!(checker.cache_file_path.to_string_lossy().contains(VERSION_CHECK_FILE));
+        assert!(checker
+            .cache_file_path
+            .to_string_lossy()
+            .contains(VERSION_CHECK_FILE));
     }
-} 
+}
