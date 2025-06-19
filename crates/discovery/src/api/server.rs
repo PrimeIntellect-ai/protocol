@@ -26,49 +26,50 @@ pub struct AppState {
     pub contracts: Option<Contracts<RootProvider>>,
     pub last_chain_sync: Arc<Mutex<Option<SystemTime>>>,
     pub max_nodes_per_ip: u32,
+    pub chain_sync_enabled: bool,
 }
 
 async fn health_check(app_state: web::Data<AppState>) -> HttpResponse {
-    // Check if chain sync has happened in the last minute
-    let sync_status = {
-        let last_sync_guard = app_state.last_chain_sync.lock().await;
-        match *last_sync_guard {
-            Some(last_sync) => {
-                if let Ok(elapsed) = last_sync.elapsed() {
-                    if elapsed > Duration::from_secs(60) {
-                        warn!(
-                            "Health check: Chain sync is delayed. Last sync was {} seconds ago",
-                            elapsed.as_secs()
-                        );
-                        Some(elapsed)
+    if app_state.chain_sync_enabled {
+        let sync_status = {
+            let last_sync_guard = app_state.last_chain_sync.lock().await;
+            match *last_sync_guard {
+                Some(last_sync) => {
+                    if let Ok(elapsed) = last_sync.elapsed() {
+                        if elapsed > Duration::from_secs(60) {
+                            warn!(
+                                "Health check: Chain sync is delayed. Last sync was {} seconds ago",
+                                elapsed.as_secs()
+                            );
+                            Some(elapsed)
+                        } else {
+                            None
+                        }
                     } else {
-                        None
+                        warn!("Health check: Unable to determine elapsed time since last sync");
+                        Some(Duration::from_secs(u64::MAX))
                     }
-                } else {
-                    warn!("Health check: Unable to determine elapsed time since last sync");
+                }
+                None => {
+                    warn!("Health check: Chain sync has not occurred yet");
                     Some(Duration::from_secs(u64::MAX))
                 }
             }
-            None => {
-                warn!("Health check: Chain sync has not occurred yet");
-                Some(Duration::from_secs(u64::MAX))
-            }
-        }
-    };
+        };
 
-    if let Some(elapsed) = sync_status {
-        // Return error response if sync is delayed
-        return HttpResponse::ServiceUnavailable().json(json!({
-            "status": "error",
-            "service": "discovery",
-            "message": format!("Chain sync is delayed. Last sync was {} seconds ago", elapsed.as_secs())
-        }));
+        if let Some(elapsed) = sync_status {
+            return HttpResponse::ServiceUnavailable().json(json!({
+                "status": "error",
+                "service": "discovery",
+                "message": format!("Chain sync is delayed. Last sync was {} seconds ago", elapsed.as_secs())
+            }));
+        }
     }
 
-    // Return OK response if sync is recent
     HttpResponse::Ok().json(json!({
         "status": "ok",
-        "service": "discovery"
+        "service": "discovery",
+        "chain_sync_enabled": app_state.chain_sync_enabled
     }))
 }
 
@@ -82,6 +83,7 @@ pub async fn start_server(
     platform_api_key: String,
     last_chain_sync: Arc<Mutex<Option<SystemTime>>>,
     max_nodes_per_ip: u32,
+    chain_sync_enabled: bool,
 ) -> std::io::Result<()> {
     info!("Starting server at http://{}:{}", host, port);
 
@@ -98,6 +100,7 @@ pub async fn start_server(
         contracts: Some(contracts),
         last_chain_sync,
         max_nodes_per_ip,
+        chain_sync_enabled,
     };
 
     let validator_validator = Arc::new(
