@@ -32,8 +32,13 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+const APP_VERSION: &str = match option_env!("WORKER_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version = APP_VERSION, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -216,7 +221,7 @@ pub async fn execute_command(
             };
 
             let mut recover_last_state = !(*no_auto_recover);
-            let version = option_env!("WORKER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+            let version = APP_VERSION;
             Console::section("🚀 PRIME WORKER INITIALIZATION - beta");
             Console::info("Version", version);
             /*
