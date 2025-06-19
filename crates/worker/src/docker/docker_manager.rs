@@ -224,6 +224,7 @@ impl DockerManager {
         volumes: Option<Vec<(String, String, bool, bool)>>,
         shm_size: Option<u64>,
         entrypoint: Option<Vec<String>>,
+        restart_policy_max_retries: Option<i64>,
     ) -> Result<String, DockerError> {
         info!("Starting to pull image: {}", image);
 
@@ -408,12 +409,20 @@ impl DockerManager {
                 }]),
                 binds: volume_binds,
                 shm_size: shm_size.map(|s| s as i64),
+                restart_policy: Some(bollard::models::RestartPolicy {
+                    name: Some(bollard::models::RestartPolicyNameEnum::ON_FAILURE),
+                    maximum_retry_count: restart_policy_max_retries,
+                }),
                 ..Default::default()
             })
         } else {
             Some(HostConfig {
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 binds: volume_binds,
+                restart_policy: Some(bollard::models::RestartPolicy {
+                    name: Some(bollard::models::RestartPolicyNameEnum::ON_FAILURE),
+                    maximum_retry_count: restart_policy_max_retries,
+                }),
                 ..Default::default()
             })
         };
@@ -459,6 +468,7 @@ impl DockerManager {
         Ok(container.id)
     }
 
+    /// Remove container, volumes, and directories
     pub async fn remove_container(&self, container_id: &str) -> Result<(), DockerError> {
         let container = (self.get_container_details(container_id).await).ok();
 

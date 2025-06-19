@@ -236,7 +236,7 @@ impl DockerService {
                                                 67108864 // Default to 64MB in bytes
                                             }
                                         };
-                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size), payload.entrypoint).await {
+                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size), payload.entrypoint, None).await {
                                             Ok(container_id) => {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
