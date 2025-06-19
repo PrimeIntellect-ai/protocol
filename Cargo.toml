@@ -42,7 +42,3 @@ rand_core_v6 = { package = "rand_core", version = "0.6.4", features = ["std"] }
 [workspace.package]
 version = "0.2.11"
 edition = "2021"
-
-[workspace.features]
-default = []
-testnet = []
