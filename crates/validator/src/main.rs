@@ -371,15 +371,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    // Run rejection data migration if validator exists
-    if let Some(validator) = &synthetic_validator {
-        info!("Running rejection data migration...");
-        if let Err(e) = validator.migrate_rejection_data().await {
-            error!("Failed to migrate rejection data: {}", e);
-            // Don't exit - this is not critical for startup
-        }
-    }
-
     // Start HTTP server with access to the validator
     let validator_for_server = synthetic_validator.clone();
     tokio::spawn(async move {
