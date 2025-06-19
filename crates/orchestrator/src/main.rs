@@ -1,5 +1,7 @@
 mod api;
+mod blockchain;
 mod discovery;
+mod error;
 mod events;
 mod metrics;
 mod models;
@@ -11,6 +13,7 @@ mod status_update;
 mod store;
 mod utils;
 use crate::api::server::start_server;
+use crate::blockchain::BlockchainIntegrationBuilder;
 use crate::discovery::monitor::DiscoveryMonitor;
 use crate::node::invite::NodeInviter;
 use crate::p2p::client::P2PClient;
@@ -104,6 +107,18 @@ struct Args {
     /// Disable instance ejection from chain
     #[arg(long)]
     disable_ejection: bool,
+
+    /// Enable blockchain monitoring for soft invalidation events
+    #[arg(long)]
+    blockchain_monitoring_enabled: bool,
+
+    /// Blockchain WebSocket RPC URL for event monitoring
+    #[arg(long)]
+    blockchain_ws_url: Option<String>,
+
+    /// Synthetic data validator contract address
+    #[arg(long)]
+    synthetic_data_validator_address: Option<String>,
 
     /// Hourly s3 upload limit
     #[arg(long, default_value = "2")]
@@ -400,6 +415,55 @@ async fn main() -> Result<()> {
         .await
         .unwrap();
     let storage_provider = Arc::new(gcs_storage);
+
+    // Initialize blockchain monitoring for soft invalidation events
+    if args.blockchain_monitoring_enabled {
+        if let (Some(ws_url), Some(validator_addr)) = (
+            &args.blockchain_ws_url,
+            &args.synthetic_data_validator_address,
+        ) {
+            if let Some(groups_plugin) = &node_groups_plugin {
+                match validator_addr.parse() {
+                    Ok(validator_address) => {
+                        match BlockchainIntegrationBuilder::new()
+                            .with_websocket_url(ws_url.clone())
+                            .with_synthetic_data_validator_address(validator_address)
+                            .with_contracts(Arc::new(contracts.clone()))
+                            .with_group_manager(groups_plugin.clone())
+                            .with_storage_provider(storage_provider.clone())
+                            .build()
+                            .await
+                        {
+                            Ok(blockchain_integration) => {
+                                if matches!(
+                                    server_mode,
+                                    ServerMode::ProcessorOnly | ServerMode::Full
+                                ) {
+                                    info!("Starting blockchain monitoring for soft invalidation events");
+                                    tasks.spawn(async move {
+                                        if let Err(e) = blockchain_integration.start().await {
+                                            error!("Blockchain monitoring failed: {}", e);
+                                        }
+                                        Ok(())
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to initialize blockchain monitoring: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Invalid synthetic data validator address: {}", e);
+                    }
+                }
+            } else {
+                error!("Blockchain monitoring requires node groups to be enabled");
+            }
+        } else {
+            error!("Blockchain monitoring enabled but missing required configuration. Please provide --blockchain-ws-url and --synthetic-data-validator-address");
+        }
+    }
 
     // Always start server regardless of mode
     tokio::select! {
