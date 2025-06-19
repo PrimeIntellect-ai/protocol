@@ -9,6 +9,7 @@ ENV PLATFORM_API_KEY="prime"
 ENV REDIS_URL="redis://localhost:6380"
 ENV PORT="8089"
 ENV MAX_NODES_PER_IP="3"
+ENV MODE="full"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/discovery \
@@ -17,6 +18,7 @@ exec /usr/local/bin/discovery \
 --redis-url "$REDIS_URL" \
 --port "$PORT" \
 --max-nodes-per-ip "$MAX_NODES_PER_IP" \
+--mode "$MODE" \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 
