@@ -129,10 +129,10 @@ impl DockerService {
                         for task in old_tasks {
                             let terminate_manager_clone = terminate_manager.clone();
                             let handle = tokio::spawn(async move {
-                                let termination = terminate_manager_clone.remove_container_only(&task.id).await;
+                                let termination = terminate_manager_clone.remove_container(&task.id).await;
                                 match termination {
-                                    Ok(_) => Console::info("DockerService", "Old container terminated successfully"),
-                                    Err(e) => log::error!("Error terminating old container: {}", e),
+                                    Ok(_) => Console::info("DockerService", "Container terminated successfully"),
+                                    Err(e) => log::error!("Error terminating container: {}", e),
                                 }
                             });
                             terminating_container_tasks.lock().await.push(handle);
@@ -291,32 +291,13 @@ impl DockerService {
                                     Console::info("DockerService", &format!("Task state changed from {:?} to {:?}", task_state_current, task_state_live));
 
                                     if task_state_live == TaskState::FAILED {
-                                        consecutive_failures += 1;
-                                        Console::info("DockerService", &format!("Task failed (attempt {}), Docker will auto-restart", consecutive_failures));
 
-                                        // Docker restart policy will handle the restart automatically
-                                        // We just track the failure count for monitoring
+                                        consecutive_failures += 1;
+                                        Console::info("DockerService", &format!("Task failed (attempt {}), waiting with exponential backoff before restart", consecutive_failures));
 
                                     } else if task_state_live == TaskState::RUNNING {
-                                        if consecutive_failures > 0 {
-                                            Console::info("DockerService", &format!("Container recovered after {} failures", consecutive_failures));
-                                        }
+                                        // Reset failure counter when container runs successfully
                                         consecutive_failures = 0;
-                                    } else if task_state_live == TaskState::COMPLETED {
-                                        // Task completed successfully - schedule full cleanup
-                                        Console::info("DockerService", "Task completed successfully, scheduling cleanup");
-                                        let cleanup_manager = terminate_manager.clone();
-                                        let cleanup_container_id = container_status.id.clone();
-                                        let handle = tokio::spawn(async move {
-                                            // Wait briefly for logs to be collected
-                                            tokio::time::sleep(Duration::from_secs(2)).await;
-                                            if let Err(e) = cleanup_manager.remove_container(&cleanup_container_id).await {
-                                                log::error!("Failed to cleanup completed container: {}", e);
-                                            } else {
-                                                Console::info("DockerService", "Completed task cleanup successful");
-                                            }
-                                        });
-                                        terminating_container_tasks.lock().await.push(handle);
                                     }
                                 }
 

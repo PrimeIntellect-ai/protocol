@@ -468,44 +468,7 @@ impl DockerManager {
         Ok(container.id)
     }
 
-    /// Remove only the container, preserving volumes and directories
-    pub async fn remove_container_only(&self, container_id: &str) -> Result<(), DockerError> {
-        if let Err(e) = self.docker.stop_container(container_id, None).await {
-            error!("Failed to stop container: {}", e);
-        }
-
-        let max_retries = 10;
-        for attempt in 0..max_retries {
-            match self.docker.remove_container(container_id, None).await {
-                Ok(_) => {
-                    info!("Container {} removed successfully", container_id);
-                    return Ok(());
-                }
-                Err(DockerError::DockerResponseServerError {
-                    status_code: 409, ..
-                }) => {
-                    debug!(
-                        "Container removal in progress, retrying ({}/{})",
-                        attempt + 1,
-                        max_retries
-                    );
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-                Err(DockerError::DockerResponseServerError {
-                    status_code: 404, ..
-                }) => {
-                    return Ok(());
-                }
-                Err(e) => {
-                    info!("Failed to remove container {}: {}", container_id, e);
-                    return Err(e);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Remove container, volumes, and directories (for task removal)
+    /// Remove container, volumes, and directories
     pub async fn remove_container(&self, container_id: &str) -> Result<(), DockerError> {
         let container = (self.get_container_details(container_id).await).ok();
 
