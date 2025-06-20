@@ -255,6 +255,7 @@ mod tests {
                 version: None,
                 timestamp: None,
                 p2p_id: None,
+                task_details: None,
             })
         );
 
@@ -426,6 +427,7 @@ mod tests {
 
         let heartbeat = HeartbeatRequest {
             address: "0x0000000000000000000000000000000000000000".to_string(),
+            task_details: None,
             ..Default::default()
         };
         assert_eq!(value, Some(heartbeat));

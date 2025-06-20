@@ -371,6 +371,7 @@ mod tests {
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
             timestamp: None,
             p2p_id: None,
+            task_details: None,
         };
         if let Err(e) = app_state
             .store_context
@@ -617,6 +618,7 @@ mod tests {
         let heartbeat = HeartbeatRequest {
             address: node.address.to_string(),
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            task_details: None,
             ..Default::default()
         };
         if let Err(e) = app_state
@@ -837,6 +839,7 @@ mod tests {
         let heartbeat = HeartbeatRequest {
             address: node.address.to_string(),
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            task_details: None,
             ..Default::default()
         };
         if let Err(e) = app_state

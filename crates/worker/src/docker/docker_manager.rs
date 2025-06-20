@@ -44,7 +44,7 @@ pub struct ContainerDetails {
 }
 
 pub struct DockerManager {
-    docker: Docker,
+    pub docker: Docker,
     storage_path: String,
 }
 
