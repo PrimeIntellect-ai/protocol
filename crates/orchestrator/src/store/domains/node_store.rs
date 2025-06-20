@@ -164,9 +164,7 @@ impl NodeStore {
                     (Some(task), Some(task_state), task_details) => {
                         node.task_state = Some(task_state);
                         node.task_id = Some(task);
-                        if task_details.is_some() {
-                            node.task_details = task_details.clone();
-                        }
+                        node.task_details = task_details;
                     }
                     _ => {
                         node.task_state = None;
