@@ -22,16 +22,16 @@ impl NodeStore {
 
     pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let keys: Vec<String> = con.keys(format!("{}*", ORCHESTRATOR_BASE_KEY)).await?;
+        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).await?;
 
         if keys.is_empty() {
             return Ok(Vec::new());
         }
 
-        let node_strings: Vec<String> = redis::pipe().get(&keys).query_async(&mut con).await?;
-
         let mut nodes: Vec<OrchestratorNode> = Vec::new();
-        for node_string in node_strings {
+
+        for node in keys {
+            let node_string: String = con.get(node).await?;
             let node: OrchestratorNode = OrchestratorNode::from_string(&node_string);
             nodes.push(node);
         }
