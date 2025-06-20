@@ -10,7 +10,9 @@ use shared::models::heartbeat::TaskDetails;
 use shared::models::task::TaskState;
 use std::sync::Arc;
 
-const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node:";
+const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node";
+const ORCHESTRATOR_NODE_INDEX: &str = "orchestrator:node_index";
+
 pub struct NodeStore {
     redis: Arc<RedisStore>,
 }
@@ -22,19 +24,24 @@ impl NodeStore {
 
     pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).await?;
 
-        if keys.is_empty() {
+        let addresses: Vec<String> = con.smembers(ORCHESTRATOR_NODE_INDEX).await?;
+
+        if addresses.is_empty() {
             return Ok(Vec::new());
         }
 
-        let mut nodes: Vec<OrchestratorNode> = Vec::new();
+        let keys: Vec<String> = addresses
+            .iter()
+            .map(|addr| format!("{}:{}", ORCHESTRATOR_BASE_KEY, addr))
+            .collect();
 
-        for node in keys {
-            let node_string: String = con.get(node).await?;
-            let node: OrchestratorNode = OrchestratorNode::from_string(&node_string);
-            nodes.push(node);
-        }
+        let node_values: Vec<Option<String>> = con.mget(&keys).await?;
+
+        let mut nodes: Vec<OrchestratorNode> = node_values
+            .into_iter()
+            .filter_map(|value| value.map(|s| OrchestratorNode::from_string(&s)))
+            .collect();
 
         nodes.sort_by(|a, b| match (&a.status, &b.status) {
             (NodeStatus::Healthy, NodeStatus::Healthy) => std::cmp::Ordering::Equal,
@@ -51,15 +58,19 @@ impl NodeStore {
 
         Ok(nodes)
     }
-
     pub async fn add_node(&self, node: OrchestratorNode) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let _: () = con
+
+        // Use Redis transaction (MULTI/EXEC) to ensure atomic execution of both operations
+        let mut pipe = redis::pipe();
+        pipe.atomic()
+            .sadd(ORCHESTRATOR_NODE_INDEX, node.address.to_string())
             .set(
                 format!("{}:{}", ORCHESTRATOR_BASE_KEY, node.address),
                 node.to_string(),
-            )
-            .await?;
+            );
+
+        let _: () = pipe.query_async(&mut con).await?;
         Ok(())
     }
 
@@ -79,18 +90,30 @@ impl NodeStore {
 
     pub async fn get_uninvited_nodes(&self) -> Result<Vec<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).await?;
-        let mut nodes: Vec<OrchestratorNode> = Vec::new();
 
-        for key in keys {
-            if let Ok(node_string) = con.get::<_, String>(&key).await {
-                if let Ok(node) = serde_json::from_str::<OrchestratorNode>(&node_string) {
-                    if matches!(node.status, NodeStatus::Discovered) {
-                        nodes.push(node);
-                    }
-                }
-            }
+        let addresses: Vec<String> = con.smembers(ORCHESTRATOR_NODE_INDEX).await?;
+
+        if addresses.is_empty() {
+            return Ok(Vec::new());
         }
+
+        let keys: Vec<String> = addresses
+            .iter()
+            .map(|addr| format!("{}:{}", ORCHESTRATOR_BASE_KEY, addr))
+            .collect();
+
+        let node_values: Vec<Option<String>> = con.mget(&keys).await?;
+
+        let nodes: Vec<OrchestratorNode> = node_values
+            .into_iter()
+            .filter_map(|value| {
+                value.and_then(|s| {
+                    serde_json::from_str::<OrchestratorNode>(&s)
+                        .ok()
+                        .filter(|node| matches!(node.status, NodeStatus::Discovered))
+                })
+            })
+            .collect();
 
         Ok(nodes)
     }
@@ -182,6 +205,70 @@ impl NodeStore {
         }
         Ok(())
     }
+    pub async fn migrate_existing_nodes(&self) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+
+        let mut cursor = 0;
+        loop {
+            let (new_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .cursor_arg(cursor)
+                .arg("MATCH")
+                .arg(format!("{}:*", ORCHESTRATOR_BASE_KEY))
+                .arg("COUNT")
+                .arg(100)
+                .query_async(&mut con)
+                .await?;
+
+            for key in keys {
+                if let Some(address) = key.strip_prefix(&format!("{}:", ORCHESTRATOR_BASE_KEY)) {
+                    let _: () = con.sadd(ORCHESTRATOR_NODE_INDEX, address).await?;
+                }
+            }
+
+            if new_cursor == 0 {
+                break;
+            }
+            cursor = new_cursor;
+        }
+
+        // Handle legacy keys with double colons (orchestrator:node::address)
+        let mut cursor = 0;
+        loop {
+            let (new_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .cursor_arg(cursor)
+                .arg("MATCH")
+                .arg("orchestrator:node::*")
+                .arg("COUNT")
+                .arg(100)
+                .query_async(&mut con)
+                .await?;
+
+            for key in keys {
+                if let Some(address) = key.strip_prefix("orchestrator:node::") {
+                    // Add to index
+                    let _: () = con.sadd(ORCHESTRATOR_NODE_INDEX, address).await?;
+
+                    // Get the value from the old key
+                    let value: Option<String> = con.get(&key).await?;
+                    if let Some(value) = value {
+                        // Set the value with the correct key format
+                        let new_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, address);
+                        let _: () = con.set(&new_key, value).await?;
+
+                        // Delete the old key with double colons
+                        let _: () = con.del(&key).await?;
+                    }
+                }
+            }
+
+            if new_cursor == 0 {
+                break;
+            }
+            cursor = new_cursor;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -190,6 +277,7 @@ mod tests {
     use crate::models::node::NodeStatus;
     use crate::models::node::OrchestratorNode;
     use alloy::primitives::Address;
+    use redis::AsyncCommands;
     use std::str::FromStr;
 
     #[tokio::test]
@@ -267,5 +355,63 @@ mod tests {
             nodes[2].address,
             Address::from_str("0x0000000000000000000000000000000000000003").unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn test_migration_handles_double_colon_keys() {
+        let app_state = create_test_app_state().await;
+        let node_store = &app_state.store_context.node_store;
+        let mut con = app_state
+            .store_context
+            .node_store
+            .redis
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .unwrap();
+
+        let test_address = "0x66295E2B4A78d1Cb57Db16Ac0260024900A5BA9B";
+        let test_node = OrchestratorNode {
+            address: Address::from_str(test_address).unwrap(),
+            ip_address: "192.168.1.1".to_string(),
+            port: 8080,
+            status: NodeStatus::Healthy,
+            ..Default::default()
+        };
+
+        // Manually create a legacy key with double colons
+        let legacy_key = format!("orchestrator:node::{}", test_address);
+        let _: () = con.set(&legacy_key, test_node.to_string()).await.unwrap();
+
+        // Verify the legacy key exists
+        let exists: bool = con.exists(&legacy_key).await.unwrap();
+        assert!(exists);
+
+        // Run migration
+        node_store.migrate_existing_nodes().await.unwrap();
+
+        // Verify the legacy key is removed
+        let legacy_exists: bool = con.exists(&legacy_key).await.unwrap();
+        assert!(!legacy_exists);
+
+        // Verify the correct key exists
+        let correct_key = format!("orchestrator:node:{}", test_address);
+        let correct_exists: bool = con.exists(&correct_key).await.unwrap();
+        assert!(correct_exists);
+
+        // Verify the node is in the index
+        let in_index: bool = con
+            .sismember("orchestrator:node_index", test_address)
+            .await
+            .unwrap();
+        assert!(in_index);
+
+        // Verify we can retrieve the node correctly
+        let retrieved_node = node_store
+            .get_node(&Address::from_str(test_address).unwrap())
+            .await
+            .unwrap();
+        assert!(retrieved_node.is_some());
+        assert_eq!(retrieved_node.unwrap().address, test_node.address);
     }
 }
