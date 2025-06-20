@@ -1,6 +1,7 @@
 use alloy::primitives::Address;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use shared::models::heartbeat::TaskDetails;
 use shared::models::node::{ComputeSpecs, DiscoveryNode};
 use shared::models::task::TaskState;
 use std::fmt::{self, Display};
@@ -15,6 +16,8 @@ pub struct OrchestratorNode {
 
     pub task_id: Option<String>,
     pub task_state: Option<TaskState>,
+    #[serde(default)]
+    pub task_details: Option<TaskDetails>,
     pub version: Option<String>,
     pub p2p_id: Option<String>,
     pub last_status_change: Option<DateTime<Utc>>,
@@ -49,6 +52,7 @@ impl From<DiscoveryNode> for OrchestratorNode {
             p2p_id: None,
             last_status_change: None,
             first_seen: None,
+            task_details: None,
             compute_specs: discovery_node.compute_specs.clone(),
             worker_p2p_id: discovery_node.worker_p2p_id.clone(),
             worker_p2p_addresses: discovery_node.worker_p2p_addresses.clone(),

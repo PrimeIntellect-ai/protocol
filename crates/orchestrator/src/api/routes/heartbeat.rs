@@ -61,6 +61,7 @@ async fn heartbeat(
             node_address,
             task_info.task_id.clone(),
             task_info.task_state.clone(),
+            task_info.task_details,
         )
         .await
     {

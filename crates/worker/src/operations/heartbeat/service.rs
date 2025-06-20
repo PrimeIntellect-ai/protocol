@@ -2,12 +2,11 @@ use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
-use bollard::container::InspectContainerOptions;
 use log;
 use log::info;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
-use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse, TaskDetails};
+use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
 use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
@@ -155,12 +154,6 @@ async fn send_heartbeat(
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let task_details = if let Some(task) = &current_task_state {
-        collect_task_details(&docker_service, task).await
-    } else {
-        None
-    };
-
     let request = if let Some(task) = current_task_state {
         let metrics_for_task = metrics_store
             .get_metrics_for_task(task.id.to_string())
@@ -177,14 +170,11 @@ async fn send_heartbeat(
             ),
             timestamp: Some(ts),
             p2p_id,
-            task_details,
+            ..Default::default()
         }
     } else {
         HeartbeatRequest {
             address: wallet.address().to_string(),
-            task_id: None,
-            task_state: None,
-            metrics: None,
             version: Some(
                 option_env!("WORKER_VERSION")
                     .unwrap_or(env!("CARGO_PKG_VERSION"))
@@ -192,7 +182,7 @@ async fn send_heartbeat(
             ),
             timestamp: Some(ts),
             p2p_id,
-            task_details: None,
+            ..Default::default()
         }
     };
 
@@ -298,69 +288,4 @@ async fn send_heartbeat(
     }
 
     Ok(response.data)
-}
-
-async fn collect_task_details(
-    docker_service: &Arc<DockerService>,
-    task: &shared::models::task::Task,
-) -> Option<TaskDetails> {
-    let config_hash = task.generate_config_hash();
-    let container_name = format!("prime-task-{}-{:x}", task.id, config_hash);
-
-    let docker_manager = &docker_service.docker_manager;
-    match docker_manager.list_containers(true).await {
-        Ok(containers) => {
-            let container = containers
-                .iter()
-                .find(|c| c.names.contains(&format!("/{}", container_name)));
-
-            if let Some(container) = container {
-                match docker_manager.get_container_details(&container.id).await {
-                    Ok(details) => {
-                        let docker_image_id = if let Ok(inspect_result) = docker_manager
-                            .docker
-                            .inspect_container(
-                                &container.id,
-                                Some(InspectContainerOptions { size: false }),
-                            )
-                            .await
-                        {
-                            inspect_result.image
-                        } else {
-                            Some(container.image.clone())
-                        };
-
-                        Some(TaskDetails {
-                            docker_image_id,
-                            container_id: Some(container.id.clone()),
-                            container_status: details.status.map(|s| format!("{:?}", s)),
-                            container_created_at: Some(container.created),
-                            container_exit_code: details.status_code,
-                        })
-                    }
-                    Err(e) => {
-                        log::debug!("Failed to get container details: {}", e);
-                        Some(TaskDetails {
-                            docker_image_id: Some(container.image.clone()),
-                            container_id: Some(container.id.clone()),
-                            container_status: None,
-                            container_created_at: Some(container.created),
-                            container_exit_code: None,
-                        })
-                    }
-                }
-            } else {
-                log::debug!(
-                    "Container {} not found for task {}",
-                    container_name,
-                    task.id
-                );
-                None
-            }
-        }
-        Err(e) => {
-            log::debug!("Failed to list containers: {}", e);
-            None
-        }
-    }
 }
