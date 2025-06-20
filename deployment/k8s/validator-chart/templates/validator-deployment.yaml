@@ -47,8 +47,13 @@ spec:
                   key: validatorKey
             - name: DISCOVERY_URLS
               value: {{ .Values.env.DISCOVERY_URLS }}
+            {{- if not .Values.env.REDIS_URL }}
             - name: REDIS_URL
               value: "redis://{{ include "validator.redisName" . }}:6379"
+            {{- else }}
+            - name: REDIS_URL
+              value: {{ .Values.env.REDIS_URL }}
+            {{- end }}
             {{- if .Values.env.TOPLOC_CONFIGS }}
             - name: TOPLOC_CONFIGS
               value: {{ .Values.env.TOPLOC_CONFIGS | quote }}

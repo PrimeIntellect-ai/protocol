@@ -1,3 +1,4 @@
+{{- if not .Values.env.REDIS_URL }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,3 +34,4 @@ spec:
         - name: redis-data
           persistentVolumeClaim:
             claimName: {{ include "orchestrator.redisPVCName" . }}
+{{- end }}

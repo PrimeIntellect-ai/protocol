@@ -1,3 +1,4 @@
+{{- if not .Values.env.REDIS_URL }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -9,3 +10,4 @@ spec:
   resources:
     requests:
       storage: 10Gi
+{{- end }}

@@ -29,8 +29,13 @@
       value: {{ .root.Values.env.RPC_URL }}
     - name: MODE
       value: {{ .mode }}
+    {{- if not .root.Values.env.REDIS_URL }}
     - name: REDIS_STORE_URL
       value: "redis://{{ include "orchestrator.redisName" .root }}:6379"
+    {{- else }}
+    - name: REDIS_STORE_URL
+      value: {{ .root.Values.env.REDIS_URL }}
+    {{- end }}
     - name: DISCOVERY_URLS
       value: {{ .root.Values.env.DISCOVERY_URLS }}
     - name: COORDINATOR_KEY
