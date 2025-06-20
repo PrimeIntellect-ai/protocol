@@ -20,9 +20,13 @@ impl DockerState {
 
     pub async fn set_current_task(&self, task: Option<Task>) {
         let mut current_task = self.current_task.lock().await;
-        if let (Some(new_task), Some(existing_task)) = (&task, &*current_task) {
-            if new_task.id == existing_task.id {
-                return;
+        if let Some(existing_task) = &*current_task {
+            if let Some(new_task) = &task {
+                if existing_task.id == new_task.id
+                    && existing_task.generate_config_hash() == new_task.generate_config_hash()
+                {
+                    return;
+                }
             }
         }
         *current_task = task;

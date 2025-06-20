@@ -14,6 +14,7 @@ testnet = []
 [dependencies]
 tokio = { workspace = true }
 alloy = { workspace = true }
+alloy-provider = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 url = { workspace = true }
@@ -21,7 +22,7 @@ actix-web = { workspace = true }
 futures-util = { workspace = true }
 hex = { workspace = true }
 uuid = { workspace = true }
-redis = { workspace = true }
+redis = { workspace = true, features = ["aio", "tokio-comp"] }
 dashmap = "6.1.0"
 anyhow = { workspace = true }
 nalgebra = { workspace = true }
@@ -30,3 +31,7 @@ rand = "0.9.0"
 google-cloud-storage = "0.24.0"
 base64 = "0.22.1"
 chrono = { workspace = true, features = ["serde"] }
+async-trait = "0.1.88"
+regex = "1.11.1"
+iroh = { workspace = true }
+rand_v8 = { workspace = true }

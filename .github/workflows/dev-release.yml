@@ -13,22 +13,9 @@ permissions:
   packages: write
 
 jobs:
-  cleanup-old-releases:
-    name: Cleanup Old Development Releases
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Delete old development releases
-        uses: dev-drprasad/delete-older-releases@v0.3.2
-        with:
-          keep_latest: 5
-          delete_tags: true
-          delete_tag_pattern: ^dev-
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-and-release:
     name: Build and Create Development Release
-    needs: cleanup-old-releases
     runs-on: ubuntu-22.04
     
     steps:
@@ -42,8 +29,34 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Generate next version number
+        id: next_version
+        run: |
+          # Get the latest production version (e.g., v0.1.7)
+          LATEST_PROD=$(git tag --list "v*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || echo "v0.1.7")
+
+          # Compute next version (increment the patch version)
+          NEXT_PROD=$(echo "$LATEST_PROD" | awk -F. -v OFS=. '{$NF++; print}')
+
+          # Find the last beta version and increment it, or start at beta.1 if none exists
+          LAST_BETA=$(git tag --list "${NEXT_PROD}-beta.*" | sort -V | tail -n1)
+
+          # If there is no existing beta version, start from beta.1
+          if [ -z "$LAST_BETA" ]; then
+            COUNT=1
+          else
+            COUNT=$(echo $LAST_BETA | sed 's/.*beta\.\([0-9]*\)/\1/')
+            COUNT=$((COUNT + 1))
+          fi
+
+          TAG_NAME="${NEXT_PROD}-beta.${COUNT}"
+
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+
       # Use all available cores for the build
       - name: Build all workspace members
+        env:
+          WORKER_VERSION: ${{ steps.next_version.outputs.tag_name }}
         run: |
           export CARGO_BUILD_JOBS=$(nproc)
           cargo build --release --workspace
@@ -74,57 +87,17 @@ jobs:
           done
           cd .. 
 
-      - name: Generate next version number
-        id: next_version
+      - name: Create development tag
         run: |
-          # Get the latest production version (e.g., v0.1.7)
-          LATEST_PROD=$(git tag --list "v*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || echo "v0.1.7")
-
-          # Compute next version (increment the patch version)
-          NEXT_PROD=$(echo "$LATEST_PROD" | awk -F. -v OFS=. '{$NF++; print}')
-
-          # Find the last beta version and increment it, or start at beta.1 if none exists
-          LAST_BETA=$(git tag --list "${NEXT_PROD}-beta.*" | sort -V | tail -n1)
-
-          # If there is no existing beta version, start from beta.1
-          if [ -z "$LAST_BETA" ]; then
-            COUNT=1
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG_NAME=${{ steps.next_version.outputs.tag_name }}
+          if git tag --list "$TAG_NAME" | grep -q "$TAG_NAME"; then
+            echo "Tag $TAG_NAME already exists. Skipping tag creation."
           else
-            COUNT=$(echo $LAST_BETA | sed 's/.*beta\.\([0-9]*\)/\1/')
-            COUNT=$((COUNT + 1))
+            git tag "$TAG_NAME"
+            git push origin "$TAG_NAME"
           fi
-
-          TAG_NAME="${NEXT_PROD}-beta.${COUNT}"
-
-          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.next_version.outputs.tag_name }}
-          name: Development Build ${{ steps.next_version.outputs.tag_name }}
-          body: |
-            ⚠️ Development Build (Not for Production Use)
-            
-            Branch: develop
-            Commit: ${{ github.sha }}
-            Build Date: ${{ steps.next_version.outputs.tag_name }}
-            
-            Platform:
-            - Linux x86_64
-            
-            Components:
-            - worker
-            - Validator
-            - Orchestrator
-            - Discovery svc 
-            
-            Note: This is an automated development build. For stable releases, please use builds from the master branch.
-          files: release-artifacts/*
-          prerelease: true
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
@@ -134,6 +107,18 @@ jobs:
       # Setup Google Cloud SDK
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
+      
+      - name: Upload binaries to GCS
+        run: |
+          # Upload binaries to versioned folder
+          gsutil -m cp release-artifacts/* gs://protocol-repo-assets/builds/${{ steps.next_version.outputs.tag_name }}/
+    
+          # Also upload to 'latest' for easy access to newest dev build
+          gsutil -m cp release-artifacts/* gs://protocol-repo-assets/builds/latest/
+    
+          echo "Binaries uploaded to:"
+          echo "- gs://protocol-repo-assets/builds/${{ steps.next_version.outputs.tag_name }}/"
+          echo "- gs://protocol-repo-assets/builds/latest/"
       
       - name: Generate Docker metadata
         id: meta

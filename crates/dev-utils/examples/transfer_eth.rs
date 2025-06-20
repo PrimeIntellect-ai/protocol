@@ -34,8 +34,7 @@ async fn main() -> Result<()> {
 
     let balance_before = wallet.provider.get_balance(wallet.signer.address()).await?;
     // Start of Selection
-    let accounts = wallet.provider.get_accounts().await?;
-    let from = accounts[0];
+    let from = wallet.signer.address();
     let to = Address::from_str(&args.address).unwrap();
     let amount = U256::from(args.amount);
     let tx = TransactionRequest::default()
@@ -56,7 +55,7 @@ async fn main() -> Result<()> {
     let balance_after = wallet.provider.get_balance(to).await?;
     println!(
         "Receiver's ETH balance after transaction: {} ETH",
-        balance_after / U256::from(10u64.pow(18))
+        alloy::primitives::utils::format_ether(balance_after)
     );
 
     Ok(())

@@ -1,8 +1,8 @@
 use alloy::primitives::Address;
+use alloy::providers::RootProvider;
 use clap::Parser;
 use eyre::Result;
 use shared::web3::contracts::core::builder::ContractBuilder;
-use shared::web3::wallet::Wallet;
 use std::str::FromStr;
 use url::Url;
 
@@ -28,10 +28,10 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let wallet = Wallet::new(&args.key, Url::parse(&args.rpc_url)?).unwrap();
+    let provider = RootProvider::new_http(Url::parse(&args.rpc_url).unwrap());
 
     // Build the contract
-    let contracts = ContractBuilder::new(&wallet)
+    let contracts = ContractBuilder::new(provider)
         .with_compute_registry()
         .with_ai_token() // Initialize AI Token
         .with_prime_network() // Initialize Prime Network

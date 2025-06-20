@@ -6,13 +6,17 @@ mint-ai-tokens-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} 
 
+test-concurrent-calls:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run -p dev-utils --example test_concurrent_calls -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+
 mint-ai-tokens-to-federator:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example mint_ai_token -- --address $${FEDERATOR_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
 
 transfer-eth-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example transfer_eth -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 10000000000000000
+	cargo run -p dev-utils --example transfer_eth -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 100000000000000000
 
 transfer-eth-to-pool-owner:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -50,6 +54,7 @@ setup-dev-env:
 	make create-training-domain
 	make create-synth-data-domain
 	make mint-ai-tokens-to-federator
+	make transfer-eth-to-pool-owner
 
 
 up:
@@ -68,22 +73,26 @@ whitelist-provider:
 
 watch-discovery:
 	set -a; source .env; set +a; \
-	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL}"
+	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL} --max-nodes-per-ip $${MAX_NODES_PER_IP:-2}"
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8091 --external-ip $${WORKER_EXTERNAL_IP:-localhost} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
+	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8091 --discovery-url $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
+
+watch-worker-two:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8092 --discovery-url $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --private-key-node $${PRIVATE_KEY_NODE_2} --private-key-provider $${PRIVATE_KEY_PROVIDER} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info} --disable-state-storing --no-auto-recover"
 
 watch-check:
 	cargo watch -w crates/worker/src -x "run --bin worker -- check"	
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} --toploc-server-url $${TOPLOC_SERVER_URL} --toploc-auth-token $${TOPLOC_AUTH_TOKEN} --s3-credentials $${S3_CREDENTIALS} --bucket-name $${BUCKET_NAME} -l $${LOG_LEVEL:-info} --toploc-grace-interval $${TOPLOC_GRACE_INTERVAL:-30}"
+	cargo watch -w crates/validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --discovery-urls $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --pool-id $${WORKER_COMPUTE_POOL_ID} --bucket-name $${BUCKET_NAME} -l $${LOG_LEVEL:-info} --toploc-grace-interval $${TOPLOC_GRACE_INTERVAL:-30} --incomplete-group-grace-period-minutes $${INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES:-1} --use-grouping"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --s3-credentials $$S3_CREDENTIALS --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3}"
+	cargo watch -w crates/orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --discovery-urls $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3} --max-healthy-nodes-with-same-endpoint $${MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT:-2}"
 
 build-worker:
 	cargo build --release --bin worker
@@ -145,11 +154,27 @@ watch-worker-remote: setup-remote setup-tunnel sync-remote
 			set -a && source .env && set +a && \
 			export EXTERNAL_IP=$(EXTERNAL_IP) && \
 			clear && \
-			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w worker/src -x \"run --bin worker -- run \
+			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w crates/worker/src -x \"run --bin worker -- run \
 				--port $(PORT) \
-				--external-ip \$$EXTERNAL_IP \
 				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
 				--auto-accept \
+				2>&1 | tee worker.log\"'"
+
+.PHONY: watch-worker-remote-two
+watch-worker-remote-two: setup-remote setup-tunnel sync-remote
+	$(SSH_CONNECTION) -t "cd ~/$(notdir $(CURDIR)) && \
+		export PATH=\"\$$HOME/.cargo/bin:\$$PATH\" && \
+		. \"\$$HOME/.cargo/env\" && \
+		export TERM=xterm-256color && \
+		bash --login -i -c '\
+			set -a && source .env && set +a && \
+			export EXTERNAL_IP=$(EXTERNAL_IP) && \
+			clear && \
+			RUST_BACKTRACE=1 RUST_LOG=debug cargo watch -w crates/worker/src -x \"run --bin worker -- run \
+				--port $(PORT) \
+				--compute-pool-id \$$WORKER_COMPUTE_POOL_ID \
+				--auto-accept \
+				--private-key-node \$$PRIVATE_KEY_NODE_2 \
 				2>&1 | tee worker.log\"'"
 
 # Kill SSH tunnel
@@ -164,6 +189,12 @@ remote-worker:
 	@trap 'make kill-tunnel' EXIT; \
 	make watch-worker-remote
 
+.PHONY: remote-worker-two
+remote-worker-two:
+	@trap 'make kill-tunnel' EXIT; \
+	make watch-worker-remote-two
+
+
 # testing:
 eject-node:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -171,11 +202,11 @@ eject-node:
 
 sign-message:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- sign-message --message example-content --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$PRIVATE_KEY_NODE"
+	cargo watch -w crates/worker/src -x "run --bin worker -- sign-message --message example-content --private-key-provider $$PRIVATE_KEY_PROVIDER --private-key-node $$PRIVATE_KEY_NODE"
 
 balance:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w worker/src -x "run --bin worker -- balance --private-key $$PRIVATE_KEY_PROVIDER --rpc-url $$RPC_URL"
+	cargo watch -w crates/worker/src -x "run --bin worker -- balance --private-key $$PRIVATE_KEY_PROVIDER --rpc-url $$RPC_URL"
 
 get-node-info:
 	set -a; source ${ENV_FILE}; set +a; \

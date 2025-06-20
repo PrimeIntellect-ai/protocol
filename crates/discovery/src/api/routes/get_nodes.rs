@@ -9,7 +9,7 @@ use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 
 pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
-    let nodes = data.node_store.get_nodes();
+    let nodes = data.node_store.get_nodes().await;
     match nodes {
         Ok(nodes) => {
             let response = ApiResponse::new(true, nodes);
@@ -48,12 +48,24 @@ pub async fn get_nodes_for_pool(
     pool_id: web::Path<String>,
     req: actix_web::HttpRequest,
 ) -> HttpResponse {
-    let nodes = data.node_store.get_nodes();
+    let nodes = data.node_store.get_nodes().await;
     match nodes {
         Ok(nodes) => {
             let id_clone = pool_id.clone();
-            let pool_contract_id: U256 = id_clone.parse::<U256>().unwrap();
-            let pool_id: u32 = pool_id.parse().unwrap();
+            let pool_contract_id: U256 = match id_clone.parse::<U256>() {
+                Ok(id) => id,
+                Err(_) => {
+                    return HttpResponse::BadRequest()
+                        .json(ApiResponse::new(false, "Invalid pool ID format"));
+                }
+            };
+            let pool_id: u32 = match pool_id.parse() {
+                Ok(id) => id,
+                Err(_) => {
+                    return HttpResponse::BadRequest()
+                        .json(ApiResponse::new(false, "Invalid pool ID format"));
+                }
+            };
 
             match data.contracts.clone() {
                 Some(contracts) => {
@@ -112,7 +124,7 @@ pub async fn get_nodes_for_pool(
 }
 
 pub async fn get_node_by_subkey(node_id: web::Path<String>, data: Data<AppState>) -> HttpResponse {
-    let node = data.node_store.get_node_by_id(&node_id.to_string());
+    let node = data.node_store.get_node_by_id(&node_id.to_string()).await;
 
     match node {
         Ok(Some(node)) => HttpResponse::Ok().json(ApiResponse::new(true, node)),
@@ -144,6 +156,8 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            max_nodes_per_ip: 1,
+            chain_sync_enabled: true,
         };
         let app = test::init_service(
             App::new()
@@ -158,9 +172,9 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             compute_pool_id: 0,
-            compute_specs: None,
+            ..Default::default()
         };
-        match app_state.node_store.register_node(sample_node) {
+        match app_state.node_store.register_node(sample_node).await {
             Ok(_) => (),
             Err(_) => {
                 panic!("Error registering node");
@@ -171,7 +185,10 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
-        let api_response: ApiResponse<Vec<DiscoveryNode>> = serde_json::from_slice(&body).unwrap();
+        let api_response: ApiResponse<Vec<DiscoveryNode>> = match serde_json::from_slice(&body) {
+            Ok(response) => response,
+            Err(_) => panic!("Failed to deserialize response"),
+        };
         assert!(api_response.success);
         assert_eq!(api_response.data.len(), 1);
     }
@@ -182,6 +199,8 @@ mod tests {
             node_store: Arc::new(NodeStore::new(RedisStore::new_test())),
             contracts: None,
             last_chain_sync: Arc::new(Mutex::new(None::<SystemTime>)),
+            max_nodes_per_ip: 1,
+            chain_sync_enabled: true,
         };
         let app = test::init_service(
             App::new()
@@ -197,9 +216,9 @@ mod tests {
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
             compute_pool_id: 0,
-            compute_specs: None,
+            ..Default::default()
         };
-        match app_state.node_store.register_node(older_node) {
+        match app_state.node_store.register_node(older_node).await {
             Ok(_) => (),
             Err(_) => {
                 panic!("Error registering node");
@@ -216,9 +235,9 @@ mod tests {
             ip_address: "127.0.0.2".to_string(),
             port: 8081,
             compute_pool_id: 0,
-            compute_specs: None,
+            ..Default::default()
         };
-        match app_state.node_store.register_node(newer_node) {
+        match app_state.node_store.register_node(newer_node).await {
             Ok(_) => (),
             Err(_) => {
                 panic!("Error registering node");
@@ -230,7 +249,10 @@ mod tests {
         assert!(resp.status().is_success());
 
         let body = test::read_body(resp).await;
-        let api_response: ApiResponse<Vec<DiscoveryNode>> = serde_json::from_slice(&body).unwrap();
+        let api_response: ApiResponse<Vec<DiscoveryNode>> = match serde_json::from_slice(&body) {
+            Ok(response) => response,
+            Err(_) => panic!("Failed to deserialize response"),
+        };
 
         assert!(api_response.success);
         assert_eq!(api_response.data.len(), 2);
@@ -257,14 +279,13 @@ mod tests {
                     ip_address: "192.168.1.1".to_string(),
                     port: 8080,
                     compute_pool_id: 1,
-                    compute_specs: None,
+                    ..Default::default()
                 },
                 is_validated: true,
                 is_provider_whitelisted: true,
                 is_active: true,
-                last_updated: None,
-                created_at: None,
                 is_blacklisted: false,
+                ..Default::default()
             },
             DiscoveryNode {
                 node: Node {
@@ -273,14 +294,13 @@ mod tests {
                     ip_address: "192.168.1.2".to_string(),
                     port: 8080,
                     compute_pool_id: 1,
-                    compute_specs: None,
+                    ..Default::default()
                 },
                 is_validated: true,
                 is_provider_whitelisted: true,
                 is_active: false,
-                last_updated: None,
-                created_at: None,
                 is_blacklisted: false,
+                ..Default::default()
             },
         ];
 
@@ -292,14 +312,13 @@ mod tests {
                 ip_address: "192.168.1.3".to_string(),
                 port: 8080,
                 compute_pool_id: 2,
-                compute_specs: None,
+                ..Default::default()
             },
             is_validated: true,
             is_provider_whitelisted: true,
             is_active: true,
-            last_updated: None,
-            created_at: None,
             is_blacklisted: false,
+            ..Default::default()
         });
 
         // Node with same IP in different pools (active in pool 3)
@@ -310,14 +329,13 @@ mod tests {
                 ip_address: "192.168.1.4".to_string(),
                 port: 8080,
                 compute_pool_id: 3,
-                compute_specs: None,
+                ..Default::default()
             },
             is_validated: true,
             is_provider_whitelisted: true,
             is_active: true,
-            last_updated: None,
-            created_at: None,
             is_blacklisted: false,
+            ..Default::default()
         });
 
         // This node should be filtered out because it shares IP with an active node in pool 3
@@ -328,14 +346,13 @@ mod tests {
                 ip_address: "192.168.1.4".to_string(),
                 port: 8081,
                 compute_pool_id: 1,
-                compute_specs: None,
+                ..Default::default()
             },
             is_validated: true,
             is_provider_whitelisted: true,
             is_active: false,
-            last_updated: None,
-            created_at: None,
             is_blacklisted: false,
+            ..Default::default()
         });
 
         // Test filtering for pool 1
@@ -373,14 +390,13 @@ mod tests {
                     ip_address: "192.168.1.1".to_string(),
                     port: 8080,
                     compute_pool_id: 1,
-                    compute_specs: None,
+                    ..Default::default()
                 },
                 is_validated: true,
                 is_provider_whitelisted: true,
                 is_active: false,
-                last_updated: None,
-                created_at: None,
                 is_blacklisted: false,
+                ..Default::default()
             },
             // Inactive node in pool 2 with same IP
             DiscoveryNode {
@@ -390,14 +406,13 @@ mod tests {
                     ip_address: "192.168.1.1".to_string(),
                     port: 8080,
                     compute_pool_id: 2,
-                    compute_specs: None,
+                    ..Default::default()
                 },
                 is_validated: true,
                 is_provider_whitelisted: true,
                 is_active: false,
-                last_updated: None,
-                created_at: None,
                 is_blacklisted: false,
+                ..Default::default()
             },
         ];
 

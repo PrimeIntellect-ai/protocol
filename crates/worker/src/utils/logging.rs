@@ -74,7 +74,14 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
         .add_directive("hyper=warn".parse()?)
         .add_directive("hyper_util=warn".parse()?)
         .add_directive("bollard=warn".parse()?)
-        .add_directive("alloy=warn".parse()?);
+        .add_directive("alloy=warn".parse()?)
+        .add_directive("iroh=error".parse()?)
+        .add_directive("iroh_net=error".parse()?)
+        .add_directive("iroh_quinn=error".parse()?)
+        .add_directive("iroh_base=error".parse()?)
+        .add_directive("quinn=error".parse()?)
+        .add_directive("quinn_proto=error".parse()?)
+        .add_directive("tracing::span=warn".parse()?);
 
     let fmt_layer = fmt::layer()
         .with_target(false)
@@ -94,10 +101,15 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
     if let Some(loki_url_str) = loki_url {
         let loki_url_parsed = Url::parse(&loki_url_str)?;
 
+        let ip: String = match external_ip {
+            Some(Some(ip_addr)) => ip_addr.to_string(),
+            _ => "Unknown".to_string(),
+        };
+
         let (loki_layer, task) = tracing_loki::builder()
             .label("app", "prime-worker")?
             .label("version", env!("CARGO_PKG_VERSION"))?
-            .label("external_ip", external_ip.unwrap_or_default())?
+            .label("external_ip", ip)?
             .label("compute_pool", compute_pool.unwrap_or_default().to_string())?
             .label("port", port.unwrap_or_default().to_string())?
             .build_url(loki_url_parsed)?;

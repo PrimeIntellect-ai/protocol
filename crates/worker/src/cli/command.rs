@@ -1,7 +1,7 @@
-use crate::api::server::start_server;
 use crate::checks::hardware::HardwareChecker;
 use crate::checks::issue::IssueReport;
 use crate::checks::software::SoftwareChecker;
+use crate::checks::stun::StunCheck;
 use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
@@ -9,6 +9,8 @@ use crate::metrics::store::MetricsStore;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderOperations;
+use crate::p2p::P2PContext;
+use crate::p2p::P2PService;
 use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
@@ -30,8 +32,13 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+const APP_VERSION: &str = match option_env!("WORKER_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version = APP_VERSION, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -44,13 +51,13 @@ pub enum Commands {
         #[arg(long, default_value = "http://localhost:8545")]
         rpc_url: String,
 
-        /// Port number for the worker to listen on
+        /// Port number for the worker to listen on - DEPRECATED
         #[arg(long, default_value = "8080")]
         port: u16,
 
         /// External IP address for the worker to advertise
         #[arg(long)]
-        external_ip: String,
+        external_ip: Option<String>,
 
         /// Compute pool ID
         #[arg(long)]
@@ -69,8 +76,8 @@ pub enum Commands {
         disable_state_storing: bool,
 
         /// Auto recover from previous state
-        #[arg(long, default_value = "true")]
-        auto_recover: bool,
+        #[arg(long, default_value = "false")]
+        no_auto_recover: bool,
 
         /// Discovery service URL
         #[arg(long)]
@@ -96,10 +103,6 @@ pub enum Commands {
         #[arg(long, default_value = "false")]
         skip_system_checks: bool,
 
-        /// Silence metrics logging
-        #[arg(long, default_value = "false")]
-        silence_metrics: bool,
-
         /// Loki URL
         #[arg(long)]
         loki_url: Option<String>,
@@ -107,6 +110,10 @@ pub enum Commands {
         /// Log level
         #[arg(long)]
         log_level: Option<String>,
+
+        /// Storage path for worker data (overrides automatic selection)
+        #[arg(long)]
+        storage_path: Option<String>,
     },
     Check {},
 
@@ -169,7 +176,7 @@ pub async fn execute_command(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match command {
         Commands::Run {
-            port,
+            port: _,
             external_ip,
             compute_pool_id,
             dry_run: _,
@@ -177,19 +184,19 @@ pub async fn execute_command(
             discovery_url,
             state_dir_overwrite,
             disable_state_storing,
-            auto_recover,
+            no_auto_recover,
             private_key_provider,
             private_key_node,
             auto_accept,
             funding_retry_count,
             skip_system_checks,
-            silence_metrics,
             loki_url: _,
             log_level: _,
+            storage_path,
         } => {
-            if *disable_state_storing && *auto_recover {
+            if *disable_state_storing && !(*no_auto_recover) {
                 Console::user_error(
-                    "Cannot disable state storing and enable auto recover at the same time.",
+                    "Cannot disable state storing and enable auto recover at the same time. Use --no-auto-recover to disable auto recover.",
                 );
                 std::process::exit(1);
             }
@@ -213,46 +220,42 @@ pub async fn execute_command(
                 std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
             };
 
-            let mut recover_last_state = *auto_recover;
-            let version = env!("CARGO_PKG_VERSION");
+            let mut recover_last_state = !(*no_auto_recover);
+            let version = APP_VERSION;
             Console::section("🚀 PRIME WORKER INITIALIZATION - beta");
             Console::info("Version", version);
             /*
              Initialize Wallet instances
             */
-            let provider_wallet_instance = Arc::new(
+            let provider_wallet_instance =
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         error!("Failed to create wallet: {}", err);
                         std::process::exit(1);
                     }
-                },
-            );
+                };
 
-            let node_wallet_instance = Arc::new(
+            let node_wallet_instance =
                 match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         error!("❌ Failed to create wallet: {}", err);
                         std::process::exit(1);
                     }
-                },
-            );
+                };
 
             /*
              Initialize dependencies - services, contracts, operations
             */
-            let contracts = Arc::new(
-                ContractBuilder::new(&provider_wallet_instance)
-                    .with_compute_registry()
-                    .with_ai_token()
-                    .with_prime_network()
-                    .with_compute_pool()
-                    .with_stake_manager()
-                    .build()
-                    .unwrap(),
-            );
+            let contracts = ContractBuilder::new(provider_wallet_instance.provider())
+                .with_compute_registry()
+                .with_ai_token()
+                .with_prime_network()
+                .with_compute_pool()
+                .with_stake_manager()
+                .build()
+                .unwrap();
 
             let provider_ops = ProviderOperations::new(
                 provider_wallet_instance.clone(),
@@ -270,9 +273,11 @@ pub async fn execute_command(
                 compute_node_state,
             );
 
-            let discovery_wallet = node_wallet_instance.clone();
+            let discovery_urls = vec![discovery_url
+                .clone()
+                .unwrap_or("http://localhost:8089".to_string())];
             let discovery_service =
-                DiscoveryService::new(discovery_wallet, discovery_url.clone(), None);
+                DiscoveryService::new(node_wallet_instance.clone(), discovery_urls, None);
             let discovery_state = state.clone();
             let discovery_updater =
                 DiscoveryUpdater::new(discovery_service.clone(), discovery_state.clone());
@@ -295,14 +300,23 @@ pub async fn execute_command(
                 }
             };
 
+            let stun_check = StunCheck::new(Duration::from_secs(5), 0);
+            let detected_external_ip = match stun_check.get_public_ip().await {
+                Ok(ip) => ip,
+                Err(e) => {
+                    error!("❌ Failed to get public IP: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
             let node_config = Node {
                 id: node_wallet_instance
                     .wallet
                     .default_signer()
                     .address()
                     .to_string(),
-                ip_address: external_ip.to_string(),
-                port: *port,
+                ip_address: external_ip.clone().unwrap_or(detected_external_ip.clone()),
+                port: 0,
                 provider_address: provider_wallet_instance
                     .wallet
                     .default_signer()
@@ -310,15 +324,37 @@ pub async fn execute_command(
                     .to_string(),
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id as u32,
+                worker_p2p_id: None,
+                worker_p2p_addresses: None,
             };
 
             let issue_tracker = Arc::new(RwLock::new(IssueReport::new()));
             let mut hardware_check = HardwareChecker::new(Some(issue_tracker.clone()));
-            let node_config = hardware_check.check_hardware(node_config).await.unwrap();
+            let mut node_config = match hardware_check
+                .check_hardware(node_config, storage_path.clone())
+                .await
+            {
+                Ok(config) => config,
+                Err(e) => {
+                    Console::user_error(&format!("❌ Hardware check failed: {}", e));
+                    std::process::exit(1);
+                }
+            };
             let software_checker = SoftwareChecker::new(Some(issue_tracker.clone()));
             if let Err(err) = software_checker.check_software(&node_config).await {
                 Console::user_error(&format!("❌ Software check failed: {}", err));
                 std::process::exit(1);
+            }
+
+            if let Some(external_ip) = external_ip {
+                if *external_ip != detected_external_ip {
+                    Console::warning(
+                        &format!(
+                            "Automatically detected external IP {} does not match the provided external IP {}",
+                            detected_external_ip, external_ip
+                        ),
+                    );
+                }
             }
 
             let issues = issue_tracker.read().await;
@@ -376,11 +412,13 @@ pub async fn execute_command(
             let bridge_contracts = contracts.clone();
             let bridge_wallet = node_wallet_instance.clone();
 
-            let docker_storage_path = match node_config.clone().compute_specs {
-                Some(specs) => specs.storage_path.clone(),
-                None => None,
-            };
-            let task_bridge = Arc::new(TaskBridge::new(
+            let docker_storage_path = node_config
+                .compute_specs
+                .as_ref()
+                .expect("Hardware check should have populated compute_specs")
+                .storage_path
+                .clone();
+            let task_bridge = TaskBridge::new(
                 None,
                 metrics_store,
                 Some(bridge_contracts),
@@ -388,8 +426,7 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
-                *silence_metrics,
-            ));
+            );
 
             let system_memory = node_config
                 .compute_specs
@@ -411,14 +448,16 @@ pub async fn execute_command(
                     .default_signer()
                     .address()
                     .to_string(),
+                state.get_p2p_seed(),
             ));
 
             let bridge_cancellation_token = cancellation_token.clone();
             tokio::spawn(async move {
+                let bridge_clone = task_bridge.clone();
                 tokio::select! {
                     _ = bridge_cancellation_token.cancelled() => {
                     }
-                    _ = task_bridge.run() => {
+                    _ = bridge_clone.run() => {
                     }
                 }
             });
@@ -591,6 +630,77 @@ pub async fn execute_command(
                 }
             }
 
+            // Start P2P service
+            Console::title("🔗 Starting P2P Service");
+            let heartbeat = match heartbeat_service.clone() {
+                Ok(service) => service,
+                Err(e) => {
+                    error!("❌ Heartbeat service is not available: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            let p2p_context = P2PContext {
+                docker_service: docker_service.clone(),
+                heartbeat_service: heartbeat.clone(),
+                system_state: state.clone(),
+                contracts: contracts.clone(),
+                node_wallet: node_wallet_instance.clone(),
+                provider_wallet: provider_wallet_instance.clone(),
+            };
+
+            let validators = match contracts.prime_network.get_validator_role().await {
+                Ok(validators) => validators,
+                Err(e) => {
+                    error!("Failed to get validator role: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            if validators.is_empty() {
+                error!("❌ No validator roles found on contracts - cannot start worker without validators");
+                error!("This means the smart contract has no registered validators, which is required for signature validation");
+                error!("Please ensure validators are properly registered on the PrimeNetwork contract before starting the worker");
+                std::process::exit(1);
+            }
+
+            let mut allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
+            allowed_addresses.extend(validators);
+
+            let p2p_service = match P2PService::new(
+                state.worker_p2p_seed,
+                cancellation_token.clone(),
+                Some(p2p_context),
+                node_wallet_instance.clone(),
+                allowed_addresses,
+            )
+            .await
+            {
+                Ok(service) => service,
+                Err(e) => {
+                    error!("❌ Failed to start P2P service: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            if let Err(e) = p2p_service.start().await {
+                error!("❌ Failed to start P2P listener: {}", e);
+                std::process::exit(1);
+            }
+
+            node_config.worker_p2p_id = Some(p2p_service.node_id().to_string());
+            node_config.worker_p2p_addresses = Some(
+                p2p_service
+                    .listening_addresses()
+                    .iter()
+                    .map(|addr| addr.to_string())
+                    .collect(),
+            );
+            Console::success(&format!(
+                "P2P service started with ID: {}",
+                p2p_service.node_id()
+            ));
+
             let mut attempts = 0;
             let max_attempts = 100;
             while attempts < max_attempts {
@@ -599,11 +709,40 @@ pub async fn execute_command(
                     Ok(_) => break,
                     Err(e) => {
                         attempts += 1;
-                        error!(
-                            "Attempt {}: ❌ Failed to upload discovery info: {}",
-                            attempts, e
-                        );
+                        let error_msg = e.to_string();
+
+                        // Check if this is a Cloudflare block
+                        if error_msg.contains("403 Forbidden")
+                            && (error_msg.contains("Cloudflare")
+                                || error_msg.contains("Sorry, you have been blocked")
+                                || error_msg.contains("Attention Required!"))
+                        {
+                            error!(
+                                "Attempt {}: ❌ Discovery service blocked by Cloudflare protection. This may indicate:",
+                                attempts
+                            );
+                            error!("  • Your IP address has been flagged by Cloudflare security");
+                            error!("  • Too many requests from your location");
+                            error!("  • Network configuration issues");
+                            error!("  • Discovery service may be under DDoS protection");
+                            error!(
+                                "Please contact support or try from a different network/IP address"
+                            );
+                        } else {
+                            error!(
+                                "Attempt {}: ❌ Failed to upload discovery info: {}",
+                                attempts, e
+                            );
+                        }
+
                         if attempts >= max_attempts {
+                            if error_msg.contains("403 Forbidden")
+                                && (error_msg.contains("Cloudflare")
+                                    || error_msg.contains("Sorry, you have been blocked"))
+                            {
+                                error!("❌ Unable to reach discovery service due to Cloudflare blocking after {} attempts", max_attempts);
+                                error!("This is likely a network/IP issue rather than a worker configuration problem");
+                            }
                             std::process::exit(1);
                         }
                     }
@@ -617,44 +756,32 @@ pub async fn execute_command(
 
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
-            if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone()) {
+
+            let pool_id = state.compute_pool_id.clone().unwrap_or("0".to_string());
+            if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone(), pool_id)
+            {
                 error!("❌ Failed to start node monitoring: {}", err);
                 std::process::exit(1);
             }
 
-            // 6. Start HTTP Server to receive challenges and invites to join cluster
-            Console::info(
-                "🌐 Starting endpoint service and waiting for sync with orchestrator",
-                "",
-            );
-
             discovery_updater.start_auto_update(node_config);
 
-            if let Err(err) = {
-                let heartbeat_clone = heartbeat_service.unwrap().clone();
-                if recover_last_state {
-                    info!("Recovering from previous state: {}", recover_last_state);
-                    heartbeat_clone
-                        .activate_heartbeat_if_endpoint_exists()
-                        .await;
-                }
-
-                let server_state = state.clone();
-                start_server(
-                    "0.0.0.0",
-                    *port,
-                    contracts.clone(),
-                    node_wallet_instance.clone(),
-                    provider_wallet_instance.clone(),
-                    heartbeat_clone.clone(),
-                    docker_service.clone(),
-                    pool_info,
-                    server_state,
-                )
-                .await
-            } {
-                error!("❌ Failed to start server: {}", err);
+            if recover_last_state {
+                info!("Recovering from previous state: {}", recover_last_state);
+                heartbeat.activate_heartbeat_if_endpoint_exists().await;
             }
+
+            // Keep the worker running and listening for P2P connections
+            Console::success("Worker is now running and listening for P2P connections...");
+
+            // Wait for cancellation signal to gracefully shutdown
+            cancellation_token.cancelled().await;
+
+            Console::info(
+                "Shutdown signal received",
+                "Gracefully shutting down worker...",
+            );
+
             Ok(())
         }
         Commands::Check {} => {
@@ -671,9 +798,11 @@ pub async fn execute_command(
                 compute_specs: None,
                 provider_address: String::new(),
                 compute_pool_id: 0,
+                worker_p2p_id: None,
+                worker_p2p_addresses: None,
             };
 
-            let node_config = match hardware_checker.check_hardware(node_config).await {
+            let node_config = match hardware_checker.check_hardware(node_config, None).await {
                 Ok(node_config) => node_config,
                 Err(err) => {
                     Console::user_error(&format!("❌ Hardware check failed: {}", err));
@@ -741,15 +870,13 @@ pub async fn execute_command(
 
             let provider_wallet = Wallet::new(&private_key, Url::parse(rpc_url).unwrap()).unwrap();
 
-            let contracts = Arc::new(
-                ContractBuilder::new(&provider_wallet)
-                    .with_compute_registry()
-                    .with_ai_token()
-                    .with_prime_network()
-                    .with_compute_pool()
-                    .build()
-                    .unwrap(),
-            );
+            let contracts = ContractBuilder::new(provider_wallet.provider())
+                .with_compute_registry()
+                .with_ai_token()
+                .with_prime_network()
+                .with_compute_pool()
+                .build()
+                .unwrap();
 
             let provider_balance = contracts
                 .ai_token
@@ -820,40 +947,36 @@ pub async fn execute_command(
                 std::env::var("PRIVATE_KEY_NODE").expect("PRIVATE_KEY_NODE must be set")
             };
 
-            let provider_wallet_instance = Arc::new(
+            let provider_wallet_instance =
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         Console::user_error(&format!("Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
-                },
-            );
+                };
 
-            let node_wallet_instance = Arc::new(
+            let node_wallet_instance =
                 match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
                         Console::user_error(&format!("❌ Failed to create wallet: {}", err));
                         std::process::exit(1);
                     }
-                },
-            );
+                };
             let state = Arc::new(SystemState::new(None, true, None));
             /*
              Initialize dependencies - services, contracts, operations
             */
 
-            let contracts = Arc::new(
-                ContractBuilder::new(&provider_wallet_instance)
-                    .with_compute_registry()
-                    .with_ai_token()
-                    .with_prime_network()
-                    .with_compute_pool()
-                    .with_stake_manager()
-                    .build()
-                    .unwrap(),
-            );
+            let contracts = ContractBuilder::new(provider_wallet_instance.provider())
+                .with_compute_registry()
+                .with_ai_token()
+                .with_prime_network()
+                .with_compute_pool()
+                .with_stake_manager()
+                .build()
+                .unwrap();
 
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,

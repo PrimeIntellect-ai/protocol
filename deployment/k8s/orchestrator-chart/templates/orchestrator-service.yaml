@@ -3,11 +3,43 @@ kind: Service
 metadata:
   name: {{ include "orchestrator.fullname" . }}
   namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ include "orchestrator.fullname" . }}
   annotations:
     cloud.google.com/backend-config: '{"default": "{{ include "orchestrator.backendConfigName" . }}"}'
 spec:
   selector:
+    app: {{ include "orchestrator.fullname" . }}-api
+  ports:
+    - port: 8090
+      targetPort: 8090
+---
+apiVersion: v1
+kind: Service
+metadata: 
+  name: {{ include "orchestrator.fullname" . }}-api
+  namespace: {{ .Values.namespace }}
+  labels:
     app: {{ include "orchestrator.fullname" . }}
+  annotations:
+    cloud.google.com/backend-config: '{"default": "{{ include "orchestrator.backendConfigName" . }}"}'
+spec:
+  selector:
+    app: {{ include "orchestrator.fullname" . }}-api
+  ports:
+    - port: 8090
+      targetPort: 8090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orchestrator.fullname" . }}-processor
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ include "orchestrator.fullname" . }}-processor
+spec:
+  selector:
+    app: {{ include "orchestrator.fullname" . }}-processor
   ports:
     - port: 8090
       targetPort: 8090

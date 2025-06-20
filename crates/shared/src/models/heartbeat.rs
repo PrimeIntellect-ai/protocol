@@ -20,7 +20,16 @@ impl From<HeartbeatResponse> for HttpResponse {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct TaskDetails {
+    pub docker_image_id: Option<String>,
+    pub container_id: Option<String>,
+    pub container_status: Option<String>,
+    pub container_created_at: Option<i64>,
+    pub container_exit_code: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 pub struct HeartbeatRequest {
     pub address: String,
     pub task_id: Option<String>,
@@ -29,4 +38,8 @@ pub struct HeartbeatRequest {
     #[serde(default)]
     pub version: Option<String>,
     pub timestamp: Option<u64>,
+    #[serde(default)]
+    pub p2p_id: Option<String>,
+    #[serde(default)]
+    pub task_details: Option<TaskDetails>,
 }

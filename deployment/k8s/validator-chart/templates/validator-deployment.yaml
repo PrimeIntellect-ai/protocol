@@ -45,20 +45,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "validator.secretName" . }}
                   key: validatorKey
-            - name: DISCOVERY_URL
-              value: {{ .Values.env.DISCOVERY_URL }}
+            - name: DISCOVERY_URLS
+              value: {{ .Values.env.DISCOVERY_URLS }}
             - name: REDIS_URL
               value: "redis://{{ include "validator.redisName" . }}:6379"
-            {{- if .Values.env.TOPLOC_SERVER_URL }}
-            - name: TOPLOC_SERVER_URL
-              value: {{ .Values.env.TOPLOC_SERVER_URL }}
-            {{- end }}
-            {{- if .Values.secrets.toplocAuthToken }}
-            - name: TOPLOC_AUTH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "validator.secretName" . }}
-                  key: toplocAuthToken
+            {{- if .Values.env.TOPLOC_CONFIGS }}
+            - name: TOPLOC_CONFIGS
+              value: {{ .Values.env.TOPLOC_CONFIGS | quote }}
             {{- end }}
             - name: LOG_LEVEL
               value: "{{ .Values.env.LOG_LEVEL }}"
@@ -68,14 +61,27 @@ spec:
             - name: TOPLOC_GRACE_INTERVAL
               value: "{{ .Values.env.TOPLOC_GRACE_INTERVAL }}"
             {{- end }}
+            {{- if .Values.env.BATCH_TRIGGER_SIZE }}
+            - name: BATCH_TRIGGER_SIZE
+              value: "{{ .Values.env.BATCH_TRIGGER_SIZE }}"
+            {{- end }}
             {{- if .Values.env.TOPLOC_WORK_VALIDATION_INTERVAL }}
             - name: TOPLOC_WORK_VALIDATION_INTERVAL
               value: "{{ .Values.env.TOPLOC_WORK_VALIDATION_INTERVAL }}"
+            {{- end }}
+            {{- if .Values.env.INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES }}
+            - name: INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES
+              value: "{{ .Values.env.INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES }}"
             {{- end }}
             - name: DISABLE_HARDWARE_VALIDATION
               value: "{{ .Values.env.DISABLE_HARDWARE_VALIDATION }}"
             - name: VALIDATOR_PENALTY
               value: "{{ .Values.env.VALIDATOR_PENALTY }}"
+            - name: VALIDATOR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "validator.secretName" . }}
+                  key: validatorApiKey
               
             {{- if .Values.secrets.s3Credentials }}
             - name: S3_CREDENTIALS
@@ -87,4 +93,12 @@ spec:
             {{- if .Values.computePoolId }}
             - name: POOL_ID
               value: "{{ .Values.computePoolId }}"
+            {{- end }}
+            {{- if .Values.env.USE_GROUPING }}
+            - name: USE_GROUPING
+              value: "{{ .Values.env.USE_GROUPING }}"
+            {{- end }}
+            {{- if .Values.env.DISABLE_TOPLOC_INVALIDATION }}
+            - name: DISABLE_TOPLOC_INVALIDATION
+              value: "{{ .Values.env.DISABLE_TOPLOC_INVALIDATION }}"
             {{- end }}

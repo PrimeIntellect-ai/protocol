@@ -22,17 +22,17 @@ pub mod contract_addresses {
 pub mod contract_addresses {
     use super::*;
     pub const PRIME_NETWORK_ADDRESS: Address =
-        Address::new(hex!("0x1B831318291C3C3eEd5D2f3377A3Cfe95Fb53c34"));
+        Address::new(hex!("0x8eA4f11DbfDfE2D7f8fB64Dd2c9dd4Ed610bf03E"));
     pub const AI_TOKEN_ADDRESS: Address =
-        Address::new(hex!("0xB2Ab233218232FF1880A473F17d8E70DCCDE0ec4"));
+        Address::new(hex!("0xAF874da2758fd319656D07cAD856EE1220c949d6"));
     pub const COMPUTE_REGISTRY_ADDRESS: Address =
-        Address::new(hex!("0x147f99D458Fb0Fb283167d8dAf45E276Eed8EFdC"));
+        Address::new(hex!("0x43308a48E7bf1349e0f1732e4B027af6770d8f64"));
     pub const DOMAIN_REGISTRY_ADDRESS: Address =
-        Address::new(hex!("0x05363E5fC277c2EF9bd41b544dc300c658C4Ab98"));
+        Address::new(hex!("0xc3dC276d7D23eDb8E17D40B9d04dc016a94E3380"));
     pub const STAKE_MANAGER_ADDRESS: Address =
-        Address::new(hex!("0xe546CFADD36ffB647830450994DB39Bb1992F028"));
+        Address::new(hex!("0x5bD0CFDCD2d5D548A0d161CB47234798701c91BE"));
     pub const COMPUTE_POOL_ADDRESS: Address =
-        Address::new(hex!("0x552DBd5886D87D8566283547052CCfD795631f6F"));
+        Address::new(hex!("0x8c924BE4413931384A917bE76F4f8Aa6A56a674c"));
 }
 
 pub use contract_addresses::*;

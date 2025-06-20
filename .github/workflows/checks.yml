@@ -39,6 +39,12 @@ jobs:
       - name: Run clippy
         if: success() || failure() 
         run: cargo clippy -- -D warnings
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.1.0
+
       - name: Install Redis binary
         run: |
           sudo apt-get update
@@ -46,9 +52,9 @@ jobs:
           # Ensure redis-server binary is installed but don't start the service
           sudo systemctl stop redis || true
           sudo systemctl disable redis || true
-          
+
       - name: Run tests
         if: success() || failure()  
         run: |
           redis-server --version
-          cargo test -- --nocapture
+          RUST_BACKTRACE=1 cargo test -- --nocapture

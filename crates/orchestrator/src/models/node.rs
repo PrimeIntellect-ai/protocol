@@ -1,11 +1,12 @@
 use alloy::primitives::Address;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use shared::models::node::DiscoveryNode;
+use shared::models::heartbeat::TaskDetails;
+use shared::models::node::{ComputeSpecs, DiscoveryNode};
 use shared::models::task::TaskState;
 use std::fmt::{self, Display};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OrchestratorNode {
     #[serde(serialize_with = "serialize_address")]
     pub address: Address,
@@ -15,8 +16,20 @@ pub struct OrchestratorNode {
 
     pub task_id: Option<String>,
     pub task_state: Option<TaskState>,
+    #[serde(default)]
+    pub task_details: Option<TaskDetails>,
     pub version: Option<String>,
+    pub p2p_id: Option<String>,
     pub last_status_change: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub first_seen: Option<DateTime<Utc>>,
+
+    #[serde(default)]
+    pub compute_specs: Option<ComputeSpecs>,
+    #[serde(default)]
+    pub worker_p2p_id: Option<String>,
+    #[serde(default)]
+    pub worker_p2p_addresses: Option<Vec<String>>,
 }
 
 fn serialize_address<S>(address: &Address, serializer: S) -> Result<S::Ok, S::Error>
@@ -36,7 +49,13 @@ impl From<DiscoveryNode> for OrchestratorNode {
             task_id: None,
             task_state: None,
             version: None,
+            p2p_id: None,
             last_status_change: None,
+            first_seen: None,
+            task_details: None,
+            compute_specs: discovery_node.compute_specs.clone(),
+            worker_p2p_id: discovery_node.worker_p2p_id.clone(),
+            worker_p2p_addresses: discovery_node.worker_p2p_addresses.clone(),
         }
     }
 }
@@ -57,8 +76,9 @@ impl fmt::Display for OrchestratorNode {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum NodeStatus {
+    #[default]
     Discovered,
     WaitingForHeartbeat,
     Healthy,

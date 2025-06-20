@@ -9,23 +9,20 @@ def get_default_socket_path():
     """Returns the default socket path based on the operating system."""
     return "/tmp/com.prime.worker/metrics.sock" if platform.system() == "Darwin" else "/var/run/com.prime.worker/metrics.sock"
 
-def send_message(metric, task_id=None):
+def send_message(metrics, task_id=None):
     """Sends a message to the socket."""
     socket_path = get_default_socket_path()
     print(f"Thread {threading.current_thread().name}: Sending message to socket: {socket_path}")
     
     if task_id is None:
-        task_id = "0725637c-ad20-4c30-b4e2-90cdf63b9974"
-    
+        task_id = "ac05530d-6f13-4b7b-9f18-36de020d71b3"
+    metrics["task_id"] = task_id
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(socket_path)
-            msg_buffer = []
-            for key, value in metric.items():
-                msg_buffer.append(json.dumps({"label": key, "value": value, "task_id": task_id}))
-            print(f"Thread {threading.current_thread().name}: Sending {len(msg_buffer)} objects")
-            sock.sendall(("\n".join(msg_buffer)).encode())
-            # Close immediately after sending (like in production)
+            # Send metrics directly as JSON
+            message = json.dumps(metrics)
+            sock.sendall(message.encode())
         return True
     except Exception as e:
         print(f"Thread {threading.current_thread().name}: Failed to send message: {e}")
@@ -34,30 +31,38 @@ def send_message(metric, task_id=None):
 def send_metrics():
     """Simulates sending metrics data."""
     metrics = {
-        "cpu_percent": 25.5,
-        "memory_percent": 60.2,
-        "memory_usage": 14323642368,
-        "memory_total": 507204362240,
-        "gpu_0_memory_used": 76547358720,
-        "gpu_0_memory_total": 85899345920,
-        "gpu_0_utilization": 67,
-        "gpu_1_memory_used": 76715130880,
-        "gpu_1_memory_total": 85899345920,
-        "gpu_1_utilization": 80,
-        "gpu_2_memory_used": 76715130880,
-        "gpu_2_memory_total": 85899345920,
-        "gpu_2_utilization": 90,
-        "gpu_3_memory_used": 76715130880,
-        "gpu_3_memory_total": 85899345920,
-        "gpu_3_utilization": 91,
+        "system/cpu_percent": 25.5,
+        "system/memory_percent": 60.2,
+        "system/memory_usage": 14323642368,
+        "system/memory_total": 507204362240,
+        "system/gpu_0_memory_used": 76547358720,
+        "system/gpu_0_memory_total": 85899345920,
+        "system/gpu_0_utilization": 67,
+        "system/gpu_1_memory_used": 76715130880,
+        "system/gpu_1_memory_total": 85899345920,
+        "system/gpu_1_utilization": 80,
+        "system/gpu_2_memory_used": 76715130880,
+        "system/gpu_2_memory_total": 85899345920,
+        "system/gpu_2_utilization": 90,
+        "system/gpu_3_memory_used": 76715130880,
+        "system/gpu_3_memory_total": 85899345920,
+        "system/gpu_3_utilization": 91,
     }
     send_message(metrics)
 
 def send_file_info():
-    """Simulates sending file info."""
+    """Simulates sending file info.
+
+    To simulate a submission with groups, simply create a file in s3/mappings.
+    Sample: 
+    - Filename: 1c4970c5032ba367efc537054d9d0f4595b8a7fe0901e8aa1b5c34c0c582ce84 
+    - Content for a group of size 2: Qwen0.6/PrimeIntellect/INTELLECT-2-RL-Dataset/8-18084400840775688168-2-0-0.parquet
+    """
     file_data = {
-        "file_name": "test_file.txt",
-        "file_sha": "20638f48221b266635376b399254d0faf17f69da567fd0f5deb3d6775c7c7607"
+        "output/save_path": "/path/to/save/file.txt",
+        "output/sha256": "1c4970c5032ba367efc537054d9d0f4595b8a7fe0901e8aa1b5c34c0c582ce84",
+        "output/output_flops": 1500000,
+        "output/input_flops": 500000
     }
     send_message(file_data)
 
@@ -66,8 +71,8 @@ if __name__ == "__main__":
     threads = []
     
     # Create metric sending thread
-    metric_thread = threading.Thread(target=send_metrics, name="Metrics")
-    threads.append(metric_thread)
+    #metric_thread = threading.Thread(target=send_metrics, name="Metrics")
+    #threads.append(metric_thread)
     
     # Create file info thread
     file_thread = threading.Thread(target=send_file_info, name="FileInfo")

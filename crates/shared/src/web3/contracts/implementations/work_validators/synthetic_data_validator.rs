@@ -1,20 +1,18 @@
 use crate::web3::contracts::core::contract::Contract;
-use crate::web3::wallet::Wallet;
 use alloy::{
     dyn_abi::{DynSolValue, Word},
     primitives::{Address, U256},
 };
 use anyhow::Error;
-use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Clone)]
-pub struct SyntheticDataWorkValidator {
-    pub instance: Contract,
+pub struct SyntheticDataWorkValidator<P: alloy_provider::Provider> {
+    pub instance: Contract<P>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone, Copy)]
 pub struct WorkInfo {
     pub provider: Address,
     pub node_id: Address,
@@ -22,9 +20,9 @@ pub struct WorkInfo {
     pub work_units: U256,
 }
 
-impl SyntheticDataWorkValidator {
-    pub fn new(address: Address, wallet: &Wallet, abi_file_path: &str) -> Self {
-        let instance = Contract::new(address, wallet, abi_file_path);
+impl<P: alloy_provider::Provider> SyntheticDataWorkValidator<P> {
+    pub fn new(address: Address, provider: P, abi_file_path: &str) -> Self {
+        let instance = Contract::new(address, provider, abi_file_path);
         Self { instance }
     }
 
@@ -45,7 +43,6 @@ impl SyntheticDataWorkValidator {
             .as_array()
             .ok_or_else(|| Error::msg("Result is not an array"))?;
 
-        // Map each value to a hex string
         let work_keys = array
             .iter()
             .map(|value| {
@@ -53,7 +50,6 @@ impl SyntheticDataWorkValidator {
                     .as_fixed_bytes()
                     .ok_or_else(|| Error::msg("Value is not fixed bytes"))?;
 
-                // Ensure we have exactly 32 bytes
                 if bytes.0.len() != 32 {
                     return Err(Error::msg(format!(
                         "Expected 32 bytes, got {}",
@@ -61,7 +57,6 @@ impl SyntheticDataWorkValidator {
                     )));
                 }
 
-                // Convert bytes to string
                 Ok(hex::encode(bytes.0))
             })
             .collect::<Result<Vec<String>, Error>>()?;
@@ -70,13 +65,10 @@ impl SyntheticDataWorkValidator {
     }
 
     pub async fn get_work_info(&self, pool_id: U256, work_key: &str) -> Result<WorkInfo, Error> {
-        // Convert work_key from hex string to bytes32
-        debug!("Processing work key: {}", work_key);
         let work_key_bytes = hex::decode(work_key)?;
         if work_key_bytes.len() != 32 {
             return Err(Error::msg("Work key must be 32 bytes"));
         }
-        debug!("Decoded work key bytes: {:?}", work_key_bytes);
 
         let fixed_bytes = DynSolValue::FixedBytes(Word::from_slice(&work_key_bytes), 32);
 
@@ -86,7 +78,6 @@ impl SyntheticDataWorkValidator {
             .function("getWorkInfo", &[pool_id.into(), fixed_bytes])?
             .call()
             .await?;
-        debug!("Got work info result: {:?}", result);
 
         let tuple = result
             .into_iter()
@@ -157,7 +148,6 @@ impl SyntheticDataWorkValidator {
                     .as_fixed_bytes()
                     .ok_or_else(|| Error::msg("Value is not fixed bytes"))?;
 
-                // Ensure we have exactly 32 bytes
                 if bytes.0.len() != 32 {
                     return Err(Error::msg(format!(
                         "Expected 32 bytes, got {}",
@@ -165,7 +155,6 @@ impl SyntheticDataWorkValidator {
                     )));
                 }
 
-                // Convert bytes to string
                 Ok(hex::encode(bytes.0))
             })
             .collect::<Result<Vec<String>, Error>>()?;

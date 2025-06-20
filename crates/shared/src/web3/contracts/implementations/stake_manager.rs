@@ -1,16 +1,15 @@
 use crate::web3::contracts::constants::addresses::STAKE_MANAGER_ADDRESS;
 use crate::web3::contracts::core::contract::Contract;
-use crate::web3::wallet::Wallet;
 use alloy::primitives::{Address, U256};
 
 #[derive(Clone)]
-pub struct StakeManagerContract {
-    instance: Contract,
+pub struct StakeManagerContract<P: alloy_provider::Provider> {
+    instance: Contract<P>,
 }
 
-impl StakeManagerContract {
-    pub fn new(wallet: &Wallet, abi_file_path: &str) -> Self {
-        let instance = Contract::new(STAKE_MANAGER_ADDRESS, wallet, abi_file_path);
+impl<P: alloy_provider::Provider> StakeManagerContract<P> {
+    pub fn new(provider: P, abi_file_path: &str) -> Self {
+        let instance = Contract::new(STAKE_MANAGER_ADDRESS, provider, abi_file_path);
         Self { instance }
     }
 

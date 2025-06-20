@@ -5,7 +5,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct Node {
     pub id: String,
     pub provider_address: String,
@@ -13,9 +13,13 @@ pub struct Node {
     pub port: u16,
     pub compute_pool_id: u32,
     pub compute_specs: Option<ComputeSpecs>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worker_p2p_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worker_p2p_addresses: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ComputeSpecs {
     // GPU specifications
     pub gpu: Option<GpuSpecs>,
@@ -24,16 +28,50 @@ pub struct ComputeSpecs {
     // Memory and storage specifications
     pub ram_mb: Option<u32>,
     pub storage_gb: Option<u32>,
-    pub storage_path: Option<String>,
+    pub storage_path: String,
+}
+
+impl Default for ComputeSpecs {
+    fn default() -> Self {
+        Self {
+            gpu: None,
+            cpu: None,
+            ram_mb: None,
+            storage_gb: None,
+            storage_path: "/var/lib/prime-worker".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct ComputeRequirements {
     // List of alternative GPU requirements (OR logic)
-    pub gpu: Vec<GpuSpecs>,
+    pub gpu: Vec<GpuRequirements>,
     pub cpu: Option<CpuSpecs>,
     pub ram_mb: Option<u32>,
     pub storage_gb: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+pub struct GpuRequirements {
+    pub count: Option<u32>,
+    pub model: Option<String>,
+    // per Card
+    pub memory_mb: Option<u32>,
+    pub memory_mb_min: Option<u32>,
+    pub memory_mb_max: Option<u32>,
+    // System wide GPU memory per gpu type
+    pub total_memory_min: Option<u32>,
+    pub total_memory_max: Option<u32>,
+    pub indices: Option<Vec<u32>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+pub struct GpuSpecs {
+    pub count: Option<u32>,
+    pub model: Option<String>,
+    pub memory_mb: Option<u32>,
+    pub indices: Option<Vec<u32>>,
 }
 
 impl fmt::Display for ComputeRequirements {
@@ -61,12 +99,28 @@ impl fmt::Display for ComputeRequirements {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
-pub struct GpuSpecs {
-    pub count: Option<u32>,
-    pub model: Option<String>,
-    pub memory_mb: Option<u32>,
-    pub indices: Option<Vec<u32>>,
+impl fmt::Display for GpuRequirements {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut parts = Vec::new();
+
+        if let Some(count) = self.count {
+            parts.push(format!("{} GPU(s)", count));
+        }
+
+        if let Some(model) = &self.model {
+            parts.push(format!("Model: {}", model));
+        }
+
+        if let Some(memory) = self.memory_mb {
+            parts.push(format!("Memory: {} MB", memory));
+        }
+
+        if parts.is_empty() {
+            write!(f, "No specific GPU requirements")
+        } else {
+            write!(f, "{}", parts.join(", "))
+        }
+    }
 }
 
 impl fmt::Display for GpuSpecs {
@@ -122,11 +176,10 @@ impl fmt::Display for CpuSpecs {
 // Parser for compute requirements string
 impl FromStr for ComputeRequirements {
     type Err = anyhow::Error;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut requirements = ComputeRequirements::default();
-        let mut current_gpu_spec = GpuSpecs::default();
-        let mut gpu_spec_started = false; // Track if we've started defining a GPU spec
+        let mut current_gpu_spec = GpuRequirements::default();
+        let mut gpu_spec_started = false;
 
         for part in s.split(';') {
             let part = part.trim();
@@ -145,26 +198,10 @@ impl FromStr for ComputeRequirements {
             match key {
                 // --- GPU Specifications ---
                 "gpu:count" => {
-                    // If a GPU spec was already being defined, push it before starting a new one
-                    if gpu_spec_started
-                        && (current_gpu_spec.model.is_some()
-                            || current_gpu_spec.memory_mb.is_some())
-                    {
-                        // Basic validation: ensure at least model or memory was also set if count > 0
-                        if current_gpu_spec.count.unwrap_or(0) > 0
-                            && current_gpu_spec.model.is_none()
-                            && current_gpu_spec.memory_mb.is_none()
-                        {
-                            // Allow count=0 without model/mem, but require model/mem if count > 0 is specified for a previous entry.
-                            // This logic might need refinement based on exact requirements.
-                            // For now, we push what we have.
-                        }
+                    // If we have a complete GPU spec, push it before starting a new one
+                    if gpu_spec_started && current_gpu_spec.count.is_some() {
                         requirements.gpu.push(current_gpu_spec);
-                        current_gpu_spec = GpuSpecs::default(); // Reset for the new spec
-                    } else if gpu_spec_started && current_gpu_spec.count.is_some() {
-                        // Handle case like "gpu:count=1; gpu:count=2" - push the first count=1 spec (implicitly)
-                        requirements.gpu.push(current_gpu_spec);
-                        current_gpu_spec = GpuSpecs::default(); // Reset for the new spec
+                        current_gpu_spec = GpuRequirements::default();
                     }
 
                     gpu_spec_started = true;
@@ -175,28 +212,117 @@ impl FromStr for ComputeRequirements {
                     );
                 }
                 "gpu:model" => {
-                    if !gpu_spec_started && current_gpu_spec.count.is_none() {
-                        // If model comes before count, implicitly start a spec
+                    if !gpu_spec_started {
                         gpu_spec_started = true;
-                    } else if !gpu_spec_started {
-                        return Err(anyhow!("'gpu:model' specified without preceding 'gpu:count' to start a new GPU requirement block"));
                     }
-                    // TODO: Handle comma-separated models if needed, e.g., "A100,H100"
                     current_gpu_spec.model = Some(value.to_string());
                 }
                 "gpu:memory_mb" => {
-                    if !gpu_spec_started && current_gpu_spec.count.is_none() {
-                        // If memory comes before count, implicitly start a spec
+                    if !gpu_spec_started {
                         gpu_spec_started = true;
-                    } else if !gpu_spec_started {
-                        return Err(anyhow!("'gpu:memory_mb' specified without preceding 'gpu:count' to start a new GPU requirement block"));
+                    }
+                    if current_gpu_spec.memory_mb_min.is_some()
+                        || current_gpu_spec.memory_mb_max.is_some()
+                    {
+                        return Err(anyhow!(
+                            "Cannot specify both exact memory and min/max memory"
+                        ));
                     }
                     current_gpu_spec.memory_mb =
                         Some(value.parse::<u32>().map_err(|e| {
                             anyhow!("Invalid gpu:memory_mb value '{}': {}", value, e)
                         })?);
                 }
+                "gpu:memory_mb_min" => {
+                    if !gpu_spec_started {
+                        gpu_spec_started = true;
+                    }
+                    if current_gpu_spec.memory_mb.is_some() {
+                        return Err(anyhow!(
+                            "Cannot specify both exact memory and min/max memory"
+                        ));
+                    }
 
+                    if current_gpu_spec.memory_mb_max.is_some()
+                        && current_gpu_spec.memory_mb_max.unwrap() < value.parse::<u32>().unwrap()
+                    {
+                        return Err(anyhow!(
+                            "Invalid gpu:memory_mb_min value '{}': {}",
+                            value,
+                            "min value is greater than max value"
+                        ));
+                    }
+
+                    current_gpu_spec.memory_mb_min = Some(value.parse::<u32>().map_err(|e| {
+                        anyhow!("Invalid gpu:memory_mb_min value '{}': {}", value, e)
+                    })?);
+                }
+                "gpu:memory_mb_max" => {
+                    if !gpu_spec_started {
+                        gpu_spec_started = true;
+                    }
+                    // Ensure we don't have exact memory already set
+                    if current_gpu_spec.memory_mb.is_some() {
+                        return Err(anyhow!(
+                            "Cannot specify both exact memory and min/max memory"
+                        ));
+                    }
+
+                    if current_gpu_spec.memory_mb_min.is_some()
+                        && current_gpu_spec.memory_mb_min.unwrap() > value.parse::<u32>().unwrap()
+                    {
+                        return Err(anyhow!(
+                            "Invalid gpu:memory_mb_max value '{}': {}",
+                            value,
+                            "max value is less than min value"
+                        ));
+                    }
+
+                    current_gpu_spec.memory_mb_max = Some(value.parse::<u32>().map_err(|e| {
+                        anyhow!("Invalid gpu:memory_mb_max value '{}': {}", value, e)
+                    })?);
+                }
+                // --- Total GPU Memory Specifications ---
+                "gpu:total_memory_min" => {
+                    if !gpu_spec_started {
+                        gpu_spec_started = true;
+                    }
+                    if current_gpu_spec.total_memory_max.is_some()
+                        && current_gpu_spec.total_memory_max.unwrap()
+                            < value.parse::<u32>().unwrap()
+                    {
+                        return Err(anyhow!(
+                            "Invalid gpu:total_memory_min value '{}': {}",
+                            value,
+                            "min value is greater than max value"
+                        ));
+                    }
+
+                    current_gpu_spec.total_memory_min =
+                        Some(value.parse::<u32>().map_err(|e| {
+                            anyhow!("Invalid gpu:total_memory_min value '{}': {}", value, e)
+                        })?);
+                }
+                "gpu:total_memory_max" => {
+                    if !gpu_spec_started {
+                        gpu_spec_started = true;
+                    }
+                    if current_gpu_spec.total_memory_min.is_some()
+                        && current_gpu_spec.total_memory_min.unwrap()
+                            > value.parse::<u32>().unwrap()
+                    {
+                        return Err(anyhow!(
+                            "Invalid gpu:total_memory_max value '{}': {}",
+                            value,
+                            "max value is less than min value"
+                        ));
+                    }
+
+                    current_gpu_spec.total_memory_max =
+                        Some(value.parse::<u32>().map_err(|e| {
+                            anyhow!("Invalid gpu:total_memory_max value '{}': {}", value, e)
+                        })?);
+                }
                 // --- CPU Specifications ---
                 "cpu:cores" => {
                     let mut cpu = requirements.cpu.take().unwrap_or_default();
@@ -227,20 +353,23 @@ impl FromStr for ComputeRequirements {
             }
         }
 
-        // Push the last defined GPU spec if it exists
+        // Push the last GPU spec if it exists and has any properties set
         if gpu_spec_started
             && (current_gpu_spec.count.is_some()
                 || current_gpu_spec.model.is_some()
-                || current_gpu_spec.memory_mb.is_some())
+                || current_gpu_spec.memory_mb.is_some()
+                || current_gpu_spec.memory_mb_min.is_some()
+                || current_gpu_spec.memory_mb_max.is_some()
+                || current_gpu_spec.total_memory_min.is_some()
+                || current_gpu_spec.total_memory_max.is_some())
         {
             requirements.gpu.push(current_gpu_spec);
         }
-        // If no GPU specs were mentioned at all, requirements.gpu remains empty.
 
         Ok(requirements)
     }
 }
-use log::info;
+use log::{debug, info};
 
 impl ComputeSpecs {
     /// Checks if the current compute specs meet the given requirements.
@@ -250,7 +379,7 @@ impl ComputeSpecs {
             if !self
                 .cpu
                 .as_ref()
-                .map_or(false, |spec_cpu| spec_cpu.meets(req_cpu))
+                .is_some_and(|spec_cpu| spec_cpu.meets(req_cpu))
             {
                 info!(
                     "CPU requirements not met: required {:?}, have {:?}",
@@ -262,7 +391,7 @@ impl ComputeSpecs {
 
         // Check RAM (if required)
         if let Some(req_ram) = requirements.ram_mb {
-            if !(self.ram_mb.map_or(false, |spec_ram| spec_ram >= req_ram)) {
+            if self.ram_mb.is_none_or(|spec_ram| spec_ram < req_ram) {
                 info!(
                     "RAM requirements not met: required {} MB, have {:?} MB",
                     req_ram, self.ram_mb
@@ -273,9 +402,9 @@ impl ComputeSpecs {
 
         // Check Storage (if required)
         if let Some(req_storage) = requirements.storage_gb {
-            if !(self
+            if self
                 .storage_gb
-                .map_or(false, |spec_storage| spec_storage >= req_storage))
+                .is_none_or(|spec_storage| spec_storage < req_storage)
             {
                 info!(
                     "Storage requirements not met: required {} GB, have {:?} GB",
@@ -284,12 +413,11 @@ impl ComputeSpecs {
                 return false;
             }
         }
-
         // Check GPU (OR logic applied here)
         if !requirements.gpu.is_empty() {
             // Requirements specify GPUs, so the node must have a GPU spec...
             let Some(spec_gpu) = &self.gpu else {
-                info!("GPU requirements not met: GPU required but none available");
+                debug!("GPU requirements not met: GPU required but none available");
                 return false;
             };
             // ...and that GPU spec must meet *at least one* of the requirement options.
@@ -298,7 +426,7 @@ impl ComputeSpecs {
                 .iter()
                 .any(|req_gpu| spec_gpu.meets(req_gpu))
             {
-                info!("GPU requirements not met");
+                debug!("GPU requirements not met");
                 return false;
             }
         }
@@ -311,25 +439,26 @@ impl ComputeSpecs {
 
 impl GpuSpecs {
     /// Checks if the current GPU spec meets a single required GPU spec.
-    fn meets(&self, requirement: &GpuSpecs) -> bool {
+    fn meets(&self, requirement: &GpuRequirements) -> bool {
         // Check count (if required)
         if let Some(req_count) = requirement.count {
-            // Node must have at least the required count. Node having 0 is okay only if req_count is 0 or None.
-            if !(self
-                .count
-                .map_or(false, |spec_count| spec_count >= req_count))
-            {
-                if self.count.is_none() && req_count > 0 {
-                    return false;
+            // Node must have exactly the required count. Node having None is okay only if req_count is 0.
+            match self.count {
+                None => {
+                    if req_count > 0 {
+                        return false;
+                    }
                 }
-                if self.count.map_or(true, |sc| sc < req_count) {
-                    return false;
+                Some(spec_count) => {
+                    if spec_count != req_count {
+                        return false;
+                    }
                 }
             }
         }
 
         if let Some(req_model) = &requirement.model {
-            if !(self.model.as_ref().map_or(false, |spec_model| {
+            if !(self.model.as_ref().is_some_and(|spec_model| {
                 let normalized_spec = spec_model.to_lowercase().replace(' ', "_");
 
                 // Split the requirement model string by commas and check if any match
@@ -337,8 +466,14 @@ impl GpuSpecs {
                     .split(',')
                     .map(|m| m.trim().to_lowercase().replace(' ', "_"))
                     .any(|normalized_req| {
+                        // Try both with and without underscores for flexible matching
+                        let spec_no_underscore = normalized_spec.replace('_', "");
+                        let req_no_underscore = normalized_req.replace('_', "");
+
                         normalized_spec.contains(&normalized_req)
                             || normalized_req.contains(&normalized_spec)
+                            || spec_no_underscore.contains(&req_no_underscore)
+                            || req_no_underscore.contains(&spec_no_underscore)
                     })
             })) {
                 return false;
@@ -347,7 +482,38 @@ impl GpuSpecs {
 
         // Check memory per GPU (if required)
         if let Some(req_mem) = requirement.memory_mb {
-            if !(self.memory_mb.map_or(false, |spec_mem| spec_mem >= req_mem)) {
+            if self.memory_mb.is_none_or(|spec_mem| spec_mem < req_mem) {
+                return false;
+            }
+        }
+
+        // Check memory range if specified
+        if let Some(req_min) = requirement.memory_mb_min {
+            if self.memory_mb.is_none_or(|spec_mem| spec_mem < req_min) {
+                return false;
+            }
+        }
+        if let Some(req_max) = requirement.memory_mb_max {
+            if self.memory_mb.is_none_or(|spec_mem| spec_mem > req_max) {
+                return false;
+            }
+        }
+
+        // Check total memory requirements (count * memory_mb)
+        if let (Some(req_total_min), Some(gpu_count), Some(gpu_memory)) =
+            (requirement.total_memory_min, self.count, self.memory_mb)
+        {
+            let total_memory = gpu_count * gpu_memory;
+            if total_memory < req_total_min {
+                return false;
+            }
+        }
+
+        if let (Some(req_total_max), Some(gpu_count), Some(gpu_memory)) =
+            (requirement.total_memory_max, self.count, self.memory_mb)
+        {
+            let total_memory = gpu_count * gpu_memory;
+            if total_memory > req_total_max {
                 return false;
             }
         }
@@ -362,10 +528,7 @@ impl CpuSpecs {
     fn meets(&self, requirement: &CpuSpecs) -> bool {
         // Check cores (if required)
         if let Some(req_cores) = requirement.cores {
-            if !(self
-                .cores
-                .map_or(false, |spec_cores| spec_cores >= req_cores))
-            {
+            if self.cores.is_none_or(|spec_cores| spec_cores < req_cores) {
                 return false;
             }
         }
@@ -374,7 +537,7 @@ impl CpuSpecs {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct DiscoveryNode {
     #[serde(flatten)]
     pub node: Node,
@@ -446,7 +609,7 @@ mod tests {
                     count: gpu_count,
                     model: gpu_model.map(String::from),
                     memory_mb: gpu_mem,
-                    indices: None,
+                    ..Default::default()
                 })
             } else {
                 None
@@ -461,7 +624,7 @@ mod tests {
             },
             ram_mb: ram,
             storage_gb: storage,
-            storage_path: None, // Assuming path isn't critical for these tests
+            storage_path: "/var/lib/prime-worker-test".to_string(),
         }
     }
 
@@ -586,7 +749,7 @@ mod tests {
             Some(1000),
         );
         // Requirements are lower
-        let req_str = "gpu:count=4;gpu:model=A100;gpu:memory_mb=40000;cpu:cores=16;ram_mb=64000;storage_gb=500";
+        let req_str = "gpu:count=8;gpu:model=A100;gpu:memory_mb=40000;cpu:cores=16;ram_mb=64000;storage_gb=500";
         let requirements = ComputeRequirements::from_str(req_str).unwrap();
         assert!(specs.meets(&requirements));
     }
@@ -722,7 +885,7 @@ mod tests {
     fn test_meets_optional_fields_in_req() {
         // Node has specific specs
         let specs = create_compute_specs(
-            Some(8),
+            Some(4),
             Some("NVIDIA H100"),
             Some(80000),
             Some(64),
@@ -745,8 +908,7 @@ mod tests {
             gpu: Some(GpuSpecs {
                 count: Some(4),
                 model: Some("A100".to_string()),
-                memory_mb: None,
-                indices: None,
+                ..Default::default()
             }),
             cpu: Some(CpuSpecs {
                 cores: Some(16),
@@ -754,7 +916,7 @@ mod tests {
             }),
             ram_mb: Some(64000),
             storage_gb: Some(500),
-            storage_path: None,
+            storage_path: "/var/lib/prime-worker-test".to_string(),
         };
         // Requirement needs specific memory
         let req_str_mem = "gpu:count=4;gpu:model=A100;gpu:memory_mb=40000";
@@ -765,5 +927,288 @@ mod tests {
 
         assert!(!specs.meets(&requirements_mem)); // Fails because spec memory is None, but req needs Some(40000)
         assert!(specs.meets(&requirements_no_mem)); // Passes because req doesn't care about memory
+    }
+    #[test]
+    fn test_meets_min_max_gpu_memory() {
+        // Node spec with specific GPU memory
+        let specs = ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(4),
+                model: Some("A100".to_string()),
+                memory_mb: Some(40000),
+                ..Default::default()
+            }),
+            cpu: Some(CpuSpecs {
+                cores: Some(16),
+                model: None,
+            }),
+            ram_mb: Some(64000),
+            storage_gb: Some(500),
+            storage_path: "/var/lib/prime-worker-test".to_string(),
+        };
+
+        // Test case 1: Requirements with memory range that includes node's memory
+        let req_str_in_range =
+            "gpu:count=4;gpu:model=A100;gpu:memory_mb_min=30000;gpu:memory_mb_max=50000";
+        let requirements_in_range = ComputeRequirements::from_str(req_str_in_range).unwrap();
+        assert!(
+            specs.meets(&requirements_in_range),
+            "Should meet requirements as memory is within range"
+        );
+
+        // Test case 2: Requirements with memory range below node's memory
+        let req_str_below =
+            "gpu:count=4;gpu:model=A100;gpu:memory_mb_min=20000;gpu:memory_mb_max=35000";
+        let requirements_below = ComputeRequirements::from_str(req_str_below).unwrap();
+        assert!(
+            !specs.meets(&requirements_below),
+            "Should not meet requirements as memory is above max range"
+        );
+
+        // Test case 3: Requirements with memory range above node's memory
+        let req_str_above =
+            "gpu:count=4;gpu:model=A100;gpu:memory_mb_min=45000;gpu:memory_mb_max=60000";
+        let requirements_above = ComputeRequirements::from_str(req_str_above).unwrap();
+        assert!(
+            !specs.meets(&requirements_above),
+            "Should not meet requirements as memory is below min range"
+        );
+
+        // Test case 4: Invalid specification of both exact memory and range
+        let req_str_invalid = "gpu:count=4;gpu:model=A100;gpu:memory_mb=40000;gpu:memory_mb_min=30000;gpu:memory_mb_max=50000";
+        let result = ComputeRequirements::from_str(req_str_invalid);
+        assert!(
+            result.is_err(),
+            "Should fail because cannot specify both exact memory and min/max memory"
+        );
+    }
+
+    #[test]
+    fn test_gpu_model_case_insensitive_matching() {
+        let specs = create_compute_specs(
+            Some(1),
+            Some("NVIDIA_A100_80GB_PCIE"),
+            Some(40000),
+            None,
+            None,
+            None,
+        );
+        let req_str = "gpu:model=nvidia_a100_80gb_pcie";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+        assert!(specs.meets(&requirements));
+    }
+
+    #[test]
+    fn test_gpu_model_no_match() {
+        let specs = create_compute_specs(
+            Some(1),
+            Some("AMD Radeon RX 7900"),
+            Some(20000),
+            None,
+            None,
+            None,
+        );
+        let req_str = "gpu:model=nvidia,rtx";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+        assert!(!specs.meets(&requirements));
+    }
+
+    #[test]
+    fn test_parser_empty_values() {
+        assert!(ComputeRequirements::from_str("gpu:count=").is_err());
+        assert!(ComputeRequirements::from_str("gpu:model=").is_ok()); // Empty model might be valid
+    }
+
+    #[test]
+    fn test_parser_whitespace_handling() {
+        let req_str = " gpu:count = 1 ; gpu:model = A100 ; ram_mb = 32000 ";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+        assert_eq!(requirements.gpu[0].count, Some(1));
+        assert_eq!(requirements.gpu[0].model, Some("A100".to_string()));
+    }
+
+    #[test]
+    fn test_parser_empty_string() {
+        let requirements = ComputeRequirements::from_str("").unwrap();
+        assert!(requirements.gpu.is_empty());
+        assert!(requirements.cpu.is_none());
+    }
+
+    #[test]
+    fn test_complex_gpu_or_logic() {
+        let specs = create_compute_specs(
+            Some(2),
+            Some("rtx4090"),
+            Some(24000),
+            None,
+            Some(64000),
+            None,
+        );
+
+        // Requirements: (8x H100 80GB) OR (4x A100 40GB) OR (2x RTX4090 24GB)
+        let req_str = "gpu:count=8;gpu:model=H100;gpu:memory_mb=80000;gpu:count=4;gpu:model=A100;gpu:memory_mb=40000;gpu:count=2;gpu:model=RTX4090;gpu:memory_mb=24000;ram_mb=62000";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+        assert!(specs.meets(&requirements));
+    }
+
+    #[test]
+    fn test_gpu_memory_min_max_validation() {
+        // Test that min > max is rejected
+        let req_str = "gpu:memory_mb_min=40000;gpu:memory_mb_max=20000";
+        assert!(ComputeRequirements::from_str(req_str).is_err());
+
+        // Test that max > min is accepted
+        let req_str = "gpu:memory_mb_min=20000;gpu:memory_mb_max=40000";
+        assert!(ComputeRequirements::from_str(req_str).is_ok());
+    }
+
+    #[test]
+    fn test_total_memory_parsing() {
+        let req_str =
+            "gpu:count=4;gpu:model=A100;gpu:total_memory_min=160000;gpu:total_memory_max=320000";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+
+        assert_eq!(requirements.gpu.len(), 1);
+        let gpu_req = &requirements.gpu[0];
+        assert_eq!(gpu_req.count, Some(4));
+        assert_eq!(gpu_req.model, Some("A100".to_string()));
+        assert_eq!(gpu_req.total_memory_min, Some(160000));
+        assert_eq!(gpu_req.total_memory_max, Some(320000));
+    }
+
+    #[test]
+    fn test_total_memory_validation() {
+        // Test that total_memory_min > total_memory_max is rejected
+        let req_str = "gpu:total_memory_min=400000;gpu:total_memory_max=200000";
+        assert!(ComputeRequirements::from_str(req_str).is_err());
+
+        // Test that total_memory_max > total_memory_min is accepted
+        let req_str = "gpu:total_memory_min=200000;gpu:total_memory_max=400000";
+        assert!(ComputeRequirements::from_str(req_str).is_ok());
+    }
+
+    #[test]
+    fn test_meets_total_memory_requirements() {
+        // Node has 4x A100 with 40GB each = 160GB total
+        let specs =
+            create_compute_specs(Some(4), Some("NVIDIA A100"), Some(40000), None, None, None);
+
+        // Test case 1: Total memory requirement within range
+        let req_str =
+            "gpu:count=4;gpu:model=A100;gpu:total_memory_min=120000;gpu:total_memory_max=200000";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+        assert!(
+            specs.meets(&requirements),
+            "Should meet total memory requirements within range"
+        );
+
+        // Test case 2: Total memory requirement too high (min)
+        let req_str = "gpu:count=4;gpu:model=A100;gpu:total_memory_min=200000";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+        assert!(
+            !specs.meets(&requirements),
+            "Should not meet requirements as total memory is below min"
+        );
+
+        // Test case 3: Total memory requirement too low (max)
+        let req_str = "gpu:count=4;gpu:model=A100;gpu:total_memory_max=120000";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+        assert!(
+            !specs.meets(&requirements),
+            "Should not meet requirements as total memory is above max"
+        );
+
+        // Test case 4: Exact total memory match
+        let req_str =
+            "gpu:count=4;gpu:model=A100;gpu:total_memory_min=160000;gpu:total_memory_max=160000";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+        assert!(
+            specs.meets(&requirements),
+            "Should meet exact total memory requirements"
+        );
+    }
+
+    #[test]
+    fn test_meets_total_memory_missing_fields() {
+        // Node has count but no memory specified
+        let specs_no_memory = ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(4),
+                model: Some("A100".to_string()),
+                memory_mb: None, // No memory specified
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        // Node has memory but no count specified
+        let specs_no_count = ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: None, // No count specified
+                model: Some("A100".to_string()),
+                memory_mb: Some(40000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let req_str = "gpu:model=A100;gpu:total_memory_min=120000";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+
+        // Both should pass because total memory check is skipped when count or memory is missing
+        assert!(
+            specs_no_memory.meets(&requirements),
+            "Should pass when memory is not specified"
+        );
+        assert!(
+            specs_no_count.meets(&requirements),
+            "Should pass when count is not specified"
+        );
+    }
+
+    #[test]
+    fn test_meets_total_memory_or_logic() {
+        // Node has 8x H100 with 80GB each = 640GB total
+        let specs =
+            create_compute_specs(Some(8), Some("NVIDIA H100"), Some(80000), None, None, None);
+
+        // Requirements: (4x A100 with 160GB total) OR (8x H100 with 500GB+ total)
+        let req_str = "gpu:count=4;gpu:model=A100;gpu:total_memory_min=160000;gpu:count=8;gpu:model=H100;gpu:total_memory_min=500000";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+
+        assert_eq!(requirements.gpu.len(), 2);
+        assert!(
+            specs.meets(&requirements),
+            "Should meet the second GPU option with total memory requirement"
+        );
+    }
+
+    #[test]
+    fn test_complex_total_memory_scenario() {
+        // Node has 2x RTX 4090 with 24GB each = 48GB total
+        let specs = create_compute_specs(Some(2), Some("RTX 4090"), Some(24000), None, None, None);
+
+        // Requirements allow multiple options with different total memory requirements
+        let req_str = "gpu:count=8;gpu:model=H100;gpu:total_memory_min=600000;gpu:count=4;gpu:model=A100;gpu:total_memory_min=160000;gpu:count=2;gpu:model=RTX4090;gpu:total_memory_min=40000;gpu:total_memory_max=60000";
+        let requirements = ComputeRequirements::from_str(req_str).unwrap();
+
+        assert_eq!(requirements.gpu.len(), 3);
+        assert!(
+            specs.meets(&requirements),
+            "Should meet the third GPU option with total memory range"
+        );
+    }
+    #[test]
+    fn test_multiple_gpu_counts() {
+        let requirements = ComputeRequirements::from_str("gpu:count=1;gpu:memory_mb_min=24000;gpu:memory_mb_max=24999;gpu:count=2;gpu:count=3;gpu:count=4;").unwrap();
+        assert_eq!(requirements.gpu.len(), 4);
+        assert_eq!(requirements.gpu[0].count, Some(1));
+        assert_eq!(requirements.gpu[0].memory_mb_min, Some(24000));
+        assert_eq!(requirements.gpu[0].memory_mb_max, Some(24999));
+        assert_eq!(requirements.gpu[1].count, Some(2));
+        assert_eq!(requirements.gpu[1].memory_mb_min, None);
+        assert_eq!(requirements.gpu[1].memory_mb_max, None);
+        assert_eq!(requirements.gpu[2].count, Some(3));
+        assert_eq!(requirements.gpu[3].count, Some(4));
     }
 }

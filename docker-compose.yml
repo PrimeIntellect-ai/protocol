@@ -5,18 +5,19 @@ networks:
     attachable: true
   app-network:
     driver: bridge
-    external: true 
+    attachable: true
 
 volumes:
   redis-data:
 
 services:
-  anvil:
-    image: ghcr.io/foundry-rs/foundry:latest
+  reth:
+    image: ghcr.io/paradigmxyz/reth:latest
     platform: linux/amd64
-    entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545", "--block-time", "2"]
+    entrypoint: ["reth", "node", "--dev", "--chain", "dev", "--dev.block-time", "2sec", "--http", "--ws", "--http.addr", "0.0.0.0", "--ws.addr", "0.0.0.0", "--metrics", "0.0.0.0:9001"]
     ports:
       - "8545:8545"
+      - "9001:9001"
     networks:
       - prime
       - app-network
@@ -35,7 +36,7 @@ services:
       - ./smart-contracts:/app
     working_dir: /app
     environment:
-      - RPC_URL=http://anvil:8545
+      - RPC_URL=http://reth:8545
     entrypoint: ["/bin/sh", "-c"]
     command: |
      "
@@ -51,7 +52,7 @@ services:
     networks:
       - prime
     depends_on:
-      anvil:
+      reth:
         condition: service_healthy
 
   redis:
@@ -72,13 +73,14 @@ services:
     ports:
       - "8089:8089"
     environment:
-      - RPC_URL=http://anvil:8545
+      - RPC_URL=http://reth:8545
       - REDIS_URL=redis://redis:6379
       - PLATFORM_API_KEY=prime
+      - MAX_NODES_PER_IP=3
     networks:
       - prime
     depends_on:
-      anvil:
+      reth:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -91,9 +93,9 @@ services:
     ports:
       - "8090:8090"
     environment:
-      - RPC_URL=http://anvil:8545
+      - RPC_URL=http://reth:8545
       - REDIS_STORE_URL=redis://redis:6379
-      - DISCOVERY_URL=http://discovery:8089
+      - DISCOVERY_URLS=http://discovery:8089
       - URL=http://localhost:8090
       - COORDINATOR_KEY=${POOL_OWNER_PRIVATE_KEY}
       - COMPUTE_POOL_ID=${WORKER_COMPUTE_POOL_ID}
@@ -104,7 +106,7 @@ services:
     networks:
       - prime
     depends_on:
-      anvil:
+      reth:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -121,8 +123,8 @@ services:
     networks:
       - prime
     environment:
-      - RPC_URL=http://anvil:8545
-      - DISCOVERY_URL=http://discovery:8089
+      - RPC_URL=http://reth:8545
+      - DISCOVERY_URLS=http://discovery:8089
       - VALIDATOR_KEY=${PRIVATE_KEY_VALIDATOR}
       - WORK_VALIDATION_CONTRACT=${WORK_VALIDATION_CONTRACT}
       - POOL_ID=${WORKER_COMPUTE_POOL_ID}
@@ -132,7 +134,7 @@ services:
       - TOPLOC_GRACE_INTERVAL=15
       - REDIS_URL=redis://redis:6379
     depends_on:
-      anvil:
+      reth:
         condition: service_healthy
       redis:
         condition: service_healthy

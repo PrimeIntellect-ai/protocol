@@ -1,16 +1,17 @@
 use crate::web3::contracts::constants::addresses::{AI_TOKEN_ADDRESS, PRIME_NETWORK_ADDRESS};
 use crate::web3::contracts::core::contract::Contract;
-use crate::web3::wallet::Wallet;
+use crate::web3::contracts::helpers::utils::PrimeCallBuilder;
+use crate::web3::wallet::WalletProvider;
 use alloy::primitives::{Address, FixedBytes, U256};
 
 #[derive(Clone)]
-pub struct AIToken {
-    pub instance: Contract,
+pub struct AIToken<P: alloy_provider::Provider> {
+    pub instance: Contract<P>,
 }
 
-impl AIToken {
-    pub fn new(wallet: &Wallet, abi_file_path: &str) -> Self {
-        let instance = Contract::new(AI_TOKEN_ADDRESS, wallet, abi_file_path);
+impl<P: alloy_provider::Provider> AIToken<P> {
+    pub fn new(provider: P, abi_file_path: &str) -> Self {
+        let instance = Contract::new(AI_TOKEN_ADDRESS, provider, abi_file_path);
         Self { instance }
     }
 
@@ -28,7 +29,9 @@ impl AIToken {
             .0;
         Ok(balance)
     }
+}
 
+impl AIToken<WalletProvider> {
     /// Approves the specified amount of tokens to be spent by the PRIME network address.
     ///
     /// # Parameters
@@ -52,19 +55,27 @@ impl AIToken {
 
         Ok(tx)
     }
+
+    pub fn build_mint_call(
+        &self,
+        to: Address,
+        amount: U256,
+    ) -> Result<PrimeCallBuilder<'_, alloy::json_abi::Function>, Box<dyn std::error::Error>> {
+        let call = self
+            .instance
+            .instance()
+            .function("mint", &[to.into(), amount.into()])?;
+
+        Ok(call)
+    }
+
     pub async fn mint(
         &self,
         to: Address,
         amount: U256,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        let tx = self
-            .instance
-            .instance()
-            .function("mint", &[to.into(), amount.into()])?
-            .send()
-            .await?
-            .watch()
-            .await?;
+        let call = self.build_mint_call(to, amount)?;
+        let tx = call.send().await?.watch().await?;
         Ok(tx)
     }
 }

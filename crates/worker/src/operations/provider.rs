@@ -2,21 +2,20 @@ use crate::console::Console;
 use alloy::primitives::{Address, U256};
 use log::error;
 use shared::web3::contracts::core::builder::Contracts;
-use shared::web3::wallet::Wallet;
+use shared::web3::wallet::{Wallet, WalletProvider};
 use std::io::Write;
-use std::sync::Arc;
 use std::{fmt, io};
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 
 pub struct ProviderOperations {
-    wallet: Arc<Wallet>,
-    contracts: Arc<Contracts>,
+    wallet: Wallet,
+    contracts: Contracts<WalletProvider>,
     auto_accept: bool,
 }
 
 impl ProviderOperations {
-    pub fn new(wallet: Arc<Wallet>, contracts: Arc<Contracts>, auto_accept: bool) -> Self {
+    pub fn new(wallet: Wallet, contracts: Contracts<WalletProvider>, auto_accept: bool) -> Self {
         Self {
             wallet,
             contracts,
@@ -70,18 +69,18 @@ impl ProviderOperations {
                         match stake_manager.get_stake(provider_address).await {
                             Ok(stake) => {
                                 if first_check || stake != last_stake {
-                                    Console::info("🔄 Chain Sync - Provider stake", &format!("{} tokens", stake / U256::from(10u128.pow(18))));
+                                    Console::info("🔄 Chain Sync - Provider stake", &format!("{}", stake / U256::from(10u128.pow(18))));
                                     if !first_check {
                                         if stake < last_stake {
-                                            Console::warning(&format!("Stake decreased - possible slashing detected: From {} to {} tokens",
+                                            Console::warning(&format!("Stake decreased - possible slashing detected: From {} to {}",
                                                 last_stake / U256::from(10u128.pow(18)),
                                                 stake / U256::from(10u128.pow(18))
                                             ));
                                             if stake == U256::ZERO {
-                                                Console::warning("Stake is 0 - you might have to restart the node to increase your stake (if you still have tokens left)");
+                                                Console::warning("Stake is 0 - you might have to restart the node to increase your stake (if you still have balance left)");
                                             }
                                         } else {
-                                            Console::info("🔄 Chain Sync - Stake changed", &format!("From {} to {} tokens",
+                                            Console::info("🔄 Chain Sync - Stake changed", &format!("From {} to {}",
                                                 last_stake / U256::from(10u128.pow(18)),
                                                 stake / U256::from(10u128.pow(18))
                                             ));
@@ -97,13 +96,13 @@ impl ProviderOperations {
                             }
                         };
 
-                        // Monitor AI token balance
+                        // Monitor balance
                         match contracts.ai_token.balance_of(provider_address).await {
                             Ok(balance) => {
                                 if first_check || balance != last_balance {
-                                    Console::info("🔄 Chain Sync - AI Token Balance", &format!("{} tokens", balance / U256::from(10u128.pow(18))));
+                                    Console::info("🔄 Chain Sync - Balance", &format!("{}", balance / U256::from(10u128.pow(18))));
                                     if !first_check {
-                                        Console::info("🔄 Chain Sync - Balance changed", &format!("From {} to {} tokens",
+                                        Console::info("🔄 Chain Sync - Balance changed", &format!("From {} to {}",
                                             last_balance / U256::from(10u128.pow(18)),
                                             balance / U256::from(10u128.pow(18))
                                         ));
@@ -113,7 +112,7 @@ impl ProviderOperations {
                                 Some(balance)
                             },
                             Err(e) => {
-                                error!("Failed to get AI token balance: {}", e);
+                                error!("Failed to get balance: {}", e);
                                 None
                             }
                         };
@@ -224,8 +223,8 @@ impl ProviderOperations {
 
         if !provider_exists {
             Console::info(
-                "AI Token Balance",
-                &format!("{} tokens", balance / U256::from(10u128.pow(18))),
+                "Balance",
+                &format!("{}", balance / U256::from(10u128.pow(18))),
             );
             Console::info(
                 "ETH Balance",
@@ -233,20 +232,20 @@ impl ProviderOperations {
             );
             if balance < stake {
                 Console::user_error(&format!(
-                    "Insufficient AI Token balance for stake: {} tokens",
+                    "Insufficient balance for stake: {}",
                     stake / U256::from(10u128.pow(18))
                 ));
                 return Err(ProviderError::InsufficientBalance);
             }
             if !self.prompt_user_confirmation(&format!(
-                "Do you want to approve staking {} tokens?",
-                stake / U256::from(10u128.pow(18))
+                "Do you want to approve staking {}?",
+                stake.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0)
             )) {
                 Console::info("Operation cancelled by user", "Staking approval declined");
                 return Err(ProviderError::UserCancelled);
             }
 
-            Console::progress("Approving AI Token for Stake transaction");
+            Console::progress("Approving for Stake transaction");
             self.contracts
                 .ai_token
                 .approve(stake)
@@ -275,8 +274,8 @@ impl ProviderOperations {
 
         if !provider_exists {
             Console::info(
-                "AI Token Balance",
-                &format!("{} tokens", balance / U256::from(10u128.pow(18))),
+                "Balance",
+                &format!("{}", balance / U256::from(10u128.pow(18))),
             );
             Console::info(
                 "ETH Balance",
@@ -284,20 +283,20 @@ impl ProviderOperations {
             );
             if balance < stake {
                 Console::user_error(&format!(
-                    "Insufficient AI Token balance for stake: {} tokens",
+                    "Insufficient balance for stake: {}",
                     stake / U256::from(10u128.pow(18))
                 ));
                 return Err(ProviderError::InsufficientBalance);
             }
             if !self.prompt_user_confirmation(&format!(
-                "Do you want to approve staking {} tokens?",
-                stake / U256::from(10u128.pow(18))
+                "Do you want to approve staking {}?",
+                stake.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0)
             )) {
                 Console::info("Operation cancelled by user", "Staking approval declined");
                 return Err(ProviderError::UserCancelled);
             }
 
-            Console::progress("Approving AI Token for Stake transaction");
+            Console::progress("Approving Stake transaction");
             self.contracts
                 .ai_token
                 .approve(stake)
@@ -324,7 +323,9 @@ impl ProviderOperations {
 
         let provider_exists = provider.provider_address != Address::default();
         if !provider_exists {
-            Console::user_error("Provider could not be registered. Please ensure your token balance is high enough.");
+            Console::user_error(
+                "Provider could not be registered. Please ensure your balance is high enough.",
+            );
             return Err(ProviderError::Other);
         }
 
@@ -349,8 +350,8 @@ impl ProviderOperations {
             .map_err(|_| ProviderError::Other)?;
 
         Console::info(
-            "Current AI Token Balance",
-            &format!("{} tokens", balance / U256::from(10u128.pow(18))),
+            "Current Balance",
+            &format!("{}", balance / U256::from(10u128.pow(18))),
         );
         Console::info(
             "Additional stake amount",
@@ -358,19 +359,19 @@ impl ProviderOperations {
         );
 
         if balance < additional_stake {
-            Console::user_error("Insufficient token balance for stake increase");
+            Console::user_error("Insufficient balance for stake increase");
             return Err(ProviderError::Other);
         }
 
         if !self.prompt_user_confirmation(&format!(
-            "Do you want to approve staking {} additional tokens?",
-            additional_stake / U256::from(10u128.pow(18))
+            "Do you want to approve staking {} additional funds?",
+            additional_stake.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0)
         )) {
             Console::info("Operation cancelled by user", "Staking approval declined");
             return Err(ProviderError::UserCancelled);
         }
 
-        Console::progress("Approving AI Token for additional stake");
+        Console::progress("Approving additional stake");
         let approve_tx = self
             .contracts
             .ai_token
@@ -428,7 +429,7 @@ impl fmt::Display for ProviderError {
             Self::NotWhitelisted => write!(f, "Provider is not whitelisted"),
             Self::UserCancelled => write!(f, "Operation cancelled by user"),
             Self::Other => write!(f, "Provider could not be registered"),
-            Self::InsufficientBalance => write!(f, "Insufficient AI Token balance for stake"),
+            Self::InsufficientBalance => write!(f, "Insufficient balance for stake"),
         }
     }
 }

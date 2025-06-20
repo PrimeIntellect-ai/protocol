@@ -392,6 +392,24 @@
   },
   {
     "type": "function",
+    "name": "removeWork",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "workUnits",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "renounceRole",
     "inputs": [
       {
@@ -513,6 +531,12 @@
         "internalType": "uint256"
       },
       {
+        "name": "provider",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
         "name": "node",
         "type": "address",
         "indexed": true,
@@ -520,6 +544,37 @@
       },
       {
         "name": "slashedAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RewardsClaimed",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "provider",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "nodekey",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "reward",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"

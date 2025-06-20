@@ -192,6 +192,16 @@
         "internalType": "address[]"
       },
       {
+        "name": "nonces",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "expirations",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
         "name": "signatures",
         "type": "bytes[]",
         "internalType": "bytes[]"
@@ -759,13 +769,23 @@
       },
       {
         "name": "nodekey",
-        "type": "address",
-        "internalType": "address"
+        "type": "address[]",
+        "internalType": "address[]"
       },
       {
-        "name": "signature",
-        "type": "bytes",
-        "internalType": "bytes"
+        "name": "nonces",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "expirations",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "signatures",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
       }
     ],
     "outputs": [],
@@ -787,13 +807,23 @@
       },
       {
         "name": "nodekey",
-        "type": "address[]",
-        "internalType": "address[]"
+        "type": "address",
+        "internalType": "address"
       },
       {
-        "name": "signatures",
-        "type": "bytes[]",
-        "internalType": "bytes[]"
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "expiration",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "signature",
+        "type": "bytes",
+        "internalType": "bytes"
       }
     ],
     "outputs": [],
@@ -1003,6 +1033,40 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "softInvalidateWork",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "data",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",

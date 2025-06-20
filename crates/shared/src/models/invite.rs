@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct InviteRequest {
     pub invite: String,
     pub pool_id: u32,
@@ -10,6 +10,8 @@ pub struct InviteRequest {
     pub master_ip: Option<String>,
     pub master_port: Option<u16>,
     pub timestamp: u64,
+    pub expiration: [u8; 32],
+    pub nonce: [u8; 32],
 }
 
 #[derive(Deserialize, Serialize)]

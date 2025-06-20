@@ -1,16 +1,22 @@
+pub mod metrics;
+pub mod p2p;
 pub mod store;
 pub mod validators;
-use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use alloy::primitives::utils::Unit;
 use alloy::primitives::{Address, U256};
 use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, LevelFilter};
 use log::{error, info};
+use metrics::MetricsContext;
+use p2p::P2PClient;
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
-use shared::security::request_signer::sign_request;
+use shared::security::api_key_middleware::ApiKeyMiddleware;
+use shared::security::request_signer::sign_request_with_nonce;
+use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
@@ -23,7 +29,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tokio_util::sync::CancellationToken;
 use url::Url;
 use validators::hardware::HardwareValidator;
-use validators::synthetic_data::{SyntheticDataValidator, ToplocConfig};
+use validators::synthetic_data::SyntheticDataValidator;
 
 // Track the last time the validation loop ran
 static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
@@ -31,6 +37,62 @@ static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 const MAX_VALIDATION_INTERVAL_SECS: i64 = 120;
 // Track the last loop duration in milliseconds
 static LAST_LOOP_DURATION_MS: AtomicI64 = AtomicI64::new(0);
+
+async fn get_rejections(
+    req: HttpRequest,
+    validator: web::Data<Option<SyntheticDataValidator<shared::web3::wallet::WalletProvider>>>,
+) -> impl Responder {
+    match validator.as_ref() {
+        Some(validator) => {
+            // Parse query parameters
+            let query = req.query_string();
+            let limit = parse_limit_param(query).unwrap_or(100); // Default limit of 100
+
+            let result = if limit > 0 && limit < 1000 {
+                // Use the optimized recent rejections method for reasonable limits
+                validator.get_recent_rejections(limit as isize).await
+            } else {
+                // Fallback to all rejections (but warn about potential performance impact)
+                if limit >= 1000 {
+                    info!(
+                        "Large limit requested ({}), this may impact performance",
+                        limit
+                    );
+                }
+                validator.get_all_rejections().await
+            };
+
+            match result {
+                Ok(rejections) => HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: rejections,
+                }),
+                Err(e) => {
+                    error!("Failed to get rejections: {}", e);
+                    HttpResponse::InternalServerError().json(ApiResponse {
+                        success: false,
+                        data: format!("Failed to get rejections: {}", e),
+                    })
+                }
+            }
+        }
+        None => HttpResponse::ServiceUnavailable().json(ApiResponse {
+            success: false,
+            data: "Synthetic data validator not available",
+        }),
+    }
+}
+
+fn parse_limit_param(query: &str) -> Option<u32> {
+    for pair in query.split('&') {
+        if let Some((key, value)) = pair.split_once('=') {
+            if key == "limit" {
+                return value.parse::<u32>().ok();
+            }
+        }
+    }
+    None
+}
 
 async fn health_check() -> impl Responder {
     let now = SystemTime::now()
@@ -75,9 +137,9 @@ struct Args {
     #[arg(short = 'k', long)]
     validator_key: String,
 
-    /// Discovery url
-    #[arg(long, default_value = "http://localhost:8089")]
-    discovery_url: String,
+    /// Discovery URLs (comma-separated)
+    #[arg(long, default_value = "http://localhost:8089", value_delimiter = ',')]
+    discovery_urls: Vec<String>,
 
     /// Ability to disable hardware validation
     #[arg(long, default_value = "false")]
@@ -88,19 +150,11 @@ struct Args {
     #[arg(long, default_value = None)]
     pool_id: Option<String>,
 
-    /// Optional: Toploc Server URL for work validation
-    #[arg(long, default_value = None)]
-    toploc_server_url: Option<String>,
-
-    /// Optional: Toploc Auth Token
-    #[arg(long, default_value = None)]
-    toploc_auth_token: Option<String>,
-
     /// Optional: Toploc Grace Interval in seconds between work validation requests
     #[arg(long, default_value = "15")]
     toploc_grace_interval: u64,
 
-    // Optional: interval in minutes of max age of work on chain
+    /// Optional: interval in minutes of max age of work on chain
     #[arg(long, default_value = "15")]
     toploc_work_validation_interval: u64,
 
@@ -108,14 +162,27 @@ struct Args {
     #[arg(long, default_value = "120")]
     toploc_work_validation_unknown_status_expiry_seconds: u64,
 
+    /// Disable toploc ejection
+    /// If true, the validator will not invalidate work on toploc
+    #[arg(long, default_value = "false")]
+    disable_toploc_invalidation: bool,
+
+    /// Optional: batch trigger size
+    #[arg(long, default_value = "10")]
+    batch_trigger_size: usize,
+
+    /// Grouping
+    #[arg(long, default_value = "false")]
+    use_grouping: bool,
+
+    /// Grace period in minutes for incomplete groups to recover (0 = disabled)
+    #[arg(long, default_value = "0")]
+    incomplete_group_grace_period_minutes: u64,
+
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
     #[arg(long, default_value = "200")]
     validator_penalty: u64,
-
-    /// Temporary: S3 credentials
-    #[arg(long, default_value = None)]
-    s3_credentials: Option<String>,
 
     /// Temporary: S3 bucket name
     #[arg(long, default_value = None)]
@@ -143,6 +210,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     env_logger::Builder::new()
         .filter_level(log_level)
+        .filter_module("iroh", log::LevelFilter::Warn)
+        .filter_module("iroh_net", log::LevelFilter::Warn)
+        .filter_module("iroh_quinn", log::LevelFilter::Warn)
+        .filter_module("iroh_base", log::LevelFilter::Warn)
+        .filter_module("tracing::span", log::LevelFilter::Warn)
         .format_timestamp(None)
         .init();
 
@@ -173,7 +245,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let private_key_validator = args.validator_key;
     let rpc_url: Url = args.rpc_url.parse().unwrap();
-    let discovery_url = args.discovery_url;
+    let discovery_urls = args.discovery_urls;
 
     let redis_store = RedisStore::new(&args.redis_url);
 
@@ -182,18 +254,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     });
 
-    tokio::spawn(async {
-        if let Err(e) = HttpServer::new(|| App::new().route("/health", web::get().to(health_check)))
-            .bind("0.0.0.0:9879")
-            .expect("Failed to bind health check server")
-            .run()
-            .await
-        {
-            error!("Actix server error: {:?}", e);
-        }
-    });
-
-    let mut contract_builder = ContractBuilder::new(&validator_wallet)
+    let mut contract_builder = ContractBuilder::new(validator_wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
@@ -202,6 +263,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_stake_manager();
 
     let contracts = contract_builder.build_partial().unwrap();
+
+    let metrics_ctx =
+        MetricsContext::new(validator_wallet.address().to_string(), args.pool_id.clone());
+
+    // Initialize P2P client if enabled
+    let p2p_client = {
+        match P2PClient::new(validator_wallet.clone()).await {
+            Ok(client) => {
+                info!("P2P client initialized for testing");
+                Some(client)
+            }
+            Err(e) => {
+                error!("Failed to initialize P2P client: {}", e);
+                None
+            }
+        }
+    };
 
     if let Some(pool_id) = args.pool_id.clone() {
         let pool = match contracts
@@ -227,37 +305,61 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             contract_builder.with_synthetic_data_validator(Some(domain.validation_logic));
     }
 
-    let contracts = Arc::new(contract_builder.build().unwrap());
+    let contracts = contract_builder.build().unwrap();
 
-    let hardware_validator = HardwareValidator::new(&validator_wallet, contracts.clone());
+    let hardware_validator =
+        HardwareValidator::new(&validator_wallet, contracts.clone(), p2p_client.as_ref());
 
     let synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
         match contracts.synthetic_data_validator.clone() {
             Some(validator) => {
-                let toploc_config = ToplocConfig {
-                    server_url: args.toploc_server_url.unwrap(),
-                    auth_token: args.toploc_auth_token,
-                    grace_interval: args.toploc_grace_interval,
-                    work_validation_interval: args.toploc_work_validation_interval,
-                    unknown_status_expiry_seconds: args
-                        .toploc_work_validation_unknown_status_expiry_seconds,
-                };
                 info!(
                     "Synthetic validator has penalty: {} ({})",
                     penalty, args.validator_penalty
                 );
 
+                let toploc_configs = match std::env::var("TOPLOC_CONFIGS") {
+                    Ok(configs) => configs,
+                    Err(_) => {
+                        error!("Toploc configs are required but not provided in environment");
+                        std::process::exit(1);
+                    }
+                };
+                info!("Toploc configs: {}", toploc_configs);
+
+                let configs = match serde_json::from_str(&toploc_configs) {
+                    Ok(configs) => configs,
+                    Err(e) => {
+                        error!("Failed to parse toploc configs: {}", e);
+                        std::process::exit(1);
+                    }
+                };
+
+                let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
+                let gcs_storage =
+                    GcsStorageProvider::new(&args.bucket_name.unwrap(), &s3_credentials.unwrap())
+                        .await
+                        .unwrap();
+                let storage_provider = Arc::new(gcs_storage);
+
                 Some(SyntheticDataValidator::new(
                     pool_id,
                     validator,
                     contracts.prime_network.clone(),
-                    toploc_config,
+                    configs,
                     penalty,
-                    args.s3_credentials,
-                    args.bucket_name,
+                    storage_provider,
                     redis_store,
                     cancellation_token,
+                    args.toploc_work_validation_interval,
+                    args.toploc_work_validation_unknown_status_expiry_seconds,
+                    args.toploc_grace_interval,
+                    args.batch_trigger_size,
+                    args.use_grouping,
+                    args.disable_toploc_invalidation,
+                    args.incomplete_group_grace_period_minutes,
+                    Some(metrics_ctx.clone()),
                 ))
             }
             None => {
@@ -268,6 +370,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+
+    // Start HTTP server with access to the validator
+    let validator_for_server = synthetic_validator.clone();
+    tokio::spawn(async move {
+        let key = std::env::var("VALIDATOR_API_KEY").unwrap_or_default();
+        let api_key_middleware = Arc::new(ApiKeyMiddleware::new(key));
+
+        if let Err(e) = HttpServer::new(move || {
+            App::new()
+                .app_data(web::Data::new(validator_for_server.clone()))
+                .route("/health", web::get().to(health_check))
+                .route(
+                    "/rejections",
+                    web::get()
+                        .to(get_rejections)
+                        .wrap(api_key_middleware.clone()),
+                )
+                .route(
+                    "/metrics",
+                    web::get().to(|| async {
+                        match metrics::export_metrics() {
+                            Ok(metrics) => {
+                                HttpResponse::Ok().content_type("text/plain").body(metrics)
+                            }
+                            Err(e) => {
+                                error!("Error exporting metrics: {:?}", e);
+                                HttpResponse::InternalServerError().finish()
+                            }
+                        }
+                    }),
+                )
+        })
+        .bind("0.0.0.0:9879")
+        .expect("Failed to bind health check server")
+        .run()
+        .await
+        {
+            error!("Actix server error: {:?}", e);
+        }
+    });
 
     loop {
         if cancellation_token_clone.is_cancelled() {
@@ -292,24 +434,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if !args.disable_hardware_validation {
-            async fn _generate_signature(wallet: &Wallet, message: &str) -> Result<String> {
-                let signature = sign_request(message, wallet, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{}", e))?;
-                Ok(signature)
-            }
-
-            let nodes = match async {
-                let discovery_route = "/api/validator";
+            async fn _fetch_nodes_from_discovery_url(
+                discovery_url: &str,
+                validator_wallet: &Wallet,
+            ) -> Result<Vec<DiscoveryNode>> {
                 let address = validator_wallet
                     .wallet
                     .default_signer()
                     .address()
                     .to_string();
 
-                let signature = _generate_signature(&validator_wallet, discovery_route)
+                let discovery_route = "/api/validator";
+                let signature = sign_request_with_nonce(discovery_route, validator_wallet, None)
                     .await
-                    .context("Failed to generate signature")?;
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
 
                 let mut headers = reqwest::header::HeaderMap::new();
                 headers.insert(
@@ -319,13 +457,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 headers.insert(
                     "x-signature",
-                    reqwest::header::HeaderValue::from_str(&signature)
+                    reqwest::header::HeaderValue::from_str(&signature.signature)
                         .context("Failed to create signature header")?,
                 );
 
                 debug!("Fetching nodes from: {}{}", discovery_url, discovery_route);
                 let response = reqwest::Client::new()
                     .get(format!("{}{}", discovery_url, discovery_route))
+                    .query(&[("nonce", signature.nonce)])
                     .headers(headers)
                     .timeout(Duration::from_secs(10))
                     .send()
@@ -341,11 +480,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     serde_json::from_str(&response_text).context("Failed to parse response")?;
 
                 if !parsed_response.success {
-                    error!("Failed to fetch nodes: {:?}", parsed_response);
-                    return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
+                    error!(
+                        "Failed to fetch nodes from {}: {:?}",
+                        discovery_url, parsed_response
+                    );
+                    return Ok(vec![]);
                 }
 
                 Ok(parsed_response.data)
+            }
+
+            let nodes = match async {
+                let mut all_nodes = Vec::new();
+                let mut any_success = false;
+
+                for discovery_url in &discovery_urls {
+                    match _fetch_nodes_from_discovery_url(discovery_url, &validator_wallet).await {
+                        Ok(nodes) => {
+                            debug!(
+                                "Successfully fetched {} nodes from {}",
+                                nodes.len(),
+                                discovery_url
+                            );
+                            all_nodes.extend(nodes);
+                            any_success = true;
+                        }
+                        Err(e) => {
+                            error!("Failed to fetch nodes from {}: {:#}", discovery_url, e);
+                        }
+                    }
+                }
+
+                if !any_success {
+                    error!("Failed to fetch nodes from all discovery services");
+                    return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
+                }
+
+                // Remove duplicates based on node ID
+                let mut unique_nodes = Vec::new();
+                let mut seen_ids = std::collections::HashSet::new();
+                for node in all_nodes {
+                    if seen_ids.insert(node.node.id.clone()) {
+                        unique_nodes.push(node);
+                    }
+                }
+
+                debug!(
+                    "Total unique nodes after deduplication: {}",
+                    unique_nodes.len()
+                );
+                Ok(unique_nodes)
             }
             .await
             {
@@ -430,8 +614,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let loop_duration_ms = loop_duration.as_millis() as i64;
         LAST_LOOP_DURATION_MS.store(loop_duration_ms, Ordering::Relaxed);
 
+        metrics_ctx.record_validation_loop_duration(loop_duration.as_secs_f64());
         info!("Validation loop completed in {}ms", loop_duration_ms);
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
     Ok(())
 }

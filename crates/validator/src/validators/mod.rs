@@ -1,7 +1,6 @@
 pub mod hardware;
 pub mod hardware_challenge;
 pub mod synthetic_data;
-
 /// Common trait for all validators
 pub trait Validator {
     type Error;

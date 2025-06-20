@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
     let wallet = Wallet::new(&args.key, Url::parse(&args.rpc_url)?).unwrap();
 
     // Build all contracts
-    let contracts = ContractBuilder::new(&wallet)
+    let contracts = ContractBuilder::new(wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
@@ -51,9 +51,14 @@ async fn main() -> Result<()> {
         panic!("Work key must be 32 bytes");
     }
 
-    let tx = contracts
+    let call = contracts
         .compute_pool
-        .submit_work(pool_id, node, work_key)
+        .build_work_submission_call(pool_id, node, work_key, U256::from(179949060096000.0))
+        .await
+        .map_err(|e| eyre::eyre!("Failed to build work submission call: {}", e))?;
+
+    let tx = call
+        .send()
         .await
         .map_err(|e| eyre::eyre!("Failed to submit work: {}", e))?;
     println!(

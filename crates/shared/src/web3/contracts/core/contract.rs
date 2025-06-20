@@ -1,9 +1,6 @@
-use crate::web3::wallet::{Wallet, WalletProvider};
 use alloy::{
     contract::{ContractInstance, Interface},
-    network::Ethereum,
     primitives::Address,
-    transports::http::{Client, Http},
 };
 
 use std::include_bytes;
@@ -16,25 +13,17 @@ macro_rules! include_abi {
 }
 
 #[derive(Clone)]
-pub struct Contract {
-    instance: ContractInstance<Http<Client>, WalletProvider, Ethereum>,
-    provider: WalletProvider,
+pub struct Contract<P: alloy_provider::Provider> {
+    instance: ContractInstance<P>,
 }
 
-impl Contract {
-    pub fn new(address: Address, wallet: &Wallet, abi_file_path: &str) -> Self {
-        let instance = Self::parse_abi(abi_file_path, wallet, address);
-        Self {
-            instance,
-            provider: wallet.provider.clone(),
-        }
+impl<P: alloy_provider::Provider> Contract<P> {
+    pub fn new(address: Address, provider: P, abi_file_path: &str) -> Self {
+        let instance = Self::parse_abi(abi_file_path, provider, address);
+        Self { instance }
     }
 
-    fn parse_abi(
-        path: &str,
-        wallet: &Wallet,
-        address: Address,
-    ) -> ContractInstance<Http<Client>, WalletProvider, Ethereum> {
+    fn parse_abi(path: &str, provider: P, address: Address) -> ContractInstance<P> {
         let artifact = match path {
             "compute_registry.json" => {
                 include_abi!("../../../../artifacts/abi/compute_registry.json")
@@ -42,6 +31,9 @@ impl Contract {
             "ai_token.json" => include_abi!("../../../../artifacts/abi/ai_token.json"),
             "prime_network.json" => include_abi!("../../../../artifacts/abi/prime_network.json"),
             "compute_pool.json" => include_abi!("../../../../artifacts/abi/compute_pool.json"),
+            "rewards_distributor.json" => {
+                include_abi!("../../../../artifacts/abi/rewards_distributor.json")
+            }
             "synthetic_data_work_validator.json" => {
                 include_abi!("../../../../artifacts/abi/synthetic_data_work_validator.json")
             }
@@ -63,14 +55,15 @@ impl Contract {
             });
         let abi =
             serde_json::from_value(abi_json.clone()).expect("Failed to parse ABI from artifact");
-        ContractInstance::new(address, wallet.provider.clone(), Interface::new(abi))
+
+        ContractInstance::new(address, provider, Interface::new(abi))
     }
 
-    pub fn instance(&self) -> &ContractInstance<Http<Client>, WalletProvider, Ethereum> {
+    pub fn instance(&self) -> &ContractInstance<P> {
         &self.instance
     }
 
-    pub fn provider(&self) -> &WalletProvider {
-        &self.provider
+    pub fn provider(&self) -> &P {
+        self.instance.provider()
     }
 }

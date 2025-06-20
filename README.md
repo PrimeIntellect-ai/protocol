@@ -38,7 +38,7 @@ The Prime Protocol follows a modular architecture designed for decentralized AI 
 ### Prerequisites
 - Linux operating system
 - CUDA-capable GPU(s) for worker operations
-- Docker Desktop and Git installed
+- Docker (version 28.1.1 or later) and Docker Compose (version v2.35.1 or later)
 
 For complete setup instructions, refer to our [Development Setup Guide](docs/development-setup.md).
 
@@ -51,7 +51,7 @@ This can also be used to upgrade the current installation to the latest release.
 
 For the latest dev build use: 
 ```
-curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/main/crates/worker/scripts/install.sh | bash -s -- --dev
+curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/develop/crates/worker/scripts/install.sh | bash -s -- --dev
 ```
 
 ## Documentation
