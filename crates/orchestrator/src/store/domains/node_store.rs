@@ -22,11 +22,16 @@ impl NodeStore {
 
     pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).await?;
-        let mut nodes: Vec<OrchestratorNode> = Vec::new();
+        let keys: Vec<String> = con.keys(format!("{}*", ORCHESTRATOR_BASE_KEY)).await?;
 
-        for node in keys {
-            let node_string: String = con.get(node).await?;
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let node_strings: Vec<String> = redis::pipe().get(&keys).query_async(&mut con).await?;
+
+        let mut nodes: Vec<OrchestratorNode> = Vec::new();
+        for node_string in node_strings {
             let node: OrchestratorNode = OrchestratorNode::from_string(&node_string);
             nodes.push(node);
         }
@@ -166,6 +171,7 @@ impl NodeStore {
                     _ => {
                         node.task_state = None;
                         node.task_id = None;
+                        node.task_details = None;
                     }
                 }
                 let node_string = node.to_string();

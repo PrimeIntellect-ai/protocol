@@ -154,6 +154,13 @@ async fn send_heartbeat(
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
+
+    let task_details = if let Some(task) = &current_task_state {
+        docker_service.get_task_details(task).await
+    } else {
+        None
+    };
+
     let request = if let Some(task) = current_task_state {
         let metrics_for_task = metrics_store
             .get_metrics_for_task(task.id.to_string())
@@ -170,7 +177,7 @@ async fn send_heartbeat(
             ),
             timestamp: Some(ts),
             p2p_id,
-            ..Default::default()
+            task_details,
         }
     } else {
         HeartbeatRequest {
