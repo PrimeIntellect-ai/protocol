@@ -52,7 +52,7 @@ spec:
               value: "redis://{{ include "validator.redisName" . }}:6379"
             {{- else }}
             - name: REDIS_URL
-              value: {{ .Values.env.REDIS_URL }}
+              value: "{{ .Values.env.REDIS_URL }}"
             {{- end }}
             {{- if .Values.env.TOPLOC_CONFIGS }}
             - name: TOPLOC_CONFIGS

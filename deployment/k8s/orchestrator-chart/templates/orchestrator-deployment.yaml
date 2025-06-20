@@ -34,7 +34,7 @@
       value: "redis://{{ include "orchestrator.redisName" .root }}:6379"
     {{- else }}
     - name: REDIS_STORE_URL
-      value: {{ .root.Values.env.REDIS_URL }}
+      value: "{{ .root.Values.env.REDIS_URL }}"
     {{- end }}
     - name: DISCOVERY_URLS
       value: {{ .root.Values.env.DISCOVERY_URLS }}
