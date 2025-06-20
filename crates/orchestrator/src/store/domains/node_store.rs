@@ -6,6 +6,7 @@ use anyhow::Result;
 use log::info;
 use redis::AsyncCommands;
 use redis::Value;
+use shared::models::heartbeat::TaskDetails;
 use shared::models::task::TaskState;
 use std::sync::Arc;
 
@@ -22,6 +23,11 @@ impl NodeStore {
     pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).await?;
+
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let mut nodes: Vec<OrchestratorNode> = Vec::new();
 
         for node in keys {
@@ -132,6 +138,7 @@ impl NodeStore {
         node_address: Address,
         current_task: Option<String>,
         task_state: Option<String>,
+        task_details: Option<TaskDetails>,
     ) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
@@ -152,15 +159,17 @@ impl NodeStore {
                     })
                     .unwrap();
                 let task_state = task_state.map(|state| TaskState::from(state.as_str()));
-                let details = (current_task, task_state);
+                let details = (current_task, task_state, task_details);
                 match details {
-                    (Some(task), Some(task_state)) => {
+                    (Some(task), Some(task_state), task_details) => {
                         node.task_state = Some(task_state);
                         node.task_id = Some(task);
+                        node.task_details = task_details;
                     }
                     _ => {
                         node.task_state = None;
                         node.task_id = None;
+                        node.task_details = None;
                     }
                 }
                 let node_string = node.to_string();

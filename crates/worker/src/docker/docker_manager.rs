@@ -818,4 +818,13 @@ impl DockerManager {
         debug!("Successfully retrieved logs for container {}", container_id);
         Ok(logs)
     }
+
+    pub async fn inspect_container(
+        &self,
+        container_id: &str,
+    ) -> Result<bollard::models::ContainerInspectResponse, DockerError> {
+        self.docker
+            .inspect_container(container_id, Some(InspectContainerOptions { size: false }))
+            .await
+    }
 }
