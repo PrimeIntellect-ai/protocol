@@ -136,8 +136,7 @@ async fn main() -> Result<()> {
 
                 info!("Starting location enrichment service");
                 tokio::spawn(async move {
-                    if let Err(e) = location_enrichment.run(10).await {
-                        // Run every 60 seconds
+                    if let Err(e) = location_enrichment.run(30).await {
                         error!("Location enrichment service failed: {}", e);
                     }
                 });
