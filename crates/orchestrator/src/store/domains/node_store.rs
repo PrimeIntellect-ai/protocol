@@ -7,6 +7,7 @@ use log::info;
 use redis::AsyncCommands;
 use redis::Value;
 use shared::models::heartbeat::TaskDetails;
+use shared::models::node::NodeLocation;
 use shared::models::task::TaskState;
 use std::sync::Arc;
 
@@ -140,6 +141,21 @@ impl NodeStore {
         let node_string: String = con.get(&node_key).await?;
         let mut node: OrchestratorNode = serde_json::from_str(&node_string)?;
         node.version = Some(version.to_string());
+        let node_string = node.to_string();
+        let _: () = con.set(&node_key, node_string).await?;
+        Ok(())
+    }
+
+    pub async fn update_node_location(
+        &self,
+        node_address: &Address,
+        location: &NodeLocation,
+    ) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+        let node_key: String = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
+        let node_string: String = con.get(&node_key).await?;
+        let mut node: OrchestratorNode = serde_json::from_str(&node_string)?;
+        node.location = Some(location.clone());
         let node_string = node.to_string();
         let _: () = con.set(&node_key, node_string).await?;
         Ok(())

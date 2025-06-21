@@ -338,6 +338,19 @@ impl DiscoveryMonitor {
                     node.ip_address = discovery_node.node.ip_address.clone();
                     let _ = self.store_context.node_store.add_node(node.clone()).await;
                 }
+                if existing_node.location.is_none() && discovery_node.location.is_some() {
+                    info!(
+                        "Node {} location changed from None to {:?}",
+                        node_address, discovery_node.location
+                    );
+                    if let Some(location) = &discovery_node.location {
+                        let _ = self
+                            .store_context
+                            .node_store
+                            .update_node_location(&node_address, location)
+                            .await;
+                    }
+                }
 
                 if existing_node.status == NodeStatus::Dead {
                     if let (Some(last_change), Some(last_updated)) = (
