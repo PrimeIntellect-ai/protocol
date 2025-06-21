@@ -1496,12 +1496,13 @@ impl SyntheticDataValidator<WalletProvider> {
         );
 
         let mut nodes_to_invalidate = Vec::new();
+        let mut nodes_with_wrong_work_unit_claims = Vec::new();
 
         if status.status == ValidationResult::Reject {
             let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
             nodes_to_invalidate.extend(rejected_nodes);
         } else if status.status == ValidationResult::Accept {
-            let nodes_with_wrong_work_unit_claims = self
+            let wrong_claim_nodes = self
                 .handle_group_toploc_acceptance(
                     &group,
                     &status,
@@ -1510,13 +1511,23 @@ impl SyntheticDataValidator<WalletProvider> {
                     &toploc_config_name,
                 )
                 .await?;
-            nodes_to_invalidate.extend(nodes_with_wrong_work_unit_claims);
+            nodes_with_wrong_work_unit_claims.extend(wrong_claim_nodes);
         }
 
         if !nodes_to_invalidate.is_empty() {
             for work_key in &group.sorted_work_keys {
                 if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
                     if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
+                        self.invalidate_work(work_key).await?;
+                    }
+                }
+            }
+        }
+
+        if !nodes_with_wrong_work_unit_claims.is_empty() {
+            for work_key in &group.sorted_work_keys {
+                if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
+                    if nodes_with_wrong_work_unit_claims.contains(&work_info.node_id.to_string()) {
                         self.invalidate_work(work_key).await?;
                     }
                 }
@@ -1532,6 +1543,16 @@ impl SyntheticDataValidator<WalletProvider> {
                         &WorkValidationInfo {
                             status: ValidationResult::Reject,
                             reason: status.reason.clone(),
+                        },
+                    )
+                    .await?;
+                } else if nodes_with_wrong_work_unit_claims.contains(&work_info.node_id.to_string())
+                {
+                    self.update_work_validation_info(
+                        work_key,
+                        &WorkValidationInfo {
+                            status: ValidationResult::Reject,
+                            reason: Some("Incorrect work unit claims".to_string()),
                         },
                     )
                     .await?;
