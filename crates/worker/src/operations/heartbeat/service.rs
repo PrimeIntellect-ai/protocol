@@ -7,7 +7,7 @@ use log::info;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
 use shared::models::heartbeat::{HeartbeatRequest, HeartbeatResponse};
-use shared::security::request_signer::sign_request;
+use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -154,6 +154,13 @@ async fn send_heartbeat(
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
+
+    let task_details = if let Some(task) = &current_task_state {
+        docker_service.get_task_details(task).await
+    } else {
+        None
+    };
+
     let request = if let Some(task) = current_task_state {
         let metrics_for_task = metrics_store
             .get_metrics_for_task(task.id.to_string())
@@ -170,13 +177,11 @@ async fn send_heartbeat(
             ),
             timestamp: Some(ts),
             p2p_id,
+            task_details,
         }
     } else {
         HeartbeatRequest {
             address: wallet.address().to_string(),
-            task_id: None,
-            task_state: None,
-            metrics: None,
             version: Some(
                 option_env!("WORKER_VERSION")
                     .unwrap_or(env!("CARGO_PKG_VERSION"))
@@ -184,23 +189,31 @@ async fn send_heartbeat(
             ),
             timestamp: Some(ts),
             p2p_id,
+            ..Default::default()
         }
     };
 
-    let signature = sign_request(
+    let signature = sign_request_with_nonce(
         "/heartbeat",
         &wallet,
-        Some(&serde_json::to_value(&request).unwrap()),
+        Some(&serde_json::to_value(&request).map_err(|e| {
+            log::error!("Failed to serialize request: {:?}", e);
+            HeartbeatError::RequestFailed
+        })?),
     )
     .await
-    .unwrap();
+    .map_err(|e| {
+        log::error!("Failed to sign request: {:?}", e);
+        HeartbeatError::RequestFailed
+    })?;
+
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-address", wallet.address().to_string().parse().unwrap());
-    headers.insert("x-signature", signature.parse().unwrap());
+    headers.insert("x-signature", signature.signature.parse().unwrap());
 
     let response = client
         .post(endpoint.unwrap())
-        .json(&request)
+        .json(&signature.data)
         .headers(headers)
         .send()
         .await

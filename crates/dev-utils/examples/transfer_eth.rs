@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
     let balance_after = wallet.provider.get_balance(to).await?;
     println!(
         "Receiver's ETH balance after transaction: {} ETH",
-        balance_after / U256::from(10u64.pow(18))
+        alloy::primitives::utils::format_ether(balance_after)
     );
 
     Ok(())

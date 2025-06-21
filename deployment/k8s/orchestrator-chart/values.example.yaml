@@ -6,12 +6,16 @@ domainId: "0"
 
 env:
   RPC_URL: "http://your-rpc-endpoint:8545"
-  DISCOVERY_URL: "http://your-discovery-service:8089"
+  DISCOVERY_URLS: "http://your-discovery-service:8089"
   DISCOVERY_REFRESH_INTERVAL: "60"
   BUCKET_NAME: "your-bucket-name"
   LOG_LEVEL: "info"
   NODE_GROUP_CONFIGS: '[{"name": "h100-config", "min_group_size": 1, "max_group_size": 1, "compute_requirements": "gpu:model=h100"}, {"name": "a100-config", "min_group_size": 2, "max_group_size": 2, "compute_requirements": "gpu:model=a100"}]'
   WEBHOOK_CONFIGS: '[{"url": "https://your-webhook-url.example.com", "bearer_token": "your-bearer-token"}]'
+  MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT: "1"
+
+  # In case we use an external redis
+  REDIS_URL: "redis://redis-master.example-namespace:6379"
 secrets:
   coordinatorKey: "your-coordinator-private-key"
   adminApiKey: "your-admin-api-key"

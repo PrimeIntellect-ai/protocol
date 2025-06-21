@@ -93,6 +93,34 @@ impl TaskStore {
         Ok(())
     }
 
+    pub async fn delete_all_tasks(&self) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+
+        // Get all tasks first for observer notifications
+        let tasks = self.get_all_tasks().await?;
+
+        // Delete all individual task keys
+        for task in &tasks {
+            let task_key = format!("{}{}", TASK_KEY_PREFIX, task.id);
+            let _: () = con.del(&task_key).await?;
+        }
+
+        // Clear the task list
+        let _: () = con.del(TASK_LIST_KEY).await?;
+
+        // Notify observers synchronously
+        let observers = self.observers.lock().unwrap().clone();
+        for task in tasks {
+            for observer in observers.iter() {
+                if let Err(e) = observer.on_task_deleted(Some(task.clone())) {
+                    error!("Error notifying observer: {}", e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn get_task(&self, id: &str) -> Result<Option<Task>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let task_key = format!("{}{}", TASK_KEY_PREFIX, id);

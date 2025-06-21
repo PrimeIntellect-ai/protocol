@@ -6,10 +6,13 @@ use anyhow::Result;
 use log::info;
 use redis::AsyncCommands;
 use redis::Value;
+use shared::models::heartbeat::TaskDetails;
 use shared::models::task::TaskState;
 use std::sync::Arc;
 
-const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node:";
+const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node";
+const ORCHESTRATOR_NODE_INDEX: &str = "orchestrator:node_index";
+
 pub struct NodeStore {
     redis: Arc<RedisStore>,
 }
@@ -21,14 +24,24 @@ impl NodeStore {
 
     pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).await?;
-        let mut nodes: Vec<OrchestratorNode> = Vec::new();
 
-        for node in keys {
-            let node_string: String = con.get(node).await?;
-            let node: OrchestratorNode = OrchestratorNode::from_string(&node_string);
-            nodes.push(node);
+        let addresses: Vec<String> = con.smembers(ORCHESTRATOR_NODE_INDEX).await?;
+
+        if addresses.is_empty() {
+            return Ok(Vec::new());
         }
+
+        let keys: Vec<String> = addresses
+            .iter()
+            .map(|addr| format!("{}:{}", ORCHESTRATOR_BASE_KEY, addr))
+            .collect();
+
+        let node_values: Vec<Option<String>> = con.mget(&keys).await?;
+
+        let mut nodes: Vec<OrchestratorNode> = node_values
+            .into_iter()
+            .filter_map(|value| value.map(|s| OrchestratorNode::from_string(&s)))
+            .collect();
 
         nodes.sort_by(|a, b| match (&a.status, &b.status) {
             (NodeStatus::Healthy, NodeStatus::Healthy) => std::cmp::Ordering::Equal,
@@ -45,15 +58,19 @@ impl NodeStore {
 
         Ok(nodes)
     }
-
     pub async fn add_node(&self, node: OrchestratorNode) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let _: () = con
+
+        // Use Redis transaction (MULTI/EXEC) to ensure atomic execution of both operations
+        let mut pipe = redis::pipe();
+        pipe.atomic()
+            .sadd(ORCHESTRATOR_NODE_INDEX, node.address.to_string())
             .set(
                 format!("{}:{}", ORCHESTRATOR_BASE_KEY, node.address),
                 node.to_string(),
-            )
-            .await?;
+            );
+
+        let _: () = pipe.query_async(&mut con).await?;
         Ok(())
     }
 
@@ -73,18 +90,30 @@ impl NodeStore {
 
     pub async fn get_uninvited_nodes(&self) -> Result<Vec<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let keys: Vec<String> = con.keys(format!("{}:*", ORCHESTRATOR_BASE_KEY)).await?;
-        let mut nodes: Vec<OrchestratorNode> = Vec::new();
 
-        for key in keys {
-            if let Ok(node_string) = con.get::<_, String>(&key).await {
-                if let Ok(node) = serde_json::from_str::<OrchestratorNode>(&node_string) {
-                    if matches!(node.status, NodeStatus::Discovered) {
-                        nodes.push(node);
-                    }
-                }
-            }
+        let addresses: Vec<String> = con.smembers(ORCHESTRATOR_NODE_INDEX).await?;
+
+        if addresses.is_empty() {
+            return Ok(Vec::new());
         }
+
+        let keys: Vec<String> = addresses
+            .iter()
+            .map(|addr| format!("{}:{}", ORCHESTRATOR_BASE_KEY, addr))
+            .collect();
+
+        let node_values: Vec<Option<String>> = con.mget(&keys).await?;
+
+        let nodes: Vec<OrchestratorNode> = node_values
+            .into_iter()
+            .filter_map(|value| {
+                value.and_then(|s| {
+                    serde_json::from_str::<OrchestratorNode>(&s)
+                        .ok()
+                        .filter(|node| matches!(node.status, NodeStatus::Discovered))
+                })
+            })
+            .collect();
 
         Ok(nodes)
     }
@@ -132,6 +161,7 @@ impl NodeStore {
         node_address: Address,
         current_task: Option<String>,
         task_state: Option<String>,
+        task_details: Option<TaskDetails>,
     ) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
@@ -152,15 +182,17 @@ impl NodeStore {
                     })
                     .unwrap();
                 let task_state = task_state.map(|state| TaskState::from(state.as_str()));
-                let details = (current_task, task_state);
+                let details = (current_task, task_state, task_details);
                 match details {
-                    (Some(task), Some(task_state)) => {
+                    (Some(task), Some(task_state), task_details) => {
                         node.task_state = Some(task_state);
                         node.task_id = Some(task);
+                        node.task_details = task_details;
                     }
                     _ => {
                         node.task_state = None;
                         node.task_id = None;
+                        node.task_details = None;
                     }
                 }
                 let node_string = node.to_string();
@@ -181,6 +213,7 @@ mod tests {
     use crate::models::node::NodeStatus;
     use crate::models::node::OrchestratorNode;
     use alloy::primitives::Address;
+
     use std::str::FromStr;
 
     #[tokio::test]

@@ -45,16 +45,18 @@ spec:
                 secretKeyRef:
                   name: {{ include "validator.secretName" . }}
                   key: validatorKey
-            - name: DISCOVERY_URL
-              value: {{ .Values.env.DISCOVERY_URL }}
+            - name: DISCOVERY_URLS
+              value: {{ .Values.env.DISCOVERY_URLS }}
+            {{- if not .Values.env.REDIS_URL }}
             - name: REDIS_URL
               value: "redis://{{ include "validator.redisName" . }}:6379"
-            {{- if .Values.secrets.toplocConfigs }}
+            {{- else }}
+            - name: REDIS_URL
+              value: "{{ .Values.env.REDIS_URL }}"
+            {{- end }}
+            {{- if .Values.env.TOPLOC_CONFIGS }}
             - name: TOPLOC_CONFIGS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "validator.secretName" . }}
-                  key: toplocConfigs
+              value: {{ .Values.env.TOPLOC_CONFIGS | quote }}
             {{- end }}
             - name: LOG_LEVEL
               value: "{{ .Values.env.LOG_LEVEL }}"
@@ -80,6 +82,11 @@ spec:
               value: "{{ .Values.env.DISABLE_HARDWARE_VALIDATION }}"
             - name: VALIDATOR_PENALTY
               value: "{{ .Values.env.VALIDATOR_PENALTY }}"
+            - name: VALIDATOR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "validator.secretName" . }}
+                  key: validatorApiKey
               
             {{- if .Values.secrets.s3Credentials }}
             - name: S3_CREDENTIALS

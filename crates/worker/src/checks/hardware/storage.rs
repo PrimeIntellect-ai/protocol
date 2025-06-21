@@ -90,11 +90,12 @@ pub fn find_largest_storage() -> Option<MountPoint> {
                 continue;
             }
 
-            // Skip system/special mounts
+            // Skip system/special mounts and Docker volumes
             if mount_path.starts_with("/proc")
                 || mount_path.starts_with("/sys")
                 || mount_path.starts_with("/dev")
                 || mount_path.starts_with("/run")
+                || mount_path.starts_with("/var/lib/docker/volumes")
             {
                 continue;
             }

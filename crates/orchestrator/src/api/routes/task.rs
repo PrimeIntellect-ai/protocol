@@ -74,10 +74,20 @@ async fn delete_task(id: web::Path<String>, app_state: Data<AppState>) -> HttpRe
     HttpResponse::Ok().json(json!({"success": true}))
 }
 
+async fn delete_all_tasks(app_state: Data<AppState>) -> HttpResponse {
+    let task_store = app_state.store_context.task_store.clone();
+    if let Err(e) = task_store.delete_all_tasks().await {
+        return HttpResponse::InternalServerError()
+            .json(json!({"success": false, "error": e.to_string()}));
+    }
+    HttpResponse::Ok().json(json!({"success": true}))
+}
+
 pub fn tasks_routes() -> Scope {
     web::scope("/tasks")
         .route("", get().to(get_all_tasks))
         .route("", post().to(create_task))
+        .route("/all", delete().to(delete_all_tasks))
         .route("/{id}", delete().to(delete_task))
 }
 

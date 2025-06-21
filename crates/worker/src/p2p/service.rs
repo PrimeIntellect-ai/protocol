@@ -39,14 +39,21 @@ pub struct P2PContext {
     pub provider_wallet: Wallet,
 }
 
+#[derive(Clone)]
 pub struct P2PService {
     endpoint: Endpoint,
+    secret_key: SecretKey,
     node_id: String,
     listening_addrs: Vec<String>,
     cancellation_token: CancellationToken,
     context: Option<P2PContext>,
     allowed_addresses: Vec<Address>,
     wallet: Wallet,
+}
+
+enum EndpointLoopResult {
+    Shutdown,
+    EndpointClosed,
 }
 
 impl P2PService {
@@ -74,7 +81,7 @@ impl P2PService {
 
         // Create the endpoint
         let endpoint = Endpoint::builder()
-            .secret_key(secret_key)
+            .secret_key(secret_key.clone())
             .alpns(vec![PRIME_P2P_PROTOCOL.to_vec()])
             .discovery_n0()
             .relay_mode(RelayMode::Default)
@@ -93,6 +100,7 @@ impl P2PService {
 
         Ok(Self {
             endpoint,
+            secret_key,
             node_id,
             listening_addrs,
             cancellation_token,
@@ -111,33 +119,109 @@ impl P2PService {
     pub fn listening_addresses(&self) -> &[String] {
         &self.listening_addrs
     }
-    /// Start accepting incoming connections
+
+    /// Recreate the endpoint with the same identity
+    async fn recreate_endpoint(&self) -> Result<Endpoint> {
+        info!("Recreating P2P endpoint with node ID: {}", self.node_id);
+
+        let endpoint = Endpoint::builder()
+            .secret_key(self.secret_key.clone())
+            .alpns(vec![PRIME_P2P_PROTOCOL.to_vec()])
+            .discovery_n0()
+            .relay_mode(RelayMode::Default)
+            .bind()
+            .await?;
+
+        let node_addr = endpoint.node_addr().await?;
+        let listening_addrs = node_addr
+            .direct_addresses
+            .iter()
+            .map(|addr| addr.to_string())
+            .collect::<Vec<_>>();
+
+        info!(
+            "P2P endpoint recreated, listening on: {:?}",
+            listening_addrs
+        );
+        Ok(endpoint)
+    }
+    /// Start accepting incoming connections with automatic recovery
     pub async fn start(&self) -> Result<()> {
-        let endpoint = self.endpoint.clone();
+        let service = Arc::new(self.clone());
         let cancellation_token = self.cancellation_token.clone();
-        let context = self.context.clone();
-        let allowed_addresses = self.allowed_addresses.clone();
-        let wallet = self.wallet.clone();
+
         tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = cancellation_token.cancelled() => {
-                        info!("P2P service shutting down");
-                        break;
-                    }
-                    incoming = endpoint.accept() => {
-                        if let Some(incoming) = incoming {
-                            tokio::spawn(Self::handle_connection(incoming, context.clone(), allowed_addresses.clone(), wallet.clone()));
-                        } else {
-                            warn!("P2P endpoint closed");
-                            break;
+            service.run_with_recovery(cancellation_token).await;
+        });
+
+        Ok(())
+    }
+
+    /// Run the P2P service with automatic endpoint recovery
+    async fn run_with_recovery(&self, cancellation_token: CancellationToken) {
+        let mut endpoint = self.endpoint.clone();
+        let mut retry_delay = Duration::from_secs(1);
+        const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
+
+        loop {
+            tokio::select! {
+                _ = cancellation_token.cancelled() => {
+                    info!("P2P service shutting down");
+                    break;
+                }
+                result = self.run_endpoint_loop(&endpoint, &cancellation_token) => {
+                    match result {
+                        EndpointLoopResult::Shutdown => break,
+                        EndpointLoopResult::EndpointClosed => {
+                            warn!("P2P endpoint closed, attempting recovery in {:?}", retry_delay);
+
+                            tokio::select! {
+                                _ = cancellation_token.cancelled() => break,
+                                _ = tokio::time::sleep(retry_delay) => {}
+                            }
+
+                            match self.recreate_endpoint().await {
+                                Ok(new_endpoint) => {
+                                    info!("P2P endpoint successfully recovered");
+                                    endpoint = new_endpoint;
+                                    retry_delay = Duration::from_secs(1);
+                                }
+                                Err(e) => {
+                                    error!("Failed to recreate P2P endpoint: {}", e);
+                                    retry_delay = std::cmp::min(retry_delay * 2, MAX_RETRY_DELAY);
+                                }
+                            }
                         }
                     }
                 }
             }
-        });
+        }
+    }
 
-        Ok(())
+    /// Run the main endpoint acceptance loop
+    async fn run_endpoint_loop(
+        &self,
+        endpoint: &Endpoint,
+        cancellation_token: &CancellationToken,
+    ) -> EndpointLoopResult {
+        let context = self.context.clone();
+        let allowed_addresses = self.allowed_addresses.clone();
+        let wallet = self.wallet.clone();
+
+        loop {
+            tokio::select! {
+                _ = cancellation_token.cancelled() => {
+                    return EndpointLoopResult::Shutdown;
+                }
+                incoming = endpoint.accept() => {
+                    if let Some(incoming) = incoming {
+                        tokio::spawn(Self::handle_connection(incoming, context.clone(), allowed_addresses.clone(), wallet.clone()));
+                    } else {
+                        return EndpointLoopResult::EndpointClosed;
+                    }
+                }
+            }
+        }
     }
 
     /// Handle an incoming connection
@@ -425,9 +509,6 @@ impl P2PService {
             Self::write_response(&mut send, response).await?;
         }
 
-        // Finish the send stream
-        send.finish()?;
-
         Ok(())
     }
 
@@ -620,7 +701,6 @@ mod tests {
     #[serial]
     async fn test_ping() {
         let (service, client, _, worker_wallet_address) = setup_test_service(true).await;
-        println!("worker_wallet_address: {:?}", worker_wallet_address);
         let node_id = service.node_id().to_string();
         let addresses = service.listening_addresses().to_vec();
         let random_nonce = rand_v8::thread_rng().gen::<u64>();

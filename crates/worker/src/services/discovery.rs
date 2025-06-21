@@ -1,31 +1,35 @@
+use anyhow::Result;
 use shared::models::node::Node;
-use shared::security::request_signer::sign_request;
+use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::wallet::Wallet;
 
 pub struct DiscoveryService {
     wallet: Wallet,
-    base_url: String,
+    base_urls: Vec<String>,
     endpoint: String,
 }
 
 impl DiscoveryService {
-    pub fn new(wallet: Wallet, base_url: Option<String>, endpoint: Option<String>) -> Self {
+    pub fn new(wallet: Wallet, base_urls: Vec<String>, endpoint: Option<String>) -> Self {
+        let urls = if base_urls.is_empty() {
+            vec!["http://localhost:8089".to_string()]
+        } else {
+            base_urls
+        };
         Self {
             wallet,
-            base_url: base_url.unwrap_or_else(|| "http://localhost:8089".to_string()),
+            base_urls: urls,
             endpoint: endpoint.unwrap_or_else(|| "/api/nodes".to_string()),
         }
     }
 
-    pub async fn upload_discovery_info(
-        &self,
-        node_config: &Node,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let request_data = serde_json::to_value(node_config)
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    async fn upload_to_single_discovery(&self, node_config: &Node, base_url: &str) -> Result<()> {
+        let request_data = serde_json::to_value(node_config)?;
 
-        let signature_string =
-            sign_request(&self.endpoint, &self.wallet, Some(&request_data)).await?;
+        let signed_request =
+            sign_request_with_nonce(&self.endpoint, &self.wallet, Some(&request_data))
+                .await
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -38,14 +42,17 @@ impl DiscoveryService {
                 .parse()
                 .unwrap(),
         );
-        headers.insert("x-signature", signature_string.parse().unwrap());
-        let request_url = format!("{}{}", self.base_url, &self.endpoint);
-
+        headers.insert("x-signature", signed_request.signature.parse().unwrap());
+        let request_url = format!("{}{}", base_url, &self.endpoint);
         let client = reqwest::Client::new();
         let response = client
             .put(&request_url)
             .headers(headers)
-            .json(&request_data)
+            .json(
+                &signed_request
+                    .data
+                    .expect("Signed request data should always be present for discovery upload"),
+            )
             .send()
             .await?;
 
@@ -55,14 +62,43 @@ impl DiscoveryService {
                 .text()
                 .await
                 .unwrap_or_else(|_| "No error message".to_string());
-            return Err(format!(
-                "Error: Received response with status code {}: {}",
-                status, error_text
-            )
-            .into());
+            return Err(anyhow::anyhow!(
+                "Error: Received response with status code {} from {}: {}",
+                status,
+                base_url,
+                error_text
+            ));
         }
 
         Ok(())
+    }
+
+    pub async fn upload_discovery_info(&self, node_config: &Node) -> Result<()> {
+        let mut last_error: Option<String> = None;
+
+        for base_url in &self.base_urls {
+            match self.upload_to_single_discovery(node_config, base_url).await {
+                Ok(_) => {
+                    // Successfully uploaded to one discovery service, return immediately
+                    return Ok(());
+                }
+                Err(e) => {
+                    last_error = Some(e.to_string());
+                }
+            }
+        }
+
+        // If we reach here, all discovery services failed
+        if let Some(error) = last_error {
+            Err(anyhow::anyhow!(
+                "Failed to upload to all discovery services. Last error: {}",
+                error
+            ))
+        } else {
+            Err(anyhow::anyhow!(
+                "Failed to upload to all discovery services"
+            ))
+        }
     }
 }
 
@@ -70,7 +106,7 @@ impl Clone for DiscoveryService {
     fn clone(&self) -> Self {
         Self {
             wallet: self.wallet.clone(),
-            base_url: self.base_url.clone(),
+            base_urls: self.base_urls.clone(),
             endpoint: self.endpoint.clone(),
         }
     }

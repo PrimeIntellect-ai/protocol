@@ -5,6 +5,7 @@ use crate::console::Console;
 use bollard::models::ContainerStateStatusEnum;
 use chrono::{DateTime, Utc};
 use log::debug;
+use shared::models::heartbeat::TaskDetails;
 use shared::models::node::GpuSpecs;
 use shared::models::node::GpuVendor;
 use shared::models::task::Task;
@@ -250,7 +251,7 @@ impl DockerService {
                                                 67108864 // Default to 64MB in bytes
                                             }
                                         };
-                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size), payload.entrypoint).await {
+                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size), payload.entrypoint, None).await {
                                             Ok(container_id) => {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
@@ -334,6 +335,7 @@ impl DockerService {
             Some(task) => {
                 let config_hash = task.generate_config_hash();
                 let container_id = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
+
                 let logs = self
                     .docker_manager
                     .get_container_logs(&container_id, None)
@@ -358,6 +360,65 @@ impl DockerService {
                 Ok(())
             }
             None => Ok(()),
+        }
+    }
+
+    pub async fn get_task_details(&self, task: &Task) -> Option<TaskDetails> {
+        let config_hash = task.generate_config_hash();
+        let container_name = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
+
+        match self.docker_manager.list_containers(true).await {
+            Ok(containers) => {
+                let container = containers
+                    .iter()
+                    .find(|c| c.names.contains(&format!("/{}", container_name)));
+
+                if let Some(container) = container {
+                    match self
+                        .docker_manager
+                        .get_container_details(&container.id)
+                        .await
+                    {
+                        Ok(details) => {
+                            let docker_image_id = if let Ok(inspect_result) =
+                                self.docker_manager.inspect_container(&container.id).await
+                            {
+                                inspect_result.image
+                            } else {
+                                Some(container.image.clone())
+                            };
+
+                            Some(TaskDetails {
+                                docker_image_id,
+                                container_id: Some(container.id.clone()),
+                                container_status: details.status.map(|s| format!("{:?}", s)),
+                                container_created_at: Some(container.created),
+                                container_exit_code: details.status_code,
+                            })
+                        }
+                        Err(e) => {
+                            debug!("Failed to get container details: {}", e);
+                            Some(TaskDetails {
+                                docker_image_id: Some(container.image.clone()),
+                                container_id: Some(container.id.clone()),
+                                container_status: None,
+                                container_created_at: Some(container.created),
+                                container_exit_code: None,
+                            })
+                        }
+                    }
+                } else {
+                    debug!(
+                        "Container {} not found for task {}",
+                        container_name, task.id
+                    );
+                    None
+                }
+            }
+            Err(e) => {
+                debug!("Failed to list containers: {}", e);
+                None
+            }
         }
     }
 }

@@ -224,6 +224,7 @@ impl DockerManager {
         volumes: Option<Vec<(String, String, bool, bool)>>,
         shm_size: Option<u64>,
         entrypoint: Option<Vec<String>>,
+        restart_policy_max_retries: Option<i64>,
     ) -> Result<String, DockerError> {
         info!("Starting to pull image: {}", image);
 
@@ -413,6 +414,10 @@ impl DockerManager {
                         }]),
                         binds: volume_binds,
                         shm_size: shm_size.map(|s| s as i64),
+                        restart_policy: Some(bollard::models::RestartPolicy {
+                            name: Some(bollard::models::RestartPolicyNameEnum::ON_FAILURE),
+                            maximum_retry_count: restart_policy_max_retries,
+                        }),
                         ..Default::default()
                     })
                 }
@@ -443,6 +448,10 @@ impl DockerManager {
                         ]),
                         group_add: Some(vec!["video".to_string()]),
                         shm_size: shm_size.map(|s| s as i64),
+                        restart_policy: Some(bollard::models::RestartPolicy {
+                            name: Some(bollard::models::RestartPolicyNameEnum::ON_FAILURE),
+                            maximum_retry_count: restart_policy_max_retries,
+                        }),
                         ..Default::default()
                     })
                 }
@@ -451,6 +460,10 @@ impl DockerManager {
             Some(HostConfig {
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 binds: volume_binds,
+                restart_policy: Some(bollard::models::RestartPolicy {
+                    name: Some(bollard::models::RestartPolicyNameEnum::ON_FAILURE),
+                    maximum_retry_count: restart_policy_max_retries,
+                }),
                 ..Default::default()
             })
         };
@@ -496,6 +509,7 @@ impl DockerManager {
         Ok(container.id)
     }
 
+    /// Remove container, volumes, and directories
     pub async fn remove_container(&self, container_id: &str) -> Result<(), DockerError> {
         let container = (self.get_container_details(container_id).await).ok();
 
@@ -779,7 +793,6 @@ impl DockerManager {
         container_id: &str,
         tail: Option<i64>,
     ) -> Result<String, DockerError> {
-        debug!("Fetching logs for container: {}", container_id);
         let tail_value = tail.unwrap_or(Self::DEFAULT_LOG_TAIL).to_string();
         let options = LogsOptions::<String> {
             stdout: true,
@@ -845,5 +858,14 @@ impl DockerManager {
         let logs = all_logs.join("\n");
         debug!("Successfully retrieved logs for container {}", container_id);
         Ok(logs)
+    }
+
+    pub async fn inspect_container(
+        &self,
+        container_id: &str,
+    ) -> Result<bollard::models::ContainerInspectResponse, DockerError> {
+        self.docker
+            .inspect_container(container_id, Some(InspectContainerOptions { size: false }))
+            .await
     }
 }

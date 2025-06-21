@@ -11,7 +11,7 @@ use log::{error, info};
 use serde_json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
-use shared::security::request_signer::sign_request;
+use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,7 +21,7 @@ pub struct DiscoveryMonitor {
     coordinator_wallet: Wallet,
     compute_pool_id: u32,
     interval_s: u64,
-    discovery_url: String,
+    discovery_urls: Vec<String>,
     store_context: Arc<StoreContext>,
     heartbeats: Arc<LoopHeartbeats>,
     http_client: reqwest::Client,
@@ -35,7 +35,7 @@ impl DiscoveryMonitor {
         coordinator_wallet: Wallet,
         compute_pool_id: u32,
         interval_s: u64,
-        discovery_url: String,
+        discovery_urls: Vec<String>,
         store_context: Arc<StoreContext>,
         heartbeats: Arc<LoopHeartbeats>,
         max_healthy_nodes_with_same_endpoint: u32,
@@ -45,7 +45,7 @@ impl DiscoveryMonitor {
             coordinator_wallet,
             compute_pool_id,
             interval_s,
-            discovery_url,
+            discovery_urls,
             store_context,
             heartbeats,
             http_client: reqwest::Client::new(),
@@ -106,17 +106,21 @@ impl DiscoveryMonitor {
             self.heartbeats.update_monitor();
         }
     }
-    pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<DiscoveryNode>, Error> {
+    async fn fetch_nodes_from_single_discovery(
+        &self,
+        discovery_url: &str,
+    ) -> Result<Vec<DiscoveryNode>, Error> {
         let discovery_route = format!("/api/pool/{}", self.compute_pool_id);
         let address = self.coordinator_wallet.address().to_string();
 
-        let signature = match sign_request(&discovery_route, &self.coordinator_wallet, None).await {
-            Ok(sig) => sig,
-            Err(e) => {
-                error!("Failed to sign discovery request: {}", e);
-                return Ok(Vec::new());
-            }
-        };
+        let signature =
+            match sign_request_with_nonce(&discovery_route, &self.coordinator_wallet, None).await {
+                Ok(sig) => sig,
+                Err(e) => {
+                    error!("Failed to sign discovery request: {}", e);
+                    return Ok(Vec::new());
+                }
+            };
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -125,19 +129,23 @@ impl DiscoveryMonitor {
         );
         headers.insert(
             "x-signature",
-            reqwest::header::HeaderValue::from_str(&signature)?,
+            reqwest::header::HeaderValue::from_str(&signature.signature)?,
         );
 
         let response = match self
             .http_client
-            .get(format!("{}{}", self.discovery_url, discovery_route))
+            .get(format!("{}{}", discovery_url, discovery_route))
+            .query(&[("nonce", signature.nonce)])
             .headers(headers)
             .send()
             .await
         {
             Ok(resp) => resp,
             Err(e) => {
-                error!("Failed to fetch nodes from discovery service: {}", e);
+                error!(
+                    "Failed to fetch nodes from discovery service {}: {}",
+                    discovery_url, e
+                );
                 return Ok(Vec::new());
             }
         };
@@ -145,7 +153,10 @@ impl DiscoveryMonitor {
         let response_text = match response.text().await {
             Ok(text) => text,
             Err(e) => {
-                error!("Failed to read discovery response: {}", e);
+                error!(
+                    "Failed to read discovery response from {}: {}",
+                    discovery_url, e
+                );
                 return Ok(Vec::new());
             }
         };
@@ -154,7 +165,10 @@ impl DiscoveryMonitor {
             match serde_json::from_str(&response_text) {
                 Ok(resp) => resp,
                 Err(e) => {
-                    error!("Failed to parse discovery response: {}", e);
+                    error!(
+                        "Failed to parse discovery response from {}: {}",
+                        discovery_url, e
+                    );
                     return Ok(Vec::new());
                 }
             };
@@ -166,6 +180,48 @@ impl DiscoveryMonitor {
             .collect::<Vec<DiscoveryNode>>();
 
         Ok(nodes)
+    }
+
+    pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<DiscoveryNode>, Error> {
+        let mut all_nodes = Vec::new();
+        let mut any_success = false;
+
+        for discovery_url in &self.discovery_urls {
+            match self.fetch_nodes_from_single_discovery(discovery_url).await {
+                Ok(nodes) => {
+                    info!(
+                        "Successfully fetched {} nodes from {}",
+                        nodes.len(),
+                        discovery_url
+                    );
+                    all_nodes.extend(nodes);
+                    any_success = true;
+                }
+                Err(e) => {
+                    error!("Failed to fetch nodes from {}: {}", discovery_url, e);
+                }
+            }
+        }
+
+        if !any_success {
+            error!("Failed to fetch nodes from all discovery services");
+            return Ok(Vec::new());
+        }
+
+        // Remove duplicates based on node ID
+        let mut unique_nodes = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
+        for node in all_nodes {
+            if seen_ids.insert(node.node.id.clone()) {
+                unique_nodes.push(node);
+            }
+        }
+
+        info!(
+            "Total unique nodes after deduplication: {}",
+            unique_nodes.len()
+        );
+        Ok(unique_nodes)
     }
 
     async fn count_healthy_nodes_with_same_endpoint(
@@ -420,7 +476,7 @@ mod tests {
             fake_wallet,
             1,
             10,
-            "http://localhost:8080".to_string(),
+            vec!["http://localhost:8080".to_string()],
             discovery_store_context,
             Arc::new(LoopHeartbeats::new(&mode)),
             1,
@@ -501,7 +557,7 @@ mod tests {
             fake_wallet,
             1,
             10,
-            "http://localhost:8080".to_string(),
+            vec!["http://localhost:8080".to_string()],
             store_context.clone(),
             Arc::new(LoopHeartbeats::new(&mode)),
             1,
@@ -650,7 +706,7 @@ mod tests {
             fake_wallet,
             1,
             10,
-            "http://localhost:8080".to_string(),
+            vec!["http://localhost:8080".to_string()],
             store_context.clone(),
             Arc::new(LoopHeartbeats::new(&mode)),
             1,

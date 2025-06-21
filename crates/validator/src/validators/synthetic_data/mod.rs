@@ -3,10 +3,12 @@ use crate::store::redis::RedisStore;
 use alloy::primitives::U256;
 use anyhow::{Context as _, Error, Result};
 use chrono;
+use futures::future;
 use log::{debug, warn};
 use log::{error, info};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use shared::utils::StorageProvider;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::{
@@ -21,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 pub mod toploc;
 use toploc::{GroupValidationResult, Toploc, ToplocConfig};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum ValidationResult {
     Accept,
     Reject,
@@ -30,6 +32,7 @@ pub enum ValidationResult {
     Unknown,
     Invalidated,
     IncompleteGroup,
+    FileNameResolutionFailed,
 }
 
 impl fmt::Display for ValidationResult {
@@ -42,25 +45,32 @@ impl fmt::Display for ValidationResult {
             ValidationResult::Unknown => write!(f, "unknown"),
             ValidationResult::Invalidated => write!(f, "invalidated"),
             ValidationResult::IncompleteGroup => write!(f, "incomplete_group"),
+            ValidationResult::FileNameResolutionFailed => write!(f, "filename_resolution_failed"),
         }
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkValidationInfo {
+    pub status: ValidationResult,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RejectionInfo {
+    pub work_key: String,
+    pub reason: Option<String>,
+    pub timestamp: Option<i64>,
+}
+
 #[derive(Debug)]
 pub enum ProcessWorkKeyError {
-    /// Error when resolving the original file name for the work key.
     FileNameResolutionError(String),
-    /// Error when triggering remote toploc validation.
     ValidationTriggerError(String),
-    /// Error when polling for remote toploc validation.
     ValidationPollingError(String),
-    /// Error when invalidating work.
     InvalidatingWorkError(String),
-    /// Error when processing work key.
     MaxAttemptsReached(String),
-    /// Generic error to encapsulate unexpected errors.
     GenericError(anyhow::Error),
-    /// Error when no matching toploc config is found.
     NoMatchingToplocConfig(String),
 }
 
@@ -99,25 +109,16 @@ impl fmt::Display for ProcessWorkKeyError {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct GroupInformation {
-    /// The full filename without the last -i.parquet index
     group_file_name: String,
-    /// Everything before the first group ID number
     prefix: String,
-    /// The group ID number from the filename
     group_id: String,
-    /// The group size from the filename
     group_size: u32,
-    /// The file number from the filename
-    /// This is not the file upload count! The first file starts with 0
     file_number: u32,
-    /// The index number from the filename
     idx: String,
 }
 impl FromStr for GroupInformation {
     type Err = Error;
 
-    /// Parse a filename into GroupInformation
-    /// Expected format: "prefix-groupid-groupsize-filenumber-idx.parquet"
     fn from_str(file_name: &str) -> Result<Self, Self::Err> {
         let re = regex::Regex::new(r".*?-([0-9a-fA-F]+)-(\d+)-(\d+)-(\d+)(\.[^.]+)$")
             .map_err(|e| Error::msg(format!("Failed to compile regex: {}", e)))?;
@@ -157,7 +158,6 @@ impl FromStr for GroupInformation {
             .ok_or_else(|| Error::msg("Failed to extract extension"))?
             .as_str();
 
-        // Get the group file name by removing just the index part but keeping the extension
         let group_file_name = file_name[..file_name
             .rfind('-')
             .ok_or_else(|| Error::msg("Failed to find last hyphen in filename"))?]
@@ -177,7 +177,6 @@ impl FromStr for GroupInformation {
 
 #[derive(Clone, Debug)]
 pub struct ToplocGroup {
-    // This is the filename without the last -i.parquet index
     pub group_file_name: String,
     pub group_size: u32,
     pub file_number: u32,
@@ -229,10 +228,8 @@ pub struct SyntheticDataValidator<P: alloy::providers::Provider + Clone> {
     cancellation_token: CancellationToken,
     work_validation_interval: u64,
     unknown_status_expiry_seconds: u64,
-    // Interval between work validation requests to toploc server
     grace_interval: u64,
     batch_trigger_size: usize,
-    // Whether to use node grouping
     with_node_grouping: bool,
     disable_chain_invalidation: bool,
 
@@ -241,7 +238,7 @@ pub struct SyntheticDataValidator<P: alloy::providers::Provider + Clone> {
     metrics: Option<MetricsContext>,
 }
 
-impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
+impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool_id_str: String,
@@ -356,6 +353,55 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
         }
 
         Ok(())
+    }
+}
+
+impl SyntheticDataValidator<WalletProvider> {
+    pub async fn soft_invalidate_work(&self, work_key: &str) -> Result<(), Error> {
+        info!("Soft invalidating work: {}", work_key);
+
+        if self.disable_chain_invalidation {
+            info!("Chain invalidation is disabled, skipping work soft invalidation");
+            return Ok(());
+        }
+
+        // Special case for tests - skip actual blockchain interaction
+        #[cfg(test)]
+        {
+            info!("Test mode: skipping actual work soft invalidation");
+            let _ = &self.prime_network;
+            Ok(())
+        }
+
+        #[cfg(not(test))]
+        {
+            let work_info = self
+                .get_work_info_from_redis(work_key)
+                .await?
+                .ok_or_else(|| Error::msg("Work info not found for soft invalidation"))?;
+            let work_key_bytes = hex::decode(work_key)
+                .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+
+            // Create 64-byte payload: work_key (32 bytes) + work_units (32 bytes)
+            let mut data = Vec::with_capacity(64);
+            data.extend_from_slice(&work_key_bytes);
+
+            // Convert work_units to 32-byte representation
+            let work_units_bytes = work_info.work_units.to_be_bytes::<32>();
+            data.extend_from_slice(&work_units_bytes);
+
+            match self
+                .prime_network
+                .soft_invalidate_work(self.pool_id, data)
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    error!("Failed to soft invalidate work {}: {}", work_key, e);
+                    Err(Error::msg(format!("Failed to soft invalidate work: {}", e)))
+                }
+            }
+        }
     }
     /// Finds groups whose grace period has ended and cleans them up.
     async fn get_groups_past_grace_period(&self) -> Result<Vec<String>, Error> {
@@ -490,7 +536,22 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
         work_key: &str,
         status: &ValidationResult,
     ) -> Result<(), Error> {
-        let expiry = match status {
+        self.update_work_validation_info(
+            work_key,
+            &WorkValidationInfo {
+                status: status.clone(),
+                reason: None,
+            },
+        )
+        .await
+    }
+
+    async fn update_work_validation_info(
+        &self,
+        work_key: &str,
+        validation_info: &WorkValidationInfo,
+    ) -> Result<(), Error> {
+        let expiry = match validation_info.status {
             // Must switch to pending within 60 seconds otherwise we resubmit it
             ValidationResult::Unknown => self.unknown_status_expiry_seconds,
             _ => 0,
@@ -501,46 +562,110 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             .get_multiplexed_async_connection()
             .await?;
         let key = self.get_key_for_work_key(work_key);
-        let status = serde_json::to_string(&status)?;
+        let validation_data = serde_json::to_string(&validation_info)?;
+
         if expiry > 0 {
             let _: () = con
                 .set_options(
                     &key,
-                    status,
+                    &validation_data,
                     redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(expiry)),
                 )
                 .await
                 .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
         } else {
             let _: () = con
-                .set(&key, status)
+                .set(&key, &validation_data)
                 .await
                 .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
         }
+
+        // Manage rejection tracking for efficient querying
+        self.update_rejection_tracking(&mut con, work_key, validation_info)
+            .await?;
+
         Ok(())
     }
 
+    async fn update_rejection_tracking(
+        &self,
+        con: &mut redis::aio::MultiplexedConnection,
+        work_key: &str,
+        validation_info: &WorkValidationInfo,
+    ) -> Result<(), Error> {
+        let rejection_set_key = "work_rejections";
+        let rejection_data_key = format!("work_rejection_data:{}", work_key);
+        let is_rejected = validation_info.status == ValidationResult::Reject;
+
+        if is_rejected {
+            // Add to rejections set with current timestamp
+            let timestamp = chrono::Utc::now().timestamp();
+            let _: () = con
+                .zadd(rejection_set_key, work_key, timestamp)
+                .await
+                .map_err(|e| Error::msg(format!("Failed to add to rejections set: {}", e)))?;
+
+            // Store rejection details if reason exists
+            if let Some(reason) = &validation_info.reason {
+                let rejection_detail = serde_json::json!({
+                    "reason": reason,
+                    "timestamp": timestamp
+                });
+                let _: () = con
+                    .set(&rejection_data_key, rejection_detail.to_string())
+                    .await
+                    .map_err(|e| Error::msg(format!("Failed to set rejection data: {}", e)))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(test)]
     async fn get_work_validation_status_from_redis(
         &self,
         work_key: &str,
     ) -> Result<Option<ValidationResult>, Error> {
+        let validation_info = self.get_work_validation_info_from_redis(work_key).await?;
+        Ok(validation_info.map(|info| info.status))
+    }
+    #[cfg(test)]
+    async fn get_work_validation_info_from_redis(
+        &self,
+        work_key: &str,
+    ) -> Result<Option<WorkValidationInfo>, Error> {
         let mut con = self
             .redis_store
             .client
             .get_multiplexed_async_connection()
             .await?;
         let key = self.get_key_for_work_key(work_key);
-        let status: Option<String> = con
+        let data: Option<String> = con
             .get(key)
             .await
             .map_err(|e| Error::msg(format!("Failed to get work validation status: {}", e)))?;
-        status
-            .map(|status| {
-                serde_json::from_str(&status).map_err(|e| {
-                    Error::msg(format!("Failed to parse work validation status: {}", e))
-                })
-            })
-            .transpose()
+
+        match data {
+            Some(data) => {
+                // Try to parse as WorkValidationInfo first (new format)
+                if let Ok(validation_info) = serde_json::from_str::<WorkValidationInfo>(&data) {
+                    Ok(Some(validation_info))
+                } else {
+                    // Fall back to old format (just ValidationResult)
+                    match serde_json::from_str::<ValidationResult>(&data) {
+                        Ok(status) => Ok(Some(WorkValidationInfo {
+                            status,
+                            reason: None,
+                        })),
+                        Err(e) => Err(Error::msg(format!(
+                            "Failed to parse work validation data: {}",
+                            e
+                        ))),
+                    }
+                }
+            }
+            None => Ok(None),
+        }
     }
 
     async fn update_work_info_in_redis(
@@ -586,6 +711,7 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
         work_key: &str,
     ) -> Result<String, ProcessWorkKeyError> {
         let redis_key = format!("file_name:{}", work_key);
+        let attempts_key = format!("file_name_attempts:{}", work_key);
         let mut con = self
             .redis_store
             .client
@@ -593,13 +719,52 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             .await
             .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
 
-        // Try to get the file name from Redis cache
         let file_name: Option<String> = con
             .get(&redis_key)
             .await
             .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
         if let Some(cached_file_name) = file_name {
             return Ok(cached_file_name);
+        }
+
+        // Increment attempts counter
+        let attempts: i64 = con
+            .incr(&attempts_key, 1)
+            .await
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+
+        // Set expiry on attempts counter (24 hours)
+        let _: () = con
+            .expire(&attempts_key, 24 * 60 * 60)
+            .await
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+
+        const MAX_ATTEMPTS: i64 = 60;
+        if attempts >= MAX_ATTEMPTS {
+            // If we've tried too many times, soft invalidate the work and update its status
+            if let Err(e) = self.soft_invalidate_work(work_key).await {
+                error!(
+                    "Failed to soft invalidate work after max filename resolution attempts: {}",
+                    e
+                );
+            }
+            // Set the validation status to FileNameResolutionFailed to prevent future processing
+            if let Err(e) = self
+                .update_work_validation_status(
+                    work_key,
+                    &ValidationResult::FileNameResolutionFailed,
+                )
+                .await
+            {
+                error!(
+                    "Failed to update validation status after max attempts: {}",
+                    e
+                );
+            }
+            return Err(ProcessWorkKeyError::MaxAttemptsReached(format!(
+                "Failed to resolve filename after {} attempts for work key: {}",
+                MAX_ATTEMPTS, work_key
+            )));
         }
 
         let original_file_name = self
@@ -626,9 +791,14 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             .strip_prefix('/')
             .unwrap_or(&original_file_name);
 
-        // Cache the resolved and cleaned file name in Redis
         let _: () = con
             .set(&redis_key, cleaned_file_name)
+            .await
+            .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
+
+        // Reset attempts counter on success
+        let _: () = con
+            .del(&attempts_key)
             .await
             .map_err(|e| ProcessWorkKeyError::GenericError(e.into()))?;
 
@@ -636,16 +806,25 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
     }
 
     async fn build_group_for_key(&self, work_key: &str) -> Result<String, Error> {
-        let file = self
-            .get_file_name_for_work_key(work_key)
-            .await
-            .map_err(|e| {
+        let file = match self.get_file_name_for_work_key(work_key).await {
+            Ok(name) => name,
+            Err(ProcessWorkKeyError::MaxAttemptsReached(_)) => {
+                // Status is already set in get_file_name_for_work_key
+                return Err(Error::msg(format!(
+                    "Failed to resolve filename after max attempts for work key: {}",
+                    work_key
+                )));
+            }
+            Err(e) => {
                 error!("Failed to get file name for work key: {}", e);
-                Error::msg(format!("Failed to get file name for work key: {}", e))
-            })?;
-        debug!("File for work key: {:?} | {:?}", work_key, file);
+                return Err(Error::msg(format!(
+                    "Failed to get file name for work key: {}",
+                    e
+                )));
+            }
+        };
+
         let group_info = GroupInformation::from_str(&file)?;
-        debug!("Group info: {:?}", group_info);
         let group_key: String = format!(
             "group:{}:{}:{}",
             group_info.group_id, group_info.group_size, group_info.file_number
@@ -693,10 +872,6 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             }
         };
         let ready_for_validation = self.is_group_ready_for_validation(&group_key).await?;
-        debug!(
-            "Group for key {:?} ready for validation: {:?}",
-            work_key, ready_for_validation
-        );
         if ready_for_validation {
             // Remove from incomplete group tracking since it's now complete
             if let Err(e) = self.remove_incomplete_group_tracking(&group_key).await {
@@ -708,7 +883,6 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
                 .get_multiplexed_async_connection()
                 .await?;
             let group_entries: HashMap<String, String> = redis.hgetall(&group_key).await?;
-            // Parse all entries once and sort by idx
             let mut entries: Vec<(String, GroupInformation)> = Vec::new();
             for (key, value) in group_entries {
                 let info = GroupInformation::from_redis(&value)
@@ -725,7 +899,6 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
                 .clone()
                 .into();
 
-            // Extract sorted work keys from the sorted entries
             toploc_group.sorted_work_keys = entries.into_iter().map(|(key, _)| key).collect();
 
             return Ok(Some(toploc_group));
@@ -742,6 +915,13 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
         &self,
         work_keys: Vec<String>,
     ) -> Result<ValidationPlan, Error> {
+        self.build_validation_plan_batched(work_keys).await
+    }
+
+    pub async fn build_validation_plan_batched(
+        &self,
+        work_keys: Vec<String>,
+    ) -> Result<ValidationPlan, Error> {
         let mut single_trigger_tasks: Vec<(String, WorkInfo)> = Vec::new();
         let mut group_trigger_tasks: Vec<ToplocGroup> = Vec::new();
         let mut status_check_tasks: Vec<String> = Vec::new();
@@ -749,36 +929,55 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
 
         let mut keys_to_process = 0;
 
+        // Step 1: Batch fetch work info and validation status from Redis
+        let (work_info_map, status_map) = self.batch_fetch_redis_data(&work_keys).await?;
+
+        // Step 2: Collect work keys that need blockchain lookup
+        let mut missing_work_keys = Vec::new();
+        for work_key in &work_keys {
+            if !work_info_map.contains_key(work_key) {
+                missing_work_keys.push(work_key.clone());
+            }
+        }
+
+        // Step 3: Batch fetch missing work info from blockchain
+        let blockchain_work_info = self
+            .batch_fetch_blockchain_work_info(missing_work_keys)
+            .await?;
+
+        // Step 4: Process all work keys with cached + fetched data
         for work_key in work_keys {
-            // Get work info from cache or fetch
-            let work_info = match self.get_work_info_from_redis(&work_key).await? {
-                Some(cached_info) => cached_info,
-                None => {
-                    match self.validator.get_work_info(self.pool_id, &work_key).await {
-                        Ok(info) => {
-                            // Update cache with fetched work info
-                            if let Err(e) = self.update_work_info_in_redis(&work_key, &info).await {
-                                error!("Failed to cache work info for {}: {}", work_key, e);
-                            }
-                            info
-                        }
-                        Err(e) => {
-                            error!("Failed to get work info for {}: {}", work_key, e);
-                            continue;
-                        }
+            // Get work info - either from cache or blockchain fetch
+            let work_info = if let Some(info) = work_info_map.get(&work_key) {
+                info
+            } else if let Some(info) = blockchain_work_info.get(&work_key) {
+                // Cache the fetched work info asynchronously
+                let self_clone = self.clone();
+                let work_key_clone = work_key.clone();
+                let info_copy = *info;
+                tokio::spawn(async move {
+                    if let Err(e) = self_clone
+                        .update_work_info_in_redis(&work_key_clone, &info_copy)
+                        .await
+                    {
+                        error!("Failed to cache work info for {}: {}", work_key_clone, e);
                     }
-                }
+                });
+                info
+            } else {
+                error!("Failed to get work info for {}", work_key);
+                continue;
             };
-            let cache_status = self
-                .get_work_validation_status_from_redis(&work_key)
-                .await?;
+
+            let cache_status = status_map.get(&work_key);
 
             match cache_status {
                 Some(
                     ValidationResult::Accept
                     | ValidationResult::Reject
                     | ValidationResult::Crashed
-                    | ValidationResult::IncompleteGroup,
+                    | ValidationResult::IncompleteGroup
+                    | ValidationResult::FileNameResolutionFailed,
                 ) => {
                     continue; // Already processed
                 }
@@ -786,9 +985,7 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
                     keys_to_process += 1;
                     if self.with_node_grouping {
                         let check_group = self.get_group(&work_key).await?;
-                        debug!("Group for work key: {:?} | {:?}", work_key, check_group);
                         if let Some(group) = check_group {
-                            // Only add group if it's not already in the list
                             if !group_status_check_tasks.iter().any(|g| {
                                 g.group_id == group.group_id && g.file_number == group.file_number
                             }) {
@@ -803,16 +1000,12 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
                     keys_to_process += 1;
                     // Needs triggering (covers Pending, Invalidated, and None cases)
                     if self.with_node_grouping {
-                        debug!("Checking group for work key: {:?}", work_key);
                         let check_group = self.get_group(&work_key).await?;
                         if let Some(group) = check_group {
-                            debug!("Group found for work key: {:?}", work_key);
                             group_trigger_tasks.push(group);
-                        } else {
-                            debug!("Could not build a final group for work key: {:?}", work_key);
                         }
                     } else {
-                        single_trigger_tasks.push((work_key.clone(), work_info));
+                        single_trigger_tasks.push((work_key.clone(), *work_info));
                     }
                 }
             }
@@ -832,6 +1025,105 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             status_check_tasks,
             group_status_check_tasks,
         })
+    }
+
+    /// Batch fetch work info and validation status from Redis using pipelining
+    async fn batch_fetch_redis_data(
+        &self,
+        work_keys: &[String],
+    ) -> Result<(HashMap<String, WorkInfo>, HashMap<String, ValidationResult>), Error> {
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        let mut pipe = redis::pipe();
+
+        for work_key in work_keys {
+            let work_info_key = format!("work_info:{}", work_key);
+            pipe.get(&work_info_key);
+        }
+
+        for work_key in work_keys {
+            let status_key = self.get_key_for_work_key(work_key);
+            pipe.get(status_key);
+        }
+
+        let results: Vec<Option<String>> = pipe
+            .query_async(&mut con)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to execute Redis pipeline: {}", e)))?;
+
+        let mut work_info_map = HashMap::new();
+        let mut status_map = HashMap::new();
+
+        let work_keys_len = work_keys.len();
+
+        for (i, work_key) in work_keys.iter().enumerate() {
+            if let Some(Some(work_info_str)) = results.get(i) {
+                match serde_json::from_str::<WorkInfo>(work_info_str) {
+                    Ok(work_info) => {
+                        work_info_map.insert(work_key.clone(), work_info);
+                    }
+                    Err(e) => {
+                        debug!("Failed to parse work info for {}: {}", work_key, e);
+                    }
+                }
+            }
+        }
+
+        for (i, work_key) in work_keys.iter().enumerate() {
+            if let Some(Some(status_str)) = results.get(i + work_keys_len) {
+                if let Ok(validation_info) = serde_json::from_str::<WorkValidationInfo>(status_str)
+                {
+                    status_map.insert(work_key.clone(), validation_info.status);
+                } else {
+                    // Fall back to old format (just ValidationResult)
+                    match serde_json::from_str::<ValidationResult>(status_str) {
+                        Ok(status) => {
+                            status_map.insert(work_key.clone(), status);
+                        }
+                        Err(e) => {
+                            debug!("Failed to parse validation status for {}: {}", work_key, e);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok((work_info_map, status_map))
+    }
+
+    /// Batch fetch work info from blockchain for multiple work keys
+    async fn batch_fetch_blockchain_work_info(
+        &self,
+        work_keys: Vec<String>,
+    ) -> Result<HashMap<String, WorkInfo>, Error> {
+        if work_keys.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let futures: Vec<_> = work_keys
+            .into_iter()
+            .map(|work_key| {
+                let validator = self.validator.clone();
+                let pool_id = self.pool_id;
+                async move {
+                    match validator.get_work_info(pool_id, &work_key).await {
+                        Ok(work_info) => Some((work_key, work_info)),
+                        Err(e) => {
+                            error!("Failed to get work info for {}: {}", work_key, e);
+                            None
+                        }
+                    }
+                }
+            })
+            .collect();
+
+        let results = future::join_all(futures).await;
+
+        Ok(results.into_iter().flatten().collect())
     }
 
     fn find_matching_toploc_config(&self, file_name: &str) -> Option<&Toploc> {
@@ -882,7 +1174,6 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             )
             .await?;
 
-        // Update status for all work keys in the group
         for work_key in &group.sorted_work_keys {
             self.update_work_validation_status(work_key, &ValidationResult::Unknown)
                 .await?;
@@ -925,7 +1216,6 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             group.group_id, work_keys_to_invalidate
         );
 
-        // Get node addresses for the rejected work keys
         let mut rejected_nodes = Vec::new();
         for work_key in work_keys_to_invalidate {
             if let Some(work_info) = self.get_work_info_from_redis(&work_key).await? {
@@ -988,7 +1278,6 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
         node_work_units: &std::collections::HashMap<String, U256>,
         output_flops_u256: U256,
     ) -> Result<Vec<String>, Error> {
-        // Calculate expected work units per node
         let num_nodes = node_work_units.len() as u64;
         let expected_work_units_per_node = if num_nodes > 0 {
             output_flops_u256 / U256::from(num_nodes)
@@ -996,7 +1285,6 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
             U256::from(0)
         };
 
-        // Find nodes that submitted wrong work unit claims
         let mut nodes_with_wrong_work_unit_claims = Vec::new();
         for (node_address, work_units) in node_work_units {
             let node_diff = if *work_units > expected_work_units_per_node {
@@ -1021,13 +1309,128 @@ impl<P: alloy::providers::Provider + Clone> SyntheticDataValidator<P> {
 
         Ok(nodes_with_wrong_work_unit_claims)
     }
+
+    pub async fn get_all_rejections(&self) -> Result<Vec<RejectionInfo>, Error> {
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        let rejection_set_key = "work_rejections";
+
+        let work_keys_with_scores: Vec<(String, f64)> = con
+            .zrange_withscores(rejection_set_key, 0, -1)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get rejections from set: {}", e)))?;
+
+        if work_keys_with_scores.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let work_keys: Vec<&String> = work_keys_with_scores.iter().map(|(key, _)| key).collect();
+
+        // Batch fetch rejection details using MGET for efficiency
+        let rejection_data_keys: Vec<String> = work_keys
+            .iter()
+            .map(|key| format!("work_rejection_data:{}", key))
+            .collect();
+
+        let rejection_details: Vec<Option<String>> = con
+            .mget(&rejection_data_keys)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to batch get rejection details: {}", e)))?;
+
+        let mut rejections = Vec::new();
+
+        for (i, (work_key, score_timestamp)) in work_keys_with_scores.into_iter().enumerate() {
+            let mut reason = None;
+            let mut timestamp = Some(score_timestamp as i64);
+
+            if let Some(Some(detail_json)) = rejection_details.get(i) {
+                if let Ok(detail) = serde_json::from_str::<serde_json::Value>(detail_json) {
+                    reason = detail
+                        .get("reason")
+                        .and_then(|r| r.as_str())
+                        .map(|s| s.to_string());
+                    if let Some(stored_timestamp) = detail.get("timestamp").and_then(|t| t.as_i64())
+                    {
+                        timestamp = Some(stored_timestamp);
+                    }
+                }
+            }
+
+            rejections.push(RejectionInfo {
+                work_key,
+                reason,
+                timestamp,
+            });
+        }
+
+        Ok(rejections)
+    }
+
+    pub async fn get_recent_rejections(&self, limit: isize) -> Result<Vec<RejectionInfo>, Error> {
+        let mut con = self
+            .redis_store
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        let rejection_set_key = "work_rejections";
+
+        // Get most recent rejections (sorted by timestamp in descending order)
+        let work_keys: Vec<String> = con
+            .zrevrange(rejection_set_key, 0, limit - 1)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get recent rejections: {}", e)))?;
+
+        if work_keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Batch fetch rejection details
+        let rejection_data_keys: Vec<String> = work_keys
+            .iter()
+            .map(|key| format!("work_rejection_data:{}", key))
+            .collect();
+
+        let rejection_details: Vec<Option<String>> = con
+            .mget(&rejection_data_keys)
+            .await
+            .map_err(|e| Error::msg(format!("Failed to batch get rejection details: {}", e)))?;
+
+        let mut rejections = Vec::new();
+
+        for (i, work_key) in work_keys.into_iter().enumerate() {
+            let mut reason = None;
+            let mut timestamp = None;
+
+            if let Some(Some(detail_json)) = rejection_details.get(i) {
+                if let Ok(detail) = serde_json::from_str::<serde_json::Value>(detail_json) {
+                    reason = detail
+                        .get("reason")
+                        .and_then(|r| r.as_str())
+                        .map(|s| s.to_string());
+                    timestamp = detail.get("timestamp").and_then(|t| t.as_i64());
+                }
+            }
+
+            rejections.push(RejectionInfo {
+                work_key,
+                reason,
+                timestamp,
+            });
+        }
+
+        Ok(rejections)
+    }
 }
 
 impl SyntheticDataValidator<WalletProvider> {
     pub async fn validate_work(self) -> Result<(), Error> {
         debug!("Validating work for pool ID: {:?}", self.pool_id);
 
-        // Get all work keys for the pool from the last 24 hours
         let max_age_in_seconds = 60 * self.work_validation_interval;
         let current_timestamp = U256::from(chrono::Utc::now().timestamp());
         let max_age_ago = current_timestamp - U256::from(max_age_in_seconds);
@@ -1071,7 +1474,6 @@ impl SyntheticDataValidator<WalletProvider> {
             .await?;
         let toploc_config_name = toploc_config.name();
 
-        // Record toploc result
         if let Some(metrics) = &self.metrics {
             metrics.record_group_validation_status(
                 &group.group_id,
@@ -1080,11 +1482,9 @@ impl SyntheticDataValidator<WalletProvider> {
             );
         }
 
-        // Calculate total claimed units and node work units
         let (total_claimed_units, node_work_units) =
             self.calculate_group_work_units(&group).await?;
 
-        // Log basic info for all cases
         info!(
             "Group {} ({}) - Status: {:?}, Claimed: {}, Toploc: {} flops (input: {} flops)",
             group.group_id,
@@ -1095,15 +1495,14 @@ impl SyntheticDataValidator<WalletProvider> {
             status.input_flops
         );
 
-        // Collect all nodes that need to be invalidated
         let mut nodes_to_invalidate = Vec::new();
+        let mut nodes_with_wrong_work_unit_claims = Vec::new();
 
-        // Handle rejection case
         if status.status == ValidationResult::Reject {
             let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
             nodes_to_invalidate.extend(rejected_nodes);
         } else if status.status == ValidationResult::Accept {
-            let nodes_with_wrong_work_unit_claims = self
+            let wrong_claim_nodes = self
                 .handle_group_toploc_acceptance(
                     &group,
                     &status,
@@ -1112,30 +1511,54 @@ impl SyntheticDataValidator<WalletProvider> {
                     &toploc_config_name,
                 )
                 .await?;
-            nodes_to_invalidate.extend(nodes_with_wrong_work_unit_claims);
+            nodes_with_wrong_work_unit_claims.extend(wrong_claim_nodes);
         }
+        let all_nodes_to_invalidate: Vec<&String> = nodes_to_invalidate
+            .iter()
+            .chain(nodes_with_wrong_work_unit_claims.iter())
+            .collect();
 
-        // Invalidate work for all nodes that need invalidation (only once)
-        if !nodes_to_invalidate.is_empty() {
+        if !all_nodes_to_invalidate.is_empty() {
             for work_key in &group.sorted_work_keys {
                 if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
-                    if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
+                    if all_nodes_to_invalidate.contains(&&work_info.node_id.to_string()) {
                         self.invalidate_work(work_key).await?;
                     }
                 }
             }
         }
 
-        // Update validation status for all work keys
         for work_key in &group.sorted_work_keys {
             let work_info = self.get_work_info_from_redis(work_key).await?;
             if let Some(work_info) = work_info {
                 if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
-                    self.update_work_validation_status(work_key, &ValidationResult::Reject)
-                        .await?;
+                    self.update_work_validation_info(
+                        work_key,
+                        &WorkValidationInfo {
+                            status: ValidationResult::Reject,
+                            reason: status.reason.clone(),
+                        },
+                    )
+                    .await?;
+                } else if nodes_with_wrong_work_unit_claims.contains(&work_info.node_id.to_string())
+                {
+                    self.update_work_validation_info(
+                        work_key,
+                        &WorkValidationInfo {
+                            status: ValidationResult::Reject,
+                            reason: Some("Incorrect work unit claims".to_string()),
+                        },
+                    )
+                    .await?;
                 } else {
-                    self.update_work_validation_status(work_key, &status.status)
-                        .await?;
+                    self.update_work_validation_info(
+                        work_key,
+                        &WorkValidationInfo {
+                            status: status.status.clone(),
+                            reason: status.reason.clone(),
+                        },
+                    )
+                    .await?;
                 }
             }
         }
@@ -1144,24 +1567,7 @@ impl SyntheticDataValidator<WalletProvider> {
     }
 
     pub async fn process_work_keys(self, work_keys: Vec<String>) -> Result<(), Error> {
-        debug!("Processing work keys: {:?}", work_keys);
         let validation_plan = self.build_validation_plan(work_keys).await?;
-        debug!(
-            "Number of single trigger tasks: {}",
-            validation_plan.single_trigger_tasks.len()
-        );
-        debug!(
-            "Number of group trigger tasks: {}",
-            validation_plan.group_trigger_tasks.len()
-        );
-        debug!(
-            "Number of status check tasks: {}",
-            validation_plan.status_check_tasks.len()
-        );
-        debug!(
-            "Number of group status check tasks: {}",
-            validation_plan.group_status_check_tasks.len()
-        );
 
         let self_arc = Arc::new(self);
         let cancellation_token = self_arc.cancellation_token.clone();
@@ -1216,10 +1622,6 @@ impl SyntheticDataValidator<WalletProvider> {
                 {
                     error!("Failed to process group task: {}", e);
                 }
-                debug!(
-                    "waiting before next task: {}",
-                    validator_clone_group_trigger.grace_interval
-                );
                 tokio::time::sleep(tokio::time::Duration::from_secs(
                     validator_clone_group_trigger.grace_interval,
                 ))
@@ -1320,53 +1722,6 @@ impl SyntheticDataValidator<WalletProvider> {
         Ok(())
     }
 
-    pub async fn soft_invalidate_work(&self, work_key: &str) -> Result<(), Error> {
-        info!("Soft invalidating work: {}", work_key);
-
-        if self.disable_chain_invalidation {
-            info!("Chain invalidation is disabled, skipping work soft invalidation");
-            return Ok(());
-        }
-
-        // Special case for tests - skip actual blockchain interaction
-        #[cfg(test)]
-        {
-            info!("Test mode: skipping actual work soft invalidation");
-            let _ = &self.prime_network;
-            Ok(())
-        }
-
-        #[cfg(not(test))]
-        {
-            let work_info = self
-                .get_work_info_from_redis(work_key)
-                .await?
-                .ok_or_else(|| Error::msg("Work info not found for soft invalidation"))?;
-            let work_key_bytes = hex::decode(work_key)
-                .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
-
-            // Create 64-byte payload: work_key (32 bytes) + work_units (32 bytes)
-            let mut data = Vec::with_capacity(64);
-            data.extend_from_slice(&work_key_bytes);
-
-            // Convert work_units to 32-byte representation
-            let work_units_bytes = work_info.work_units.to_be_bytes::<32>();
-            data.extend_from_slice(&work_units_bytes);
-
-            match self
-                .prime_network
-                .soft_invalidate_work(self.pool_id, data)
-                .await
-            {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    error!("Failed to soft invalidate work {}: {}", work_key, e);
-                    Err(Error::msg(format!("Failed to soft invalidate work: {}", e)))
-                }
-            }
-        }
-    }
-
     pub async fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
         info!("Invalidating work: {}", work_key);
 
@@ -1379,7 +1734,6 @@ impl SyntheticDataValidator<WalletProvider> {
             return Ok(());
         }
 
-        // Special case for tests - skip actual blockchain interaction
         #[cfg(test)]
         {
             info!("Test mode: skipping actual work invalidation");
@@ -1570,13 +1924,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_validation_plan() -> Result<(), Error> {
-        // Add test to build validation plan
-        // Since we do not have blockchain access add task infos to redis first
         let (store, contracts) = setup_test_env()?;
         let metrics_context = MetricsContext::new("0".to_string(), Some("0".to_string()));
         let mock_storage = MockStorageProvider::new();
 
-        // single group
         let single_group_file_name = "Qwen3/dataset/samplingn-9999999-1-9-0.parquet";
         mock_storage.add_file(single_group_file_name, "file1");
         mock_storage.add_mapping_file(
@@ -1591,7 +1942,6 @@ mod tests {
             single_unknown_file_name,
         );
 
-        // multiple group
         mock_storage.add_file(
             "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
             "file1",
@@ -1821,7 +2171,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_group_e2e() -> Result<(), Error> {
+    async fn test_group_e2e_accept() -> Result<(), Error> {
         let mut server = Server::new_async().await;
         let (store, contracts) = setup_test_env()?;
 
@@ -1955,9 +2305,6 @@ mod tests {
     }
 
     #[tokio::test]
-    // This test accepts a groups submission via the toploc server which returns a total output flops count
-    // One of the nodes claims more work units than the output_flops_count / number of nodes
-    // The validator should reject the node and accept the other node
     async fn test_group_e2e_work_unit_mismatch() -> Result<(), Error> {
         let mut server = Server::new_async().await;
         let (store, contracts) = setup_test_env()?;
@@ -2041,7 +2388,6 @@ mod tests {
         let work_keys: Vec<String> =
             vec![HONEST_FILE_SHA.to_string(), EXCESSIVE_FILE_SHA.to_string()];
 
-        // Node 1 claims exact amount (1000 work units)
         const EXPECTED_WORK_UNITS: u64 = 1000;
         const EXCESSIVE_WORK_UNITS: u64 = 1500;
         let work_info_1 = WorkInfo {
@@ -2049,7 +2395,6 @@ mod tests {
             work_units: U256::from(EXPECTED_WORK_UNITS),
             ..Default::default()
         };
-        // Node 2 claims too much (1500 work units instead of 1000)
         let work_info_2 = WorkInfo {
             node_id: Address::from_str(EXCESSIVE_NODE_ADDRESS).unwrap(),
             work_units: U256::from(EXCESSIVE_WORK_UNITS),
@@ -2103,19 +2448,16 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        // Node 1 should be accepted (exact claim)
         let cache_status_1 = validator
             .get_work_validation_status_from_redis(HONEST_FILE_SHA)
             .await?;
         assert_eq!(cache_status_1, Some(ValidationResult::Accept));
 
-        // Node 2 should be rejected (excessive claim)
         let cache_status_2 = validator
             .get_work_validation_status_from_redis(EXCESSIVE_FILE_SHA)
             .await?;
         assert_eq!(cache_status_2, Some(ValidationResult::Reject));
 
-        // Make sure there is no more work to process
         let plan_3 = validator.build_validation_plan(work_keys.clone()).await?;
         assert_eq!(plan_3.group_trigger_tasks.len(), 0);
         assert_eq!(plan_3.group_status_check_tasks.len(), 0);
@@ -2133,8 +2475,6 @@ mod tests {
     async fn test_process_group_status_check_reject() -> Result<(), Error> {
         let mut server = Server::new_async().await;
 
-        // Mock the group status check endpoint to return a reject status
-        // Toploc server runs model Qwen3
         let _status_mock = server
             .mock(
                 "GET",
@@ -2188,11 +2528,9 @@ mod tests {
             .await?;
         let group = group.unwrap();
 
-        // Process the group status check
         let result = validator.process_group_status_check(group).await;
         assert!(result.is_ok());
 
-        // Verify that the work was invalidated
         let work_info = validator
             .get_work_info_from_redis(
                 "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
@@ -2493,6 +2831,146 @@ mod tests {
         assert_eq!(validation_plan.group_trigger_tasks.len(), 0);
         assert_eq!(validation_plan.status_check_tasks.len(), 0);
         assert_eq!(validation_plan.group_status_check_tasks.len(), 0);
+
+        Ok(())
+    }
+    #[tokio::test]
+    async fn test_filename_resolution_retries_and_soft_invalidation() -> Result<(), Error> {
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
+        let storage_provider = Arc::new(mock_storage);
+
+        const WORK_KEY: &str = "1234567890123456789012345678901234567890123456789012345678901234";
+
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.clone().unwrap(),
+            contracts.prime_network.clone(),
+            vec![ToplocConfig {
+                server_url: "http://localhost:8080".to_string(),
+                ..Default::default()
+            }],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            10,
+            true,
+            true, // disable_chain_invalidation for testing
+            1,    // 1 minute grace period
+            None,
+        );
+
+        // Try 59 times to reach just before max attempts (60)
+        for _ in 0..59 {
+            let result = validator.get_file_name_for_work_key(WORK_KEY).await;
+            assert!(result.is_err());
+            assert!(matches!(
+                result.unwrap_err(),
+                ProcessWorkKeyError::FileNameResolutionError(_)
+            ));
+        }
+
+        // 60th attempt should trigger soft invalidation and return MaxAttemptsReached
+        let result = validator.get_file_name_for_work_key(WORK_KEY).await;
+        assert!(matches!(
+            result.unwrap_err(),
+            ProcessWorkKeyError::MaxAttemptsReached(_)
+        ));
+
+        // Verify work was marked as invalidated
+        let status = validator
+            .get_work_validation_status_from_redis(WORK_KEY)
+            .await?;
+        assert!(status.is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_all_rejections() -> Result<(), Error> {
+        let (store, contracts) = setup_test_env()?;
+        let mock_storage = MockStorageProvider::new();
+        let storage_provider = Arc::new(mock_storage);
+        let validator = SyntheticDataValidator::new(
+            "0".to_string(),
+            contracts.synthetic_data_validator.unwrap(),
+            contracts.prime_network,
+            vec![],
+            U256::from(0),
+            storage_provider,
+            store,
+            CancellationToken::new(),
+            10,
+            60,
+            1,
+            10,
+            true,
+            true, // disable_chain_invalidation for testing
+            1,    // 1 minute grace period
+            None,
+        );
+
+        // Add some test rejection data
+        validator
+            .update_work_validation_info(
+                "test_work_key_1",
+                &WorkValidationInfo {
+                    status: ValidationResult::Reject,
+                    reason: Some("Validation failed due to timeout".to_string()),
+                },
+            )
+            .await?;
+
+        validator
+            .update_work_validation_info(
+                "test_work_key_2",
+                &WorkValidationInfo {
+                    status: ValidationResult::Accept,
+                    reason: None,
+                },
+            )
+            .await?;
+
+        validator
+            .update_work_validation_info(
+                "test_work_key_3",
+                &WorkValidationInfo {
+                    status: ValidationResult::Reject,
+                    reason: Some("Output mismatch detected".to_string()),
+                },
+            )
+            .await?;
+
+        // Get all rejections
+        let rejections = validator.get_all_rejections().await?;
+
+        // Should only return the 2 rejected items
+        assert_eq!(rejections.len(), 2);
+
+        let rejection_keys: Vec<&str> = rejections.iter().map(|r| r.work_key.as_str()).collect();
+        assert!(rejection_keys.contains(&"test_work_key_1"));
+        assert!(rejection_keys.contains(&"test_work_key_3"));
+
+        // Check reasons are preserved
+        for rejection in &rejections {
+            if rejection.work_key == "test_work_key_1" {
+                assert_eq!(
+                    rejection.reason,
+                    Some("Validation failed due to timeout".to_string())
+                );
+                assert!(rejection.timestamp.is_some());
+            } else if rejection.work_key == "test_work_key_3" {
+                assert_eq!(
+                    rejection.reason,
+                    Some("Output mismatch detected".to_string())
+                );
+                assert!(rejection.timestamp.is_some());
+            }
+        }
 
         Ok(())
     }

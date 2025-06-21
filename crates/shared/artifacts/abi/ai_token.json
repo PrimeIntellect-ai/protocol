@@ -69,6 +69,19 @@
   },
   {
     "type": "function",
+    "name": "TRANSFER_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "allowance",
     "inputs": [
       {
@@ -113,6 +126,19 @@
         "internalType": "bool"
       }
     ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "approveTransferAddress",
+    "inputs": [
+      {
+        "name": "transferAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
@@ -400,6 +426,19 @@
   },
   {
     "type": "function",
+    "name": "revokeTransferAddress",
+    "inputs": [
+      {
+        "name": "transferAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "supportsInterface",
     "inputs": [
       {
@@ -453,7 +492,7 @@
         "internalType": "address"
       },
       {
-        "name": "value",
+        "name": "amount",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -482,7 +521,7 @@
         "internalType": "address"
       },
       {
-        "name": "value",
+        "name": "amount",
         "type": "uint256",
         "internalType": "uint256"
       }

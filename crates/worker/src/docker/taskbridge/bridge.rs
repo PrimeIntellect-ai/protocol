@@ -145,10 +145,13 @@ impl TaskBridge {
                         }
                     };
 
-                    let mut work_units = 1.0;
-                    if output_flops > 0.0 {
-                        work_units = output_flops;
+                    if output_flops <= 0.0 {
+                        error!("Invalid work units calculation: output_flops ({}) must be greater than 0.0. Blocking file validation submission.", output_flops);
+                        return Err(anyhow::anyhow!(
+                            "Invalid work units: output_flops must be greater than 0.0"
+                        ));
                     }
+                    let work_units = output_flops;
 
                     tokio::spawn(async move {
                         if let Err(e) = file_handler::handle_file_validation(

@@ -76,6 +76,7 @@ services:
       - RPC_URL=http://reth:8545
       - REDIS_URL=redis://redis:6379
       - PLATFORM_API_KEY=prime
+      - MAX_NODES_PER_IP=3
     networks:
       - prime
     depends_on:
@@ -94,7 +95,7 @@ services:
     environment:
       - RPC_URL=http://reth:8545
       - REDIS_STORE_URL=redis://redis:6379
-      - DISCOVERY_URL=http://discovery:8089
+      - DISCOVERY_URLS=http://discovery:8089
       - URL=http://localhost:8090
       - COORDINATOR_KEY=${POOL_OWNER_PRIVATE_KEY}
       - COMPUTE_POOL_ID=${WORKER_COMPUTE_POOL_ID}
@@ -123,7 +124,7 @@ services:
       - prime
     environment:
       - RPC_URL=http://reth:8545
-      - DISCOVERY_URL=http://discovery:8089
+      - DISCOVERY_URLS=http://discovery:8089
       - VALIDATOR_KEY=${PRIVATE_KEY_VALIDATOR}
       - WORK_VALIDATION_CONTRACT=${WORK_VALIDATION_CONTRACT}
       - POOL_ID=${WORKER_COMPUTE_POOL_ID}

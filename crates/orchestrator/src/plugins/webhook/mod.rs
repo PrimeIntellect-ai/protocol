@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::node::{NodeStatus, OrchestratorNode};
 
 use super::{Plugin, StatusUpdatePlugin};
-use log::{debug, error};
+use log::{error, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "event", content = "data")]
@@ -70,20 +70,16 @@ pub struct WebhookPlugin {
 }
 
 impl WebhookPlugin {
+    const MAX_RETRIES: u32 = 5;
+    const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+    const BASE_RETRY_DELAY_MS: u64 = 500;
+    const MAX_RETRY_DELAY_MS: u64 = 10000;
+
     pub fn new(webhook_config: WebhookConfig) -> Self {
         let client = Arc::new(
             reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    if let Some(token) = &webhook_config.bearer_token {
-                        headers.insert(
-                            reqwest::header::AUTHORIZATION,
-                            reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
-                                .expect("Invalid token"),
-                        );
-                    }
-                    headers
-                })
+                .default_headers(Self::build_headers(&webhook_config.bearer_token))
+                .timeout(Self::REQUEST_TIMEOUT)
                 .build()
                 .expect("Failed to build HTTP client"),
         );
@@ -94,24 +90,137 @@ impl WebhookPlugin {
         }
     }
 
+    fn build_headers(bearer_token: &Option<String>) -> reqwest::header::HeaderMap {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(token) = bearer_token {
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+                    .expect("Invalid bearer token"),
+            );
+        }
+        headers
+    }
+
+    fn calculate_retry_delay(attempt: u32) -> Duration {
+        let delay_ms = std::cmp::min(
+            Self::BASE_RETRY_DELAY_MS * (2_u64.pow(attempt)),
+            Self::MAX_RETRY_DELAY_MS,
+        );
+        Duration::from_millis(delay_ms)
+    }
+
+    fn get_event_name(event: &WebhookEvent) -> &'static str {
+        match event {
+            WebhookEvent::NodeStatusChanged { .. } => "node.status_changed",
+            WebhookEvent::GroupCreated { .. } => "group.created",
+            WebhookEvent::GroupDestroyed { .. } => "group.destroyed",
+            WebhookEvent::MetricsUpdated { .. } => "metrics.updated",
+        }
+    }
+
+    async fn send_webhook_request(&self, payload: &WebhookPayload) -> Result<(), Error> {
+        let start_time = std::time::Instant::now();
+
+        let response = self
+            .client
+            .post(&self.webhook_url)
+            .json(payload)
+            .send()
+            .await?;
+
+        let duration = start_time.elapsed();
+        let status = response.status();
+
+        if response.status().is_success() {
+            info!(
+                "Webhook '{}' sent successfully to {} (HTTP {}, took {:?})",
+                Self::get_event_name(&payload.event),
+                self.webhook_url,
+                status,
+                duration
+            );
+            Ok(())
+        } else {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to read error response".to_string());
+            Err(anyhow::anyhow!(
+                "HTTP {} after {:?}: {}",
+                status,
+                duration,
+                error_text
+            ))
+        }
+    }
+
+    async fn send_with_retry(&self, payload: WebhookPayload) -> Result<(), Error> {
+        let event_name = Self::get_event_name(&payload.event);
+        let mut last_error = None;
+
+        info!(
+            "Sending webhook '{}' to {} (max {} retries)",
+            event_name,
+            self.webhook_url,
+            Self::MAX_RETRIES
+        );
+
+        for attempt in 0..=Self::MAX_RETRIES {
+            match self.send_webhook_request(&payload).await {
+                Ok(()) => {
+                    if attempt > 0 {
+                        info!(
+                            "Webhook '{}' succeeded on attempt {} after retries",
+                            event_name,
+                            attempt + 1
+                        );
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt < Self::MAX_RETRIES {
+                        let delay = Self::calculate_retry_delay(attempt);
+                        warn!(
+                            "Webhook '{}' attempt {} failed: {}, retrying in {:?}",
+                            event_name,
+                            attempt + 1,
+                            e,
+                            delay
+                        );
+                        tokio::time::sleep(delay).await;
+                    }
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        let error = last_error.unwrap_or_else(|| anyhow::anyhow!("Unknown error"));
+        error!(
+            "Failed to send webhook '{}' to {} after {} attempts: {}",
+            event_name,
+            self.webhook_url,
+            Self::MAX_RETRIES + 1,
+            error
+        );
+        Err(error)
+    }
+
     async fn send_event(&self, event: WebhookEvent) -> Result<(), Error> {
         let payload = WebhookPayload::new(event);
-        let webhook_url = self.webhook_url.clone();
-        let client = self.client.clone();
 
         #[cfg(not(test))]
         {
+            let webhook_url = self.webhook_url.clone();
+            let client = self.client.clone();
             tokio::spawn(async move {
-                if let Err(e) = client
-                    .post(&webhook_url)
-                    .json(&payload)
-                    .timeout(Duration::from_secs(5))
-                    .send()
-                    .await
-                {
-                    error!("Failed to send webhook to {}: {}", webhook_url, e);
-                } else {
-                    debug!("Webhook to {} triggered successfully", webhook_url);
+                let plugin = WebhookPlugin {
+                    webhook_url,
+                    client,
+                };
+                if let Err(e) = plugin.send_with_retry(payload).await {
+                    // Error already logged in send_with_retry
+                    let _ = e;
                 }
             });
             Ok(())
@@ -119,19 +228,7 @@ impl WebhookPlugin {
 
         #[cfg(test)]
         {
-            if let Err(e) = client
-                .post(&webhook_url)
-                .json(&payload)
-                .timeout(Duration::from_secs(5))
-                .send()
-                .await
-            {
-                error!("Failed to send webhook to {}: {}", webhook_url, e);
-                Err(e.into())
-            } else {
-                debug!("Webhook to {} triggered successfully", webhook_url);
-                Ok(())
-            }
+            self.send_with_retry(payload).await
         }
     }
 
@@ -250,17 +347,16 @@ mod tests {
                     "old_status": "Dead",
                     "new_status": "Healthy"
                 },
+                "timestamp": "2024-01-01T00:00:00Z"
             })))
             .create();
 
         let plugin = WebhookPlugin::new(WebhookConfig {
-            url: server.url(),
+            url: format!("{}/webhook", server.url()),
             bearer_token: None,
         });
-        let node = create_test_node(NodeStatus::Dead);
-        let result = plugin
-            .handle_status_change(&node, &NodeStatus::Healthy)
-            .await;
+        let node = create_test_node(NodeStatus::Healthy);
+        let result = plugin.handle_status_change(&node, &NodeStatus::Dead).await;
         assert!(result.is_ok());
         Ok(())
     }
@@ -277,12 +373,13 @@ mod tests {
                     "group_id": "1234567890",
                     "configuration_name": "test_configuration",
                     "nodes": ["0x1234567890123456789012345678901234567890"]
-                }
+                },
+                "timestamp": "2024-01-01T00:00:00Z"
             })))
             .create();
 
         let plugin = WebhookPlugin::new(WebhookConfig {
-            url: server.url(),
+            url: format!("{}/webhook", server.url()),
             bearer_token: None,
         });
         let group_id = "1234567890";
@@ -354,6 +451,64 @@ mod tests {
         let result = plugin.send_metrics_updated(1, metrics).await;
         assert!(result.is_ok());
         mock.assert_async().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_webhook_retry_logic() -> Result<()> {
+        let mut server = Server::new_async().await;
+
+        // First two attempts fail, third succeeds
+        let _mock1 = server
+            .mock("POST", "/webhook")
+            .with_status(500)
+            .expect(1)
+            .create();
+
+        let _mock2 = server
+            .mock("POST", "/webhook")
+            .with_status(502)
+            .expect(1)
+            .create();
+
+        let _mock3 = server
+            .mock("POST", "/webhook")
+            .with_status(200)
+            .expect(1)
+            .create();
+
+        let plugin = WebhookPlugin::new(WebhookConfig {
+            url: format!("{}/webhook", server.url()),
+            bearer_token: None,
+        });
+
+        let mut metrics = std::collections::HashMap::new();
+        metrics.insert("test_metric".to_string(), 1.0);
+        let result = plugin.send_metrics_updated(1, metrics).await;
+        assert!(result.is_ok());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_webhook_max_retries_exceeded() -> Result<()> {
+        let mut server = Server::new_async().await;
+
+        // All attempts fail
+        let _mock = server
+            .mock("POST", "/webhook")
+            .with_status(500)
+            .expect(6) // 1 initial + 5 retries
+            .create();
+
+        let plugin = WebhookPlugin::new(WebhookConfig {
+            url: format!("{}/webhook", server.url()),
+            bearer_token: None,
+        });
+
+        let mut metrics = std::collections::HashMap::new();
+        metrics.insert("test_metric".to_string(), 1.0);
+        let result = plugin.send_metrics_updated(1, metrics).await;
+        assert!(result.is_err());
         Ok(())
     }
 }
