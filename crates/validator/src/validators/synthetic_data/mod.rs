@@ -1513,21 +1513,12 @@ impl SyntheticDataValidator<WalletProvider> {
                 .await?;
             nodes_with_wrong_work_unit_claims.extend(wrong_claim_nodes);
         }
-
-        if !nodes_to_invalidate.is_empty() {
+        let all_nodes_to_invalidate: Vec<&String> = nodes_to_invalidate.iter().chain(nodes_with_wrong_work_unit_claims.iter()).collect();
+        
+        if !all_nodes_to_invalidate.is_empty() {
             for work_key in &group.sorted_work_keys {
                 if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
-                    if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
-                        self.invalidate_work(work_key).await?;
-                    }
-                }
-            }
-        }
-
-        if !nodes_with_wrong_work_unit_claims.is_empty() {
-            for work_key in &group.sorted_work_keys {
-                if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
-                    if nodes_with_wrong_work_unit_claims.contains(&work_info.node_id.to_string()) {
+                    if all_nodes_to_invalidate.contains(&&work_info.node_id.to_string()) {
                         self.invalidate_work(work_key).await?;
                     }
                 }
