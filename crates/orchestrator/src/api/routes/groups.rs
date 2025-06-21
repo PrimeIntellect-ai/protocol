@@ -1,16 +1,22 @@
 use crate::api::server::AppState;
 use actix_web::{
-    web::{self, delete, get, Data},
+    web::{self, delete, get, post, Data},
     HttpResponse, Scope,
 };
 use alloy::primitives::Address;
 use futures::future::join_all;
 use log::error;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
 use std::time::Duration;
 
 const NODE_REQUEST_TIMEOUT: u64 = 30;
+
+#[derive(Debug, Deserialize, Serialize)]
+struct ForceRegroupRequest {
+    configuration_name: String,
+}
 
 async fn get_groups(app_state: Data<AppState>) -> HttpResponse {
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
@@ -243,10 +249,74 @@ async fn fetch_node_logs_p2p(
     }
 }
 
+async fn force_regroup(
+    request: web::Json<ForceRegroupRequest>,
+    app_state: Data<AppState>,
+) -> HttpResponse {
+    if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
+        // Check if the configuration exists
+        let all_configs = node_groups_plugin.get_all_configuration_templates();
+        let config_exists = all_configs
+            .iter()
+            .any(|c| c.name == request.configuration_name);
+
+        if !config_exists {
+            return HttpResponse::NotFound().json(json!({
+                "success": false,
+                "error": format!("Configuration '{}' not found", request.configuration_name)
+            }));
+        }
+
+        match node_groups_plugin.get_all_groups().await {
+            Ok(groups) => {
+                let groups_to_dissolve: Vec<_> = groups
+                    .into_iter()
+                    .filter(|g| g.configuration_name == request.configuration_name)
+                    .collect();
+
+                let group_count = groups_to_dissolve.len();
+                let node_count: usize = groups_to_dissolve.iter().map(|g| g.nodes.len()).sum();
+
+                // Dissolve all groups of this configuration
+                for group in groups_to_dissolve {
+                    if let Err(e) = node_groups_plugin.dissolve_group(&group.id).await {
+                        error!(
+                            "Failed to dissolve group {} during force regroup: {}",
+                            group.id, e
+                        );
+                    }
+                }
+
+                HttpResponse::Ok().json(json!({
+                    "success": true,
+                    "message": format!(
+                        "Force regroup initiated for configuration '{}'. Dissolved {} groups containing {} nodes. New groups will form automatically.",
+                        request.configuration_name,
+                        group_count,
+                        node_count
+                    ),
+                    "dissolved_groups": group_count,
+                    "affected_nodes": node_count
+                }))
+            }
+            Err(e) => HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": format!("Failed to get groups: {}", e)
+            })),
+        }
+    } else {
+        HttpResponse::ServiceUnavailable().json(json!({
+            "success": false,
+            "error": "Node groups plugin is not enabled"
+        }))
+    }
+}
+
 pub fn groups_routes() -> Scope {
     web::scope("/groups")
         .route("", get().to(get_groups))
         .route("/configs", get().to(get_configurations))
+        .route("/force-regroup", post().to(force_regroup))
         .route("/{group_id}", delete().to(delete_group))
         .route("/{group_id}/logs", get().to(get_group_logs))
 }

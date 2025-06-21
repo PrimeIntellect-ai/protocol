@@ -10,7 +10,7 @@ use log::{debug, error, info, warn};
 use rand::seq::IteratorRandom;
 use redis::{AsyncCommands, Script};
 use serde::{Deserialize, Serialize};
-use shared::models::node::ComputeRequirements;
+use shared::models::node::{ComputeRequirements, NodeLocation};
 use shared::models::task::Task;
 use std::time::Duration;
 use std::{collections::BTreeSet, sync::Arc};
@@ -77,6 +77,18 @@ pub struct TaskSwitchingPolicy {
     pub prefer_larger_groups: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProximityOptimizationPolicy {
+    /// Optimize node groups based on proximity?
+    pub enabled: bool,
+}
+
+impl Default for ProximityOptimizationPolicy {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 impl Default for TaskSwitchingPolicy {
     fn default() -> Self {
         Self {
@@ -94,6 +106,7 @@ pub struct NodeGroupsPlugin {
     node_groups_heartbeats: Option<Arc<LoopHeartbeats>>,
     webhook_plugins: Option<Vec<WebhookPlugin>>,
     task_switching_policy: TaskSwitchingPolicy,
+    proximity_optimization_policy: ProximityOptimizationPolicy,
 }
 
 impl NodeGroupsPlugin {
@@ -111,6 +124,7 @@ impl NodeGroupsPlugin {
             node_groups_heartbeats,
             webhook_plugins,
             TaskSwitchingPolicy::default(),
+            ProximityOptimizationPolicy::default(),
         )
     }
 
@@ -121,6 +135,7 @@ impl NodeGroupsPlugin {
         node_groups_heartbeats: Option<Arc<LoopHeartbeats>>,
         webhook_plugins: Option<Vec<WebhookPlugin>>,
         task_switching_policy: TaskSwitchingPolicy,
+        proximity_optimization_policy: ProximityOptimizationPolicy,
     ) -> Self {
         let mut sorted_configs = configuration_templates;
 
@@ -157,6 +172,7 @@ impl NodeGroupsPlugin {
             node_groups_heartbeats,
             webhook_plugins,
             task_switching_policy,
+            proximity_optimization_policy,
         };
 
         plugin
@@ -176,6 +192,46 @@ impl NodeGroupsPlugin {
             (Some(reqs), Some(specs)) => specs.meets(reqs),
             (None, _) => true,
             _ => false,
+        }
+    }
+
+    /// Calculate the distance between two geographic locations using the Haversine formula
+    fn calculate_distance(loc1: &NodeLocation, loc2: &NodeLocation) -> f64 {
+        const EARTH_RADIUS_KM: f64 = 6371.0;
+
+        let lat1_rad = loc1.latitude.to_radians();
+        let lat2_rad = loc2.latitude.to_radians();
+        let delta_lat = (loc2.latitude - loc1.latitude).to_radians();
+        let delta_lon = (loc2.longitude - loc1.longitude).to_radians();
+
+        let a = (delta_lat / 2.0).sin().powi(2)
+            + lat1_rad.cos() * lat2_rad.cos() * (delta_lon / 2.0).sin().powi(2);
+        let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
+
+        EARTH_RADIUS_KM * c
+    }
+
+    /// Sort nodes by proximity to a reference node
+    fn sort_nodes_by_proximity(
+        reference_node: &OrchestratorNode,
+        nodes: &mut Vec<&OrchestratorNode>,
+    ) {
+        if let Some(ref_location) = &reference_node.location {
+            nodes.sort_by(|a, b| {
+                let dist_a = a
+                    .location
+                    .as_ref()
+                    .map(|loc| Self::calculate_distance(ref_location, loc))
+                    .unwrap_or(f64::MAX);
+                let dist_b = b
+                    .location
+                    .as_ref()
+                    .map(|loc| Self::calculate_distance(ref_location, loc))
+                    .unwrap_or(f64::MAX);
+                dist_a
+                    .partial_cmp(&dist_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
         }
     }
     /// Determine if task switching is beneficial for group formation
@@ -394,18 +450,56 @@ impl NodeGroupsPlugin {
             while total_available >= config.min_group_size {
                 let initial_available = total_available;
 
+                // Find compatible nodes for this configuration
+                let compatible_nodes: Vec<&OrchestratorNode> = healthy_nodes
+                    .iter()
+                    .filter(|node| Self::is_node_compatible_with_config(config, node))
+                    .cloned()
+                    .collect();
+
+                if compatible_nodes.len() < config.min_group_size {
+                    break;
+                }
+
                 let mut available_nodes = BTreeSet::new();
                 let mut nodes_to_remove = Vec::new();
 
-                for node in &healthy_nodes {
-                    let should_add_node = Self::is_node_compatible_with_config(config, node);
+                if self.proximity_optimization_policy.enabled {
+                    // Start with a seed node (prefer nodes with location data)
+                    let seed_node = compatible_nodes
+                        .iter()
+                        .find(|n| n.location.is_some())
+                        .or(compatible_nodes.first())
+                        .copied();
 
-                    if should_add_node {
-                        available_nodes.insert(node.address.to_string());
-                        nodes_to_remove.push(node.address.to_string());
+                    if let Some(seed) = seed_node {
+                        // Add the seed node
+                        available_nodes.insert(seed.address.to_string());
+                        nodes_to_remove.push(seed.address.to_string());
+
+                        // Sort remaining nodes by proximity to seed
+                        let mut remaining_compatible: Vec<&OrchestratorNode> = compatible_nodes
+                            .into_iter()
+                            .filter(|n| n.address != seed.address)
+                            .collect();
+                        Self::sort_nodes_by_proximity(seed, &mut remaining_compatible);
+
+                        // Add closest nodes until we reach the desired size
+                        for node in remaining_compatible {
+                            if available_nodes.len() >= config.max_group_size {
+                                break;
+                            }
+                            available_nodes.insert(node.address.to_string());
+                            nodes_to_remove.push(node.address.to_string());
+                        }
+                    }
+                } else {
+                    for node in compatible_nodes {
                         if available_nodes.len() >= config.max_group_size {
                             break;
                         }
+                        available_nodes.insert(node.address.to_string());
+                        nodes_to_remove.push(node.address.to_string());
                     }
                 }
 
