@@ -1,8 +1,12 @@
 mod api;
 mod chainsync;
+mod location_enrichment;
+mod location_service;
 mod store;
 use crate::api::server::start_server;
 use crate::chainsync::ChainSync;
+use crate::location_enrichment::LocationEnrichmentService;
+use crate::location_service::LocationService;
 use crate::store::node_store::NodeStore;
 use crate::store::redis::RedisStore;
 use alloy::providers::RootProvider;
@@ -64,6 +68,14 @@ struct Args {
     /// Service mode: api, processor, or full
     #[arg(short = 'm', long, default_value = "full")]
     mode: ServiceMode,
+
+    /// Location service URL (e.g., https://ipapi.co). If not provided, location services are disabled.
+    #[arg(long)]
+    location_service_url: Option<String>,
+
+    /// Location service API key
+    #[arg(long)]
+    location_service_api_key: Option<String>,
 }
 
 #[tokio::main]
@@ -109,6 +121,27 @@ async fn main() -> Result<()> {
                 last_chain_sync.clone(),
             );
             chain_sync.run().await?;
+
+            // Start location enrichment service if enabled
+            if let Some(location_url) = args.location_service_url.clone() {
+                let location_service = Arc::new(LocationService::new(
+                    Some(location_url),
+                    args.location_service_api_key.clone(),
+                ));
+                let location_enrichment = LocationEnrichmentService::new(
+                    node_store.clone(),
+                    location_service,
+                    &args.redis_url,
+                )?;
+
+                info!("Starting location enrichment service");
+                tokio::spawn(async move {
+                    if let Err(e) = location_enrichment.run(10).await {
+                        // Run every 60 seconds
+                        error!("Location enrichment service failed: {}", e);
+                    }
+                });
+            }
 
             if let Err(err) = start_server(
                 "0.0.0.0",

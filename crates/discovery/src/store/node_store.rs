@@ -113,6 +113,7 @@ impl NodeStore {
             .sadd("node:ids", &address)
             .query_async(&mut con)
             .await?;
+
         Ok(())
     }
 
