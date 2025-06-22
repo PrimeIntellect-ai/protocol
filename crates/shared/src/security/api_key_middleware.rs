@@ -148,25 +148,34 @@ mod tests {
 
     #[actix_web::test]
     async fn test_lowercase_bearer_accepted() {
-        let api_key = "test-api-key";
+        let api_key = "test-API-key";
         let app = test::init_service(
             App::new()
                 .wrap(ApiKeyMiddleware::new(api_key.to_string()))
                 .route("/", web::get().to(test_handler)),
         )
         .await;
+
+        let req = test::TestRequest::get()
+            .uri("/")
+            .insert_header(("Authorization", "bearer test-API-key"))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
 
         let req = test::TestRequest::get()
             .uri("/")
             .insert_header(("Authorization", "bearer test-api-key"))
             .to_request();
 
-        let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
+        let resp = app.call(req).await;
+        assert!(resp.is_err());
+        assert_eq!(resp.unwrap_err().to_string(), "Invalid API key");
     }
 
     #[actix_web::test]
-    async fn test_mixed_case_bearer_accepted() {
+    async fn test_mixed_case_bearer_rejected() {
         let api_key = "test-api-key";
         let app = test::init_service(
             App::new()
@@ -177,11 +186,12 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/")
-            .insert_header(("Authorization", "BeArEr test-api-key"))
+            .insert_header(("Authorization", "BeArEr test-API-key"))
             .to_request();
 
-        let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
+        let resp = app.call(req).await;
+        assert!(resp.is_err());
+        assert_eq!(resp.unwrap_err().to_string(), "Invalid API key");
     }
 
     #[actix_web::test]
