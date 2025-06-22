@@ -37,8 +37,8 @@ $([ ! -z "$TOPLOC_GRACE_INTERVAL" ] && echo "--toploc-grace-interval $TOPLOC_GRA
 $([ ! -z "$BATCH_TRIGGER_SIZE" ] && echo "--batch-trigger-size $BATCH_TRIGGER_SIZE") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_INTERVAL" ] && echo "--toploc-work-validation-interval $TOPLOC_WORK_VALIDATION_INTERVAL") \
 $([ ! -z "$TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS" ] && echo "--toploc-work-validation-unknown-status-expiry-seconds $TOPLOC_WORK_VALIDATION_UNKNOWN_STATUS_EXPIRY_SECONDS") \
-$([ ! -z "$USE_GROUPING" ] && echo "--use-grouping") \
-$([ ! -z "$DISABLE_TOPLOC_INVALIDATION" ] && echo "--disable-toploc-invalidation") \
+$([ "$USE_GROUPING" = "true" ] && echo "--use-grouping") \
+$([ "$DISABLE_TOPLOC_INVALIDATION" = "true" ] && echo "--disable-toploc-invalidation") \
 $([ ! -z "$INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES" ] && echo "--incomplete-group-grace-period-minutes $INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES") \
 $([ ! -z "$VALIDATOR_PENALTY" ] && echo "--validator-penalty $VALIDATOR_PENALTY") \
 $([ "$DISABLE_HARDWARE_VALIDATION" = "true" ] && echo "--disable-hardware-validation") \
