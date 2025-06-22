@@ -1,0 +1,14 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "discovery.fullname" . }}-redis
+  namespace: {{ include "discovery.namespace" . }}
+spec:
+  selector:
+    app: {{ include "discovery.fullname" . }}-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+  type: ClusterIP
+{{- end }}

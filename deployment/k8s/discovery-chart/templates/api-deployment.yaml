@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "discovery.fullname" . }}-api
+  namespace: {{ include "discovery.namespace" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "discovery.fullname" . }}-api
+  template:
+    metadata:
+      labels:
+        app: {{ include "discovery.fullname" . }}-api
+    spec:
+      containers: {{- include "discovery.container" (dict "root" . "mode" "api") | nindent 6 }}
