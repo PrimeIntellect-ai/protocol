@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orchestrator.fullname" . }}-processor
+  namespace: {{ include "orchestrator.namespace" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "orchestrator.fullname" . }}-processor
+  template:
+    metadata:
+      labels:
+        app: {{ include "orchestrator.fullname" . }}-processor
+    spec:
+      containers: {{- include "orchestrator.container" (dict "root" . "mode" "api") | nindent 6 }}

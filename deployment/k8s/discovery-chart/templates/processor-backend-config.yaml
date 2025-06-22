@@ -1,8 +1,8 @@
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
-  name: {{ include "validator.fullname" . }}
-  namespace: {{ include "validator.namespace" . }}
+  name: {{ include "discovery.fullname" . }}-processor-backend-config
+  namespace: {{ include "discovery.namespace" . }}
 spec:
   healthCheck:
     type: HTTP

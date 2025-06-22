@@ -2,17 +2,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "orchestrator.fullname" . }}-redis
-  namespace: {{ include "orchestrator.namespace" . }}
+  name: {{ include "discovery.fullname" . }}-redis
+  namespace: {{ include "discovery.namespace" . }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ include "orchestrator.fullname" . }}-redis
+      app: {{ include "discovery.fullname" . }}-redis
   template:
     metadata:
       labels:
-        app: {{ include "orchestrator.fullname" . }}-redis
+        app: {{ include "discovery.fullname" . }}-redis
     spec:
       containers:
         - name: redis
@@ -21,17 +21,17 @@ spec:
             - containerPort: 6379
           resources:
             requests:
-              memory: "1Gi"
-              cpu: "500m"
+              memory: "256Mi"
+              cpu: "100m"
             limits:
-              memory: "4Gi"
-              cpu: "2"
+              memory: "512Mi"
+              cpu: "500m"
           volumeMounts:
-            - name: {{ include "orchestrator.fullname" . }}-redis-data
+            - name: {{ include "discovery.fullname" . }}-redis-data
               mountPath: /data
           command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
       volumes:
-        - name: {{ include "orchestrator.fullname" . }}-redis-data
+        - name: {{ include "discovery.fullname" . }}-redis-data
           persistentVolumeClaim:
-            claimName: {{ include "orchestrator.fullname" . }}-redis-data
+            claimName: {{ include "discovery.fullname" . }}-redis-data
 {{- end }}

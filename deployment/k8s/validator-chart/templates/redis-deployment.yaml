@@ -2,8 +2,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "validator.redisName" . }}
-  namespace: {{ .Values.namespace }}
+  name: {{ include "validator.fullname" . }}
+  namespace: {{ include "validator.namespace" . }}
 spec:
   replicas: 1
   selector:
@@ -33,5 +33,5 @@ spec:
       volumes:
         - name: redis-data
           persistentVolumeClaim:
-            claimName: {{ include "validator.redisPVCName" . }}
+            claimName: {{ include "validator.fullname" . }}-redis-data
 {{- end }}
