@@ -9,7 +9,7 @@ use crate::p2p::client::P2PClient;
 use crate::plugins::node_groups::NodeGroupsPlugin;
 use crate::scheduler::Scheduler;
 use crate::store::core::{RedisStore, StoreContext};
-use crate::utils::loop_heartbeats::LoopHeartbeats;
+use crate::utils::loop_heartbeats::{HealthStatus, LoopHeartbeats};
 use crate::ServerMode;
 use actix_web::middleware::{Compress, NormalizePath, TrailingSlash};
 use actix_web::{middleware, web::Data, App, HttpServer};
@@ -23,6 +23,65 @@ use shared::utils::StorageProvider;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::WalletProvider;
 use std::sync::Arc;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+
+#[derive(OpenApi)]
+#[openapi(
+    info(
+        title = "Orchestrator API",
+        description = "Prime Intellect Orchestrator API for distributed compute management",
+        version = "1.0.0"
+    ),
+    paths(
+        health_check,
+    ),
+    components(
+        schemas(
+            shared::models::api::ApiResponse<serde_json::Value>,
+            shared::models::task::Task,
+            shared::models::task::TaskRequest,
+            shared::models::node::Node,
+            crate::models::node::NodeStatus,
+            crate::models::node::OrchestratorNode,
+            shared::models::heartbeat::HeartbeatRequest,
+            shared::models::storage::RequestUploadRequest,
+            shared::models::metric::MetricEntry,
+            shared::models::metric::MetricKey,
+            crate::utils::loop_heartbeats::HealthStatus,
+        )
+    ),
+    tags(
+        (name = "health", description = "Health check endpoints"),
+        (name = "tasks", description = "Task management endpoints"),
+        (name = "nodes", description = "Node management endpoints"),
+        (name = "heartbeat", description = "Node heartbeat endpoints"),
+        (name = "storage", description = "File storage endpoints"),
+        (name = "metrics", description = "Metrics collection endpoints"),
+        (name = "groups", description = "Node groups management endpoints"),
+    )
+)]
+struct ApiDoc;
+
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "Service is healthy", body = HealthStatus),
+        (status = 500, description = "Service is unhealthy", body = HealthStatus)
+    ),
+    tag = "health"
+)]
+async fn health_check(data: web::Data<AppState>) -> HttpResponse {
+    let health_status = data
+        .heartbeats
+        .health_status(data.node_groups_plugin.is_some());
+    if health_status.healthy {
+        HttpResponse::Ok().json(health_status)
+    } else {
+        HttpResponse::InternalServerError().json(health_status)
+    }
+}
 
 pub struct AppState {
     pub store_context: Arc<StoreContext>,
@@ -97,18 +156,10 @@ pub async fn start_server(
             .wrap(Compress::default())
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(web::PayloadConfig::default().limit(2_097_152))
-            .service(web::resource("/health").route(web::get().to(
-                |data: web::Data<AppState>| async move {
-                    let health_status = data
-                        .heartbeats
-                        .health_status(data.node_groups_plugin.is_some());
-                    if health_status.healthy {
-                        HttpResponse::Ok().json(health_status)
-                    } else {
-                        HttpResponse::InternalServerError().json(health_status)
-                    }
-                },
-            )))
+            .service(web::resource("/health").route(web::get().to(health_check)))
+            .service(web::scope("").wrap(api_key_middleware.clone()).service(
+                SwaggerUi::new("/docs/{_:.*}").url("/api-docs/openapi.json", ApiDoc::openapi()),
+            ))
             .service(metrics_routes().wrap(api_key_middleware.clone()));
 
         if !matches!(server_mode, ServerMode::ProcessorOnly) {

@@ -3,7 +3,8 @@ use super::metric::MetricEntry;
 use super::task::Task;
 use actix_web::HttpResponse;
 use serde::{Deserialize, Serialize};
-#[derive(Debug, Serialize, Deserialize, Clone)]
+use utoipa::ToSchema;
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct HeartbeatResponse {
     pub current_task: Option<Task>,
 }
@@ -20,7 +21,7 @@ impl From<HeartbeatResponse> for HttpResponse {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default, ToSchema)]
 pub struct TaskDetails {
     pub docker_image_id: Option<String>,
     pub container_id: Option<String>,
@@ -29,7 +30,7 @@ pub struct TaskDetails {
     pub container_exit_code: Option<i64>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default, ToSchema)]
 pub struct HeartbeatRequest {
     pub address: String,
     pub task_id: Option<String>,

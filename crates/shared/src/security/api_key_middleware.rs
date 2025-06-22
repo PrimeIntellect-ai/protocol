@@ -55,12 +55,35 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
+        // Check Authorization header first
         if let Some(auth_header) = req.headers().get(AUTHORIZATION) {
             if let Ok(auth_str) = auth_header.to_str() {
                 if auth_str.len() > 7 {
                     let (scheme, key) = auth_str.split_at(7);
                     if scheme.eq_ignore_ascii_case("Bearer ") {
                         let provided_key_bytes = key.as_bytes();
+                        let expected_key_bytes = self.api_key.as_bytes();
+
+                        if provided_key_bytes.len() == expected_key_bytes.len()
+                            && provided_key_bytes.ct_eq(expected_key_bytes).into()
+                        {
+                            let fut = self.service.call(req);
+                            return Box::pin(async move {
+                                let res = fut.await?;
+                                Ok(res)
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check query parameter for browser access (useful for Swagger UI)
+        if let Some(query) = req.uri().query() {
+            for param in query.split('&') {
+                if let Some((key, value)) = param.split_once('=') {
+                    if key == "api_key" {
+                        let provided_key_bytes = value.as_bytes();
                         let expected_key_bytes = self.api_key.as_bytes();
 
                         if provided_key_bytes.len() == expected_key_bytes.len()
@@ -207,6 +230,43 @@ mod tests {
         let req = test::TestRequest::get()
             .uri("/")
             .insert_header(("Authorization", "InvalidFormat"))
+            .to_request();
+
+        let resp = app.call(req).await;
+        assert!(resp.is_err());
+        assert_eq!(resp.unwrap_err().to_string(), "Invalid API key");
+    }
+
+    #[actix_web::test]
+    async fn test_valid_api_key_query_param() {
+        let api_key = "test-api-key";
+        let app = test::init_service(
+            App::new()
+                .wrap(ApiKeyMiddleware::new(api_key.to_string()))
+                .route("/", web::get().to(test_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/?api_key=test-api-key")
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+    }
+
+    #[actix_web::test]
+    async fn test_invalid_api_key_query_param() {
+        let api_key = "test-api-key";
+        let app = test::init_service(
+            App::new()
+                .wrap(ApiKeyMiddleware::new(api_key.to_string()))
+                .route("/", web::get().to(test_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/?api_key=wrong-key")
             .to_request();
 
         let resp = app.call(req).await;

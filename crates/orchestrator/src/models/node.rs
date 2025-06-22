@@ -5,10 +5,12 @@ use shared::models::heartbeat::TaskDetails;
 use shared::models::node::{ComputeSpecs, DiscoveryNode, NodeLocation};
 use shared::models::task::TaskState;
 use std::fmt::{self, Display};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct OrchestratorNode {
     #[serde(serialize_with = "serialize_address")]
+    #[schema(value_type = String, example = "0x742d35Cc6634C0532925a3b8D6Ac6f29d1e6b8e0")]
     pub address: Address,
     pub ip_address: String,
     pub port: u16,
@@ -79,7 +81,7 @@ impl fmt::Display for OrchestratorNode {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, ToSchema)]
 pub enum NodeStatus {
     #[default]
     Discovered,
