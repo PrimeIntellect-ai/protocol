@@ -2397,6 +2397,7 @@ async fn test_merge_only_compatible_groups() {
                 model: Some("RTX4090".to_string()),
                 memory_mb: Some(24),
                 indices: Some(vec![0]),
+                vendor: None,
             }),
             ..Default::default()
         }),
@@ -2410,6 +2411,7 @@ async fn test_merge_only_compatible_groups() {
                 model: Some("RTX4090".to_string()),
                 memory_mb: Some(24),
                 indices: Some(vec![1]),
+                vendor: None,
             }),
             ..Default::default()
         }),

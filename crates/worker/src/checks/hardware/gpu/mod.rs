@@ -1,3 +1,4 @@
+use crate::console::Console;
 use shared::models::node::{GpuSpecs, GpuVendor};
 use std::fmt::Debug;
 
@@ -28,8 +29,6 @@ pub trait GpuDetector: Debug {
 
 /// Main function to detect GPUs from any vendor
 pub fn detect_gpu() -> Vec<GpuSpecs> {
-    use crate::console::Console;
-
     Console::title("GPU Detection");
 
     let mut all_devices = Vec::new();
