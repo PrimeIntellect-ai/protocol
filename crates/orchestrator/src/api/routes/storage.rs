@@ -9,6 +9,18 @@ use std::time::Duration;
 
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 
+fn validate_file_name(file_name: &str) -> Result<String, String> {
+    if file_name.trim().is_empty() {
+        return Err("File name cannot be empty".to_string());
+    }
+
+    if file_name.contains('\0') {
+        return Err("File name cannot contain null bytes".to_string());
+    }
+
+    Ok(file_name.to_string())
+}
+
 async fn request_upload(
     req: HttpRequest,
     request_upload: web::Json<RequestUploadRequest>,
@@ -21,6 +33,16 @@ async fn request_upload(
             "error": format!("File size exceeds maximum allowed size of 100MB")
         }));
     }
+
+    let validated_file_name = match validate_file_name(&request_upload.file_name) {
+        Ok(name) => name,
+        Err(error) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Invalid file name: {}", error)
+            }));
+        }
+    };
 
     let mut redis_con = match app_state
         .redis_store
@@ -102,12 +124,12 @@ async fn request_upload(
 
     let storage_config = task.storage_config;
 
-    let mut file_name = request_upload.file_name.to_string();
+    let mut file_name = validated_file_name.clone();
     let mut group_id = None;
 
     if let Some(storage_config) = storage_config {
         if let Some(file_name_template) = storage_config.file_name_template {
-            file_name = generate_file_name(&file_name_template, &request_upload.file_name);
+            file_name = generate_file_name(&file_name_template, &validated_file_name);
 
             // TODO: This is a temporary integration of node groups plugin functionality.
             // We have a plan to move this to proper expander traits that will handle
@@ -148,11 +170,8 @@ async fn request_upload(
 
     // Create a unique key for this file upload based on address, group_id, and file name
     let upload_key = match &group_id {
-        Some(gid) => format!("upload:{}:{}:{}", address, gid, &request_upload.file_name),
-        None => format!(
-            "upload:{}:{}:{}",
-            address, "no-group", &request_upload.file_name
-        ),
+        Some(gid) => format!("upload:{}:{}:{}", address, gid, &validated_file_name),
+        None => format!("upload:{}:{}:{}", address, "no-group", &validated_file_name),
     };
     let upload_exists: Result<Option<String>, redis::RedisError> = redis_con.get(&upload_key).await;
     if let Ok(None) = upload_exists {
@@ -330,6 +349,30 @@ mod tests {
     use uuid::Uuid;
 
     #[tokio::test]
+    async fn test_validate_file_name() {
+        assert_eq!(validate_file_name("test.txt").unwrap(), "test.txt");
+        assert_eq!(validate_file_name("file.parquet").unwrap(), "file.parquet");
+        assert_eq!(
+            validate_file_name("some/path/file.txt").unwrap(),
+            "some/path/file.txt"
+        );
+
+        // These are now allowed since GCS handles them safely
+        assert_eq!(
+            validate_file_name("../../../etc/passwd").unwrap(),
+            "../../../etc/passwd"
+        );
+        assert_eq!(validate_file_name("/etc/passwd").unwrap(), "/etc/passwd");
+
+        // Null bytes still blocked
+        assert!(validate_file_name("test.txt\0.exe").is_err());
+
+        // Empty names still blocked
+        assert!(validate_file_name("").is_err());
+        assert!(validate_file_name("   ").is_err());
+    }
+
+    #[tokio::test]
     async fn test_generate_file_name() {
         let template = "test/${ORIGINAL_NAME}";
         let original_name = "test";
@@ -390,6 +433,85 @@ mod tests {
         let metrics = app_state.metrics.export_metrics().unwrap();
         assert!(metrics.contains("orchestrator_file_upload_requests_total"));
         assert!(metrics.contains(&format!("orchestrator_file_upload_requests_total{{node_address=\"test_address\",pool_id=\"{}\",task_id=\"{}\",task_name=\"test-task\"}} 1", app_state.metrics.pool_id, task.id)));
+    }
+
+    #[actix_web::test]
+    async fn test_request_upload_input_validation() {
+        let app_state = create_test_app_state().await;
+
+        let task = Task {
+            id: Uuid::new_v4(),
+            image: "test-image".to_string(),
+            name: "test-task".to_string(),
+            storage_config: Some(StorageConfig {
+                file_name_template: Some("model_123/user_uploads/${ORIGINAL_NAME}".to_string()),
+            }),
+            ..Default::default()
+        };
+
+        let task_store = app_state.store_context.task_store.clone();
+        let _ = task_store.add_task(task.clone()).await;
+
+        let app =
+            test::init_service(App::new().app_data(app_state.clone()).service(
+                web::scope("/storage").route("/request-upload", post().to(request_upload)),
+            ))
+            .await;
+
+        // Test null byte injection (still blocked)
+        let req = test::TestRequest::post()
+            .uri("/storage/request-upload")
+            .insert_header(("x-address", "test_address"))
+            .set_json(&RequestUploadRequest {
+                file_name: "test.txt\0.exe".to_string(),
+                file_size: 1024,
+                file_type: "text/plain".to_string(),
+                sha256: "test_sha256".to_string(),
+                task_id: task.id.to_string(),
+            })
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["success"], serde_json::Value::Bool(false));
+        assert!(json["error"].as_str().unwrap().contains("null bytes"));
+
+        // Test various file names (now allowed)
+        let test_cases = vec![
+            (
+                "../../../etc/passwd",
+                "model_123/user_uploads/../../../etc/passwd",
+            ),
+            ("/etc/passwd", "model_123/user_uploads//etc/passwd"),
+            (
+                "some/path/test.txt",
+                "model_123/user_uploads/some/path/test.txt",
+            ),
+        ];
+
+        for (input, expected) in test_cases {
+            let req = test::TestRequest::post()
+                .uri("/storage/request-upload")
+                .insert_header(("x-address", "test_address"))
+                .set_json(&RequestUploadRequest {
+                    file_name: input.to_string(),
+                    file_size: 1024,
+                    file_type: "text/plain".to_string(),
+                    sha256: "test_sha256".to_string(),
+                    task_id: task.id.to_string(),
+                })
+                .to_request();
+
+            let resp = test::call_service(&app, req).await;
+            let body = test::read_body(resp).await;
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["success"], serde_json::Value::Bool(true));
+            assert_eq!(
+                json["file_name"],
+                serde_json::Value::String(expected.to_string())
+            );
+        }
     }
 
     #[actix_web::test]
