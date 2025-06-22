@@ -17,6 +17,17 @@ async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/tasks",
+    request_body = TaskRequest,
+    responses(
+        (status = 200, description = "Task created successfully", body = Task),
+        (status = 400, description = "Bad request - task name already exists or validation failed"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "tasks"
+)]
 async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) -> HttpResponse {
     let task_request = task.into_inner();
     let task_store = app_state.store_context.task_store.clone();

@@ -29,7 +29,7 @@ shared = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }
 utoipa = { version = "5.3.0", features = ["actix_extras", "chrono", "uuid"] }
-utoipa-swagger-ui = { version = "8.1.0", features = ["actix-web"] }
+utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web", "debug-embed", "reqwest", "vendored"] }
 uuid = { workspace = true }
 iroh = { workspace = true }
 rand_v8 = { workspace = true }
