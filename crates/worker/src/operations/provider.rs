@@ -297,15 +297,15 @@ impl ProviderOperations {
             }
 
             Console::progress("Approving Stake transaction");
-            self.contracts
-                .ai_token
-                .approve(stake)
-                .await
-                .map_err(|_| ProviderError::Other)?;
+            self.contracts.ai_token.approve(stake).await.map_err(|e| {
+                error!("Failed to approve stake: {}", e);
+                ProviderError::Other
+            })?;
             Console::progress("Registering Provider");
             let register_tx = match self.contracts.prime_network.register_provider(stake).await {
                 Ok(tx) => tx,
-                Err(_) => {
+                Err(e) => {
+                    error!("Registration Error: {}", e);
                     return Err(ProviderError::Other);
                 }
             };
