@@ -49,7 +49,7 @@
     value: {{ $root.Values.url }}
   - name: DOMAIN_ID
     value: {{ $root.Values.domainId }}
-  {{- if .Values.computePoolId }}
+  {{- if $root.Values.computePoolId }}
   - name: COMPUTE_POOL_ID
     value: {{ $root.Values.computePoolId }}
   {{- end }}

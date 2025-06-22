@@ -13,4 +13,4 @@ spec:
       labels:
         app: {{ include "orchestrator.fullname" . }}-processor
     spec:
-      containers: {{- include "orchestrator.container" (dict "root" . "mode" "api") | nindent 6 }}
+      containers: {{- include "orchestrator.container" (dict "root" . "mode" "processor") | nindent 6 }}
