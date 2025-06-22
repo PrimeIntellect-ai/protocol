@@ -4,6 +4,7 @@ fn main() {
     if let Ok(version) = std::env::var("WORKER_VERSION") {
         println!("cargo:rustc-env=WORKER_VERSION={}", version);
     }
-
-    println!("cargo:rustc-env=RPC_URL=https://sepolia.base.org");
+    if let Ok(rpc_url) = std::env::var("WORKER_RPC_URL") {
+        println!("cargo:rustc-env=WORKER_RPC_URL={}", rpc_url);
+    }
 }

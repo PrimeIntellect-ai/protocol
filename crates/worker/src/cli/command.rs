@@ -47,7 +47,7 @@ pub struct Cli {
 pub enum Commands {
     Run {
         /// RPC URL
-        #[arg(long, default_value = option_env!("RPC_URL").unwrap_or("http://localhost:8545"))]
+        #[arg(long, default_value = option_env!("WORKER_RPC_URL").unwrap_or("http://localhost:8545"))]
         rpc_url: String,
 
         /// Port number for the worker to listen on - DEPRECATED
@@ -223,6 +223,7 @@ pub async fn execute_command(
             let version = APP_VERSION;
             Console::section("🚀 PRIME WORKER INITIALIZATION - beta");
             Console::info("Version", version);
+
             /*
              Initialize Wallet instances
             */
