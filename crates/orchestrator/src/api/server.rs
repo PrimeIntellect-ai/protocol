@@ -46,11 +46,29 @@ impl Modify for SecurityAddon {
 #[openapi(
     info(
         title = "Orchestrator API",
-        description = "Prime Intellect Orchestrator API for distributed compute management",
+        description = "Prime Intellect Orchestrator API",
         version = "1.0.0"
     ),
     paths(
-        health_check,
+        crate::api::routes::task::get_all_tasks,
+        crate::api::routes::task::create_task,
+        crate::api::routes::task::delete_task,
+        crate::api::routes::task::delete_all_tasks,
+        crate::api::routes::nodes::get_nodes,
+        crate::api::routes::nodes::restart_node_task,
+        crate::api::routes::nodes::get_node_logs,
+        crate::api::routes::nodes::get_node_metrics,
+        crate::api::routes::nodes::ban_node,
+        crate::api::routes::metrics::get_metrics,
+        crate::api::routes::metrics::get_all_metrics,
+        crate::api::routes::metrics::get_prometheus_metrics,
+        crate::api::routes::metrics::create_metric,
+        crate::api::routes::metrics::delete_metric,
+        crate::api::routes::groups::get_groups,
+        crate::api::routes::groups::get_configurations,
+        crate::api::routes::groups::delete_group,
+        crate::api::routes::groups::get_group_logs,
+        crate::api::routes::groups::force_regroup,
     ),
     security(
         ("ApiKeyAuth" = [])
@@ -64,19 +82,13 @@ impl Modify for SecurityAddon {
             shared::models::node::Node,
             crate::models::node::NodeStatus,
             crate::models::node::OrchestratorNode,
-            shared::models::heartbeat::HeartbeatRequest,
-            shared::models::storage::RequestUploadRequest,
             shared::models::metric::MetricEntry,
             shared::models::metric::MetricKey,
-            crate::utils::loop_heartbeats::HealthStatus,
         )
     ),
     tags(
-        (name = "health", description = "Health check endpoints"),
         (name = "tasks", description = "Task management endpoints"),
         (name = "nodes", description = "Node management endpoints"),
-        (name = "heartbeat", description = "Node heartbeat endpoints"),
-        (name = "storage", description = "File storage endpoints"),
         (name = "metrics", description = "Metrics collection endpoints"),
         (name = "groups", description = "Node groups management endpoints"),
     )
@@ -178,15 +190,7 @@ pub async fn start_server(
             .app_data(web::PayloadConfig::default().limit(2_097_152))
             .service(web::resource("/health").route(web::get().to(health_check)))
             .service(
-                web::scope("/docs")
-                    .wrap(api_key_middleware.clone())
-                    .service(
-                        SwaggerUi::new("/{_:.*}").url("/api-docs/openapi.json", ApiDoc::openapi()),
-                    ),
-            )
-            .service(
                 web::resource("/api-docs/openapi.json")
-                    .wrap(api_key_middleware.clone())
                     .route(web::get().to(|| async { HttpResponse::Ok().json(ApiDoc::openapi()) })),
             )
             .service(metrics_routes().wrap(api_key_middleware.clone()));
@@ -198,6 +202,11 @@ pub async fn start_server(
                 .service(nodes_routes().wrap(api_key_middleware.clone()))
                 .service(tasks_routes().wrap(api_key_middleware.clone()))
                 .service(groups_routes().wrap(api_key_middleware.clone()))
+                .service(
+                    SwaggerUi::new("/swagger-ui/{_:.*}")
+                        .url("/api-docs/openapi.json", ApiDoc::openapi()),
+                )
+                .service(web::redirect("/docs", "/swagger-ui/index.html"))
                 .default_service(web::route().to(|| async {
                     HttpResponse::NotFound().json(json!({
                         "success": false,

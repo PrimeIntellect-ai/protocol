@@ -6,19 +6,29 @@ use actix_web::{
 use log::error;
 use serde::Deserialize;
 use serde_json::json;
+use utoipa::ToSchema;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct ManualMetricEntry {
     label: String,
     value: f64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct DeleteMetricRequest {
     label: String,
     address: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/metrics",
+    responses(
+        (status = 200, description = "Aggregate metrics for all tasks retrieved successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "metrics"
+)]
 async fn get_metrics(app_state: Data<AppState>) -> HttpResponse {
     let metrics = match app_state
         .store_context
@@ -35,6 +45,15 @@ async fn get_metrics(app_state: Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
 
+#[utoipa::path(
+    get,
+    path = "/metrics/all",
+    responses(
+        (status = 200, description = "All metrics retrieved successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "metrics"
+)]
 async fn get_all_metrics(app_state: Data<AppState>) -> HttpResponse {
     let metrics = match app_state
         .store_context
@@ -51,6 +70,15 @@ async fn get_all_metrics(app_state: Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
 
+#[utoipa::path(
+    get,
+    path = "/metrics/prometheus",
+    responses(
+        (status = 200, description = "Prometheus metrics exported successfully", content_type = "text/plain"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "metrics"
+)]
 async fn get_prometheus_metrics(app_state: Data<AppState>) -> HttpResponse {
     match app_state.metrics.export_metrics() {
         Ok(metrics) => HttpResponse::Ok()
@@ -63,6 +91,16 @@ async fn get_prometheus_metrics(app_state: Data<AppState>) -> HttpResponse {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/metrics",
+    request_body = ManualMetricEntry,
+    responses(
+        (status = 200, description = "Manual metric created successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "metrics"
+)]
 // for potential backup restore purposes
 async fn create_metric(
     app_state: Data<AppState>,
@@ -79,6 +117,19 @@ async fn create_metric(
     HttpResponse::Ok().json(json!({"success": true}))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/metrics/{task_id}",
+    params(
+        ("task_id" = String, Path, description = "Task ID to delete metrics for")
+    ),
+    request_body = DeleteMetricRequest,
+    responses(
+        (status = 200, description = "Metric deleted successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "metrics"
+)]
 async fn delete_metric(
     app_state: Data<AppState>,
     task_id: Path<String>,

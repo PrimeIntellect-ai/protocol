@@ -7,6 +7,15 @@ use serde_json::json;
 use shared::models::task::Task;
 use shared::models::task::TaskRequest;
 
+#[utoipa::path(
+    get,
+    path = "/tasks",
+    responses(
+        (status = 200, description = "List of all tasks retrieved successfully", body = Vec<Task>),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "tasks"
+)]
 async fn get_all_tasks(app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone();
     let tasks = task_store.get_all_tasks().await;
@@ -76,6 +85,18 @@ async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) ->
     HttpResponse::Ok().json(json!({"success": true, "task": task}))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/tasks/{id}",
+    params(
+        ("id" = String, Path, description = "Task ID to delete")
+    ),
+    responses(
+        (status = 200, description = "Task deleted successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "tasks"
+)]
 async fn delete_task(id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone();
     if let Err(e) = task_store.delete_task(id.into_inner()).await {
@@ -85,6 +106,15 @@ async fn delete_task(id: web::Path<String>, app_state: Data<AppState>) -> HttpRe
     HttpResponse::Ok().json(json!({"success": true}))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/tasks/all",
+    responses(
+        (status = 200, description = "All tasks deleted successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "tasks"
+)]
 async fn delete_all_tasks(app_state: Data<AppState>) -> HttpResponse {
     let task_store = app_state.store_context.task_store.clone();
     if let Err(e) = task_store.delete_all_tasks().await {
