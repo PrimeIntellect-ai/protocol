@@ -1,22 +1,22 @@
-{{- if not .Values.env.REDIS_URL }}
+{{- if .Values.redis.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "orchestrator.redisName" . }}
-  namespace: {{ .Values.namespace }}
+  name: {{ include "orchestrator.fullname" . }}-redis
+  namespace: {{ include "orchestrator.namespace" . }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ include "orchestrator.redisName" . }}
+      app: {{ include "orchestrator.fullname" . }}-redis
   template:
     metadata:
       labels:
-        app: {{ include "orchestrator.redisName" . }}
+        app: {{ include "orchestrator.fullname" . }}-redis
     spec:
       containers:
         - name: redis
-          image: redis:7.2
+          image: {{ .Values.redis.image }}
           ports:
             - containerPort: 6379
           resources:
@@ -27,11 +27,11 @@ spec:
               memory: "4Gi"
               cpu: "2"
           volumeMounts:
-            - name: redis-data
+            - name: {{ include "orchestrator.fullname" . }}-redis-data
               mountPath: /data
           command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
       volumes:
-        - name: redis-data
+        - name: {{ include "orchestrator.fullname" . }}-redis-data
           persistentVolumeClaim:
-            claimName: {{ include "orchestrator.redisPVCName" . }}
+            claimName: {{ include "orchestrator.fullname" . }}-redis-data
 {{- end }}

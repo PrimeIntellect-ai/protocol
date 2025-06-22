@@ -1,12 +1,12 @@
-{{- if not .Values.env.REDIS_URL }}
+{{- if .Values.redis.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "orchestrator.redisName" . }}
-  namespace: {{ .Values.namespace }}
+  name: {{ include "orchestrator.fullname" . }}-redis
+  namespace: {{ include "orchestrator.namespace" . }}
 spec:
   selector:
-    app: {{ include "orchestrator.redisName" . }}
+    app: {{ include "orchestrator.fullname" . }}-redis
   ports:
     - port: 6379
       targetPort: 6379
