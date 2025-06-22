@@ -4,7 +4,6 @@ metadata:
   name: {{ include "orchestrator.fullname" . }}-api
   namespace: {{ include "orchestrator.namespace" . }}
 spec:
-  replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
       app: {{ include "orchestrator.fullname" . }}-api

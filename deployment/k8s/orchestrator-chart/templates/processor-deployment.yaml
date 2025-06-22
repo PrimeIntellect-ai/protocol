@@ -4,7 +4,7 @@ metadata:
   name: {{ include "orchestrator.fullname" . }}-processor
   namespace: {{ include "orchestrator.namespace" . }}
 spec:
-  replicas: {{ .Values.replicas }}
+  replicas: 1
   selector:
     matchLabels:
       app: {{ include "orchestrator.fullname" . }}-processor

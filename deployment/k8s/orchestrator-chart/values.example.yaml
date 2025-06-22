@@ -10,6 +10,18 @@ redis:
   enabled: true
   image: redis
 
+api:
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    metrics:
+      cpu:
+        enabled: true
+        targetUtilization: 70
+      memory:
+        enabled: false
+
 env:
   RPC_URL: "http://your-rpc-endpoint:8545"
   DISCOVERY_URLS: "http://your-discovery-service:8089"
