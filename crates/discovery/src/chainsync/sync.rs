@@ -103,15 +103,25 @@ impl ChainSync {
             })?;
         n.is_blacklisted = is_blacklisted;
 
-        match node_store.update_node(n).await {
-            Ok(_) => {
-                debug!("Successfully updated node {}", node.id);
-                Ok(())
+        // Only update if the node has changed
+        if n.is_active != node.is_active
+            || n.is_validated != node.is_validated
+            || n.is_provider_whitelisted != node.is_provider_whitelisted
+            || n.is_blacklisted != node.is_blacklisted
+        {
+            match node_store.update_node(n).await {
+                Ok(_) => {
+                    debug!("Successfully updated node {}", node.id);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Error updating node {}: {}", node.id, e);
+                    Err(anyhow::anyhow!("Failed to update node: {}", e))
+                }
             }
-            Err(e) => {
-                error!("Error updating node {}: {}", node.id, e);
-                Err(anyhow::anyhow!("Failed to update node: {}", e))
-            }
+        } else {
+            debug!("Node {} unchanged, skipping update", node.id);
+            Ok(())
         }
     }
 

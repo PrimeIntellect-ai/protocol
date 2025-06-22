@@ -66,6 +66,8 @@ down:
 	pkill -f "target/debug/orchestrator" 2>/dev/null || true
 	pkill -f "target/debug/validator" 2>/dev/null || true
 	pkill -f "target/debug/discovery" 2>/dev/null || true
+	pkill -9 -f "cargo run --bin discovery" 2>/dev/null || true
+	pkill -9 -f "cargo watch" 2>/dev/null || true
 
 whitelist-provider:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -73,7 +75,7 @@ whitelist-provider:
 
 watch-discovery:
 	set -a; source .env; set +a; \
-	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL} --max-nodes-per-ip $${MAX_NODES_PER_IP:-2}"
+	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL} --max-nodes-per-ip $${MAX_NODES_PER_IP:-2} $${LOCATION_SERVICE_URL:+--location-service-url $${LOCATION_SERVICE_URL}} $${LOCATION_SERVICE_API_KEY:+--location-service-api-key $${LOCATION_SERVICE_API_KEY}}"
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
