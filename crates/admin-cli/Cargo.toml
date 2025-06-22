@@ -1,0 +1,25 @@
+[package]
+name = "admin-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "admin-cli"
+path = "src/main.rs"
+
+[dependencies]
+shared = { workspace = true }
+tokio = { workspace = true }
+eyre = "0.6"
+clap = { workspace = true }
+url = { workspace = true }
+alloy = { workspace = true }
+tokio-util = { workspace = true }
+hex = "0.4.3"
+rand = "0.9.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+dirs = "5.0"
+rpassword = "7.0"
+dotenv = "0.15"
+toml = { workspace = true }
