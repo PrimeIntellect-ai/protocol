@@ -23,8 +23,24 @@ use shared::utils::StorageProvider;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::WalletProvider;
 use std::sync::Arc;
-use utoipa::OpenApi;
+use utoipa::{
+    openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
+    Modify, OpenApi,
+};
 use utoipa_swagger_ui::SwaggerUi;
+
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "ApiKeyAuth",
+                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("Authorization"))),
+            );
+        }
+    }
+}
 
 #[derive(OpenApi)]
 #[openapi(
@@ -36,6 +52,10 @@ use utoipa_swagger_ui::SwaggerUi;
     paths(
         health_check,
     ),
+    security(
+        ("ApiKeyAuth" = [])
+    ),
+    modifiers(&SecurityAddon),
     components(
         schemas(
             shared::models::api::ApiResponse<serde_json::Value>,
@@ -157,9 +177,18 @@ pub async fn start_server(
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(web::PayloadConfig::default().limit(2_097_152))
             .service(web::resource("/health").route(web::get().to(health_check)))
-            .service(web::scope("").wrap(api_key_middleware.clone()).service(
-                SwaggerUi::new("/docs/{_:.*}").url("/api-docs/openapi.json", ApiDoc::openapi()),
-            ))
+            .service(
+                web::scope("/docs")
+                    .wrap(api_key_middleware.clone())
+                    .service(
+                        SwaggerUi::new("/{_:.*}").url("/api-docs/openapi.json", ApiDoc::openapi()),
+                    ),
+            )
+            .service(
+                web::resource("/api-docs/openapi.json")
+                    .wrap(api_key_middleware.clone())
+                    .route(web::get().to(|| async { HttpResponse::Ok().json(ApiDoc::openapi()) })),
+            )
             .service(metrics_routes().wrap(api_key_middleware.clone()));
 
         if !matches!(server_mode, ServerMode::ProcessorOnly) {
