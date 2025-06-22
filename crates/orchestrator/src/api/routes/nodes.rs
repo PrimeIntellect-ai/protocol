@@ -14,6 +14,18 @@ struct NodeQuery {
     include_dead: Option<bool>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/nodes",
+    params(
+        ("include_dead" = Option<bool>, Query, description = "Include dead nodes in the response")
+    ),
+    responses(
+        (status = 200, description = "List of nodes retrieved successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "nodes"
+)]
 async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpResponse {
     let nodes = match app_state.store_context.node_store.get_nodes().await {
         Ok(mut nodes) => {
@@ -80,6 +92,20 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
     HttpResponse::Ok().json(response)
 }
 
+#[utoipa::path(
+    post,
+    path = "/nodes/{node_id}/restart",
+    params(
+        ("node_id" = String, Path, description = "Node address to restart task for")
+    ),
+    responses(
+        (status = 200, description = "Task restarted successfully"),
+        (status = 400, description = "Bad request - invalid node address or node missing p2p information"),
+        (status = 404, description = "Node not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "nodes"
+)]
 async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     let node_address = match Address::from_str(&node_id) {
         Ok(address) => address,
@@ -139,6 +165,19 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/nodes/{node_id}/logs",
+    params(
+        ("node_id" = String, Path, description = "Node address to get logs for")
+    ),
+    responses(
+        (status = 200, description = "Node logs retrieved successfully"),
+        (status = 400, description = "Bad request - invalid node address or node missing p2p information"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "nodes"
+)]
 async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     let node_address = match Address::from_str(&node_id) {
         Ok(address) => address,
@@ -195,6 +234,19 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/nodes/{node_id}/metrics",
+    params(
+        ("node_id" = String, Path, description = "Node address to get metrics for")
+    ),
+    responses(
+        (status = 200, description = "Node metrics retrieved successfully"),
+        (status = 400, description = "Bad request - invalid node address"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "nodes"
+)]
 async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     let node_address = match Address::from_str(&node_id) {
         Ok(address) => address,
@@ -221,6 +273,20 @@ async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>)
     HttpResponse::Ok().json(json!({"success": true, "metrics": metrics}))
 }
 
+#[utoipa::path(
+    post,
+    path = "/nodes/{node_id}/ban",
+    params(
+        ("node_id" = String, Path, description = "Node address to ban")
+    ),
+    responses(
+        (status = 200, description = "Node banned and ejected successfully"),
+        (status = 400, description = "Bad request - invalid node address"),
+        (status = 404, description = "Node not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "nodes"
+)]
 async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     info!("banning node: {}", node_id);
     let node_address = match Address::from_str(&node_id) {

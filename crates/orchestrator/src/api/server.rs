@@ -9,7 +9,7 @@ use crate::p2p::client::P2PClient;
 use crate::plugins::node_groups::NodeGroupsPlugin;
 use crate::scheduler::Scheduler;
 use crate::store::core::{RedisStore, StoreContext};
-use crate::utils::loop_heartbeats::LoopHeartbeats;
+use crate::utils::loop_heartbeats::{HealthStatus, LoopHeartbeats};
 use crate::ServerMode;
 use actix_web::middleware::{Compress, NormalizePath, TrailingSlash};
 use actix_web::{middleware, web::Data, App, HttpServer};
@@ -23,6 +23,97 @@ use shared::utils::StorageProvider;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::WalletProvider;
 use std::sync::Arc;
+use utoipa::{
+    openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
+    Modify, OpenApi,
+};
+use utoipa_swagger_ui::SwaggerUi;
+
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "ApiKeyAuth",
+                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("Authorization"))),
+            );
+        }
+    }
+}
+
+#[derive(OpenApi)]
+#[openapi(
+    info(
+        title = "Orchestrator API",
+        description = "Prime Intellect Orchestrator API",
+        version = "1.0.0"
+    ),
+    paths(
+        crate::api::routes::task::get_all_tasks,
+        crate::api::routes::task::create_task,
+        crate::api::routes::task::delete_task,
+        crate::api::routes::task::delete_all_tasks,
+        crate::api::routes::nodes::get_nodes,
+        crate::api::routes::nodes::restart_node_task,
+        crate::api::routes::nodes::get_node_logs,
+        crate::api::routes::nodes::get_node_metrics,
+        crate::api::routes::nodes::ban_node,
+        crate::api::routes::metrics::get_metrics,
+        crate::api::routes::metrics::get_all_metrics,
+        crate::api::routes::metrics::get_prometheus_metrics,
+        crate::api::routes::metrics::create_metric,
+        crate::api::routes::metrics::delete_metric,
+        crate::api::routes::groups::get_groups,
+        crate::api::routes::groups::get_configurations,
+        crate::api::routes::groups::delete_group,
+        crate::api::routes::groups::get_group_logs,
+        crate::api::routes::groups::force_regroup,
+    ),
+    security(
+        ("ApiKeyAuth" = [])
+    ),
+    modifiers(&SecurityAddon),
+    components(
+        schemas(
+            shared::models::api::ApiResponse<serde_json::Value>,
+            shared::models::task::Task,
+            shared::models::task::TaskRequest,
+            shared::models::node::Node,
+            crate::models::node::NodeStatus,
+            crate::models::node::OrchestratorNode,
+            shared::models::metric::MetricEntry,
+            shared::models::metric::MetricKey,
+        )
+    ),
+    tags(
+        (name = "tasks", description = "Task management endpoints"),
+        (name = "nodes", description = "Node management endpoints"),
+        (name = "metrics", description = "Metrics collection endpoints"),
+        (name = "groups", description = "Node groups management endpoints"),
+    )
+)]
+struct ApiDoc;
+
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "Service is healthy", body = HealthStatus),
+        (status = 500, description = "Service is unhealthy", body = HealthStatus)
+    ),
+    tag = "health"
+)]
+async fn health_check(data: web::Data<AppState>) -> HttpResponse {
+    let health_status = data
+        .heartbeats
+        .health_status(data.node_groups_plugin.is_some());
+    if health_status.healthy {
+        HttpResponse::Ok().json(health_status)
+    } else {
+        HttpResponse::InternalServerError().json(health_status)
+    }
+}
 
 pub struct AppState {
     pub store_context: Arc<StoreContext>,
@@ -97,18 +188,11 @@ pub async fn start_server(
             .wrap(Compress::default())
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .app_data(web::PayloadConfig::default().limit(2_097_152))
-            .service(web::resource("/health").route(web::get().to(
-                |data: web::Data<AppState>| async move {
-                    let health_status = data
-                        .heartbeats
-                        .health_status(data.node_groups_plugin.is_some());
-                    if health_status.healthy {
-                        HttpResponse::Ok().json(health_status)
-                    } else {
-                        HttpResponse::InternalServerError().json(health_status)
-                    }
-                },
-            )))
+            .service(web::resource("/health").route(web::get().to(health_check)))
+            .service(
+                web::resource("/api-docs/openapi.json")
+                    .route(web::get().to(|| async { HttpResponse::Ok().json(ApiDoc::openapi()) })),
+            )
             .service(metrics_routes().wrap(api_key_middleware.clone()));
 
         if !matches!(server_mode, ServerMode::ProcessorOnly) {
@@ -118,6 +202,11 @@ pub async fn start_server(
                 .service(nodes_routes().wrap(api_key_middleware.clone()))
                 .service(tasks_routes().wrap(api_key_middleware.clone()))
                 .service(groups_routes().wrap(api_key_middleware.clone()))
+                .service(
+                    SwaggerUi::new("/swagger-ui/{_:.*}")
+                        .url("/api-docs/openapi.json", ApiDoc::openapi()),
+                )
+                .service(web::redirect("/docs", "/swagger-ui/index.html"))
                 .default_service(web::route().to(|| async {
                     HttpResponse::NotFound().json(json!({
                         "success": false,

@@ -55,6 +55,7 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
+        // Check Authorization header first
         if let Some(auth_header) = req.headers().get(AUTHORIZATION) {
             if let Ok(auth_str) = auth_header.to_str() {
                 if auth_str.len() > 7 {

@@ -1,7 +1,8 @@
 use actix_web::HttpResponse;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct ApiResponse<T: Serialize> {
     pub success: bool,
     pub data: T,

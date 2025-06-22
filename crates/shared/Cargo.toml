@@ -36,3 +36,4 @@ regex = "1.11.1"
 iroh = { workspace = true }
 rand_v8 = { workspace = true }
 subtle = "2.6.1"
+utoipa = { version = "5.3.0", features = ["actix_extras", "chrono", "uuid"] }

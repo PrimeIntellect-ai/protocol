@@ -5,9 +5,10 @@ use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRe
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, ToSchema)]
 pub enum TaskState {
     PENDING,
     PULLING,
@@ -55,12 +56,12 @@ impl std::fmt::Display for TaskState {
 // Scheduling config
 // Proper typing and validation currently missing
 // Issue: https://github.com/PrimeIntellect-ai/protocol/issues/338
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct SchedulingConfig {
     pub plugins: Option<HashMap<String, HashMap<String, Vec<String>>>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct VolumeMount {
     /// Name/path of the volume on the host (supports label replacements)
     pub host_path: String,
@@ -143,7 +144,7 @@ impl VolumeMount {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct TaskRequest {
     pub image: String,
     pub name: String,
@@ -156,12 +157,12 @@ pub struct TaskRequest {
     pub volume_mounts: Option<Vec<VolumeMount>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct TaskMetadata {
     pub labels: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct Task {
     pub name: String,
     #[serde(default = "Uuid::new_v4")]
@@ -243,7 +244,7 @@ impl Default for Task {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct StorageConfig {
     pub file_name_template: Option<String>,
 }
