@@ -166,7 +166,7 @@ impl NodeGroupsPlugin {
             }
         });
 
-        let plugin = Self {
+        Self {
             configuration_templates: sorted_configs,
             store,
             store_context,
@@ -174,14 +174,16 @@ impl NodeGroupsPlugin {
             webhook_plugins,
             task_switching_policy,
             proximity_optimization_policy,
-        };
+        }
+    }
 
-        plugin
-            .store_context
+    /// Register this plugin as a task observer (async)
+    pub async fn register_observer(self: Arc<Self>) -> Result<()> {
+        self.store_context
             .task_store
-            .add_observer(Arc::new(plugin.clone()));
-
-        plugin
+            .add_observer(self.clone())
+            .await;
+        Ok(())
     }
 
     /// Check if a node is compatible with a configuration's compute requirements
