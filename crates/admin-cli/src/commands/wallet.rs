@@ -70,7 +70,13 @@ async fn generate_wallet(format: String, output: Option<String>) -> Result<()> {
         "env" => {
             format!("PRIVATE_KEY={}\nADDRESS={:?}", private_key_hex, address)
         }
-        "pretty" | _ => {
+        "pretty" => {
+            format!(
+                "Generated new wallet:\n  Private Key: {}\n  Address: {:?}",
+                private_key_hex, address
+            )
+        }
+        _ => {
             format!(
                 "Generated new wallet:\n  Private Key: {}\n  Address: {:?}",
                 private_key_hex, address

@@ -1,7 +1,6 @@
 use crate::config::Config;
 use eyre::Result;
 
-pub mod common;
 pub mod domain;
 pub mod node;
 pub mod pool;

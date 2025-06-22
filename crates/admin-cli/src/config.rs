@@ -3,14 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub rpc_url: Option<String>,
     pub default_keys: HashMap<String, String>,
     pub contract_addresses: HashMap<String, String>,
 }
-
 
 impl Config {
     pub fn load(config_path: &Option<String>, env_file: &str) -> Result<Self> {
