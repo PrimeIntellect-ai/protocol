@@ -175,7 +175,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_mixed_case_bearer_rejected() {
+    async fn test_mixed_case_api_key_rejected() {
         let api_key = "test-api-key";
         let app = test::init_service(
             App::new()
