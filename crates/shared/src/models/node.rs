@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct Node {
     pub id: String,
     pub provider_address: String,
@@ -19,7 +20,7 @@ pub struct Node {
     pub worker_p2p_addresses: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, ToSchema)]
 pub struct ComputeSpecs {
     // GPU specifications
     pub gpu: Option<GpuSpecs>,
@@ -43,7 +44,7 @@ impl Default for ComputeSpecs {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct ComputeRequirements {
     // List of alternative GPU requirements (OR logic)
     pub gpu: Vec<GpuRequirements>,
@@ -52,7 +53,7 @@ pub struct ComputeRequirements {
     pub storage_gb: Option<u32>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct GpuRequirements {
     pub count: Option<u32>,
     pub model: Option<String>,
@@ -66,7 +67,7 @@ pub struct GpuRequirements {
     pub indices: Option<Vec<u32>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct GpuSpecs {
     pub count: Option<u32>,
     pub model: Option<String>,
@@ -147,7 +148,7 @@ impl fmt::Display for GpuSpecs {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct CpuSpecs {
     pub cores: Option<u32>,
     pub model: Option<String>,
@@ -537,7 +538,7 @@ impl CpuSpecs {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct NodeLocation {
     pub latitude: f64,
     pub longitude: f64,
@@ -546,7 +547,7 @@ pub struct NodeLocation {
     pub country: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct DiscoveryNode {
     #[serde(flatten)]
     pub node: Node,

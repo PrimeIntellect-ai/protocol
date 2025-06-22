@@ -10,14 +10,25 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
 use std::time::Duration;
+use utoipa::ToSchema;
 
 const NODE_REQUEST_TIMEOUT: u64 = 30;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 struct ForceRegroupRequest {
     configuration_name: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/groups",
+    responses(
+        (status = 200, description = "List of all groups retrieved successfully"),
+        (status = 503, description = "Node groups plugin is not enabled"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "groups"
+)]
 async fn get_groups(app_state: Data<AppState>) -> HttpResponse {
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
         match node_groups_plugin.get_all_groups().await {
@@ -54,6 +65,15 @@ async fn get_groups(app_state: Data<AppState>) -> HttpResponse {
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/groups/configs",
+    responses(
+        (status = 200, description = "List of all configurations retrieved successfully"),
+        (status = 503, description = "Node groups plugin is not enabled")
+    ),
+    tag = "groups"
+)]
 async fn get_configurations(app_state: Data<AppState>) -> HttpResponse {
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
         let all_configs = node_groups_plugin.get_all_configuration_templates();
@@ -88,6 +108,19 @@ async fn get_configurations(app_state: Data<AppState>) -> HttpResponse {
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/groups/{group_id}",
+    params(
+        ("group_id" = String, Path, description = "Group ID to delete")
+    ),
+    responses(
+        (status = 200, description = "Group deleted successfully"),
+        (status = 503, description = "Node groups plugin is not enabled"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "groups"
+)]
 async fn delete_group(group_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
         match node_groups_plugin.dissolve_group(&group_id).await {
@@ -108,6 +141,20 @@ async fn delete_group(group_id: web::Path<String>, app_state: Data<AppState>) ->
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/groups/{group_id}/logs",
+    params(
+        ("group_id" = String, Path, description = "Group ID to get logs for")
+    ),
+    responses(
+        (status = 200, description = "Group logs retrieved successfully"),
+        (status = 404, description = "Group not found"),
+        (status = 503, description = "Node groups plugin is not enabled"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "groups"
+)]
 async fn get_group_logs(group_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
         match node_groups_plugin.get_group_by_id(&group_id).await {
@@ -249,6 +296,18 @@ async fn fetch_node_logs_p2p(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/groups/force-regroup",
+    request_body = ForceRegroupRequest,
+    responses(
+        (status = 200, description = "Force regroup initiated successfully"),
+        (status = 404, description = "Configuration not found"),
+        (status = 503, description = "Node groups plugin is not enabled"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "groups"
+)]
 async fn force_regroup(
     request: web::Json<ForceRegroupRequest>,
     app_state: Data<AppState>,

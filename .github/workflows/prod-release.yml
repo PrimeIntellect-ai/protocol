@@ -54,6 +54,8 @@ jobs:
           override: true
 
       - name: Build all workspace members
+        env:
+          WORKER_RPC_URL: https://sepolia.base.org
         if: steps.check_tag.outputs.exists == 'false'
         run: |
           export CARGO_BUILD_JOBS=$(nproc)

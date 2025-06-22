@@ -2,10 +2,11 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use utoipa::ToSchema;
 
 use crate::ServerMode;
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct HealthStatus {
     pub healthy: bool,
     pub inviter_last_run_seconds_ago: i64,
