@@ -22,7 +22,7 @@ metadata:
   labels:
     app: {{ include "discovery.fullname" . }}-api
   annotations:
-    cloud.google.com/backend-config: '{"default": "{{ include "discovery.fullname" . }}-api"}'
+    cloud.google.com/backend-config: '{"default": "{{ include "discovery.fullname" . }}-api-backend-config"}'
 spec:
   selector:
     app: {{ include "discovery.fullname" . }}-api
