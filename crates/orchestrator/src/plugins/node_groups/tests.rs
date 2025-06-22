@@ -3,8 +3,8 @@ use crate::plugins::traits::StatusUpdatePlugin;
 use crate::{
     models::node::{NodeStatus, OrchestratorNode},
     plugins::node_groups::{
-        NodeGroup, NodeGroupConfiguration, NodeGroupsPlugin, TaskSwitchingPolicy, GROUP_KEY_PREFIX,
-        NODE_GROUP_MAP_KEY,
+        NodeGroup, NodeGroupConfiguration, NodeGroupsPlugin, ProximityOptimizationPolicy,
+        TaskSwitchingPolicy, GROUP_KEY_PREFIX, NODE_GROUP_MAP_KEY,
     },
     store::core::{RedisStore, StoreContext},
 };
@@ -1948,6 +1948,7 @@ async fn test_task_switching_policy() {
         None,
         None,
         disabled_policy,
+        ProximityOptimizationPolicy::default(),
     );
 
     let solo_group = NodeGroup {
@@ -1976,6 +1977,7 @@ async fn test_task_switching_policy() {
         None,
         None,
         no_prefer_policy,
+        ProximityOptimizationPolicy::default(),
     );
 
     // Add a node and create a solo group with a task
@@ -2535,6 +2537,7 @@ async fn test_no_merge_when_policy_disabled() {
         None,
         None,
         disabled_policy,
+        ProximityOptimizationPolicy::default(),
     );
 
     // Create 3 nodes

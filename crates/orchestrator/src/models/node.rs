@@ -2,7 +2,7 @@ use alloy::primitives::Address;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shared::models::heartbeat::TaskDetails;
-use shared::models::node::{ComputeSpecs, DiscoveryNode};
+use shared::models::node::{ComputeSpecs, DiscoveryNode, NodeLocation};
 use shared::models::task::TaskState;
 use std::fmt::{self, Display};
 
@@ -30,6 +30,8 @@ pub struct OrchestratorNode {
     pub worker_p2p_id: Option<String>,
     #[serde(default)]
     pub worker_p2p_addresses: Option<Vec<String>>,
+    #[serde(default)]
+    pub location: Option<NodeLocation>,
 }
 
 fn serialize_address<S>(address: &Address, serializer: S) -> Result<S::Ok, S::Error>
@@ -56,6 +58,7 @@ impl From<DiscoveryNode> for OrchestratorNode {
             compute_specs: discovery_node.compute_specs.clone(),
             worker_p2p_id: discovery_node.worker_p2p_id.clone(),
             worker_p2p_addresses: discovery_node.worker_p2p_addresses.clone(),
+            location: discovery_node.location.clone(),
         }
     }
 }

@@ -10,6 +10,8 @@ ENV REDIS_URL="redis://localhost:6380"
 ENV PORT="8089"
 ENV MAX_NODES_PER_IP="3"
 ENV MODE="full"
+ENV LOCATION_SERVICE_URL=""
+ENV LOCATION_SERVICE_API_KEY=""
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/discovery \
@@ -19,6 +21,8 @@ exec /usr/local/bin/discovery \
 --port "$PORT" \
 --max-nodes-per-ip "$MAX_NODES_PER_IP" \
 --mode "$MODE" \
+$([ ! -z "$LOCATION_SERVICE_URL" ] && echo "--location-service-url $LOCATION_SERVICE_URL") \
+$([ ! -z "$LOCATION_SERVICE_API_KEY" ] && echo "--location-service-api-key $LOCATION_SERVICE_API_KEY") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 

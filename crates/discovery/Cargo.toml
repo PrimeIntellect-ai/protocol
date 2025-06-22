@@ -13,6 +13,7 @@ futures = { workspace = true }
 log = { workspace = true }
 redis = { workspace = true, features = ["tokio-comp"] }
 redis-test = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shared = { workspace = true }

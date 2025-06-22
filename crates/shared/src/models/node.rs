@@ -554,6 +554,15 @@ impl CpuSpecs {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+pub struct NodeLocation {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub city: Option<String>,
+    pub region: Option<String>,
+    pub country: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct DiscoveryNode {
     #[serde(flatten)]
     pub node: Node,
@@ -567,6 +576,8 @@ pub struct DiscoveryNode {
     pub last_updated: Option<DateTime<Utc>>,
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub location: Option<NodeLocation>,
 }
 
 impl DiscoveryNode {
@@ -579,6 +590,7 @@ impl DiscoveryNode {
             is_blacklisted: self.is_blacklisted,
             last_updated: Some(Utc::now()),
             created_at: self.created_at,
+            location: self.location.clone(),
         }
     }
 }
@@ -601,6 +613,7 @@ impl From<Node> for DiscoveryNode {
             is_blacklisted: false,
             last_updated: None,
             created_at: Some(Utc::now()),
+            location: None,
         }
     }
 }
