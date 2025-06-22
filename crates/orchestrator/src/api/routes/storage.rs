@@ -5,7 +5,6 @@ use actix_web::{
 };
 use redis::AsyncCommands;
 use shared::models::storage::RequestUploadRequest;
-use std::path::Path;
 use std::time::Duration;
 
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
@@ -15,32 +14,11 @@ fn validate_file_name(file_name: &str) -> Result<String, String> {
         return Err("File name cannot be empty".to_string());
     }
 
-    if file_name.contains("..") {
-        return Err("File name cannot contain path traversal sequences".to_string());
-    }
-
-    if file_name.starts_with('/') || file_name.starts_with('\\') {
-        return Err("File name cannot be an absolute path".to_string());
-    }
-
     if file_name.contains('\0') {
         return Err("File name cannot contain null bytes".to_string());
     }
 
-    let path = Path::new(file_name);
-    match path.file_name() {
-        Some(name) => match name.to_str() {
-            Some(clean_name) => {
-                if clean_name.is_empty() {
-                    Err("Invalid file name".to_string())
-                } else {
-                    Ok(clean_name.to_string())
-                }
-            }
-            None => Err("File name contains invalid characters".to_string()),
-        },
-        None => Err("Invalid file name".to_string()),
-    }
+    Ok(file_name.to_string())
 }
 
 async fn request_upload(
@@ -376,26 +354,22 @@ mod tests {
         assert_eq!(validate_file_name("file.parquet").unwrap(), "file.parquet");
         assert_eq!(
             validate_file_name("some/path/file.txt").unwrap(),
-            "file.txt"
+            "some/path/file.txt"
         );
 
-        assert!(validate_file_name("../../../etc/passwd").is_err());
-        assert!(validate_file_name("..\\..\\windows\\system32\\config\\sam").is_err());
-        assert!(validate_file_name("test/../passwd").is_err());
+        // These are now allowed since GCS handles them safely
+        assert_eq!(
+            validate_file_name("../../../etc/passwd").unwrap(),
+            "../../../etc/passwd"
+        );
+        assert_eq!(validate_file_name("/etc/passwd").unwrap(), "/etc/passwd");
 
-        assert!(validate_file_name("/etc/passwd").is_err());
-        assert!(validate_file_name("\\windows\\system32\\config\\sam").is_err());
-
+        // Null bytes still blocked
         assert!(validate_file_name("test.txt\0.exe").is_err());
 
+        // Empty names still blocked
         assert!(validate_file_name("").is_err());
         assert!(validate_file_name("   ").is_err());
-
-        assert_eq!(validate_file_name("dir/file.txt").unwrap(), "file.txt");
-        assert_eq!(
-            validate_file_name("dir1/dir2/file.txt").unwrap(),
-            "file.txt"
-        );
     }
 
     #[tokio::test]
@@ -462,7 +436,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_request_upload_path_traversal_blocked() {
+    async fn test_request_upload_input_validation() {
         let app_state = create_test_app_state().await;
 
         let task = Task {
@@ -484,45 +458,7 @@ mod tests {
             ))
             .await;
 
-        // Test path traversal attack
-        let req = test::TestRequest::post()
-            .uri("/storage/request-upload")
-            .insert_header(("x-address", "test_address"))
-            .set_json(&RequestUploadRequest {
-                file_name: "../../../etc/passwd".to_string(),
-                file_size: 1024,
-                file_type: "text/plain".to_string(),
-                sha256: "test_sha256".to_string(),
-                task_id: task.id.to_string(),
-            })
-            .to_request();
-
-        let resp = test::call_service(&app, req).await;
-        let body = test::read_body(resp).await;
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["success"], serde_json::Value::Bool(false));
-        assert!(json["error"].as_str().unwrap().contains("path traversal"));
-
-        // Test absolute path attack
-        let req = test::TestRequest::post()
-            .uri("/storage/request-upload")
-            .insert_header(("x-address", "test_address"))
-            .set_json(&RequestUploadRequest {
-                file_name: "/etc/passwd".to_string(),
-                file_size: 1024,
-                file_type: "text/plain".to_string(),
-                sha256: "test_sha256".to_string(),
-                task_id: task.id.to_string(),
-            })
-            .to_request();
-
-        let resp = test::call_service(&app, req).await;
-        let body = test::read_body(resp).await;
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["success"], serde_json::Value::Bool(false));
-        assert!(json["error"].as_str().unwrap().contains("absolute path"));
-
-        // Test null byte injection
+        // Test null byte injection (still blocked)
         let req = test::TestRequest::post()
             .uri("/storage/request-upload")
             .insert_header(("x-address", "test_address"))
@@ -541,26 +477,41 @@ mod tests {
         assert_eq!(json["success"], serde_json::Value::Bool(false));
         assert!(json["error"].as_str().unwrap().contains("null bytes"));
 
-        let req = test::TestRequest::post()
-            .uri("/storage/request-upload")
-            .insert_header(("x-address", "test_address"))
-            .set_json(&RequestUploadRequest {
-                file_name: "some/path/test.txt".to_string(),
-                file_size: 1024,
-                file_type: "text/plain".to_string(),
-                sha256: "test_sha256".to_string(),
-                task_id: task.id.to_string(),
-            })
-            .to_request();
+        // Test various file names (now allowed)
+        let test_cases = vec![
+            (
+                "../../../etc/passwd",
+                "model_123/user_uploads/../../../etc/passwd",
+            ),
+            ("/etc/passwd", "model_123/user_uploads//etc/passwd"),
+            (
+                "some/path/test.txt",
+                "model_123/user_uploads/some/path/test.txt",
+            ),
+        ];
 
-        let resp = test::call_service(&app, req).await;
-        let body = test::read_body(resp).await;
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["success"], serde_json::Value::Bool(true));
-        assert_eq!(
-            json["file_name"],
-            serde_json::Value::String("model_123/user_uploads/test.txt".to_string())
-        );
+        for (input, expected) in test_cases {
+            let req = test::TestRequest::post()
+                .uri("/storage/request-upload")
+                .insert_header(("x-address", "test_address"))
+                .set_json(&RequestUploadRequest {
+                    file_name: input.to_string(),
+                    file_size: 1024,
+                    file_type: "text/plain".to_string(),
+                    sha256: "test_sha256".to_string(),
+                    task_id: task.id.to_string(),
+                })
+                .to_request();
+
+            let resp = test::call_service(&app, req).await;
+            let body = test::read_body(resp).await;
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["success"], serde_json::Value::Bool(true));
+            assert_eq!(
+                json["file_name"],
+                serde_json::Value::String(expected.to_string())
+            );
+        }
     }
 
     #[actix_web::test]
