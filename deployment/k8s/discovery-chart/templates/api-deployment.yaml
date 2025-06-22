@@ -4,7 +4,6 @@ metadata:
   name: {{ include "discovery.fullname" . }}-api
   namespace: {{ include "discovery.namespace" . }}
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: {{ include "discovery.fullname" . }}-api
