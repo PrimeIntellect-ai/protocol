@@ -740,6 +740,13 @@ impl DockerManager {
         Ok(info)
     }
 
+    pub async fn restart_container(&self, container_id: &str) -> Result<(), DockerError> {
+        debug!("Restarting container: {}", container_id);
+        self.docker.restart_container(container_id, None).await?;
+        debug!("Container {} restarted successfully", container_id);
+        Ok(())
+    }
+
     pub async fn get_container_logs(
         &self,
         container_id: &str,
