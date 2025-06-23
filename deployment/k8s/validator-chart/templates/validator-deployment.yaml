@@ -44,7 +44,7 @@ spec:
           env:
             {{- if .Values.computePoolId }}
             - name: POOL_ID
-              value: "{{ .Values.computePoolId }}"
+              value: "{{ .Values.computePoolId | quote }}"
             {{- end }}
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
