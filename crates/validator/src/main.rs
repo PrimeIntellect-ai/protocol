@@ -31,8 +31,7 @@ use url::Url;
 use validators::hardware::HardwareValidator;
 use validators::synthetic_data::SyntheticDataValidator;
 
-use crate::validators::synthetic_data::InvalidationType;
-
+use crate::validators::synthetic_data::types::InvalidationType;
 // Track the last time the validation loop ran
 static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 // Maximum allowed time between validation loops (2 minutes)
