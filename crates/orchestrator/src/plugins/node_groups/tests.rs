@@ -11,6 +11,7 @@ use crate::{
 
 use alloy::primitives::Address;
 use redis::Commands;
+use shared::models::node::NodeLocation;
 use shared::models::{
     node::{ComputeRequirements, ComputeSpecs, GpuSpecs},
     task::{SchedulingConfig, Task, TaskState},
@@ -42,6 +43,18 @@ fn create_test_node(
         ..Default::default()
     }
 }
+
+fn create_test_node_with_location(
+    addr: &str,
+    status: NodeStatus,
+    compute_specs: Option<ComputeSpecs>,
+    location: NodeLocation,
+) -> OrchestratorNode {
+    let mut node = create_test_node(addr, status, compute_specs);
+    node.location = Some(location);
+    node
+}
+
 #[tokio::test]
 async fn test_parsing_groups_from_string() {
     let group_config = r#"
@@ -101,7 +114,14 @@ async fn test_group_formation_and_dissolution() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
@@ -197,13 +217,14 @@ async fn test_group_formation_with_multiple_configs() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(
+    let plugin = Arc::new(NodeGroupsPlugin::new(
         vec![config_s, config_xs],
         store.clone(),
         store_context,
         None,
         None,
-    );
+    ));
+    let _ = plugin.clone().register_observer().await;
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
@@ -295,7 +316,14 @@ async fn test_group_formation_with_requirements_and_single_node() {
         compute_requirements: Some(requirements),
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
@@ -371,7 +399,14 @@ async fn test_group_formation_with_requirements_and_multiple_nodes() {
         compute_requirements: Some(requirements),
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
@@ -481,7 +516,14 @@ async fn test_group_scheduling() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
@@ -644,7 +686,14 @@ async fn test_group_scheduling_without_tasks() {
         max_group_size: 5,
         compute_requirements: None,
     };
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
         NodeStatus::Healthy,
@@ -692,7 +741,14 @@ async fn test_group_formation_with_max_size() {
         max_group_size: 2,
         compute_requirements: None,
     };
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
@@ -838,7 +894,14 @@ async fn test_node_groups_with_allowed_topologies() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     let node1 = create_test_node(
         "0x1234567890123456789012345678901234567890",
@@ -936,7 +999,14 @@ async fn test_node_cannot_be_in_multiple_groups() {
     };
 
     // Set max_group_size to 2, so groups can only have 2 nodes
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     let all_nodes = plugin.store_context.node_store.get_nodes().await.unwrap();
     assert_eq!(all_nodes.len(), 0, "No nodes should be in the store");
@@ -1149,7 +1219,14 @@ async fn test_reformation_on_death() {
         max_group_size: 2,
         compute_requirements: None,
     };
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
     let task = Task {
         scheduling_config: Some(SchedulingConfig {
             plugins: Some(HashMap::from([(
@@ -1402,13 +1479,14 @@ async fn test_task_observer() {
         max_group_size: 1,
         compute_requirements: None,
     };
-    let plugin = NodeGroupsPlugin::new(
+    let plugin = Arc::new(NodeGroupsPlugin::new(
         vec![node_group_config, node_group_config2],
         plugin_store,
         plugin_store_context,
         None,
         None,
-    );
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     let node = create_test_node(
         "0x1234567890123456789012345678901234567890",
@@ -1573,13 +1651,14 @@ async fn test_building_largest_possible_groups() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(
+    let plugin = Arc::new(NodeGroupsPlugin::new(
         vec![config_small, config_medium, config_large],
         plugin_store,
         plugin_store_context,
         None,
         None,
-    );
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     // Create and add 3 nodes
     let node1 = create_test_node(
@@ -1737,13 +1816,14 @@ async fn test_group_formation_priority() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(
+    let plugin = Arc::new(NodeGroupsPlugin::new(
         vec![config_large, config_small],
         store.clone(),
         store_context,
         None,
         None,
-    );
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     // Add 4 healthy nodes
     let nodes: Vec<_> = (1..=4)
@@ -1832,7 +1912,14 @@ async fn test_multiple_groups_same_configuration() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     // Create task that requires this configuration
     let task = Task {
@@ -1938,7 +2025,7 @@ async fn test_task_switching_policy() {
         prefer_larger_groups: true,
     };
 
-    let plugin_disabled = NodeGroupsPlugin::new_with_policy(
+    let plugin_disabled = Arc::new(NodeGroupsPlugin::new_with_policy(
         vec![config.clone()],
         store.clone(),
         store_context.clone(),
@@ -1946,7 +2033,8 @@ async fn test_task_switching_policy() {
         None,
         disabled_policy,
         ProximityOptimizationPolicy::default(),
-    );
+    ));
+    let _ = plugin_disabled.clone().register_observer().await;
 
     let solo_group = NodeGroup {
         id: "solo1".to_string(),
@@ -1967,7 +2055,7 @@ async fn test_task_switching_policy() {
         prefer_larger_groups: false,
     };
 
-    let plugin_no_prefer = NodeGroupsPlugin::new_with_policy(
+    let plugin_no_prefer = Arc::new(NodeGroupsPlugin::new_with_policy(
         vec![config.clone()],
         store.clone(),
         store_context.clone(),
@@ -1975,7 +2063,8 @@ async fn test_task_switching_policy() {
         None,
         no_prefer_policy,
         ProximityOptimizationPolicy::default(),
-    );
+    ));
+    let _ = plugin_no_prefer.clone().register_observer().await;
 
     // Add a node and create a solo group with a task
     let node1 = create_test_node(
@@ -2039,8 +2128,14 @@ async fn test_task_switching_policy() {
         "Default policy should prefer larger groups"
     );
 
-    let plugin_default =
-        NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin_default = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin_default.clone().register_observer().await;
 
     let policy = plugin_default.test_get_task_switching_policy();
     assert_eq!(
@@ -2073,7 +2168,14 @@ async fn test_merge_solo_groups_with_active_tasks() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     // Create 3 nodes
     let node1 = create_test_node(
@@ -2233,7 +2335,14 @@ async fn test_task_assignment_during_merge() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     // Create 2 nodes
     let node1 = create_test_node(
@@ -2366,13 +2475,14 @@ async fn test_merge_only_compatible_groups() {
         compute_requirements: Some(ComputeRequirements::from_str("gpu:count=8").unwrap()),
     };
 
-    let plugin = NodeGroupsPlugin::new(
+    let plugin = Arc::new(NodeGroupsPlugin::new(
         vec![config1, config2],
         store.clone(),
         store_context,
         None,
         None,
-    );
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     // Create 4 nodes: 2 with GPU specs, 2 without
     let node1_no_gpu = create_test_node(
@@ -2527,7 +2637,7 @@ async fn test_no_merge_when_policy_disabled() {
         prefer_larger_groups: true,
     };
 
-    let plugin = NodeGroupsPlugin::new_with_policy(
+    let plugin = Arc::new(NodeGroupsPlugin::new_with_policy(
         vec![config],
         store.clone(),
         store_context,
@@ -2535,7 +2645,8 @@ async fn test_no_merge_when_policy_disabled() {
         None,
         disabled_policy,
         ProximityOptimizationPolicy::default(),
-    );
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     // Create 3 nodes
     let nodes: Vec<_> = (1..=3)
@@ -2596,7 +2707,14 @@ async fn test_edge_case_no_available_tasks() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     // Create 2 nodes
     let node1 = create_test_node(
@@ -2661,7 +2779,14 @@ async fn test_scheduler_integration_with_dissolved_groups() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new(vec![config], store.clone(), store_context, None, None);
+    let plugin = Arc::new(NodeGroupsPlugin::new(
+        vec![config],
+        store.clone(),
+        store_context,
+        None,
+        None,
+    ));
+    let _ = plugin.clone().register_observer().await;
 
     // Create node
     let node1 = create_test_node(
@@ -2717,4 +2842,209 @@ async fn test_scheduler_integration_with_dissolved_groups() {
         .handle_group_not_found("dissolved-group", &task.id.to_string())
         .await;
     assert!(result.is_ok(), "Should handle group not found gracefully");
+}
+
+#[tokio::test]
+async fn test_proximity_merging_prevents_wrong_nodes_grouping() {
+    let store = Arc::new(RedisStore::new_test());
+    let context_store = store.clone();
+    let store_context = Arc::new(StoreContext::new(context_store));
+
+    // Create configurations: solo first, then 2-node groups
+    let solo_config = NodeGroupConfiguration {
+        name: "1x40-48GB".to_string(),
+        min_group_size: 1,
+        max_group_size: 1,
+        compute_requirements: None,
+    };
+
+    let group_config = NodeGroupConfiguration {
+        name: "2x40-48GB".to_string(),
+        min_group_size: 2,
+        max_group_size: 2,
+        compute_requirements: None,
+    };
+
+    let plugin = Arc::new(NodeGroupsPlugin::new_with_policy(
+        vec![solo_config.clone(), group_config.clone()],
+        store.clone(),
+        store_context.clone(),
+        None,
+        None,
+        TaskSwitchingPolicy::default(),
+        ProximityOptimizationPolicy { enabled: true },
+    ));
+    let _ = plugin.clone().register_observer().await;
+    // Create tasks that allow both configurations
+    let task1 = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["1x40-48GB".to_string(), "2x40-48GB".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    let _ = plugin.store_context.task_store.add_task(task1).await;
+
+    // Create 4 nodes: 2 in Montreal, 2 in Dallas (based on prod data)
+    let montreal_node1 = create_test_node_with_location(
+        "0xB2631de00e6120969d34456b9c7Ee22352f13b02",
+        NodeStatus::Healthy,
+        Some(ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(1),
+                model: Some("nvidia rtx a6000".to_string()),
+                memory_mb: Some(49140),
+                indices: Some(vec![0]),
+            }),
+            ..Default::default()
+        }),
+        NodeLocation {
+            city: Some("Montreal".to_string()),
+            country: Some("CA".to_string()),
+            latitude: 45.5186,
+            longitude: -73.5545,
+            region: Some("Quebec".to_string()),
+        },
+    );
+
+    let montreal_node2 = create_test_node_with_location(
+        "0x2C490CAdf3A8C2Ab67b00831973da8b9d18e5b6D",
+        NodeStatus::Healthy,
+        Some(ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(1),
+                model: Some("nvidia rtx a6000".to_string()),
+                memory_mb: Some(49140),
+                indices: Some(vec![0]),
+            }),
+            ..Default::default()
+        }),
+        NodeLocation {
+            city: Some("Montreal".to_string()),
+            country: Some("CA".to_string()),
+            latitude: 45.5186,
+            longitude: -73.5545,
+            region: Some("Quebec".to_string()),
+        },
+    );
+
+    let dallas_node1 = create_test_node_with_location(
+        "0x7ec9d3bc276B74969341c03dc00B9f70c0EadFd5",
+        NodeStatus::Healthy,
+        Some(ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(1),
+                model: Some("nvidia rtx a6000".to_string()),
+                memory_mb: Some(49140),
+                indices: Some(vec![0]),
+            }),
+            ..Default::default()
+        }),
+        NodeLocation {
+            city: Some("Dallas".to_string()),
+            country: Some("US".to_string()),
+            latitude: 32.7942,
+            longitude: -96.7475,
+            region: Some("Texas".to_string()),
+        },
+    );
+
+    let dallas_node2 = create_test_node_with_location(
+        "0x32d7cd9b8F6eA556a67E0c9386cdd911Da3AD3E5",
+        NodeStatus::Healthy,
+        Some(ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(1),
+                model: Some("nvidia rtx a6000".to_string()),
+                memory_mb: Some(49140),
+                indices: Some(vec![0]),
+            }),
+            ..Default::default()
+        }),
+        NodeLocation {
+            city: Some("Dallas".to_string()),
+            country: Some("US".to_string()),
+            latitude: 32.7942,
+            longitude: -96.7475,
+            region: Some("Texas".to_string()),
+        },
+    );
+
+    // Store all nodes
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(montreal_node1.clone())
+        .await;
+    let formed_groups = plugin.test_try_form_new_groups().await.unwrap();
+    assert_eq!(formed_groups.len(), 1, "Should form 1 solo group");
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(montreal_node2.clone())
+        .await;
+    let formed_groups = plugin.test_try_form_new_groups().await.unwrap();
+    assert_eq!(formed_groups.len(), 1, "Should form 1 solo group");
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(dallas_node1.clone())
+        .await;
+    let formed_groups = plugin.test_try_form_new_groups().await.unwrap();
+    assert_eq!(formed_groups.len(), 1, "Should form 1 solo group");
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(dallas_node2.clone())
+        .await;
+    let formed_groups = plugin.test_try_form_new_groups().await.unwrap();
+    assert_eq!(formed_groups.len(), 1, "Should form 1 solo group");
+
+    // Now merge the solo groups
+    let merged_groups = plugin.test_try_merge_solo_groups().await.unwrap();
+
+    // Should create 2 merged groups
+    assert_eq!(merged_groups.len(), 2);
+
+    // Verify Montreal nodes are grouped together
+    let has_montreal_group = merged_groups.iter().any(|g| {
+        g.nodes.contains(&montreal_node1.address.to_string())
+            && g.nodes.contains(&montreal_node2.address.to_string())
+            && g.nodes.len() == 2
+    });
+
+    // Verify Dallas nodes are grouped together
+    let has_dallas_group = merged_groups.iter().any(|g| {
+        g.nodes.contains(&dallas_node1.address.to_string())
+            && g.nodes.contains(&dallas_node2.address.to_string())
+            && g.nodes.len() == 2
+    });
+
+    assert!(
+        has_montreal_group,
+        "Montreal nodes should be grouped together"
+    );
+    assert!(has_dallas_group, "Dallas nodes should be grouped together");
+
+    // Verify no cross-city grouping occurred
+    for group in &merged_groups {
+        let has_montreal = group.nodes.iter().any(|n| {
+            n == &montreal_node1.address.to_string() || n == &montreal_node2.address.to_string()
+        });
+        let has_dallas = group.nodes.iter().any(|n| {
+            n == &dallas_node1.address.to_string() || n == &dallas_node2.address.to_string()
+        });
+
+        // A group should not have both Montreal and Dallas nodes
+        assert!(
+            !(has_montreal && has_dallas),
+            "Group should not mix nodes from different cities: {:?}",
+            group.nodes
+        );
+    }
 }

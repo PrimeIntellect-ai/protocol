@@ -129,7 +129,7 @@ pub enum Commands {
         private_key: Option<String>,
 
         /// RPC URL
-        #[arg(long, default_value = "http://localhost:8545")]
+        #[arg(long, default_value = option_env!("WORKER_RPC_URL").unwrap_or("http://localhost:8545"))]
         rpc_url: String,
     },
 
@@ -159,7 +159,7 @@ pub enum Commands {
         private_key_node: Option<String>,
 
         /// RPC URL
-        #[arg(long, default_value = "http://localhost:8545")]
+        #[arg(long, default_value = option_env!("WORKER_RPC_URL").unwrap_or("http://localhost:8545"))]
         rpc_url: String,
 
         /// Compute pool ID

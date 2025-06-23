@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 pub mod google_cloud;
 use anyhow::Result;
 
@@ -55,13 +56,13 @@ impl MockStorageProvider {
         }
     }
 
-    pub fn add_mapping_file(&self, sha256: &str, file_name: &str) {
-        let mut mappings = self.mapping_files.lock().unwrap();
+    pub async fn add_mapping_file(&self, sha256: &str, file_name: &str) {
+        let mut mappings = self.mapping_files.lock().await;
         mappings.insert(sha256.to_string(), file_name.to_string());
     }
 
-    pub fn add_file(&self, path: &str, content: &str) {
-        let mut files = self.files.lock().unwrap();
+    pub async fn add_file(&self, path: &str, content: &str) {
+        let mut files = self.files.lock().await;
         files.insert(path.to_string(), content.to_string());
     }
 }
@@ -69,25 +70,25 @@ impl MockStorageProvider {
 #[async_trait]
 impl StorageProvider for MockStorageProvider {
     async fn file_exists(&self, object_path: &str) -> Result<bool> {
-        let files = self.files.lock().unwrap();
+        let files = self.files.lock().await;
         Ok(files.contains_key(object_path))
     }
 
     async fn generate_mapping_file(&self, sha256: &str, file_name: &str) -> Result<String> {
         // Store the mapping of SHA256 to filename
         let mapping_path = format!("mapping/{}", sha256);
-        self.add_mapping_file(sha256, file_name);
+        self.add_mapping_file(sha256, file_name).await;
 
         // Also store the mapping file content in our mock storage
         let mapping_content = format!("{}:{}", sha256, file_name);
-        self.add_file(&mapping_path, &mapping_content);
+        self.add_file(&mapping_path, &mapping_content).await;
 
         Ok(mapping_path)
     }
 
     async fn resolve_mapping_for_sha(&self, sha256: &str) -> Result<String> {
         // Retrieve the original filename from the mapping
-        let mappings = self.mapping_files.lock().unwrap();
+        let mappings = self.mapping_files.lock().await;
         mappings
             .get(sha256)
             .cloned()
@@ -116,8 +117,8 @@ mod tests {
     #[tokio::test]
     async fn test_mock_storage_provider() {
         let provider = MockStorageProvider::new();
-        provider.add_mapping_file("sha256", "file.txt");
-        provider.add_file("file.txt", "content");
+        provider.add_mapping_file("sha256", "file.txt").await;
+        provider.add_file("file.txt", "content").await;
         let map_file_link = provider.resolve_mapping_for_sha("sha256").await.unwrap();
         println!("map_file_link: {}", map_file_link);
         assert_eq!(map_file_link, "file.txt");

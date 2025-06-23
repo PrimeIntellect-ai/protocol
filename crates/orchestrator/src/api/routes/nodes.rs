@@ -158,8 +158,14 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
         }));
     }
 
-    let p2p_id = node.worker_p2p_id.as_ref().unwrap();
-    let p2p_addresses = node.worker_p2p_addresses.as_ref().unwrap();
+    let p2p_id = node
+        .worker_p2p_id
+        .as_ref()
+        .expect("worker_p2p_id should be present");
+    let p2p_addresses = node
+        .worker_p2p_addresses
+        .as_ref()
+        .expect("worker_p2p_addresses should be present");
 
     match app_state
         .p2p_client
@@ -227,8 +233,24 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
         }));
     }
 
-    let p2p_id = node.worker_p2p_id.as_ref().unwrap();
-    let p2p_addresses = node.worker_p2p_addresses.as_ref().unwrap();
+    let p2p_id = match node.worker_p2p_id.as_ref() {
+        Some(id) => id,
+        None => {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "error": "Node does not have worker p2p id"
+            }));
+        }
+    };
+    let p2p_addresses = match node.worker_p2p_addresses.as_ref() {
+        Some(addresses) => addresses,
+        None => {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "error": "Node does not have worker p2p addresses"
+            }));
+        }
+    };
 
     match app_state
         .p2p_client
