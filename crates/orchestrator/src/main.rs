@@ -187,7 +187,7 @@ async fn main() -> Result<()> {
         // Wait for all nodes to be migrated to hash format
         loop {
             match store_context.node_store.count_non_hash_format_nodes().await {
-                Ok(count) if count == 0 => {
+                Ok(0) => {
                     info!("All nodes are in hash format");
                     break;
                 }
