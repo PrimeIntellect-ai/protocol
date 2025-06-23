@@ -176,6 +176,14 @@ async fn main() -> Result<()> {
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
 
+    if server_mode == ServerMode::ProcessorOnly || server_mode == ServerMode::Full {
+        info!("Migrating node store to hash");
+        if let Err(e) = store_context.node_store.migrate_json_to_hash().await {
+            error!("Error migrating node store to hash: {}", e);
+        }
+        info!("Node store migrated to hash");
+    }
+
     let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
     let contracts = ContractBuilder::new(wallet.provider())
