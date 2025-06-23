@@ -206,32 +206,31 @@ impl WebhookPlugin {
         Err(error)
     }
 
-    async fn send_event(&self, event: WebhookEvent) -> Result<(), Error> {
+    #[cfg(not(test))]
+    fn send_event(&self, event: WebhookEvent) -> Result<(), Error> {
         let payload = WebhookPayload::new(event);
-
-        #[cfg(not(test))]
-        {
-            let webhook_url = self.webhook_url.clone();
-            let client = self.client.clone();
-            tokio::spawn(async move {
-                let plugin = WebhookPlugin {
-                    webhook_url,
-                    client,
-                };
-                if let Err(e) = plugin.send_with_retry(payload).await {
-                    // Error already logged in send_with_retry
-                    let _ = e;
-                }
-            });
-            Ok(())
-        }
-
-        #[cfg(test)]
-        {
-            self.send_with_retry(payload).await
-        }
+        let webhook_url = self.webhook_url.clone();
+        let client = self.client.clone();
+        tokio::spawn(async move {
+            let plugin = WebhookPlugin {
+                webhook_url,
+                client,
+            };
+            if let Err(e) = plugin.send_with_retry(payload).await {
+                // Error already logged in send_with_retry
+                let _ = e;
+            }
+        });
+        Ok(())
     }
 
+    #[cfg(test)]
+    async fn send_event(&self, event: WebhookEvent) -> Result<(), Error> {
+        let payload = WebhookPayload::new(event);
+        self.send_with_retry(payload).await
+    }
+
+    #[cfg(test)]
     pub async fn send_node_status_changed(
         &self,
         node: &OrchestratorNode,
@@ -244,10 +243,26 @@ impl WebhookPlugin {
             old_status: old_status.to_string(),
             new_status: node.status.to_string(),
         };
-
         self.send_event(event).await
     }
 
+    #[cfg(not(test))]
+    pub fn send_node_status_changed(
+        &self,
+        node: &OrchestratorNode,
+        old_status: &NodeStatus,
+    ) -> Result<(), Error> {
+        let event = WebhookEvent::NodeStatusChanged {
+            node_address: node.address.to_string(),
+            ip_address: node.ip_address.clone(),
+            port: node.port,
+            old_status: old_status.to_string(),
+            new_status: node.status.to_string(),
+        };
+        self.send_event(event)
+    }
+
+    #[cfg(test)]
     pub async fn send_group_created(
         &self,
         group_id: String,
@@ -259,10 +274,25 @@ impl WebhookPlugin {
             configuration_name,
             nodes,
         };
-
         self.send_event(event).await
     }
 
+    #[cfg(not(test))]
+    pub fn send_group_created(
+        &self,
+        group_id: String,
+        configuration_name: String,
+        nodes: Vec<String>,
+    ) -> Result<(), Error> {
+        let event = WebhookEvent::GroupCreated {
+            group_id,
+            configuration_name,
+            nodes,
+        };
+        self.send_event(event)
+    }
+
+    #[cfg(test)]
     pub async fn send_group_destroyed(
         &self,
         group_id: String,
@@ -274,18 +304,42 @@ impl WebhookPlugin {
             configuration_name,
             nodes,
         };
-
         self.send_event(event).await
     }
 
+    #[cfg(not(test))]
+    pub fn send_group_destroyed(
+        &self,
+        group_id: String,
+        configuration_name: String,
+        nodes: Vec<String>,
+    ) -> Result<(), Error> {
+        let event = WebhookEvent::GroupDestroyed {
+            group_id,
+            configuration_name,
+            nodes,
+        };
+        self.send_event(event)
+    }
+
+    #[cfg(test)]
     pub async fn send_metrics_updated(
         &self,
         pool_id: u32,
         metrics: std::collections::HashMap<String, f64>,
     ) -> Result<(), Error> {
         let event = WebhookEvent::MetricsUpdated { pool_id, metrics };
-
         self.send_event(event).await
+    }
+
+    #[cfg(not(test))]
+    pub fn send_metrics_updated(
+        &self,
+        pool_id: u32,
+        metrics: std::collections::HashMap<String, f64>,
+    ) -> Result<(), Error> {
+        let event = WebhookEvent::MetricsUpdated { pool_id, metrics };
+        self.send_event(event)
     }
 }
 
@@ -305,7 +359,12 @@ impl StatusUpdatePlugin for WebhookPlugin {
             return Ok(());
         }
 
+        #[cfg(test)]
         if let Err(e) = self.send_node_status_changed(node, old_status).await {
+            error!("Failed to send webhook to {}: {}", self.webhook_url, e);
+        }
+        #[cfg(not(test))]
+        if let Err(e) = self.send_node_status_changed(node, old_status) {
             error!("Failed to send webhook to {}: {}", self.webhook_url, e);
         }
 

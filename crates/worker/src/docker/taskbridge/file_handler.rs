@@ -356,7 +356,6 @@ pub async fn handle_file_validation(
             decoded_sha.to_vec(),
             U256::from(work_units),
         )
-        .await
         .unwrap();
 
     let tx = retry_call(call, 20, provider.clone(), None)

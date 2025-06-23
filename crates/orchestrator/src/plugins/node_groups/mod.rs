@@ -624,6 +624,7 @@ impl NodeGroupsPlugin {
                 for plugin in plugins.iter() {
                     let group_clone = group.clone();
                     let plugin_clone = plugin.clone();
+                    #[cfg(test)]
                     tokio::spawn(async move {
                         if let Err(e) = plugin_clone
                             .send_group_created(
@@ -634,6 +635,18 @@ impl NodeGroupsPlugin {
                             .await
                         {
                             error!("Failed to send group created webhook: {e}");
+                        }
+                    });
+                    #[cfg(not(test))]
+                    tokio::spawn(async move {
+                        if let Err(e) = plugin_clone
+                            .send_group_created(
+                                group_clone.id.to_string(),
+                                group_clone.configuration_name.to_string(),
+                                group_clone.nodes.iter().cloned().collect(),
+                            )
+                        {
+                            error!("Failed to send group created webhook: {}", e);
                         }
                     });
                 }
@@ -981,20 +994,20 @@ impl NodeGroupsPlugin {
         }
 
         // Send webhook notifications
-        self.send_merge_webhooks(groups_to_merge, &merged_group)
-            .await;
+        self.send_merge_webhooks(groups_to_merge, &merged_group);
 
         Ok(Some((merged_group, group_ids_to_dissolve)))
     }
 
     /// Send webhook notifications for group merging
-    async fn send_merge_webhooks(&self, dissolved_groups: &[NodeGroup], merged_group: &NodeGroup) {
+    fn send_merge_webhooks(&self, dissolved_groups: &[NodeGroup], merged_group: &NodeGroup) {
         if let Some(plugins) = &self.webhook_plugins {
             // Send dissolved notifications
             for group in dissolved_groups {
                 for plugin in plugins.iter() {
                     let plugin_clone = plugin.clone();
                     let group_clone = group.clone();
+                    #[cfg(test)]
                     tokio::spawn(async move {
                         if let Err(e) = plugin_clone
                             .send_group_destroyed(
@@ -1007,6 +1020,18 @@ impl NodeGroupsPlugin {
                             error!("Failed to send group dissolved webhook: {e}");
                         }
                     });
+                    #[cfg(not(test))]
+                    tokio::spawn(async move {
+                        if let Err(e) = plugin_clone
+                            .send_group_destroyed(
+                                group_clone.id,
+                                group_clone.configuration_name,
+                                group_clone.nodes.iter().cloned().collect(),
+                            )
+                        {
+                            error!("Failed to send group dissolved webhook: {}", e);
+                        }
+                    });
                 }
             }
 
@@ -1014,6 +1039,7 @@ impl NodeGroupsPlugin {
             for plugin in plugins.iter() {
                 let plugin_clone = plugin.clone();
                 let group_clone = merged_group.clone();
+                #[cfg(test)]
                 tokio::spawn(async move {
                     if let Err(e) = plugin_clone
                         .send_group_created(
@@ -1024,6 +1050,18 @@ impl NodeGroupsPlugin {
                         .await
                     {
                         error!("Failed to send group created webhook: {e}");
+                    }
+                });
+                #[cfg(not(test))]
+                tokio::spawn(async move {
+                    if let Err(e) = plugin_clone
+                        .send_group_created(
+                            group_clone.id,
+                            group_clone.configuration_name,
+                            group_clone.nodes.iter().cloned().collect(),
+                        )
+                    {
+                        error!("Failed to send group created webhook: {}", e);
                     }
                 });
             }
@@ -1100,6 +1138,7 @@ impl NodeGroupsPlugin {
                 for plugin in plugins.iter() {
                     let plugin_clone = plugin.clone();
                     let group_clone = group.clone();
+                    #[cfg(test)]
                     tokio::spawn(async move {
                         if let Err(e) = plugin_clone
                             .send_group_destroyed(
@@ -1110,6 +1149,18 @@ impl NodeGroupsPlugin {
                             .await
                         {
                             error!("Failed to send group dissolved webhook: {e}");
+                        }
+                    });
+                    #[cfg(not(test))]
+                    tokio::spawn(async move {
+                        if let Err(e) = plugin_clone
+                            .send_group_destroyed(
+                                group_clone.id.to_string(),
+                                group_clone.configuration_name.to_string(),
+                                group_clone.nodes.iter().cloned().collect(),
+                            )
+                        {
+                            error!("Failed to send group dissolved webhook: {}", e);
                         }
                     });
                 }

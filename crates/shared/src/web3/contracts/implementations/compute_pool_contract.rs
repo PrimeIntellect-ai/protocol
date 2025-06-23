@@ -404,7 +404,7 @@ impl ComputePool<WalletProvider> {
         Ok(result)
     }
 
-    pub async fn build_work_submission_call(
+    pub fn build_work_submission_call(
         &self,
         pool_id: U256,
         node: Address,
