@@ -1,14 +1,13 @@
 use crate::store::core::RedisStore;
 use alloy::primitives::Address;
 use anyhow::{anyhow, Result};
-use log::{error, info};
+use log::error;
 use redis::AsyncCommands;
 use shared::models::metric::MetricEntry;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 const ORCHESTRATOR_NODE_METRICS_STORE: &str = "orchestrator:node_metrics";
-const ORCHESTRATOR_METRICS_STORE: &str = "orchestrator:metrics";
 
 pub struct MetricsStore {
     redis: Arc<RedisStore>,
