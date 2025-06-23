@@ -23,6 +23,8 @@ ENV VALIDATOR_PENALTY="1"
 ENV USE_GROUPING="false"
 ENV BATCH_TRIGGER_SIZE="10"
 ENV VALIDATOR_API_KEY=""
+ENV TOPLOC_INVALIDATION_TYPE="hard"
+ENV WORK_UNIT_INVALIDATION_TYPE="hard"
 
 RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/validator \
@@ -41,7 +43,9 @@ $([ ! -z "$USE_GROUPING" ] && echo "--use-grouping") \
 $([ ! -z "$DISABLE_TOPLOC_INVALIDATION" ] && echo "--disable-toploc-invalidation") \
 $([ ! -z "$INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES" ] && echo "--incomplete-group-grace-period-minutes $INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES") \
 $([ ! -z "$VALIDATOR_PENALTY" ] && echo "--validator-penalty $VALIDATOR_PENALTY") \
-$([ "$DISABLE_HARDWARE_VALIDATION" = "true" ] && echo "--disable-hardware-validation") \
+$([ ! -z "$DISABLE_HARDWARE_VALIDATION" ] && echo "--disable-hardware-validation") \
+$([ ! -z "$TOPLOC_INVALIDATION_TYPE" ] && echo "--toploc-invalidation-type $TOPLOC_INVALIDATION_TYPE") \
+$([ ! -z "$WORK_UNIT_INVALIDATION_TYPE" ] && echo "--work-unit-invalidation-type $WORK_UNIT_INVALIDATION_TYPE") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 

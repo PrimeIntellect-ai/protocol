@@ -63,6 +63,21 @@ pub struct RejectionInfo {
     pub timestamp: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum InvalidationType {
+    Soft,
+    Hard,
+}
+
+impl fmt::Display for InvalidationType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InvalidationType::Soft => write!(f, "soft"),
+            InvalidationType::Hard => write!(f, "hard"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum ProcessWorkKeyError {
     FileNameResolutionError(String),
@@ -235,6 +250,13 @@ pub struct SyntheticDataValidator<P: alloy::providers::Provider + Clone> {
 
     /// **Storage**: Uses Redis sorted set "incomplete_groups" with deadline as score
     incomplete_group_grace_period_minutes: u64,
+
+    /// Invalidation type for toploc validation failures
+    toploc_invalidation_type: InvalidationType,
+
+    /// Invalidation type for work unit mismatch failures
+    work_unit_invalidation_type: InvalidationType,
+
     metrics: Option<MetricsContext>,
 }
 
@@ -256,6 +278,8 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
         with_node_grouping: bool,
         disable_chain_invalidation: bool,
         incomplete_group_grace_period_minutes: u64,
+        toploc_invalidation_type: InvalidationType,
+        work_unit_invalidation_type: InvalidationType,
         metrics: Option<MetricsContext>,
     ) -> Self {
         let pool_id = pool_id_str.parse::<U256>().expect("Invalid pool ID");
@@ -264,6 +288,12 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
         for config in toploc_configs {
             toploc.push(Toploc::new(config, metrics.clone()));
         }
+
+        info!("Toploc invalidation type: {:?}", toploc_invalidation_type);
+        info!(
+            "Work unit invalidation type: {:?}",
+            work_unit_invalidation_type
+        );
 
         Self {
             pool_id,
@@ -281,6 +311,8 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
             with_node_grouping,
             disable_chain_invalidation,
             incomplete_group_grace_period_minutes,
+            toploc_invalidation_type,
+            work_unit_invalidation_type,
             metrics,
         }
     }
@@ -1495,12 +1527,12 @@ impl SyntheticDataValidator<WalletProvider> {
             status.input_flops
         );
 
-        let mut nodes_to_invalidate = Vec::new();
+        let mut toploc_nodes_to_invalidate = Vec::new();
         let mut nodes_with_wrong_work_unit_claims = Vec::new();
 
         if status.status == ValidationResult::Reject {
             let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
-            nodes_to_invalidate.extend(rejected_nodes);
+            toploc_nodes_to_invalidate.extend(rejected_nodes);
         } else if status.status == ValidationResult::Accept {
             let wrong_claim_nodes = self
                 .handle_group_toploc_acceptance(
@@ -1513,16 +1545,30 @@ impl SyntheticDataValidator<WalletProvider> {
                 .await?;
             nodes_with_wrong_work_unit_claims.extend(wrong_claim_nodes);
         }
-        let all_nodes_to_invalidate: Vec<&String> = nodes_to_invalidate
-            .iter()
-            .chain(nodes_with_wrong_work_unit_claims.iter())
-            .collect();
 
-        if !all_nodes_to_invalidate.is_empty() {
+        if !toploc_nodes_to_invalidate.is_empty() || !nodes_with_wrong_work_unit_claims.is_empty() {
             for work_key in &group.sorted_work_keys {
                 if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
-                    if all_nodes_to_invalidate.contains(&&work_info.node_id.to_string()) {
-                        self.invalidate_work(work_key).await?;
+                    let node_id_str = work_info.node_id.to_string();
+
+                    if toploc_nodes_to_invalidate.contains(&node_id_str) {
+                        match self.toploc_invalidation_type {
+                            InvalidationType::Soft => {
+                                self.soft_invalidate_work(work_key).await?;
+                            }
+                            InvalidationType::Hard => {
+                                self.invalidate_work(work_key).await?;
+                            }
+                        }
+                    } else if nodes_with_wrong_work_unit_claims.contains(&node_id_str) {
+                        match self.work_unit_invalidation_type {
+                            InvalidationType::Soft => {
+                                self.soft_invalidate_work(work_key).await?;
+                            }
+                            InvalidationType::Hard => {
+                                self.invalidate_work(work_key).await?;
+                            }
+                        }
                     }
                 }
             }
@@ -1531,7 +1577,7 @@ impl SyntheticDataValidator<WalletProvider> {
         for work_key in &group.sorted_work_keys {
             let work_info = self.get_work_info_from_redis(work_key).await?;
             if let Some(work_info) = work_info {
-                if nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
+                if toploc_nodes_to_invalidate.contains(&work_info.node_id.to_string()) {
                     self.update_work_validation_info(
                         work_key,
                         &WorkValidationInfo {
@@ -1606,7 +1652,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let status_handle = tokio::spawn(async move {
             for work_key in validation_plan.status_check_tasks {
                 if let Err(e) = validator_clone_single_status
-                    .process_workkey_status(&work_key)
+                    .process_single_workkey_status(&work_key)
                     .await
                 {
                     error!("Failed to process work key {}: {}", work_key, e);
@@ -1674,7 +1720,10 @@ impl SyntheticDataValidator<WalletProvider> {
         Ok(())
     }
 
-    async fn process_workkey_status(&self, work_key: &str) -> Result<(), ProcessWorkKeyError> {
+    async fn process_single_workkey_status(
+        &self,
+        work_key: &str,
+    ) -> Result<(), ProcessWorkKeyError> {
         let cleaned_file_name = self.get_file_name_for_work_key(work_key).await?;
 
         let toploc_config = self
@@ -1980,6 +2029,8 @@ mod tests {
             true,
             false,
             0, // incomplete_group_grace_period_minutes (disabled)
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             Some(metrics_context),
         );
 
@@ -2042,6 +2093,8 @@ mod tests {
             false,
             false,
             0, // incomplete_group_grace_period_minutes (disabled)
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             None,
         );
         validator
@@ -2149,6 +2202,8 @@ mod tests {
             false,
             false,
             0, // incomplete_group_grace_period_minutes (disabled)
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             None,
         );
 
@@ -2236,6 +2291,8 @@ mod tests {
             true,
             false,
             0, // incomplete_group_grace_period_minutes (disabled)
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             Some(metrics_context),
         );
 
@@ -2382,6 +2439,8 @@ mod tests {
             true,
             false,
             0, // incomplete_group_grace_period_minutes (disabled)
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             Some(metrics_context),
         );
 
@@ -2520,6 +2579,8 @@ mod tests {
             true,
             true,
             0, // incomplete_group_grace_period_minutes (disabled)
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             None,
         );
 
@@ -2590,6 +2651,8 @@ mod tests {
             true,
             true, // disable_chain_invalidation for testing
             1,    // 1 minute grace period
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             None,
         );
 
@@ -2683,6 +2746,8 @@ mod tests {
             true,
             true, // disable_chain_invalidation for testing
             1,    // 1 minute grace period (but we'll simulate expiry)
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             Some(MetricsContext::new("0".to_string(), Some("0".to_string()))),
         );
 
@@ -2779,6 +2844,8 @@ mod tests {
             true,
             true, // disable_chain_invalidation for testing
             1,    // 1 minute grace period
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             None,
         );
 
@@ -2861,6 +2928,8 @@ mod tests {
             true,
             true, // disable_chain_invalidation for testing
             1,    // 1 minute grace period
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             None,
         );
 
@@ -2911,6 +2980,8 @@ mod tests {
             true,
             true, // disable_chain_invalidation for testing
             1,    // 1 minute grace period
+            InvalidationType::Hard,
+            InvalidationType::Hard,
             None,
         );
 
