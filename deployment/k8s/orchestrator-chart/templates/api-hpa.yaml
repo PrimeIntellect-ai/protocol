@@ -30,4 +30,4 @@ spec:
         averageUtilization: {{ .Values.api.hpa.metrics.memory.targetUtilization }}
   {{- end }}
   {{- end }}
-  {{- end }}
+{{- end }}
