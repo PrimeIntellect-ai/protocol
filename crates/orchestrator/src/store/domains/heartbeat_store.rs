@@ -29,7 +29,7 @@ impl HeartbeatStore {
         con.set_options::<_, _, ()>(
             &key,
             payload_string,
-            redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(60)),
+            redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(180)),
         )
         .await
         .map_err(|_| anyhow!("Failed to set options"))?;
