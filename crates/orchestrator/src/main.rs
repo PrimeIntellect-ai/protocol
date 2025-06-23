@@ -223,7 +223,9 @@ async fn main() -> Result<()> {
 
     // Run one-time migration for inactive nodes
     let migration_store_context = store_context.clone();
-    run_inactive_node_metric_migration(migration_store_context).await?;
+    if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+        run_inactive_node_metric_migration(migration_store_context).await?;
+    }
 
     let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
@@ -307,6 +309,7 @@ async fn main() -> Result<()> {
                 );
 
                 // Run groups index migration on startup
+                if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
                 match group_plugin.migrate_groups_index().await {
                     Ok(count) => {
                         if count > 0 {
@@ -320,7 +323,8 @@ async fn main() -> Result<()> {
                     }
                     Err(e) => {
                         error!("Groups index migration failed: {}", e);
-                        return Err(e);
+                            return Err(e);
+                        }
                     }
                 }
 
