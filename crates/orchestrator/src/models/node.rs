@@ -65,22 +65,12 @@ impl From<DiscoveryNode> for OrchestratorNode {
     }
 }
 
-impl OrchestratorNode {
-    pub fn from_string(s: &str) -> Self {
-        let mut node: Self = serde_json::from_str(s).unwrap();
-        if node.status == NodeStatus::Dead || node.status == NodeStatus::Ejected {
-            node.task_id = None;
-            node.task_state = None;
-        }
-        node
-    }
-}
-
 impl fmt::Display for OrchestratorNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, ToSchema)]
 pub enum NodeStatus {
     #[default]
