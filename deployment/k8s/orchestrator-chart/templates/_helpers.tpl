@@ -48,10 +48,10 @@
   - name: URL
     value: {{ $root.Values.url }}
   - name: DOMAIN_ID
-    value: {{ $root.Values.domainId }}
+    value: {{ $root.Values.domainId | quote }}
   {{- if $root.Values.computePoolId }}
   - name: COMPUTE_POOL_ID
-    value: {{ $root.Values.computePoolId }}
+    value: {{ $root.Values.computePoolId | quote }}
   {{- end }}
   {{- range $key, $value := $root.Values.env }}
   - name: {{ $key }}
