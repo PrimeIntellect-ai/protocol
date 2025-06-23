@@ -375,6 +375,40 @@ impl NodeStore {
         let _: () = pipe.query_async(&mut con).await?;
         Ok(())
     }
+    /// Count how many nodes are already in hash format
+    pub async fn count_non_hash_format_nodes(&self) -> Result<usize> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+        let addresses: Vec<String> = con.smembers(ORCHESTRATOR_NODE_INDEX).await?;
+
+        let mut non_hash_count = 0;
+
+        // Process in batches for better performance
+        const BATCH_SIZE: usize = 100;
+
+        for chunk in addresses.chunks(BATCH_SIZE) {
+            // Check types of all keys in this batch
+            let mut type_pipe = redis::pipe();
+            let keys: Vec<String> = chunk
+                .iter()
+                .map(|addr| format!("{}:{}", ORCHESTRATOR_BASE_KEY, addr))
+                .collect();
+
+            for key in &keys {
+                type_pipe.cmd("TYPE").arg(key);
+            }
+
+            let types: Vec<String> = type_pipe.query_async(&mut con).await?;
+
+            // Count non-hash format keys
+            for key_type in types.iter() {
+                if key_type != "hash" {
+                    non_hash_count += 1;
+                }
+            }
+        }
+
+        Ok(non_hash_count)
+    }
 
     /// One-time migration from JSON to hash format
     /// Run this once to convert all existing nodes
@@ -383,7 +417,9 @@ impl NodeStore {
         let addresses: Vec<String> = con.smembers(ORCHESTRATOR_NODE_INDEX).await?;
 
         let mut migrated = 0;
-        let mut already_hash = 0;
+
+        // Get count of nodes not yet in hash format
+        let non_hash_count = self.count_non_hash_format_nodes().await?;
 
         // Process in batches for better performance
         const BATCH_SIZE: usize = 100;
@@ -425,8 +461,6 @@ impl NodeStore {
                             batch_migrated += 1;
                         }
                     }
-                } else if key_type == "hash" {
-                    already_hash += 1;
                 }
             }
 
@@ -437,6 +471,7 @@ impl NodeStore {
             }
         }
 
+        let already_hash = addresses.len() - non_hash_count;
         info!(
             "Migration complete: {} nodes migrated, {} already in hash format",
             migrated, already_hash
