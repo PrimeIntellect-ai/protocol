@@ -8,6 +8,9 @@ redis:
   image: redis:7.0
 
 api:
+  pdb:
+    enabled: true
+    minUnavailable: 1
   hpa:
     enabled: true
     minReplicas: 2

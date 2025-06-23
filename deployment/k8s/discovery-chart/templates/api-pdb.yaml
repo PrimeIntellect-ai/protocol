@@ -1,0 +1,12 @@
+{{- if .Values.api.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "discovery.fullname" . }}-api
+  namespace: {{ include "discovery.namespace" . }}
+spec:
+  maxUnavailable: {{ .Values.api.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      app: {{ include "discovery.fullname" . }}-api
+{{- end }}
