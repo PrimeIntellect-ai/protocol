@@ -305,6 +305,25 @@ async fn main() -> Result<()> {
                     Some(node_groups_heartbeats.clone()),
                     Some(webhook_plugins.clone()),
                 );
+
+                // Run groups index migration on startup
+                match group_plugin.migrate_groups_index().await {
+                    Ok(count) => {
+                        if count > 0 {
+                            info!(
+                                "Groups index migration completed: {} groups migrated",
+                                count
+                            );
+                        } else {
+                            info!("Groups index migration: no groups to migrate");
+                        }
+                    }
+                    Err(e) => {
+                        error!("Groups index migration failed: {}", e);
+                        return Err(e);
+                    }
+                }
+
                 let status_group_plugin = group_plugin.clone();
                 let group_plugin_for_server = group_plugin.clone();
                 node_groups_plugin = Some(Arc::new(group_plugin_for_server));

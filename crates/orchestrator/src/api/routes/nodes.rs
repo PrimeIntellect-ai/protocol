@@ -68,22 +68,35 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
         let mut nodes_with_groups = Vec::new();
 
-        for node in &nodes {
-            let mut node_json = json!(node);
+        // Batch fetch all node groups at once to eliminate N+1 queries
+        let node_addresses: Vec<String> =
+            nodes.iter().map(|node| node.address.to_string()).collect();
 
-            if let Ok(Some(group)) = node_groups_plugin
-                .get_node_group(&node.address.to_string())
-                .await
-            {
-                node_json["group"] = json!({
-                    "id": group.id,
-                    "size": group.nodes.len(),
-                    "created_at": group.created_at,
-                    "topology_config": group.configuration_name
-                });
+        match node_groups_plugin
+            .get_node_groups_batch(&node_addresses)
+            .await
+        {
+            Ok(node_groups) => {
+                for node in &nodes {
+                    let mut node_json = json!(node);
+
+                    if let Some(Some(group)) = node_groups.get(&node.address.to_string()) {
+                        node_json["group"] = json!({
+                            "id": group.id,
+                            "size": group.nodes.len(),
+                            "created_at": group.created_at,
+                            "topology_config": group.configuration_name
+                        });
+                    }
+
+                    nodes_with_groups.push(node_json);
+                }
             }
-
-            nodes_with_groups.push(node_json);
+            Err(e) => {
+                error!("Error getting node groups batch: {}", e);
+                // Fall back to nodes without group information
+                nodes_with_groups = nodes.iter().map(|node| json!(node)).collect();
+            }
         }
 
         response["nodes"] = json!(nodes_with_groups);
