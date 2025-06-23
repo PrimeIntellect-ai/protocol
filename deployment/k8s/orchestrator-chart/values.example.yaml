@@ -11,6 +11,9 @@ redis:
   image: redis
 
 api:
+  pdb:
+    enabled: true
+    maxUnavailable: 1
   hpa:
     enabled: true
     minReplicas: 2
