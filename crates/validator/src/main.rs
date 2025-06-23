@@ -31,6 +31,7 @@ use url::Url;
 use validators::hardware::HardwareValidator;
 use validators::synthetic_data::SyntheticDataValidator;
 
+use crate::validators::synthetic_data::types::InvalidationType;
 // Track the last time the validation loop ran
 static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 // Maximum allowed time between validation loops (2 minutes)
@@ -178,6 +179,14 @@ struct Args {
     /// Grace period in minutes for incomplete groups to recover (0 = disabled)
     #[arg(long, default_value = "0")]
     incomplete_group_grace_period_minutes: u64,
+
+    /// Optional: toploc invalidation type
+    #[arg(long, default_value = "hard")]
+    toploc_invalidation_type: InvalidationType,
+
+    /// Optional: work unit invalidation type
+    #[arg(long, default_value = "hard")]
+    work_unit_invalidation_type: InvalidationType,
 
     /// Optional: Validator penalty in whole tokens
     /// Note: This value will be multiplied by 10^18 (1 token = 10^18 wei)
@@ -359,6 +368,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     args.use_grouping,
                     args.disable_toploc_invalidation,
                     args.incomplete_group_grace_period_minutes,
+                    args.toploc_invalidation_type,
+                    args.work_unit_invalidation_type,
                     Some(metrics_ctx.clone()),
                 ))
             }

@@ -95,46 +95,54 @@ async fn heartbeat(
         error!("Heartbeat Error: {}", e);
     }
     if let Some(metrics) = heartbeat.metrics.clone() {
-        // Get all previously reported metrics for this node
-        let previous_metrics = match app_state
+        // Get current metric keys for this node efficiently using HKEYS
+        let previous_metric_keys = match app_state
             .store_context
             .metrics_store
-            .get_metrics_for_node(node_address)
+            .get_metric_keys_for_node(node_address)
             .await
         {
-            Ok(metrics) => metrics,
+            Ok(keys) => keys,
             Err(e) => {
-                error!("Error getting metrics for node: {}", e);
-                Default::default()
+                error!("Error getting metric keys for node: {}", e);
+                Vec::new()
             }
         };
 
-        // Create a HashSet of new metrics for efficient lookup
-        let new_metrics_set: HashSet<_> = metrics
+        // Create a HashSet of new metric keys for efficient lookup
+        let new_metrics_set: HashSet<String> = metrics
             .iter()
-            .map(|metric| (&metric.key.task_id, &metric.key.label))
+            .map(|metric| {
+                let task_id = if metric.key.task_id.is_empty() {
+                    "manual".to_string()
+                } else {
+                    metric.key.task_id.clone()
+                };
+                format!("{}:{}", task_id, metric.key.label.replace(':', ""))
+            })
             .collect();
 
-        // Clean up stale metrics from Redis only
-        // The sync service will handle all Prometheus updates
-        for (task_id, task_metrics) in previous_metrics {
-            for (label, _value) in task_metrics {
-                let prev_key = (&task_id, &label);
-                if !new_metrics_set.contains(&prev_key) {
-                    // Remove from Redis metrics store
-                    if let Err(e) = app_state
-                        .store_context
-                        .metrics_store
-                        .delete_metric(&task_id, &label, &node_address.to_string())
-                        .await
-                    {
-                        error!("Error deleting metric: {}", e);
-                    }
+        // Find stale metrics to delete
+        let stale_metrics: Vec<String> = previous_metric_keys
+            .into_iter()
+            .filter(|key| !new_metrics_set.contains(key))
+            .collect();
+
+        // Delete stale metrics efficiently
+        for metric_key in stale_metrics {
+            if let Some((task_id, label)) = metric_key.split_once(':') {
+                if let Err(e) = app_state
+                    .store_context
+                    .metrics_store
+                    .delete_metric(task_id, label, &node_address.to_string())
+                    .await
+                {
+                    error!("Error deleting metric: {}", e);
                 }
             }
         }
 
-        // Store new metrics in Redis only
+        // Store new metrics in Redis
         if let Err(e) = app_state
             .store_context
             .metrics_store

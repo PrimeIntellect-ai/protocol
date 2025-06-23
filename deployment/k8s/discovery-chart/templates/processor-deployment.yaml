@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "discovery.fullname" . }}-processor
+  namespace: {{ include "discovery.namespace" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "discovery.fullname" . }}-processor
+  template:
+    metadata:
+      labels:
+        app: {{ include "discovery.fullname" . }}-processor
+    spec:
+      containers: {{- include "discovery.container" (dict "root" . "mode" "processor") | nindent 6 }}

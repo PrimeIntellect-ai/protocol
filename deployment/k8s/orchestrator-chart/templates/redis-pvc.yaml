@@ -1,9 +1,9 @@
-{{- if not .Values.env.REDIS_URL }}
+{{- if .Values.redis.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "orchestrator.redisPVCName" . }}
-  namespace: {{ .Values.namespace }}
+  name: {{ include "orchestrator.fullname" . }}-redis-data
+  namespace: {{ include "orchestrator.namespace" . }}
 spec:
   accessModes:
     - ReadWriteOnce

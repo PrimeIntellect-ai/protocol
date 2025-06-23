@@ -1,18 +1,18 @@
-{{- if not .Values.env.REDIS_URL }}
+{{- if .Values.redis.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "validator.redisName" . }}
-  namespace: {{ .Values.namespace }}
+  name: {{ include "validator.fullname" . }}-redis
+  namespace: {{ include "validator.namespace" . }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ include "validator.redisName" . }}
+      app: {{ include "validator.fullname" . }}-redis
   template:
     metadata:
       labels:
-        app: {{ include "validator.redisName" . }}
+        app: {{ include "validator.fullname" . }}-redis
     spec:
       containers:
         - name: redis
@@ -33,5 +33,5 @@ spec:
       volumes:
         - name: redis-data
           persistentVolumeClaim:
-            claimName: {{ include "validator.redisPVCName" . }}
+            claimName: {{ include "validator.fullname" . }}-redis-data
 {{- end }}

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "validator.fullname" . }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ include "validator.namespace" . }}
 spec:
   replicas: 1
   selector:
@@ -17,10 +17,10 @@ spec:
         - name: validator
           image: {{ .Values.image }}
           ports:
-            - containerPort: 9879
+            - containerPort: {{ .Values.port }}
           resources:
             requests:
-              memory: "256Mi"
+              memory: "512Mi"
               cpu: "500m"
             limits:
               memory: "512Mi"
@@ -28,82 +28,32 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 9879
+              port: {{ .Values.port }}
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
-              port: 9879
+              port: {{ .Values.port }}
             initialDelaySeconds: 15
             periodSeconds: 20
+          securityContext:
+            capabilities:
+              drop:
+              - NET_RAW
           env:
-            - name: RPC_URL
-              value: {{ .Values.env.RPC_URL }}
-            - name: VALIDATOR_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "validator.secretName" . }}
-                  key: validatorKey
-            - name: DISCOVERY_URLS
-              value: {{ .Values.env.DISCOVERY_URLS }}
-            {{- if not .Values.env.REDIS_URL }}
-            - name: REDIS_URL
-              value: "redis://{{ include "validator.redisName" . }}:6379"
-            {{- else }}
-            - name: REDIS_URL
-              value: "{{ .Values.env.REDIS_URL }}"
-            {{- end }}
-            {{- if .Values.env.TOPLOC_CONFIGS }}
-            - name: TOPLOC_CONFIGS
-              value: {{ .Values.env.TOPLOC_CONFIGS | quote }}
-            {{- end }}
-            - name: LOG_LEVEL
-              value: "{{ .Values.env.LOG_LEVEL }}"
-            - name: BUCKET_NAME
-              value: "{{ .Values.env.BUCKET_NAME }}"
-            {{- if .Values.env.TOPLOC_GRACE_INTERVAL }}
-            - name: TOPLOC_GRACE_INTERVAL
-              value: "{{ .Values.env.TOPLOC_GRACE_INTERVAL }}"
-            {{- end }}
-            {{- if .Values.env.BATCH_TRIGGER_SIZE }}
-            - name: BATCH_TRIGGER_SIZE
-              value: "{{ .Values.env.BATCH_TRIGGER_SIZE }}"
-            {{- end }}
-            {{- if .Values.env.TOPLOC_WORK_VALIDATION_INTERVAL }}
-            - name: TOPLOC_WORK_VALIDATION_INTERVAL
-              value: "{{ .Values.env.TOPLOC_WORK_VALIDATION_INTERVAL }}"
-            {{- end }}
-            {{- if .Values.env.INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES }}
-            - name: INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES
-              value: "{{ .Values.env.INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES }}"
-            {{- end }}
-            - name: DISABLE_HARDWARE_VALIDATION
-              value: "{{ .Values.env.DISABLE_HARDWARE_VALIDATION }}"
-            - name: VALIDATOR_PENALTY
-              value: "{{ .Values.env.VALIDATOR_PENALTY }}"
-            - name: VALIDATOR_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "validator.secretName" . }}
-                  key: validatorApiKey
-              
-            {{- if .Values.secrets.s3Credentials }}
-            - name: S3_CREDENTIALS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "validator.secretName" . }}
-                  key: s3Credentials
-            {{- end }}
             {{- if .Values.computePoolId }}
             - name: POOL_ID
               value: "{{ .Values.computePoolId }}"
             {{- end }}
-            {{- if .Values.env.USE_GROUPING }}
-            - name: USE_GROUPING
-              value: "{{ .Values.env.USE_GROUPING }}"
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
             {{- end }}
-            {{- if .Values.env.DISABLE_TOPLOC_INVALIDATION }}
-            - name: DISABLE_TOPLOC_INVALIDATION
-              value: "{{ .Values.env.DISABLE_TOPLOC_INVALIDATION }}"
-            {{- end }}
+            {{- range .Values.envFromSecret }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretKeyRef.name }}
+                  key: {{ .secretKeyRef.key }}
+            {{- end -}}

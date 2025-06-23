@@ -1,6 +1,7 @@
 namespace: example-namespace
 image: ghcr.io/primeintellect-ai/protocol/validator:v0.1.8-beta.30
 computePoolId: "1"
+port: 9879
 
 env:
   RPC_URL: "http://anvil.example-namespace:8545"
@@ -12,12 +13,30 @@ env:
   # Number of triggers per validation iteration to toploc server
   BATCH_TRIGGER_SIZE: "10"
   DISABLE_HARDWARE_VALIDATION: "true"
+  DISABLE_TOPLOC_INVALIDATION: "true"
   VALIDATOR_PENALTY: "200"
   INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES: "0"
+  USE_GROUPING: ""
+  TOPLOC_INVALIDATION_TYPE: "hard"
+  WORK_UNIT_INVALIDATION_TYPE: "hard"
   TOPLOC_CONFIGS: |
     []
   # In case we use an external redis
   REDIS_URL: "redis://redis-master.example-namespace:6379"
+
+envFromSecret:
+  - name: VALIDATOR_KEY
+    secretKeyRef:
+      name: validator-secret
+      key: validatorKey
+  - name: VALIDATOR_API_KEY
+    secretKeyRef:
+      name: validator-secret
+      key: validatorApiKey
+  - name: S3_CREDENTIALS
+    secretKeyRef:
+      name: validator-secret
+      key: s3Credentials
 
 secrets:
   validatorKey: "private key"

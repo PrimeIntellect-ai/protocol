@@ -126,6 +126,51 @@ struct Args {
     max_healthy_nodes_with_same_endpoint: u32,
 }
 
+async fn run_inactive_node_metric_migration(store_context: Arc<StoreContext>) -> Result<()> {
+    info!("Starting migration of inactive node metrics to new data model");
+
+    let node_addresses = match store_context.node_store.get_nodes().await {
+        Ok(nodes) => {
+            let addresses: Vec<_> = nodes.into_iter().map(|node| node.address).collect();
+            info!("Found {} nodes to migrate", addresses.len());
+            addresses
+        }
+        Err(e) => {
+            error!("Error getting all nodes for migration: {}", e);
+            return Ok(()); // Don't fail startup if migration can't get nodes
+        }
+    };
+
+    let mut migrated_count = 0;
+    let mut error_count = 0;
+
+    for node_address in node_addresses {
+        match store_context
+            .metrics_store
+            .migrate_node_metrics_if_needed(node_address)
+            .await
+        {
+            Ok(()) => {
+                migrated_count += 1;
+                if migrated_count % 100 == 0 {
+                    info!("Migrated {} nodes so far...", migrated_count);
+                }
+            }
+            Err(e) => {
+                error!("Error migrating metrics for node {}: {}", node_address, e);
+                error_count += 1;
+                // Continue with other nodes even if one fails
+            }
+        }
+    }
+
+    info!(
+        "Migration completed. Successfully migrated {} nodes, {} errors",
+        migrated_count, error_count
+    );
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -175,6 +220,17 @@ async fn main() -> Result<()> {
 
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
+
+    // Run one-time migration for inactive nodes
+    let migration_store_context = store_context.clone();
+    if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+        let migration_store_context = migration_store_context.clone();
+        tokio::spawn(async move {
+            if let Err(e) = run_inactive_node_metric_migration(migration_store_context).await {
+                error!("Failed to run inactive node metric migration: {}", e);
+            }
+        });
+    }
 
     let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
@@ -256,6 +312,27 @@ async fn main() -> Result<()> {
                     Some(node_groups_heartbeats.clone()),
                     Some(webhook_plugins.clone()),
                 );
+
+                // Run groups index migration on startup
+                if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+                    match group_plugin.migrate_groups_index().await {
+                        Ok(count) => {
+                            if count > 0 {
+                                info!(
+                                    "Groups index migration completed: {} groups migrated",
+                                    count
+                                );
+                            } else {
+                                info!("Groups index migration: no groups to migrate");
+                            }
+                        }
+                        Err(e) => {
+                            error!("Groups index migration failed: {}", e);
+                            return Err(e);
+                        }
+                    }
+                }
+
                 let status_group_plugin = group_plugin.clone();
                 let group_plugin_for_server = group_plugin.clone();
                 node_groups_plugin = Some(Arc::new(group_plugin_for_server));

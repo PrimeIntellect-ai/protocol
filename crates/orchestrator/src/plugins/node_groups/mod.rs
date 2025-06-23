@@ -27,6 +27,7 @@ mod tests;
 const GROUP_KEY_PREFIX: &str = "node_group:";
 const NODE_GROUP_MAP_KEY: &str = "node_to_group";
 const GROUP_TASK_KEY_PREFIX: &str = "group_task:";
+const GROUPS_INDEX_KEY: &str = "orchestrator:groups_index";
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct NodeGroupConfiguration {
@@ -290,6 +291,9 @@ impl NodeGroupsPlugin {
         let group_data = serde_json::to_string(group)?;
         pipe.set(&group_key, group_data);
 
+        // Add group ID to groups index
+        pipe.sadd(GROUPS_INDEX_KEY, &group.id);
+
         // Map nodes to group
         for node in &group.nodes {
             pipe.hset(NODE_GROUP_MAP_KEY, node, &group.id);
@@ -322,6 +326,66 @@ impl NodeGroupsPlugin {
         }
 
         Ok(None)
+    }
+
+    pub async fn get_node_groups_batch(
+        &self,
+        node_addresses: &[String],
+    ) -> Result<HashMap<String, Option<NodeGroup>>, Error> {
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+        let mut result = HashMap::new();
+
+        if node_addresses.is_empty() {
+            return Ok(result);
+        }
+
+        let mut pipe = redis::pipe();
+        for node_addr in node_addresses {
+            pipe.hget(NODE_GROUP_MAP_KEY, node_addr);
+        }
+        let group_ids: Vec<Option<String>> = pipe.query_async(&mut conn).await?;
+
+        let unique_group_ids: HashSet<String> = group_ids
+            .iter()
+            .filter_map(|opt| opt.as_ref())
+            .cloned()
+            .collect();
+
+        // Step 3: Batch fetch all group data
+        let group_data: HashMap<String, NodeGroup> = if !unique_group_ids.is_empty() {
+            let group_keys: Vec<String> = unique_group_ids
+                .iter()
+                .map(|id| Self::get_group_key(id))
+                .collect();
+
+            let group_values: Vec<Option<String>> = conn.mget(&group_keys).await?;
+
+            unique_group_ids
+                .into_iter()
+                .zip(group_values.into_iter())
+                .filter_map(|(group_id, group_json)| {
+                    group_json.and_then(|json| {
+                        serde_json::from_str::<NodeGroup>(&json)
+                            .map_err(|e| {
+                                error!("Failed to parse group {} data: {}", group_id, e);
+                                e
+                            })
+                            .ok()
+                            .map(|group| (group_id, group))
+                    })
+                })
+                .collect()
+        } else {
+            HashMap::new()
+        };
+
+        // Step 4: Build result mapping node addresses to their groups
+        for (node_addr, group_id) in node_addresses.iter().zip(group_ids.iter()) {
+            let group = group_id.as_ref().and_then(|id| group_data.get(id)).cloned();
+            result.insert(node_addr.clone(), group);
+        }
+
+        Ok(result)
     }
 
     pub async fn get_available_configurations(&self) -> Vec<NodeGroupConfiguration> {
@@ -790,6 +854,9 @@ impl NodeGroupsPlugin {
                 }
             }
 
+            // Remove group ID from groups index
+            pipe.srem(GROUPS_INDEX_KEY, group_id);
+
             // Delete group task assignment
             let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
             pipe.del(&task_key);
@@ -802,6 +869,9 @@ impl NodeGroupsPlugin {
         let group_key = Self::get_group_key(&new_group_id);
         let group_data = serde_json::to_string(&merged_group)?;
         pipe.set(&group_key, group_data);
+
+        // Add new group ID to groups index
+        pipe.sadd(GROUPS_INDEX_KEY, &new_group_id);
 
         // Map nodes to new group
         for node in merged_nodes {
@@ -933,6 +1003,9 @@ impl NodeGroupsPlugin {
                 pipe.hdel(NODE_GROUP_MAP_KEY, node);
             }
 
+            // Remove group ID from groups index
+            pipe.srem(GROUPS_INDEX_KEY, group_id);
+
             // Delete group task assignment
             let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
             debug!("Deleting group task assignment from key: {}", task_key);
@@ -1011,31 +1084,33 @@ impl NodeGroupsPlugin {
         debug!("Getting all groups");
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
-        // Get all node-to-group mappings
-        let node_mappings: HashMap<String, String> = conn.hgetall(NODE_GROUP_MAP_KEY).await?;
+        // Use SMEMBERS to get all group IDs from the groups index
+        let group_ids: Vec<String> = conn.smembers(GROUPS_INDEX_KEY).await?;
 
-        if node_mappings.is_empty() {
-            debug!("No node mappings found");
+        if group_ids.is_empty() {
+            debug!("No groups found in index");
             return Ok(Vec::new());
         }
 
-        // Collect unique group IDs
-        let group_ids: HashSet<String> = node_mappings.values().cloned().collect();
-        debug!("Found {} unique group IDs", group_ids.len());
+        debug!("Found {} group IDs in index", group_ids.len());
 
-        // Fetch each group's data
+        // Use MGET to batch fetch all group data
+        let group_keys: Vec<String> = group_ids.iter().map(|id| Self::get_group_key(id)).collect();
+
+        let group_values: Vec<Option<String>> = conn.mget(&group_keys).await?;
+
+        // Parse the group data
         let mut groups = Vec::new();
-        for group_id in group_ids {
-            let group_key = Self::get_group_key(&group_id);
-            if let Some(group_data) = conn.get::<_, Option<String>>(&group_key).await? {
-                match serde_json::from_str::<NodeGroup>(&group_data) {
+        for (group_id, group_data) in group_ids.iter().zip(group_values.iter()) {
+            if let Some(group_data) = group_data {
+                match serde_json::from_str::<NodeGroup>(group_data) {
                     Ok(group) => groups.push(group),
                     Err(e) => {
                         error!("Failed to parse group {} data: {}", group_id, e);
                     }
                 }
             } else {
-                warn!("Group {} exists in mapping but has no data", group_id);
+                warn!("Group {} exists in index but has no data", group_id);
             }
         }
 
@@ -1061,6 +1136,88 @@ impl NodeGroupsPlugin {
 
         let mappings: HashMap<String, String> = conn.hgetall(NODE_GROUP_MAP_KEY).await?;
         Ok(mappings)
+    }
+
+    /// Migrate existing group data to populate the groups index
+    /// This method should be called once after deploying the new groups index feature
+    pub async fn migrate_groups_index(&self) -> Result<usize, Error> {
+        debug!("Starting groups index migration");
+        let mut conn = self.store.client.get_multiplexed_async_connection().await?;
+
+        // Check if migration is needed by seeing if groups index is empty
+        let existing_groups_in_index: Vec<String> = conn.smembers(GROUPS_INDEX_KEY).await?;
+        if !existing_groups_in_index.is_empty() {
+            info!(
+                "Groups index already contains {} groups, migration appears completed",
+                existing_groups_in_index.len()
+            );
+            return Ok(existing_groups_in_index.len());
+        }
+
+        // Get all node-to-group mappings using the old method
+        let node_mappings: HashMap<String, String> = conn.hgetall(NODE_GROUP_MAP_KEY).await?;
+
+        if node_mappings.is_empty() {
+            info!("No existing groups found to migrate");
+            return Ok(0);
+        }
+
+        // Collect unique group IDs from node mappings
+        let existing_group_ids: HashSet<String> = node_mappings.values().cloned().collect();
+        info!(
+            "Found {} unique group IDs to migrate",
+            existing_group_ids.len()
+        );
+
+        // Verify these groups actually exist by checking their keys
+        let group_keys: Vec<String> = existing_group_ids
+            .iter()
+            .map(|id| Self::get_group_key(id))
+            .collect();
+
+        let group_values: Vec<Option<String>> = conn.mget(&group_keys).await?;
+
+        let mut valid_group_ids = Vec::new();
+        for (group_id, group_data) in existing_group_ids.iter().zip(group_values.iter()) {
+            if group_data.is_some() {
+                valid_group_ids.push(group_id.clone());
+            } else {
+                warn!(
+                    "Group {} exists in mappings but has no data, skipping",
+                    group_id
+                );
+            }
+        }
+
+        if valid_group_ids.is_empty() {
+            info!("No valid groups found to migrate");
+            return Ok(0);
+        }
+
+        // Add all valid group IDs to the groups index in a single operation
+        let _: () = conn.sadd(GROUPS_INDEX_KEY, &valid_group_ids).await?;
+
+        info!(
+            "Successfully migrated {} groups to groups index",
+            valid_group_ids.len()
+        );
+
+        // Verify the migration by checking the index
+        let migrated_count: usize = conn.scard(GROUPS_INDEX_KEY).await?;
+        if migrated_count != valid_group_ids.len() {
+            error!(
+                "Migration verification failed: expected {} groups in index, found {}",
+                valid_group_ids.len(),
+                migrated_count
+            );
+        } else {
+            info!(
+                "Migration verification successful: {} groups in index",
+                migrated_count
+            );
+        }
+
+        Ok(valid_group_ids.len())
     }
 
     /// Get all groups assigned to a specific task

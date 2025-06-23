@@ -1,23 +1,21 @@
 {{/* Helm helper templates */}}
 
-{{- define "orchestrator.fullname" -}}
+{{- define "discovery.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
-{{- else if .Values.computePoolId -}}
-{{- printf "orchestrator-%s" .Values.computePoolId -}}
 {{- else -}}
-{{- printf "orchestrator" -}}
+{{- printf "discovery" -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "orchestrator.namespace" -}}
+{{- define "discovery.namespace" -}}
 {{- .Values.namespace | default .Release.Namespace -}}
 {{- end -}}
 
-{{- define "orchestrator.container" -}}
+{{- define "discovery.container" -}}
 {{- $mode := .mode }}
 {{- $root := .root }}
-- name: orchestrator
+- name: discovery
   image: {{ $root.Values.image }}
   ports:
   - containerPort: {{ $root.Values.port }}
@@ -45,14 +43,6 @@
     value: {{ $mode }}
   - name: PORT
     value: {{ $root.Values.port | quote }}
-  - name: URL
-    value: {{ $root.Values.url }}
-  - name: DOMAIN_ID
-    value: {{ $root.Values.domainId | quote }}
-  {{- if $root.Values.computePoolId }}
-  - name: COMPUTE_POOL_ID
-    value: {{ $root.Values.computePoolId | quote }}
-  {{- end }}
   {{- range $key, $value := $root.Values.env }}
   - name: {{ $key }}
     value: {{ $value | quote }}

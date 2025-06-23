@@ -312,8 +312,6 @@ impl ProviderOperations {
             Console::info("Registration tx", &format!("{:?}", register_tx));
         }
 
-        // Get provider details again  - cleanup later
-        Console::progress("Getting provider details");
         let provider = self
             .contracts
             .compute_registry

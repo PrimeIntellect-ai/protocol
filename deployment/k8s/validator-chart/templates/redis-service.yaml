@@ -1,12 +1,12 @@
-{{- if not .Values.env.REDIS_URL }}
+{{- if .Values.redis.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "validator.redisName" . }}
-  namespace: {{ .Values.namespace }}
+  name: {{ include "validator.fullname" . }}-redis
+  namespace: {{ include "validator.namespace" . }}
 spec:
   selector:
-    app: {{ include "validator.redisName" . }}
+    app: {{ include "validator.fullname" . }}-redis
   ports:
     - port: 6379
       targetPort: 6379
