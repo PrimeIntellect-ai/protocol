@@ -399,9 +399,9 @@ impl NodeStore {
 
             let types: Vec<String> = type_pipe.query_async(&mut con).await?;
 
-            // Count non-hash format keys
+            // Count non-hash format keys (including "string" and "none" types)
             for key_type in types.iter() {
-                if key_type != "hash" {
+                if key_type != "hash" && key_type != "none" {
                     non_hash_count += 1;
                 }
             }
