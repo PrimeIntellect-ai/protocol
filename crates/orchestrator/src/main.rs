@@ -310,19 +310,19 @@ async fn main() -> Result<()> {
 
                 // Run groups index migration on startup
                 if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
-                match group_plugin.migrate_groups_index().await {
-                    Ok(count) => {
-                        if count > 0 {
-                            info!(
-                                "Groups index migration completed: {} groups migrated",
-                                count
-                            );
-                        } else {
-                            info!("Groups index migration: no groups to migrate");
+                    match group_plugin.migrate_groups_index().await {
+                        Ok(count) => {
+                            if count > 0 {
+                                info!(
+                                    "Groups index migration completed: {} groups migrated",
+                                    count
+                                );
+                            } else {
+                                info!("Groups index migration: no groups to migrate");
+                            }
                         }
-                    }
-                    Err(e) => {
-                        error!("Groups index migration failed: {}", e);
+                        Err(e) => {
+                            error!("Groups index migration failed: {}", e);
                             return Err(e);
                         }
                     }
