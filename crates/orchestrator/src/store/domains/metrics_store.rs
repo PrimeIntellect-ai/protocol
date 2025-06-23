@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 const ORCHESTRATOR_METRICS_STORE: &str = "orchestrator:metrics";
+const ORCHESTRATOR_NODE_METRICS_STORE: &str = "orchestrator:node_metrics";
 
 pub struct MetricsStore {
     redis: Arc<RedisStore>,
@@ -20,6 +21,75 @@ impl MetricsStore {
 
     fn clean_label(&self, label: &str) -> String {
         label.replace(':', "")
+    }
+
+    pub async fn migrate_node_metrics_if_needed(&self, node_address: Address) -> Result<()> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+        let new_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
+
+        // Check if the new node-centric key already exists
+        let exists: bool = con.exists(&new_key).await?;
+        if exists {
+            // Migration already complete for this node
+            return Ok(());
+        }
+
+        // Perform the slow SCAN to find all metrics for this node in the old data structure
+        let pattern = format!("{}:*:*", ORCHESTRATOR_METRICS_STORE);
+        let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;
+        let mut old_keys_to_migrate = Vec::new();
+
+        while let Some(key) = iter.next_item().await {
+            old_keys_to_migrate.push(key);
+        }
+        drop(iter);
+
+        // Collect all metrics for this node from the old structure
+        let mut node_metrics = HashMap::new();
+        let mut keys_to_clean = Vec::new();
+
+        for old_key in old_keys_to_migrate {
+            if let Some(value_str) = con
+                .hget::<_, _, Option<String>>(&old_key, node_address.to_string())
+                .await?
+            {
+                if let Ok(val) = value_str.parse::<f64>() {
+                    let parts: Vec<&str> = old_key.split(':').collect();
+                    if parts.len() >= 4 {
+                        let task_id = parts[2];
+                        let metric_name = parts[3];
+                        let new_metric_key = format!("{}:{}", task_id, metric_name);
+                        node_metrics.insert(new_metric_key, val);
+                        keys_to_clean.push(old_key);
+                    }
+                }
+            }
+        }
+
+        // If we have metrics for this node, perform the atomic migration
+        if !node_metrics.is_empty() {
+            // Use Redis MULTI/EXEC transaction for atomicity
+            let mut pipe = redis::pipe();
+            pipe.atomic();
+
+            // Set all metrics in the new node-centric key
+            for (metric_key, value) in &node_metrics {
+                pipe.hset(&new_key, metric_key, value);
+            }
+
+            // Clean up the old data structure by removing this node's fields
+            for old_key in &keys_to_clean {
+                pipe.hdel(old_key, node_address.to_string());
+            }
+
+            pipe.query_async::<()>(&mut con).await?;
+        } else {
+            // Even if no metrics exist, create an empty key to mark migration as complete
+            let _: () = con.hset(&new_key, "_migrated", "true").await?;
+            let _: () = con.hdel(&new_key, "_migrated").await?;
+        }
+
+        Ok(())
     }
 
     pub async fn store_metrics(
@@ -37,6 +107,12 @@ impl MetricsStore {
 
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
+        let node_key = if sender_address == Address::ZERO {
+            format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, Address::ZERO)
+        } else {
+            format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, sender_address)
+        };
+
         for entry in metrics {
             let task_id = if entry.key.task_id.is_empty() {
                 "manual".to_string()
@@ -44,35 +120,25 @@ impl MetricsStore {
                 entry.key.task_id.clone()
             };
             let cleaned_label = self.clean_label(&entry.key.label);
-            let redis_key = format!(
-                "{}:{}:{}",
-                ORCHESTRATOR_METRICS_STORE, task_id, cleaned_label
-            );
+            let metric_key = format!("{}:{}", task_id, cleaned_label);
 
-            let address = if task_id == "manual" {
-                Address::ZERO.to_string()
-            } else {
-                sender_address.to_string()
-            };
-
-            let existing_value: Option<String> = con.hget(&redis_key, &address).await?;
-            let should_update = match existing_value {
-                Some(val) => {
-                    if entry.key.label.contains("dashboard-progress") {
-                        match val.parse::<f64>() {
-                            Ok(old_val) => entry.value > old_val,
-                            Err(_) => true, // Overwrite if old value is not a valid float
-                        }
-                    } else {
-                        true
-                    }
+            // Check for dashboard-progress metrics to maintain max value behavior
+            let should_update = if entry.key.label.contains("dashboard-progress") {
+                let existing_value: Option<String> = con.hget(&node_key, &metric_key).await?;
+                match existing_value {
+                    Some(val) => match val.parse::<f64>() {
+                        Ok(old_val) => entry.value > old_val,
+                        Err(_) => true, // Overwrite if old value is not a valid float
+                    },
+                    None => true,
                 }
-                None => true,
+            } else {
+                true
             };
 
             if should_update {
                 if let Err(err) = con
-                    .hset::<_, _, _, ()>(redis_key, address, entry.value)
+                    .hset::<_, _, _, ()>(&node_key, &metric_key, entry.value)
                     .await
                 {
                     error!("Could not update metric value in redis: {}", err);
@@ -99,16 +165,31 @@ impl MetricsStore {
     pub async fn delete_metric(&self, task_id: &str, label: &str, address: &str) -> Result<bool> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let cleaned_label = self.clean_label(label);
-        let redis_key = format!(
+
+        let node_address = match address.parse::<Address>() {
+            Ok(addr) => addr,
+            Err(_) => return Ok(false), // Invalid address format
+        };
+
+        // Try new node-centric model first
+        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
+        let metric_key = format!("{}:{}", task_id, cleaned_label);
+
+        let deleted_new: i32 = con.hdel(&node_key, &metric_key).await?;
+        if deleted_new > 0 {
+            return Ok(true);
+        }
+
+        // Fallback to old model for backward compatibility
+        let old_redis_key = format!(
             "{}:{}:{}",
             ORCHESTRATOR_METRICS_STORE, task_id, cleaned_label
         );
 
-        match con.hdel::<_, _, i32>(redis_key, address).await {
+        match con.hdel::<_, _, i32>(old_redis_key, address).await {
             Ok(deleted) => Ok(deleted == 1),
             Err(err) => {
                 error!("Could not delete metric from redis: {}", err);
-                // Return an error instead of swallowing it
                 Err(anyhow!("Failed to delete metric from redis: {}", err))
             }
         }
@@ -175,20 +256,34 @@ impl MetricsStore {
         node_address: Address,
     ) -> Result<HashMap<String, HashMap<String, f64>>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let pattern = format!("{}:*:*", ORCHESTRATOR_METRICS_STORE);
+        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
 
-        // Use SCAN instead of KEYS
+        // Try to get from new node-centric model first (O(1) operation)
+        let node_metrics: HashMap<String, f64> = con.hgetall(&node_key).await?;
+
+        if !node_metrics.is_empty() {
+            let mut result: HashMap<String, HashMap<String, f64>> = HashMap::new();
+            for (metric_key, value) in node_metrics {
+                if let Some((task_id, metric_name)) = metric_key.split_once(':') {
+                    result
+                        .entry(task_id.to_string())
+                        .or_default()
+                        .insert(metric_name.to_string(), value);
+                }
+            }
+            return Ok(result);
+        }
+
+        // Fallback to old model if new model is empty (migration not yet done)
+        let pattern = format!("{}:*:*", ORCHESTRATOR_METRICS_STORE);
         let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;
         let mut all_keys = Vec::new();
         while let Some(key) = iter.next_item().await {
             all_keys.push(key);
         }
-
-        // Drop the iterator to release the borrow on con
         drop(iter);
 
         let mut result: HashMap<String, HashMap<String, f64>> = HashMap::new();
-
         for key in all_keys {
             if let Some(value_str) = con
                 .hget::<_, _, Option<String>>(&key, node_address.to_string())

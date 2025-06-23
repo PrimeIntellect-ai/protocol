@@ -95,7 +95,16 @@ async fn heartbeat(
         error!("Heartbeat Error: {}", e);
     }
     if let Some(metrics) = heartbeat.metrics.clone() {
-        // Get all previously reported metrics for this node
+        // Migrate node metrics to new data model if needed
+        if let Err(e) = app_state
+            .store_context
+            .metrics_store
+            .migrate_node_metrics_if_needed(node_address)
+            .await
+        {
+            error!("Error migrating node metrics: {}", e);
+        }
+
         let previous_metrics = match app_state
             .store_context
             .metrics_store
@@ -112,14 +121,21 @@ async fn heartbeat(
         // Create a HashSet of new metrics for efficient lookup
         let new_metrics_set: HashSet<_> = metrics
             .iter()
-            .map(|metric| (&metric.key.task_id, &metric.key.label))
+            .map(|metric| {
+                let task_id = if metric.key.task_id.is_empty() {
+                    "manual".to_string()
+                } else {
+                    metric.key.task_id.clone()
+                };
+                (task_id, metric.key.label.clone())
+            })
             .collect();
 
-        // Clean up stale metrics from Redis only
+        // Clean up stale metrics from Redis using efficient new data model
         // The sync service will handle all Prometheus updates
         for (task_id, task_metrics) in previous_metrics {
             for (label, _value) in task_metrics {
-                let prev_key = (&task_id, &label);
+                let prev_key = (task_id.clone(), label.clone());
                 if !new_metrics_set.contains(&prev_key) {
                     // Remove from Redis metrics store
                     if let Err(e) = app_state
