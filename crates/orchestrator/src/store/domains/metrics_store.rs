@@ -1,7 +1,7 @@
 use crate::store::core::RedisStore;
 use alloy::primitives::Address;
 use anyhow::{anyhow, Result};
-use log::error;
+use log::{error, info};
 use redis::AsyncCommands;
 use shared::models::metric::MetricEntry;
 use std::collections::HashMap;
@@ -30,6 +30,7 @@ impl MetricsStore {
         // Check if the new node-centric key already exists
         let exists: bool = con.exists(&new_key).await?;
         if exists {
+            info!("Migration already complete for this node: {}", node_address);
             // Migration already complete for this node
             return Ok(());
         }
@@ -83,11 +84,12 @@ impl MetricsStore {
             }
 
             pipe.query_async::<()>(&mut con).await?;
-        } else {
-            // Even if no metrics exist, create an empty key to mark migration as complete
-            let _: () = con.hset(&new_key, "_migrated", "true").await?;
-            let _: () = con.hdel(&new_key, "_migrated").await?;
         }
+
+        // Always create the key to mark migration as complete, even if no metrics exist
+        // This prevents future migration attempts for nodes without data
+        let _: () = con.hset(&new_key, "_migrated", "true").await?;
+        let _: () = con.hdel(&new_key, "_migrated").await?;
 
         Ok(())
     }
