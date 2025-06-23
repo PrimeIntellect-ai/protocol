@@ -20,7 +20,7 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
         );
 
         match node.status {
-            NodeStatus::Dead => {
+            NodeStatus::Dead | NodeStatus::LowBalance => {
                 // Dissolve entire group if node becomes unhealthy
                 if let Some(group) = self.get_node_group(&node_addr).await? {
                     info!(

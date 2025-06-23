@@ -565,14 +565,15 @@ pub struct DiscoveryNode {
     pub created_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub location: Option<NodeLocation>,
-    #[schema(schema_with = custom_u256)] // TODO?
+    #[schema(schema_with = u256_schema)]
     pub latest_balance: Option<U256>,
 }
 
-fn custom_u256() -> Object {
+fn u256_schema() -> Object {
     utoipa::openapi::ObjectBuilder::new()
         .schema_type(utoipa::openapi::schema::Type::String)
-        .description(Some("A U256 value represented as a hexadecimal string"))
+        .description(Some("A U256 value represented as a decimal string"))
+        .examples(Some(serde_json::json!("1000000000000000000")))
         .build()
 }
 

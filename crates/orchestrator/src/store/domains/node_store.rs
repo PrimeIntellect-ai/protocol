@@ -84,9 +84,6 @@ impl NodeStore {
                 .map_err(|e| anyhow::anyhow!("Failed to serialize location: {}", e))?;
             fields.push(("location".to_string(), location_json));
         }
-        if let Some(balance) = &node.balance {
-            fields.push(("balance".to_string(), balance.to_string()));
-        }
         Ok(fields)
     }
 
@@ -144,16 +141,6 @@ impl NodeStore {
             .get("location")
             .and_then(|s| serde_json::from_str(s).ok());
 
-        let balance = fields
-            .get("balance")
-            .and_then(|s| {
-                Some(
-                    s.parse::<alloy::primitives::U256>()
-                        .map_err(|_| anyhow::anyhow!("invalid balance format")),
-                )
-            })
-            .transpose()?;
-
         Ok(OrchestratorNode {
             address,
             ip_address,
@@ -170,7 +157,6 @@ impl NodeStore {
             worker_p2p_id,
             worker_p2p_addresses,
             location,
-            balance,
         })
     }
 
