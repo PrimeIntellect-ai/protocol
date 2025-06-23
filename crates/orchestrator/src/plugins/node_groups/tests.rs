@@ -2865,7 +2865,7 @@ async fn test_proximity_merging_prevents_wrong_nodes_grouping() {
         compute_requirements: None,
     };
 
-    let plugin = NodeGroupsPlugin::new_with_policy(
+    let plugin = Arc::new(NodeGroupsPlugin::new_with_policy(
         vec![solo_config.clone(), group_config.clone()],
         store.clone(),
         store_context.clone(),
@@ -2873,7 +2873,8 @@ async fn test_proximity_merging_prevents_wrong_nodes_grouping() {
         None,
         TaskSwitchingPolicy::default(),
         ProximityOptimizationPolicy { enabled: true },
-    );
+    ));
+    let _ = plugin.clone().register_observer().await;
     // Create tasks that allow both configurations
     let task1 = Task {
         scheduling_config: Some(SchedulingConfig {
