@@ -42,6 +42,8 @@ $([ "$DISABLE_TOPLOC_INVALIDATION" = "true" ] && echo "--disable-toploc-invalida
 $([ ! -z "$INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES" ] && echo "--incomplete-group-grace-period-minutes $INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES") \
 $([ ! -z "$VALIDATOR_PENALTY" ] && echo "--validator-penalty $VALIDATOR_PENALTY") \
 $([ "$DISABLE_HARDWARE_VALIDATION" = "true" ] && echo "--disable-hardware-validation") \
+$([ ! -z "$TOPLOC_INVALIDATION_TYPE" ] && echo "--toploc-invalidation-type $TOPLOC_INVALIDATION_TYPE") \
+$([ ! -z "$WORK_UNIT_INVALIDATION_TYPE" ] && echo "--work-unit-invalidation-type $WORK_UNIT_INVALIDATION_TYPE") \
 "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 
