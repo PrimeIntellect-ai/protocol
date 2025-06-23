@@ -259,7 +259,14 @@ async fn main() -> Result<()> {
 
                 let status_group_plugin = group_plugin.clone();
                 let group_plugin_for_server = group_plugin.clone();
-                node_groups_plugin = Some(Arc::new(group_plugin_for_server));
+                let group_plugin_arc = Arc::new(group_plugin_for_server);
+
+                // Register the plugin as a task observer
+                if let Err(e) = group_plugin_arc.clone().register_observer().await {
+                    error!("Failed to register node groups plugin as observer: {}", e);
+                }
+
+                node_groups_plugin = Some(group_plugin_arc);
                 scheduler_plugins.push(Box::new(group_plugin));
                 status_update_plugins.push(Box::new(status_group_plugin));
                 info!("Plugin: Node group plugin initialized");

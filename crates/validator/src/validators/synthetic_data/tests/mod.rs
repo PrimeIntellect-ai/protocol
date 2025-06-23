@@ -57,35 +57,49 @@ async fn test_build_validation_plan() -> Result<(), Error> {
     let mock_storage = MockStorageProvider::new();
 
     let single_group_file_name = "Qwen3/dataset/samplingn-9999999-1-9-0.parquet";
-    mock_storage.add_file(single_group_file_name, "file1");
-    mock_storage.add_mapping_file(
-        "9999999999999999999999999999999999999999999999999999999999999999",
-        single_group_file_name,
-    );
+    mock_storage.add_file(single_group_file_name, "file1").await;
+    mock_storage
+        .add_mapping_file(
+            "9999999999999999999999999999999999999999999999999999999999999999",
+            single_group_file_name,
+        )
+        .await;
 
     let single_unknown_file_name = "Qwen3/dataset/samplingn-8888888-1-9-0.parquet";
-    mock_storage.add_file(single_unknown_file_name, "file1");
-    mock_storage.add_mapping_file(
-        "8888888888888888888888888888888888888888888888888888888888888888",
-        single_unknown_file_name,
-    );
+    mock_storage
+        .add_file(single_unknown_file_name, "file1")
+        .await;
+    mock_storage
+        .add_mapping_file(
+            "8888888888888888888888888888888888888888888888888888888888888888",
+            single_unknown_file_name,
+        )
+        .await;
 
-    mock_storage.add_file(
-        "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
-        "file1",
-    );
-    mock_storage.add_file(
-        "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
-        "file2",
-    );
-    mock_storage.add_mapping_file(
-        "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
-        "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
-    );
-    mock_storage.add_mapping_file(
-        "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf",
-        "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
-    );
+    mock_storage
+        .add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+            "file1",
+        )
+        .await;
+    mock_storage
+        .add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+            "file2",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+        )
+        .await;
 
     let storage_provider = Arc::new(mock_storage);
 
@@ -244,22 +258,30 @@ async fn test_group_build() -> Result<(), Error> {
     };
 
     let mock_storage = MockStorageProvider::new();
-    mock_storage.add_file(
-        "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
-        "file1",
-    );
-    mock_storage.add_mapping_file(
-        "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
-        "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
-    );
-    mock_storage.add_file(
-        "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
-        "file2",
-    );
-    mock_storage.add_mapping_file(
-        "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf",
-        "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
-    );
+    mock_storage
+        .add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+            "file1",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-1.parquet",
+        )
+        .await;
+    mock_storage
+        .add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+            "file2",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf",
+            "Qwen3/dataset/samplingn-3450756714426841564-2-9-0.parquet",
+        )
+        .await;
 
     let storage_provider = Arc::new(mock_storage);
 
@@ -318,14 +340,18 @@ async fn test_group_e2e_accept() -> Result<(), Error> {
     const NODE_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
 
     let mock_storage = MockStorageProvider::new();
-    mock_storage.add_file(
-        &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", GROUP_ID),
-        "file1",
-    );
-    mock_storage.add_mapping_file(
-        FILE_SHA,
-        &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", GROUP_ID),
-    );
+    mock_storage
+        .add_file(
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", GROUP_ID),
+            "file1",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            FILE_SHA,
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", GROUP_ID),
+        )
+        .await;
     server
         .mock(
             "POST",
@@ -458,22 +484,30 @@ async fn test_group_e2e_work_unit_mismatch() -> Result<(), Error> {
     const GROUP_ID: &str = "3456714426841564";
 
     let mock_storage = MockStorageProvider::new();
-    mock_storage.add_file(
-        &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", GROUP_ID),
-        "file1",
-    );
-    mock_storage.add_file(
-        &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", GROUP_ID),
-        "file2",
-    );
-    mock_storage.add_mapping_file(
-        HONEST_FILE_SHA,
-        &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", GROUP_ID),
-    );
-    mock_storage.add_mapping_file(
-        EXCESSIVE_FILE_SHA,
-        &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", GROUP_ID),
-    );
+    mock_storage
+        .add_file(
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", GROUP_ID),
+            "file1",
+        )
+        .await;
+    mock_storage
+        .add_file(
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", GROUP_ID),
+            "file2",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            HONEST_FILE_SHA,
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", GROUP_ID),
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            EXCESSIVE_FILE_SHA,
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", GROUP_ID),
+        )
+        .await;
     server
         .mock(
             "POST",
@@ -628,14 +662,18 @@ async fn test_process_group_status_check_reject() -> Result<(), Error> {
     };
 
     let mock_storage = MockStorageProvider::new();
-    mock_storage.add_file(
-        "Qwen3/dataset/samplingn-3450756714426841564-1-9-0.parquet",
-        "file1",
-    );
-    mock_storage.add_mapping_file(
-        "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
-        "Qwen3/dataset/samplingn-3450756714426841564-1-9-0.parquet",
-    );
+    mock_storage
+        .add_file(
+            "Qwen3/dataset/samplingn-3450756714426841564-1-9-0.parquet",
+            "file1",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641",
+            "Qwen3/dataset/samplingn-3450756714426841564-1-9-0.parquet",
+        )
+        .await;
 
     let storage_provider = Arc::new(mock_storage);
 
@@ -688,22 +726,30 @@ async fn test_incomplete_group_recovery() -> Result<(), Error> {
     const FILE_SHA_1: &str = "a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd";
     const FILE_SHA_2: &str = "b2c3d4e5f6789012345678901234567890123456789012345678901234bcde";
 
-    mock_storage.add_file(
-        &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
-        "file1",
-    );
-    mock_storage.add_file(
-        &format!("TestModel/dataset/test-{}-2-0-1.parquet", GROUP_ID),
-        "file2",
-    );
-    mock_storage.add_mapping_file(
-        FILE_SHA_1,
-        &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
-    );
-    mock_storage.add_mapping_file(
-        FILE_SHA_2,
-        &format!("TestModel/dataset/test-{}-2-0-1.parquet", GROUP_ID),
-    );
+    mock_storage
+        .add_file(
+            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+            "file1",
+        )
+        .await;
+    mock_storage
+        .add_file(
+            &format!("TestModel/dataset/test-{}-2-0-1.parquet", GROUP_ID),
+            "file2",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            FILE_SHA_1,
+            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            FILE_SHA_2,
+            &format!("TestModel/dataset/test-{}-2-0-1.parquet", GROUP_ID),
+        )
+        .await;
 
     let storage_provider = Arc::new(mock_storage);
 
@@ -791,14 +837,18 @@ async fn test_expired_incomplete_group_soft_invalidation() -> Result<(), Error> 
     const GROUP_ID: &str = "9876543210987654";
     const FILE_SHA_1: &str = "c1d2e3f4567890123456789012345678901234567890123456789012345cdef";
 
-    mock_storage.add_file(
-        &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
-        "file1",
-    );
-    mock_storage.add_mapping_file(
-        FILE_SHA_1,
-        &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
-    );
+    mock_storage
+        .add_file(
+            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+            "file1",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            FILE_SHA_1,
+            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+        )
+        .await;
 
     let storage_provider = Arc::new(mock_storage);
 
@@ -890,14 +940,18 @@ async fn test_incomplete_group_status_tracking() -> Result<(), Error> {
     const GROUP_ID: &str = "1111111111111111";
     const FILE_SHA_1: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 
-    mock_storage.add_file(
-        &format!("TestModel/dataset/test-{}-3-0-0.parquet", GROUP_ID),
-        "file1",
-    );
-    mock_storage.add_mapping_file(
-        FILE_SHA_1,
-        &format!("TestModel/dataset/test-{}-3-0-0.parquet", GROUP_ID),
-    );
+    mock_storage
+        .add_file(
+            &format!("TestModel/dataset/test-{}-3-0-0.parquet", GROUP_ID),
+            "file1",
+        )
+        .await;
+    mock_storage
+        .add_mapping_file(
+            FILE_SHA_1,
+            &format!("TestModel/dataset/test-{}-3-0-0.parquet", GROUP_ID),
+        )
+        .await;
 
     let storage_provider = Arc::new(mock_storage);
 
