@@ -4,11 +4,11 @@ use anyhow::{anyhow, Result};
 use log::error;
 use redis::AsyncCommands;
 use shared::models::metric::MetricEntry;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-const ORCHESTRATOR_METRICS_STORE: &str = "orchestrator:metrics";
 const ORCHESTRATOR_NODE_METRICS_STORE: &str = "orchestrator:node_metrics";
+const ORCHESTRATOR_METRICS_STORE: &str = "orchestrator:metrics";
 
 pub struct MetricsStore {
     redis: Arc<RedisStore>,
@@ -107,11 +107,7 @@ impl MetricsStore {
 
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
-        let node_key = if sender_address == Address::ZERO {
-            format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, Address::ZERO)
-        } else {
-            format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, sender_address)
-        };
+        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, sender_address);
 
         for entry in metrics {
             let task_id = if entry.key.task_id.is_empty() {
@@ -171,22 +167,10 @@ impl MetricsStore {
             Err(_) => return Ok(false), // Invalid address format
         };
 
-        // Try new node-centric model first
         let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
         let metric_key = format!("{}:{}", task_id, cleaned_label);
 
-        let deleted_new: i32 = con.hdel(&node_key, &metric_key).await?;
-        if deleted_new > 0 {
-            return Ok(true);
-        }
-
-        // Fallback to old model for backward compatibility
-        let old_redis_key = format!(
-            "{}:{}:{}",
-            ORCHESTRATOR_METRICS_STORE, task_id, cleaned_label
-        );
-
-        match con.hdel::<_, _, i32>(old_redis_key, address).await {
+        match con.hdel::<_, _, i32>(&node_key, &metric_key).await {
             Ok(deleted) => Ok(deleted == 1),
             Err(err) => {
                 error!("Could not delete metric from redis: {}", err);
@@ -194,30 +178,66 @@ impl MetricsStore {
             }
         }
     }
+
+    pub async fn get_metrics_for_node(
+        &self,
+        node_address: Address,
+    ) -> Result<HashMap<String, HashMap<String, f64>>> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
+
+        // Get all metrics for this node using O(1) HGETALL operation
+        let node_metrics: HashMap<String, f64> = con.hgetall(&node_key).await?;
+
+        let mut result: HashMap<String, HashMap<String, f64>> = HashMap::new();
+        for (metric_key, value) in node_metrics {
+            if let Some((task_id, metric_name)) = metric_key.split_once(':') {
+                result
+                    .entry(task_id.to_string())
+                    .or_default()
+                    .insert(metric_name.to_string(), value);
+            }
+        }
+        Ok(result)
+    }
+
+    pub async fn get_metric_keys_for_node(&self, node_address: Address) -> Result<Vec<String>> {
+        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
+        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
+
+        // Use HKEYS to get all field names for this node (O(1) operation)
+        let keys: Vec<String> = con.hkeys(&node_key).await?;
+        Ok(keys)
+    }
+
+    #[cfg(test)]
     pub async fn get_aggregate_metrics_for_task(
         &self,
         task_id: &str,
     ) -> Result<HashMap<String, f64>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let pattern = format!("{}:{}:*", ORCHESTRATOR_METRICS_STORE, task_id);
+        let pattern = format!("{}:*", ORCHESTRATOR_NODE_METRICS_STORE);
 
+        // Scan all node keys
         let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;
-        let mut all_keys = Vec::new();
+        let mut all_node_keys = Vec::new();
         while let Some(key) = iter.next_item().await {
-            all_keys.push(key);
+            all_node_keys.push(key);
         }
-
-        // Drop the iterator to release the borrow on con
         drop(iter);
 
         let mut result: HashMap<String, f64> = HashMap::new();
 
-        for key in all_keys {
-            let values: HashMap<String, f64> = con.hgetall(&key).await?;
-            let total: f64 = values.values().sum();
+        // For each node, get metrics for this specific task
+        for node_key in all_node_keys {
+            let node_metrics: HashMap<String, f64> = con.hgetall(&node_key).await?;
 
-            if let Some(clean_key) = key.split(':').next_back() {
-                result.insert(clean_key.to_string(), total);
+            for (metric_key, value) in node_metrics {
+                if let Some((t_id, metric_name)) = metric_key.split_once(':') {
+                    if t_id == task_id {
+                        *result.entry(metric_name.to_string()).or_insert(0.0) += value;
+                    }
+                }
             }
         }
 
@@ -226,79 +246,29 @@ impl MetricsStore {
 
     pub async fn get_aggregate_metrics_for_all_tasks(&self) -> Result<HashMap<String, f64>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let pattern = format!("{}:*:*", ORCHESTRATOR_METRICS_STORE);
+        let pattern = format!("{}:*", ORCHESTRATOR_NODE_METRICS_STORE);
 
-        // Use SCAN instead of KEYS
+        // Scan all node keys
         let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;
-        let mut all_keys = Vec::new();
+        let mut all_node_keys = Vec::new();
         while let Some(key) = iter.next_item().await {
-            all_keys.push(key);
-        }
-
-        let tasks: HashSet<String> = all_keys
-            .iter()
-            .filter_map(|key| key.split(':').nth(2).map(String::from))
-            .collect();
-
-        let mut result: HashMap<String, f64> = HashMap::new();
-
-        for task in tasks {
-            let metrics = self.get_aggregate_metrics_for_task(&task).await?;
-            for (label, value) in metrics {
-                *result.entry(label).or_insert(0.0) += value;
-            }
-        }
-
-        Ok(result)
-    }
-    pub async fn get_metrics_for_node(
-        &self,
-        node_address: Address,
-    ) -> Result<HashMap<String, HashMap<String, f64>>> {
-        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
-
-        // Try to get from new node-centric model first (O(1) operation)
-        let node_metrics: HashMap<String, f64> = con.hgetall(&node_key).await?;
-
-        if !node_metrics.is_empty() {
-            let mut result: HashMap<String, HashMap<String, f64>> = HashMap::new();
-            for (metric_key, value) in node_metrics {
-                if let Some((task_id, metric_name)) = metric_key.split_once(':') {
-                    result
-                        .entry(task_id.to_string())
-                        .or_default()
-                        .insert(metric_name.to_string(), value);
-                }
-            }
-            return Ok(result);
-        }
-
-        // Fallback to old model if new model is empty (migration not yet done)
-        let pattern = format!("{}:*:*", ORCHESTRATOR_METRICS_STORE);
-        let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;
-        let mut all_keys = Vec::new();
-        while let Some(key) = iter.next_item().await {
-            all_keys.push(key);
+            all_node_keys.push(key);
         }
         drop(iter);
 
-        let mut result: HashMap<String, HashMap<String, f64>> = HashMap::new();
-        for key in all_keys {
-            if let Some(value_str) = con
-                .hget::<_, _, Option<String>>(&key, node_address.to_string())
-                .await?
-            {
-                if let Ok(val) = value_str.parse::<f64>() {
-                    let parts: Vec<&str> = key.split(':').collect();
-                    if parts.len() >= 4 {
-                        let task_id = parts[2].to_string();
-                        let metric_name = parts[3].to_string();
-                        result.entry(task_id).or_default().insert(metric_name, val);
-                    }
+        let mut result: HashMap<String, f64> = HashMap::new();
+
+        // For each node, aggregate all metrics
+        for node_key in all_node_keys {
+            let node_metrics: HashMap<String, f64> = con.hgetall(&node_key).await?;
+
+            for (metric_key, value) in node_metrics {
+                if let Some((_task_id, metric_name)) = metric_key.split_once(':') {
+                    *result.entry(metric_name.to_string()).or_insert(0.0) += value;
                 }
             }
         }
+
         Ok(result)
     }
 
@@ -306,30 +276,37 @@ impl MetricsStore {
         &self,
     ) -> Result<HashMap<String, HashMap<String, HashMap<String, f64>>>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let pattern = format!("{}:*:*", ORCHESTRATOR_METRICS_STORE);
+        let pattern = format!("{}:*", ORCHESTRATOR_NODE_METRICS_STORE);
 
-        // Use SCAN instead of KEYS
+        // Scan all node keys
         let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;
-        let mut result: HashMap<String, HashMap<String, HashMap<String, f64>>> = HashMap::new();
-        let mut all_keys = Vec::new();
+        let mut all_node_keys = Vec::new();
         while let Some(key) = iter.next_item().await {
-            all_keys.push(key);
+            all_node_keys.push(key);
         }
         drop(iter);
 
-        for key in all_keys {
-            if let [_, _, task_id, metric_name] = key.split(':').collect::<Vec<&str>>()[..] {
-                let values: HashMap<String, f64> = con.hgetall(&key).await?;
-                for (node_addr, val) in values {
-                    result
-                        .entry(task_id.to_string())
-                        .or_default()
-                        .entry(metric_name.to_string())
-                        .or_default()
-                        .insert(node_addr, val);
+        let mut result: HashMap<String, HashMap<String, HashMap<String, f64>>> = HashMap::new();
+
+        // For each node, organize metrics by task and metric name
+        for node_key in all_node_keys {
+            // Extract node address from key
+            if let Some(node_addr) = node_key.split(':').next_back() {
+                let node_metrics: HashMap<String, f64> = con.hgetall(&node_key).await?;
+
+                for (metric_key, value) in node_metrics {
+                    if let Some((task_id, metric_name)) = metric_key.split_once(':') {
+                        result
+                            .entry(task_id.to_string())
+                            .or_default()
+                            .entry(metric_name.to_string())
+                            .or_default()
+                            .insert(node_addr.to_string(), value);
+                    }
                 }
             }
         }
+
         Ok(result)
     }
 }

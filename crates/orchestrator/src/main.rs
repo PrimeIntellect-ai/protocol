@@ -223,7 +223,7 @@ async fn main() -> Result<()> {
 
     // Run one-time migration for inactive nodes
     let migration_store_context = store_context.clone();
-    tasks.spawn(async move { run_inactive_node_metric_migration(migration_store_context).await });
+    run_inactive_node_metric_migration(migration_store_context).await?;
 
     let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
