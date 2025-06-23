@@ -223,7 +223,9 @@ async fn main() -> Result<()> {
 
     // Run one-time migration for inactive nodes
     let migration_store_context = store_context.clone();
-    run_inactive_node_metric_migration(migration_store_context).await?;
+    if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+        run_inactive_node_metric_migration(migration_store_context).await?;
+    }
 
     let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
@@ -307,20 +309,22 @@ async fn main() -> Result<()> {
                 );
 
                 // Run groups index migration on startup
-                match group_plugin.migrate_groups_index().await {
-                    Ok(count) => {
-                        if count > 0 {
-                            info!(
-                                "Groups index migration completed: {} groups migrated",
-                                count
-                            );
-                        } else {
-                            info!("Groups index migration: no groups to migrate");
+                if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
+                    match group_plugin.migrate_groups_index().await {
+                        Ok(count) => {
+                            if count > 0 {
+                                info!(
+                                    "Groups index migration completed: {} groups migrated",
+                                    count
+                                );
+                            } else {
+                                info!("Groups index migration: no groups to migrate");
+                            }
                         }
-                    }
-                    Err(e) => {
-                        error!("Groups index migration failed: {}", e);
-                        return Err(e);
+                        Err(e) => {
+                            error!("Groups index migration failed: {}", e);
+                            return Err(e);
+                        }
                     }
                 }
 
