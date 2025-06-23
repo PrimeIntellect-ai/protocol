@@ -16,14 +16,6 @@ use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 
-struct ContainerConfig {
-    task_bridge_socket_path: String,
-    node_address: String,
-    p2p_seed: Option<u64>,
-    gpu: Option<GpuSpecs>,
-    system_memory_mb: Option<u32>,
-}
-
 pub struct DockerService {
     docker_manager: Arc<DockerManager>,
     cancellation_token: CancellationToken,
@@ -135,7 +127,6 @@ impl DockerService {
                     .collect();
 
                     if !old_tasks.is_empty() {
-                        Console::info("DockerService", &format!("Removing {} old container(s)", old_tasks.len()));
                         for task in old_tasks {
                             let terminate_manager_clone = terminate_manager.clone();
                             let handle = tokio::spawn(async move {
@@ -191,30 +182,68 @@ impl DockerService {
                                                 return;
                                             }
                                         };
-
-                                        let config = ContainerConfig {
-                                            task_bridge_socket_path,
-                                            node_address,
-                                            p2p_seed,
-                                            gpu,
-                                            system_memory_mb,
+                                        let cmd = match payload.cmd {
+                                            Some(cmd_vec) => {
+                                                cmd_vec.into_iter().map(|arg| {
+                                                    let mut processed_arg = arg.replace("${SOCKET_PATH}", &task_bridge_socket_path);
+                                                    if let Some(seed) = p2p_seed {
+                                                        processed_arg = processed_arg.replace("${WORKER_P2P_SEED}", &seed.to_string());
+                                                    }
+                                                    processed_arg
+                                                }).collect()
+                                            }
+                                            None => vec!["sleep".to_string(), "infinity".to_string()],
                                         };
 
-                                        let result = Self::start_container_with_config(
-                                            &manager_clone,
-                                            &payload,
-                                            &container_task_id,
-                                            &config,
-                                        ).await;
+                                        let mut env_vars: HashMap<String, String> = HashMap::new();
+                                        if let Some(env) = &payload.env_vars {
+                                            // Clone env vars and replace ${SOCKET_PATH} in values
+                                            for (key, value) in env.iter() {
+                                                let mut processed_value = value.replace("${SOCKET_PATH}", &task_bridge_socket_path);
+                                                if let Some(seed) = p2p_seed {
+                                                    processed_value = processed_value.replace("${WORKER_P2P_SEED}", &seed.to_string());
+                                                }
+                                                env_vars.insert(key.clone(), processed_value);
+                                            }
+                                        }
 
-                                        let task_id = payload.id;
-                                        match result {
+                                        env_vars.insert("NODE_ADDRESS".to_string(), node_address);
+                                        env_vars.insert("PRIME_MONITOR__SOCKET__PATH".to_string(), task_bridge_socket_path.to_string());
+                                        env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
+
+                                        let mut volumes = vec![
+                                            (
+                                                Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
+                                                Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
+                                                false,
+                                                false,
+                                            )
+                                        ];
+
+                                        if let Some(volume_mounts) = &payload.volume_mounts {
+                                            for volume_mount in volume_mounts {
+                                                volumes.push((
+                                                    volume_mount.host_path.clone(),
+                                                    volume_mount.container_path.clone(),
+                                                    false,
+                                                    true
+                                                ));
+                                            }
+                                        }
+                                        let shm_size = match system_memory_mb {
+                                            Some(mem_mb) => (mem_mb as u64) * 1024 * 1024 / 2, // Convert MB to bytes and divide by 2
+                                            None => {
+                                                Console::warning("System memory not available, using default shm size");
+                                                67108864 // Default to 64MB in bytes
+                                            }
+                                        };
+                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size), payload.entrypoint, None).await {
                                             Ok(container_id) => {
                                                 Console::info("DockerService", &format!("Container started with id: {}", container_id));
                                             },
                                             Err(e) => {
                                                 log::error!("Error starting container: {}", e);
-                                                state_clone.update_task_state(task_id, TaskState::FAILED).await;
+                                                state_clone.update_task_state(payload.id, TaskState::FAILED).await;
                                             }
                                         }
                                         state_clone.set_last_started(Utc::now()).await;
@@ -286,100 +315,6 @@ impl DockerService {
         Ok(())
     }
 
-    async fn start_container_with_config(
-        docker_manager: &DockerManager,
-        task: &Task,
-        container_id: &str,
-        config: &ContainerConfig,
-    ) -> Result<String, String> {
-        let cmd = match &task.cmd {
-            Some(cmd_vec) => cmd_vec
-                .iter()
-                .map(|arg| {
-                    let mut processed_arg =
-                        arg.replace("${SOCKET_PATH}", &config.task_bridge_socket_path);
-                    if let Some(seed) = config.p2p_seed {
-                        processed_arg =
-                            processed_arg.replace("${WORKER_P2P_SEED}", &seed.to_string());
-                    }
-                    processed_arg
-                })
-                .collect(),
-            None => vec!["sleep".to_string(), "infinity".to_string()],
-        };
-
-        let mut env_vars: HashMap<String, String> = HashMap::new();
-        if let Some(env) = &task.env_vars {
-            for (key, value) in env.iter() {
-                let mut processed_value =
-                    value.replace("${SOCKET_PATH}", &config.task_bridge_socket_path);
-                if let Some(seed) = config.p2p_seed {
-                    processed_value =
-                        processed_value.replace("${WORKER_P2P_SEED}", &seed.to_string());
-                }
-                env_vars.insert(key.clone(), processed_value);
-            }
-        }
-
-        env_vars.insert("NODE_ADDRESS".to_string(), config.node_address.to_string());
-        env_vars.insert(
-            "PRIME_MONITOR__SOCKET__PATH".to_string(),
-            config.task_bridge_socket_path.to_string(),
-        );
-        env_vars.insert("PRIME_TASK_ID".to_string(), task.id.to_string());
-
-        let mut volumes = vec![(
-            Path::new(&config.task_bridge_socket_path)
-                .parent()
-                .unwrap()
-                .to_path_buf()
-                .to_string_lossy()
-                .to_string(),
-            Path::new(&config.task_bridge_socket_path)
-                .parent()
-                .unwrap()
-                .to_path_buf()
-                .to_string_lossy()
-                .to_string(),
-            false,
-            false,
-        )];
-
-        if let Some(volume_mounts) = &task.volume_mounts {
-            for volume_mount in volume_mounts {
-                volumes.push((
-                    volume_mount.host_path.clone(),
-                    volume_mount.container_path.clone(),
-                    false,
-                    true,
-                ));
-            }
-        }
-
-        let shm_size = match config.system_memory_mb {
-            Some(mem_mb) => (mem_mb as u64) * 1024 * 1024 / 2,
-            None => {
-                Console::warning("System memory not available, using default shm size");
-                67108864
-            }
-        };
-
-        docker_manager
-            .start_container(
-                &task.image,
-                container_id,
-                Some(env_vars),
-                Some(cmd),
-                config.gpu.clone(),
-                Some(volumes),
-                Some(shm_size),
-                task.entrypoint.clone(),
-                None,
-            )
-            .await
-            .map_err(|e| e.to_string())
-    }
-
     pub async fn get_logs(&self) -> Result<String, Box<dyn std::error::Error>> {
         let current_task = self.state.get_current_task().await;
         match current_task {
@@ -407,50 +342,7 @@ impl DockerService {
             Some(task) => {
                 let config_hash = task.generate_config_hash();
                 let container_id = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
-
-                Console::info(
-                    "DockerService",
-                    &format!("Pulling latest image {} before restart", task.image),
-                );
-                self.docker_manager.pull_image(&task.image).await?;
-
-                Console::info(
-                    "DockerService",
-                    &format!("Removing existing container {}", container_id),
-                );
-                if let Err(e) = self.docker_manager.remove_container(&container_id).await {
-                    Console::warning(&format!(
-                        "Failed to remove container {}: {:?}",
-                        container_id, e
-                    ));
-                }
-
-                Console::info("DockerService", "Starting new container with updated image");
-
-                let config = ContainerConfig {
-                    task_bridge_socket_path: self.task_bridge_socket_path.clone(),
-                    node_address: self.node_address.clone(),
-                    p2p_seed: self.p2p_seed,
-                    gpu: self.gpu.clone(),
-                    system_memory_mb: self.system_memory_mb,
-                };
-
-                Self::start_container_with_config(
-                    &self.docker_manager,
-                    &task,
-                    &container_id,
-                    &config,
-                )
-                .await
-                .map_err(std::io::Error::other)?;
-
-                Console::info(
-                    "DockerService",
-                    &format!(
-                        "Task restarted successfully with container: {}",
-                        container_id
-                    ),
-                );
+                self.docker_manager.restart_container(&container_id).await?;
                 Ok(())
             }
             None => Ok(()),
