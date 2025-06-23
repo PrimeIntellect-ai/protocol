@@ -1,14 +1,16 @@
+use alloy::primitives::U256;
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
-use utoipa::ToSchema;
+use utoipa::{openapi::Object, ToSchema};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct Node {
     pub id: String,
+    // the node's on-chain address.
     pub provider_address: String,
     pub ip_address: String,
     pub port: u16,
@@ -563,6 +565,15 @@ pub struct DiscoveryNode {
     pub created_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub location: Option<NodeLocation>,
+    #[schema(schema_with = custom_u256)] // TODO?
+    pub latest_balance: Option<U256>,
+}
+
+fn custom_u256() -> Object {
+    utoipa::openapi::ObjectBuilder::new()
+        .schema_type(utoipa::openapi::schema::Type::String)
+        .description(Some("A U256 value represented as a hexadecimal string"))
+        .build()
 }
 
 impl DiscoveryNode {
@@ -576,6 +587,7 @@ impl DiscoveryNode {
             last_updated: Some(Utc::now()),
             created_at: self.created_at,
             location: self.location.clone(),
+            latest_balance: self.latest_balance,
         }
     }
 }
@@ -599,6 +611,7 @@ impl From<Node> for DiscoveryNode {
             last_updated: None,
             created_at: Some(Utc::now()),
             location: None,
+            latest_balance: None,
         }
     }
 }

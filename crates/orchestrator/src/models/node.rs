@@ -1,4 +1,5 @@
 use alloy::primitives::Address;
+use alloy::primitives::U256;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shared::models::heartbeat::TaskDetails;
@@ -34,6 +35,15 @@ pub struct OrchestratorNode {
     pub worker_p2p_addresses: Option<Vec<String>>,
     #[serde(default)]
     pub location: Option<NodeLocation>,
+    #[schema(schema_with = custom_u256)] // TODO?
+    pub balance: Option<U256>,
+}
+
+fn custom_u256() -> utoipa::openapi::Object {
+    utoipa::openapi::ObjectBuilder::new()
+        .schema_type(utoipa::openapi::schema::Type::String)
+        .description(Some("A U256 value represented as a hexadecimal string"))
+        .build()
 }
 
 fn serialize_address<S>(address: &Address, serializer: S) -> Result<S::Ok, S::Error>
@@ -61,6 +71,7 @@ impl From<DiscoveryNode> for OrchestratorNode {
             worker_p2p_id: discovery_node.worker_p2p_id.clone(),
             worker_p2p_addresses: discovery_node.worker_p2p_addresses.clone(),
             location: discovery_node.location.clone(),
+            balance: discovery_node.latest_balance,
         }
     }
 }
