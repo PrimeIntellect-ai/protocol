@@ -41,7 +41,6 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::task::JoinSet;
 use url::Url;
 
@@ -176,32 +175,6 @@ async fn main() -> Result<()> {
 
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
-
-    if server_mode == ServerMode::ProcessorOnly || server_mode == ServerMode::Full {
-        info!("Migrating node store to hash");
-        if let Err(e) = store_context.node_store.migrate_json_to_hash().await {
-            error!("Error migrating node store to hash: {}", e);
-        }
-        info!("Node store migrated to hash");
-    } else {
-        // Wait for all nodes to be migrated to hash format
-        loop {
-            match store_context.node_store.count_non_hash_format_nodes().await {
-                Ok(0) => {
-                    info!("All nodes are in hash format");
-                    break;
-                }
-                Ok(count) => {
-                    info!("Waiting for {} nodes to be migrated to hash format", count);
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-                Err(e) => {
-                    error!("Error counting non-hash format nodes: {}", e);
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-            }
-        }
-    }
 
     let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
 
