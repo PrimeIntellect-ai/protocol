@@ -224,7 +224,12 @@ async fn main() -> Result<()> {
     // Run one-time migration for inactive nodes
     let migration_store_context = store_context.clone();
     if matches!(server_mode, ServerMode::ProcessorOnly | ServerMode::Full) {
-        run_inactive_node_metric_migration(migration_store_context).await?;
+        let migration_store_context = migration_store_context.clone();
+        tokio::spawn(async move {
+            if let Err(e) = run_inactive_node_metric_migration(migration_store_context).await {
+                error!("Failed to run inactive node metric migration: {}", e);
+            }
+        });
     }
 
     let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
