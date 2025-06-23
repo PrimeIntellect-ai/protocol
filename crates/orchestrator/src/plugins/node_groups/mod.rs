@@ -776,19 +776,93 @@ impl NodeGroupsPlugin {
         let mut total_nodes = BTreeSet::new();
         let mut groups_to_dissolve = Vec::new();
 
-        // Select groups for merging
-        for group in compatible_groups {
-            if total_nodes.len() + group.nodes.len() <= config.max_group_size {
-                merge_batch.push(group.clone());
-                total_nodes.extend(group.nodes.iter().cloned());
-                groups_to_dissolve.push(group.id.clone());
+        // If proximity optimization is enabled, try to use location-based selection
+        if self.proximity_optimization_policy.enabled {
+            // Get node information for location data
+            let nodes = self.store_context.node_store.get_nodes().await?;
+            let node_map: HashMap<String, &OrchestratorNode> = nodes
+                .iter()
+                .map(|node| (node.address.to_string(), node))
+                .collect();
 
-                if total_nodes.len() >= config.max_group_size {
-                    break;
+            // Try to find a seed group with location data
+            let seed_group = compatible_groups.iter().find(|group| {
+                group
+                    .nodes
+                    .iter()
+                    .next()
+                    .and_then(|addr| node_map.get(addr))
+                    .and_then(|node| node.location.as_ref())
+                    .is_some()
+            });
+
+            if let Some(seed) = seed_group {
+                // Found a seed with location, use proximity-based selection
+                let seed_node = node_map.get(seed.nodes.iter().next().unwrap()).unwrap();
+
+                merge_batch.push(seed.clone());
+                total_nodes.extend(seed.nodes.iter().cloned());
+                groups_to_dissolve.push(seed.id.clone());
+
+                // Create a sorted list of remaining groups by proximity
+                let mut remaining_with_distance: Vec<(f64, &NodeGroup)> = compatible_groups
+                    .iter()
+                    .filter(|g| g.id != seed.id)
+                    .filter_map(|group| {
+                        let node_addr = group.nodes.iter().next()?;
+                        let node = node_map.get(node_addr)?;
+                        let node_loc = node.location.as_ref()?;
+                        let seed_loc = seed_node.location.as_ref()?;
+                        let distance = Self::calculate_distance(seed_loc, node_loc);
+                        Some((distance, group))
+                    })
+                    .collect();
+
+                remaining_with_distance
+                    .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+                // Add closest groups first
+                for (_, group) in remaining_with_distance {
+                    if total_nodes.len() + group.nodes.len() <= config.max_group_size {
+                        merge_batch.push(group.clone());
+                        total_nodes.extend(group.nodes.iter().cloned());
+                        groups_to_dissolve.push(group.id.clone());
+
+                        if total_nodes.len() >= config.max_group_size {
+                            break;
+                        }
+                    }
                 }
             }
         }
 
+        // If no proximity-based selection happened or we still need more groups, use original logic
+        if merge_batch.is_empty()
+            || (total_nodes.len() < config.max_group_size
+                && total_nodes.len() < config.min_group_size)
+        {
+            // Reset if we didn't get enough nodes
+            if total_nodes.len() < config.min_group_size {
+                merge_batch.clear();
+                total_nodes.clear();
+                groups_to_dissolve.clear();
+            }
+
+            // Original selection logic
+            for group in compatible_groups {
+                if !groups_to_dissolve.contains(&group.id)
+                    && total_nodes.len() + group.nodes.len() <= config.max_group_size
+                {
+                    merge_batch.push(group.clone());
+                    total_nodes.extend(group.nodes.iter().cloned());
+                    groups_to_dissolve.push(group.id.clone());
+
+                    if total_nodes.len() >= config.max_group_size {
+                        break;
+                    }
+                }
+            }
+        }
         // Validate merge conditions
         if !self
             .is_merge_beneficial(&merge_batch, total_nodes.len())
