@@ -335,6 +335,7 @@ fn generate_file_name(template: &str, original_name: &str) -> String {
 mod tests {
 
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     use super::*;
     use crate::plugins::StatusUpdatePlugin;
@@ -580,13 +581,14 @@ mod tests {
             compute_requirements: None,
         };
 
-        let plugin = NodeGroupsPlugin::new(
+        let plugin = Arc::new(NodeGroupsPlugin::new(
             vec![config],
             app_state.redis_store.clone(),
             app_state.store_context.clone(),
             None,
             None,
-        );
+        ));
+        let _ = plugin.clone().register_observer().await;
 
         let _ = plugin
             .handle_status_change(&node, &NodeStatus::Healthy)
