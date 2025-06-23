@@ -11,6 +11,7 @@ use crate::{
 
 use alloy::primitives::Address;
 use redis::Commands;
+use shared::models::node::NodeLocation;
 use shared::models::{
     node::{ComputeRequirements, ComputeSpecs, GpuSpecs},
     task::{SchedulingConfig, Task, TaskState},
@@ -42,6 +43,18 @@ fn create_test_node(
         ..Default::default()
     }
 }
+
+fn create_test_node_with_location(
+    addr: &str,
+    status: NodeStatus,
+    compute_specs: Option<ComputeSpecs>,
+    location: NodeLocation,
+) -> OrchestratorNode {
+    let mut node = create_test_node(addr, status, compute_specs);
+    node.location = Some(location);
+    node
+}
+
 #[tokio::test]
 async fn test_parsing_groups_from_string() {
     let group_config = r#"
@@ -2717,4 +2730,208 @@ async fn test_scheduler_integration_with_dissolved_groups() {
         .handle_group_not_found("dissolved-group", &task.id.to_string())
         .await;
     assert!(result.is_ok(), "Should handle group not found gracefully");
+}
+
+#[tokio::test]
+async fn test_proximity_merging_prevents_wrong_nodes_grouping() {
+    let store = Arc::new(RedisStore::new_test());
+    let context_store = store.clone();
+    let store_context = Arc::new(StoreContext::new(context_store));
+
+    // Create configurations: solo first, then 2-node groups
+    let solo_config = NodeGroupConfiguration {
+        name: "1x40-48GB".to_string(),
+        min_group_size: 1,
+        max_group_size: 1,
+        compute_requirements: None,
+    };
+
+    let group_config = NodeGroupConfiguration {
+        name: "2x40-48GB".to_string(),
+        min_group_size: 2,
+        max_group_size: 2,
+        compute_requirements: None,
+    };
+
+    let plugin = NodeGroupsPlugin::new_with_policy(
+        vec![solo_config.clone(), group_config.clone()],
+        store.clone(),
+        store_context.clone(),
+        None,
+        None,
+        TaskSwitchingPolicy::default(),
+        ProximityOptimizationPolicy { enabled: true },
+    );
+    // Create tasks that allow both configurations
+    let task1 = Task {
+        scheduling_config: Some(SchedulingConfig {
+            plugins: Some(HashMap::from([(
+                "node_groups".to_string(),
+                HashMap::from([(
+                    "allowed_topologies".to_string(),
+                    vec!["1x40-48GB".to_string(), "2x40-48GB".to_string()],
+                )]),
+            )])),
+        }),
+        ..Default::default()
+    };
+    let _ = plugin.store_context.task_store.add_task(task1).await;
+
+    // Create 4 nodes: 2 in Montreal, 2 in Dallas (based on prod data)
+    let montreal_node1 = create_test_node_with_location(
+        "0xB2631de00e6120969d34456b9c7Ee22352f13b02",
+        NodeStatus::Healthy,
+        Some(ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(1),
+                model: Some("nvidia rtx a6000".to_string()),
+                memory_mb: Some(49140),
+                indices: Some(vec![0]),
+            }),
+            ..Default::default()
+        }),
+        NodeLocation {
+            city: Some("Montreal".to_string()),
+            country: Some("CA".to_string()),
+            latitude: 45.5186,
+            longitude: -73.5545,
+            region: Some("Quebec".to_string()),
+        },
+    );
+
+    let montreal_node2 = create_test_node_with_location(
+        "0x2C490CAdf3A8C2Ab67b00831973da8b9d18e5b6D",
+        NodeStatus::Healthy,
+        Some(ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(1),
+                model: Some("nvidia rtx a6000".to_string()),
+                memory_mb: Some(49140),
+                indices: Some(vec![0]),
+            }),
+            ..Default::default()
+        }),
+        NodeLocation {
+            city: Some("Montreal".to_string()),
+            country: Some("CA".to_string()),
+            latitude: 45.5186,
+            longitude: -73.5545,
+            region: Some("Quebec".to_string()),
+        },
+    );
+
+    let dallas_node1 = create_test_node_with_location(
+        "0x7ec9d3bc276B74969341c03dc00B9f70c0EadFd5",
+        NodeStatus::Healthy,
+        Some(ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(1),
+                model: Some("nvidia rtx a6000".to_string()),
+                memory_mb: Some(49140),
+                indices: Some(vec![0]),
+            }),
+            ..Default::default()
+        }),
+        NodeLocation {
+            city: Some("Dallas".to_string()),
+            country: Some("US".to_string()),
+            latitude: 32.7942,
+            longitude: -96.7475,
+            region: Some("Texas".to_string()),
+        },
+    );
+
+    let dallas_node2 = create_test_node_with_location(
+        "0x32d7cd9b8F6eA556a67E0c9386cdd911Da3AD3E5",
+        NodeStatus::Healthy,
+        Some(ComputeSpecs {
+            gpu: Some(GpuSpecs {
+                count: Some(1),
+                model: Some("nvidia rtx a6000".to_string()),
+                memory_mb: Some(49140),
+                indices: Some(vec![0]),
+            }),
+            ..Default::default()
+        }),
+        NodeLocation {
+            city: Some("Dallas".to_string()),
+            country: Some("US".to_string()),
+            latitude: 32.7942,
+            longitude: -96.7475,
+            region: Some("Texas".to_string()),
+        },
+    );
+
+    // Store all nodes
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(montreal_node1.clone())
+        .await;
+    let formed_groups = plugin.test_try_form_new_groups().await.unwrap();
+    assert_eq!(formed_groups.len(), 1, "Should form 1 solo group");
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(montreal_node2.clone())
+        .await;
+    let formed_groups = plugin.test_try_form_new_groups().await.unwrap();
+    assert_eq!(formed_groups.len(), 1, "Should form 1 solo group");
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(dallas_node1.clone())
+        .await;
+    let formed_groups = plugin.test_try_form_new_groups().await.unwrap();
+    assert_eq!(formed_groups.len(), 1, "Should form 1 solo group");
+    let _ = plugin
+        .store_context
+        .node_store
+        .add_node(dallas_node2.clone())
+        .await;
+    let formed_groups = plugin.test_try_form_new_groups().await.unwrap();
+    assert_eq!(formed_groups.len(), 1, "Should form 1 solo group");
+
+    // Now merge the solo groups
+    let merged_groups = plugin.test_try_merge_solo_groups().await.unwrap();
+
+    // Should create 2 merged groups
+    assert_eq!(merged_groups.len(), 2);
+
+    // Verify Montreal nodes are grouped together
+    let has_montreal_group = merged_groups.iter().any(|g| {
+        g.nodes.contains(&montreal_node1.address.to_string())
+            && g.nodes.contains(&montreal_node2.address.to_string())
+            && g.nodes.len() == 2
+    });
+
+    // Verify Dallas nodes are grouped together
+    let has_dallas_group = merged_groups.iter().any(|g| {
+        g.nodes.contains(&dallas_node1.address.to_string())
+            && g.nodes.contains(&dallas_node2.address.to_string())
+            && g.nodes.len() == 2
+    });
+
+    assert!(
+        has_montreal_group,
+        "Montreal nodes should be grouped together"
+    );
+    assert!(has_dallas_group, "Dallas nodes should be grouped together");
+
+    // Verify no cross-city grouping occurred
+    for group in &merged_groups {
+        let has_montreal = group.nodes.iter().any(|n| {
+            n == &montreal_node1.address.to_string() || n == &montreal_node2.address.to_string()
+        });
+        let has_dallas = group.nodes.iter().any(|n| {
+            n == &dallas_node1.address.to_string() || n == &dallas_node2.address.to_string()
+        });
+
+        // A group should not have both Montreal and Dallas nodes
+        assert!(
+            !(has_montreal && has_dallas),
+            "Group should not mix nodes from different cities: {:?}",
+            group.nodes
+        );
+    }
 }
