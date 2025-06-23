@@ -1567,6 +1567,20 @@ impl SyntheticDataValidator<WalletProvider> {
                             #[cfg(test)]
                             if let Err(_e) = self.soft_invalidate_work(&work_key) {
                                 // Test mode: error handling skipped
+                            } else {
+                                // Mark work as soft invalidated due to incomplete group
+                                if let Err(e) = self
+                                    .update_work_validation_status(
+                                        &work_key,
+                                        &ValidationResult::IncompleteGroup,
+                                    )
+                                    .await
+                                {
+                                    error!(
+                                        "Failed to update work validation status for {}: {}",
+                                        work_key, e
+                                    );
+                                }
                             }
                             #[cfg(not(test))]
                             if let Err(e) = self.soft_invalidate_work(&work_key).await {
