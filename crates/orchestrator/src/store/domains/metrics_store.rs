@@ -1,14 +1,13 @@
 use crate::store::core::RedisStore;
 use alloy::primitives::Address;
 use anyhow::{anyhow, Result};
-use log::{error, info};
+use log::error;
 use redis::AsyncCommands;
 use shared::models::metric::MetricEntry;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 const ORCHESTRATOR_NODE_METRICS_STORE: &str = "orchestrator:node_metrics";
-const ORCHESTRATOR_METRICS_STORE: &str = "orchestrator:metrics";
 
 pub struct MetricsStore {
     redis: Arc<RedisStore>,
@@ -21,77 +20,6 @@ impl MetricsStore {
 
     fn clean_label(&self, label: &str) -> String {
         label.replace(':', "")
-    }
-
-    pub async fn migrate_node_metrics_if_needed(&self, node_address: Address) -> Result<()> {
-        let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let new_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
-
-        // Check if the new node-centric key already exists
-        let exists: bool = con.exists(&new_key).await?;
-        if exists {
-            info!("Migration already complete for this node: {}", node_address);
-            // Migration already complete for this node
-            return Ok(());
-        }
-
-        // Perform the slow SCAN to find all metrics for this node in the old data structure
-        let pattern = format!("{}:*:*", ORCHESTRATOR_METRICS_STORE);
-        let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;
-        let mut old_keys_to_migrate = Vec::new();
-
-        while let Some(key) = iter.next_item().await {
-            old_keys_to_migrate.push(key);
-        }
-        drop(iter);
-
-        // Collect all metrics for this node from the old structure
-        let mut node_metrics = HashMap::new();
-        let mut keys_to_clean = Vec::new();
-
-        for old_key in old_keys_to_migrate {
-            if let Some(value_str) = con
-                .hget::<_, _, Option<String>>(&old_key, node_address.to_string())
-                .await?
-            {
-                if let Ok(val) = value_str.parse::<f64>() {
-                    let parts: Vec<&str> = old_key.split(':').collect();
-                    if parts.len() >= 4 {
-                        let task_id = parts[2];
-                        let metric_name = parts[3];
-                        let new_metric_key = format!("{}:{}", task_id, metric_name);
-                        node_metrics.insert(new_metric_key, val);
-                        keys_to_clean.push(old_key);
-                    }
-                }
-            }
-        }
-
-        // If we have metrics for this node, perform the atomic migration
-        if !node_metrics.is_empty() {
-            // Use Redis MULTI/EXEC transaction for atomicity
-            let mut pipe = redis::pipe();
-            pipe.atomic();
-
-            // Set all metrics in the new node-centric key
-            for (metric_key, value) in &node_metrics {
-                pipe.hset(&new_key, metric_key, value);
-            }
-
-            // Clean up the old data structure by removing this node's fields
-            for old_key in &keys_to_clean {
-                pipe.hdel(old_key, node_address.to_string());
-            }
-
-            pipe.query_async::<()>(&mut con).await?;
-        }
-
-        // Always create the key to mark migration as complete, even if no metrics exist
-        // This prevents future migration attempts for nodes without data
-        let _: () = con.hset(&new_key, "_migrated", "true").await?;
-        let _: () = con.hdel(&new_key, "_migrated").await?;
-
-        Ok(())
     }
 
     pub async fn store_metrics(
