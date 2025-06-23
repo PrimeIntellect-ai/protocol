@@ -206,7 +206,6 @@ impl WebhookPlugin {
         Err(error)
     }
 
-    #[cfg(not(test))]
     fn send_event(&self, event: WebhookEvent) -> Result<(), Error> {
         let payload = WebhookPayload::new(event);
         let webhook_url = self.webhook_url.clone();
@@ -224,29 +223,6 @@ impl WebhookPlugin {
         Ok(())
     }
 
-    #[cfg(test)]
-    async fn send_event(&self, event: WebhookEvent) -> Result<(), Error> {
-        let payload = WebhookPayload::new(event);
-        self.send_with_retry(payload).await
-    }
-
-    #[cfg(test)]
-    pub async fn send_node_status_changed(
-        &self,
-        node: &OrchestratorNode,
-        old_status: &NodeStatus,
-    ) -> Result<(), Error> {
-        let event = WebhookEvent::NodeStatusChanged {
-            node_address: node.address.to_string(),
-            ip_address: node.ip_address.clone(),
-            port: node.port,
-            old_status: old_status.to_string(),
-            new_status: node.status.to_string(),
-        };
-        self.send_event(event).await
-    }
-
-    #[cfg(not(test))]
     pub fn send_node_status_changed(
         &self,
         node: &OrchestratorNode,
@@ -262,22 +238,6 @@ impl WebhookPlugin {
         self.send_event(event)
     }
 
-    #[cfg(test)]
-    pub async fn send_group_created(
-        &self,
-        group_id: String,
-        configuration_name: String,
-        nodes: Vec<String>,
-    ) -> Result<(), Error> {
-        let event = WebhookEvent::GroupCreated {
-            group_id,
-            configuration_name,
-            nodes,
-        };
-        self.send_event(event).await
-    }
-
-    #[cfg(not(test))]
     pub fn send_group_created(
         &self,
         group_id: String,
@@ -292,22 +252,6 @@ impl WebhookPlugin {
         self.send_event(event)
     }
 
-    #[cfg(test)]
-    pub async fn send_group_destroyed(
-        &self,
-        group_id: String,
-        configuration_name: String,
-        nodes: Vec<String>,
-    ) -> Result<(), Error> {
-        let event = WebhookEvent::GroupDestroyed {
-            group_id,
-            configuration_name,
-            nodes,
-        };
-        self.send_event(event).await
-    }
-
-    #[cfg(not(test))]
     pub fn send_group_destroyed(
         &self,
         group_id: String,
@@ -322,17 +266,6 @@ impl WebhookPlugin {
         self.send_event(event)
     }
 
-    #[cfg(test)]
-    pub async fn send_metrics_updated(
-        &self,
-        pool_id: u32,
-        metrics: std::collections::HashMap<String, f64>,
-    ) -> Result<(), Error> {
-        let event = WebhookEvent::MetricsUpdated { pool_id, metrics };
-        self.send_event(event).await
-    }
-
-    #[cfg(not(test))]
     pub fn send_metrics_updated(
         &self,
         pool_id: u32,
@@ -359,11 +292,6 @@ impl StatusUpdatePlugin for WebhookPlugin {
             return Ok(());
         }
 
-        #[cfg(test)]
-        if let Err(e) = self.send_node_status_changed(node, old_status).await {
-            error!("Failed to send webhook to {}: {}", self.webhook_url, e);
-        }
-        #[cfg(not(test))]
         if let Err(e) = self.send_node_status_changed(node, old_status) {
             error!("Failed to send webhook to {}: {}", self.webhook_url, e);
         }
@@ -390,8 +318,15 @@ mod tests {
         }
     }
 
+    impl WebhookPlugin {
+        async fn send_event_blocking(&self, event: WebhookEvent) -> Result<(), Error> {
+            let payload = WebhookPayload::new(event);
+            self.send_with_retry(payload).await
+        }
+    }
+
     #[tokio::test]
-    async fn test_webhook_sends_on_status_change() -> Result<()> {
+    async fn test_webhook_sends_on_status_change() {
         let mut server = Server::new_async().await;
 
         let _mock = server
@@ -417,11 +352,10 @@ mod tests {
         let node = create_test_node(NodeStatus::Healthy);
         let result = plugin.handle_status_change(&node, &NodeStatus::Dead).await;
         assert!(result.is_ok());
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_webhook_sends_on_group_created() -> Result<()> {
+    async fn test_webhook_sends_on_group_created() {
         let mut server = Server::new_async().await;
         let _mock = server
             .mock("POST", "/webhook")
@@ -444,15 +378,17 @@ mod tests {
         let group_id = "1234567890";
         let configuration_name = "test_configuration";
         let nodes = vec!["0x1234567890123456789012345678901234567890".to_string()];
-        let result = plugin
-            .send_group_created(group_id.to_string(), configuration_name.to_string(), nodes)
-            .await;
+        let event = WebhookEvent::GroupCreated {
+            group_id: group_id.to_string(),
+            configuration_name: configuration_name.to_string(),
+            nodes,
+        };
+        let result = plugin.send_event_blocking(event).await;
         assert!(result.is_ok());
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_webhook_sends_on_metrics_updated() -> Result<()> {
+    async fn test_webhook_sends_on_metrics_updated() {
         let mut server = Server::new_async().await;
         let mock = server
             .mock("POST", "/webhook")
@@ -475,15 +411,18 @@ mod tests {
         let mut metrics = std::collections::HashMap::new();
         metrics.insert("test_metric".to_string(), 1.0);
         metrics.insert("metric_2".to_string(), 2.0);
-        let result = plugin.send_metrics_updated(1, metrics).await;
+        let event = WebhookEvent::MetricsUpdated {
+            pool_id: 1,
+            metrics,
+        };
+        let result = plugin.send_event_blocking(event).await;
         assert!(result.is_ok());
 
         mock.assert_async().await;
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_with_bearer_token() -> Result<()> {
+    async fn test_with_bearer_token() {
         let mut server = Server::new_async().await;
         let mock = server
             .mock("POST", "/webhook")
@@ -507,14 +446,17 @@ mod tests {
         let mut metrics = std::collections::HashMap::new();
         metrics.insert("test_metric".to_string(), 1.0);
         metrics.insert("metric_2".to_string(), 2.0);
-        let result = plugin.send_metrics_updated(1, metrics).await;
+        let event = WebhookEvent::MetricsUpdated {
+            pool_id: 1,
+            metrics,
+        };
+        let result = plugin.send_event_blocking(event).await;
         assert!(result.is_ok());
         mock.assert_async().await;
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_webhook_retry_logic() -> Result<()> {
+    async fn test_webhook_retry_logic() {
         let mut server = Server::new_async().await;
 
         // First two attempts fail, third succeeds
@@ -543,13 +485,17 @@ mod tests {
 
         let mut metrics = std::collections::HashMap::new();
         metrics.insert("test_metric".to_string(), 1.0);
-        let result = plugin.send_metrics_updated(1, metrics).await;
+        let result = plugin
+            .send_event_blocking(WebhookEvent::MetricsUpdated {
+                pool_id: 1,
+                metrics,
+            })
+            .await;
         assert!(result.is_ok());
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_webhook_max_retries_exceeded() -> Result<()> {
+    async fn test_webhook_max_retries_exceeded() {
         let mut server = Server::new_async().await;
 
         // All attempts fail
@@ -566,8 +512,12 @@ mod tests {
 
         let mut metrics = std::collections::HashMap::new();
         metrics.insert("test_metric".to_string(), 1.0);
-        let result = plugin.send_metrics_updated(1, metrics).await;
+        let result = plugin
+            .send_event_blocking(WebhookEvent::MetricsUpdated {
+                pool_id: 1,
+                metrics,
+            })
+            .await;
         assert!(result.is_err());
-        Ok(())
     }
 }

@@ -1043,14 +1043,13 @@ impl SyntheticDataValidator<WalletProvider> {
         }
 
         if !work_units_match {
-            let nodes_with_wrong_work_unit_claims = self
-                .handle_work_units_mismatch(
-                    group,
-                    status,
-                    total_claimed_units,
-                    node_work_units,
-                    output_flops_u256,
-                )?;
+            let nodes_with_wrong_work_unit_claims = self.handle_work_units_mismatch(
+                group,
+                status,
+                total_claimed_units,
+                node_work_units,
+                output_flops_u256,
+            )?;
             Ok(nodes_with_wrong_work_unit_claims)
         } else {
             Ok(Vec::new())
@@ -1294,14 +1293,13 @@ impl SyntheticDataValidator<WalletProvider> {
             let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
             toploc_nodes_to_invalidate.extend(rejected_nodes);
         } else if status.status == ValidationResult::Accept {
-            let wrong_claim_nodes = self
-                .handle_group_toploc_acceptance(
-                    &group,
-                    &status,
-                    total_claimed_units,
-                    &node_work_units,
-                    &toploc_config_name,
-                )?;
+            let wrong_claim_nodes = self.handle_group_toploc_acceptance(
+                &group,
+                &status,
+                total_claimed_units,
+                &node_work_units,
+                &toploc_config_name,
+            )?;
             nodes_with_wrong_work_unit_claims.extend(wrong_claim_nodes);
         }
 

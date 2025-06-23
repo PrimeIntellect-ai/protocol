@@ -70,17 +70,7 @@ impl MetricsWebhookSender {
             if Self::metrics_changed(&metrics, &self.last_sent_metrics) {
                 info!("Sending {} metrics via webhook", metrics.len());
                 for plugin in &self.webhook_plugins {
-                    #[cfg(test)]
-                    {
-                        let _ = plugin
-                            .send_metrics_updated(self.pool_id, metrics.clone())
-                            .await;
-                    }
-                    #[cfg(not(test))]
-                    {
-                        let _ = plugin
-                            .send_metrics_updated(self.pool_id, metrics.clone());
-                    }
+                    let _ = plugin.send_metrics_updated(self.pool_id, metrics.clone());
                 }
                 // Update last sent metrics
                 self.last_sent_metrics = metrics.clone();
