@@ -328,7 +328,6 @@ impl NodeGroupsPlugin {
         Ok(None)
     }
 
-    /// Batch get node groups for multiple nodes at once, eliminating N+1 queries
     pub async fn get_node_groups_batch(
         &self,
         node_addresses: &[String],
@@ -340,14 +339,12 @@ impl NodeGroupsPlugin {
             return Ok(result);
         }
 
-        // Step 1: Batch fetch all group IDs for the given nodes
-        let mut group_ids = Vec::new();
+        let mut pipe = redis::pipe();
         for node_addr in node_addresses {
-            let group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node_addr).await?;
-            group_ids.push(group_id);
+            pipe.hget(NODE_GROUP_MAP_KEY, node_addr);
         }
+        let group_ids: Vec<Option<String>> = pipe.query_async(&mut conn).await?;
 
-        // Step 2: Collect unique group IDs that exist
         let unique_group_ids: HashSet<String> = group_ids
             .iter()
             .filter_map(|opt| opt.as_ref())

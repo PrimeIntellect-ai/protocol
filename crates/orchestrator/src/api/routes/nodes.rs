@@ -68,7 +68,6 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
     if let Some(node_groups_plugin) = &app_state.node_groups_plugin {
         let mut nodes_with_groups = Vec::new();
 
-        // Batch fetch all node groups at once to eliminate N+1 queries
         let node_addresses: Vec<String> =
             nodes.iter().map(|node| node.address.to_string()).collect();
 
