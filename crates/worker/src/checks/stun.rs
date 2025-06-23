@@ -33,7 +33,7 @@ impl StunCheck {
         let server_addr = tokio::net::lookup_host(server)
             .await?
             .next()
-            .ok_or_else(|| format!("DNS resolution failed for {}", server))?;
+            .ok_or_else(|| format!("DNS resolution failed for {server}"))?;
         debug!("STUN server {} resolved to {}", server, server_addr);
 
         conn.connect(server_addr).await?;
@@ -56,12 +56,12 @@ impl StunCheck {
             Ok(None) => {
                 client.close().await?;
                 return Err(
-                    format!("STUN handler channel closed unexpectedly for {}", server).into(),
+                    format!("STUN handler channel closed unexpectedly for {server}").into(),
                 );
             }
             Err(_) => {
                 client.close().await?;
-                return Err(format!("Timeout waiting for STUN response from {}", server).into());
+                return Err(format!("Timeout waiting for STUN response from {server}").into());
             }
         };
 
@@ -69,7 +69,7 @@ impl StunCheck {
             Ok(msg) => msg,
             Err(e) => {
                 client.close().await?;
-                return Err(format!("Error in STUN event body from {}: {}", server, e).into());
+                return Err(format!("Error in STUN event body from {server}: {e}").into());
             }
         };
 

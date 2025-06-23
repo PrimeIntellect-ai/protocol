@@ -38,7 +38,7 @@ async fn get_metrics(app_state: Data<AppState>) -> HttpResponse {
     {
         Ok(metrics) => metrics,
         Err(e) => {
-            error!("Error getting aggregate metrics for all tasks: {}", e);
+            error!("Error getting aggregate metrics for all tasks: {e}");
             Default::default()
         }
     };
@@ -63,7 +63,7 @@ async fn get_all_metrics(app_state: Data<AppState>) -> HttpResponse {
     {
         Ok(metrics) => metrics,
         Err(e) => {
-            error!("Error getting all metrics: {}", e);
+            error!("Error getting all metrics: {e}");
             Default::default()
         }
     };
@@ -112,7 +112,7 @@ async fn create_metric(
         .store_manual_metrics(metric.label.clone(), metric.value)
         .await
     {
-        error!("Error storing manual metric: {}", e);
+        error!("Error storing manual metric: {e}");
     }
     HttpResponse::Ok().json(json!({"success": true}))
 }
@@ -143,7 +143,7 @@ async fn delete_metric(
     {
         Ok(success) => success,
         Err(e) => {
-            error!("Error deleting metric: {}", e);
+            error!("Error deleting metric: {e}");
             false
         }
     };

@@ -55,12 +55,10 @@ impl<'c> ComputeNodeOperations<'c> {
                             Ok((active, validated)) => {
                                 if first_check || active != last_active {
                                     if !first_check {
-                                        Console::info("🔄 Chain Sync - Pool membership changed", &format!("From {} to {}",
-                                            last_active,
-                                            active
+                                        Console::info("🔄 Chain Sync - Pool membership changed", &format!("From {last_active} to {active}"
                                         ));
                                     } else {
-                                        Console::info("🔄 Chain Sync - Node pool membership", &format!("{}", active));
+                                        Console::info("🔄 Chain Sync - Node pool membership", &format!("{active}"));
                                     }
                                     last_active = active;
                                 }
@@ -68,18 +66,16 @@ impl<'c> ComputeNodeOperations<'c> {
                                 if !active && is_running {
                                     Console::warning("Node is not longer in pool, shutting down heartbeat...");
                                     if let Err(e) = system_state.set_running(false, None).await {
-                                        log::error!("Failed to set running to false: {:?}", e);
+                                        log::error!("Failed to set running to false: {e:?}");
                                     }
                                 }
 
                                 if first_check || validated != last_validated {
                                     if !first_check {
-                                        Console::info("🔄 Chain Sync - Validation changed", &format!("From {} to {}",
-                                            last_validated,
-                                            validated
+                                        Console::info("🔄 Chain Sync - Validation changed", &format!("From {last_validated} to {validated}"
                                         ));
                                     } else {
-                                        Console::info("🔄 Chain Sync - Node validation", &format!("{}", validated));
+                                        Console::info("🔄 Chain Sync - Node validation", &format!("{validated}"));
                                     }
                                     last_validated = validated;
                                 }
@@ -96,11 +92,11 @@ impl<'c> ComputeNodeOperations<'c> {
                                                 last_locked = Some(locked);
                                                 let claimable_formatted = claimable.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0);
                                                 let locked_formatted = locked.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0);
-                                                Console::info("Rewards", &format!("{} claimable, {} locked", claimable_formatted, locked_formatted));
+                                                Console::info("Rewards", &format!("{claimable_formatted} claimable, {locked_formatted} locked"));
                                             }
                                         }
                                         Err(e) => {
-                                            log::debug!("Failed to check rewards for pool {}: {}", pool_id_u32, e);
+                                            log::debug!("Failed to check rewards for pool {pool_id_u32}: {e}");
                                         }
                                     }
                                 }
@@ -108,7 +104,7 @@ impl<'c> ComputeNodeOperations<'c> {
                                 first_check = false;
                             }
                             Err(e) => {
-                                log::error!("Failed to get node status: {}", e);
+                                log::error!("Failed to get node status: {e}");
                             }
                         }
                         sleep(Duration::from_secs(5)).await;
@@ -164,7 +160,7 @@ impl<'c> ComputeNodeOperations<'c> {
             .prime_network
             .add_compute_node(node_address, compute_units, signature.to_vec())
             .await?;
-        Console::success(&format!("Add node tx: {:?}", add_node_tx));
+        Console::success(&format!("Add node tx: {add_node_tx:?}"));
         Ok(true)
     }
 
@@ -183,7 +179,7 @@ impl<'c> ComputeNodeOperations<'c> {
             .prime_network
             .remove_compute_node(provider_address, node_address)
             .await?;
-        Console::success(&format!("Remove node tx: {:?}", remove_node_tx));
+        Console::success(&format!("Remove node tx: {remove_node_tx:?}"));
         Ok(true)
     }
 }

@@ -40,14 +40,14 @@ impl StoragePathDetector {
         if !std::path::Path::new(path).exists() {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Storage path override does not exist: {}", path),
+                format!("Storage path override does not exist: {path}"),
             )));
         }
 
         if let Err(e) = std::fs::metadata(path) {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
-                format!("Storage path override is not accessible: {} ({})", path, e),
+                format!("Storage path override is not accessible: {path} ({e})"),
             )));
         }
 
@@ -76,7 +76,7 @@ impl StoragePathDetector {
         // Add user home directory option
         let mut all_paths = fallback_paths;
         if let Ok(home) = std::env::var("HOME") {
-            all_paths.push(format!("{}/{}", home, APP_DIR_NAME));
+            all_paths.push(format!("{home}/{APP_DIR_NAME}"));
         }
 
         for path in all_paths {
@@ -85,8 +85,7 @@ impl StoragePathDetector {
                 .is_some_and(|p| p.exists())
             {
                 Console::warning(&format!(
-                    "No suitable storage mount found, using fallback path: {}",
-                    path
+                    "No suitable storage mount found, using fallback path: {path}"
                 ));
                 let issue_tracker = self.issues.write().await;
                 issue_tracker.add_issue(
@@ -102,16 +101,13 @@ impl StoragePathDetector {
         // Last resort - current directory
         let current_dir = std::env::current_dir()
             .map(|p| {
-                p.join(format!("{}-data", APP_DIR_NAME))
+                p.join(format!("{APP_DIR_NAME}-data"))
                     .to_string_lossy()
                     .to_string()
             })
-            .unwrap_or_else(|_| format!("./{}-data", APP_DIR_NAME));
+            .unwrap_or_else(|_| format!("./{APP_DIR_NAME}-data"));
 
-        Console::warning(&format!(
-            "Using current directory fallback: {}",
-            current_dir
-        ));
+        Console::warning(&format!("Using current directory fallback: {current_dir}"));
         let issue_tracker = self.issues.write().await;
         issue_tracker.add_issue(IssueType::NoStoragePath, "Using current directory fallback");
 
@@ -126,20 +122,20 @@ impl StoragePathDetector {
         // For non-Linux systems, try user directory first
         let default_path = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
-            .map(|home| format!("{}/{}", home, APP_DIR_NAME))
+            .map(|home| format!("{home}/{APP_DIR_NAME}"))
             .unwrap_or_else(|_| {
                 std::env::current_dir()
                     .map(|p| {
-                        p.join(format!("{}-data", APP_DIR_NAME))
+                        p.join(format!("{APP_DIR_NAME}-data"))
                             .to_string_lossy()
                             .to_string()
                     })
-                    .unwrap_or_else(|_| format!("./{}-data", APP_DIR_NAME))
+                    .unwrap_or_else(|_| format!("./{APP_DIR_NAME}-data"))
             });
 
         Console::info(
             "Storage Path",
-            &format!("Using platform-appropriate storage path: {}", default_path),
+            &format!("Using platform-appropriate storage path: {default_path}"),
         );
         let issue_tracker = self.issues.write().await;
         issue_tracker.add_issue(

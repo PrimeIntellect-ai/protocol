@@ -231,7 +231,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        error!("Failed to create wallet: {}", err);
+                        error!("Failed to create wallet: {err}");
                         std::process::exit(1);
                     }
                 };
@@ -240,7 +240,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        error!("❌ Failed to create wallet: {}", err);
+                        error!("❌ Failed to create wallet: {err}");
                         std::process::exit(1);
                     }
                 };
@@ -294,7 +294,7 @@ pub async fn execute_command(
                         }
                     }
                     Err(e) => {
-                        error!("Failed to get pool info: {}", e);
+                        error!("Failed to get pool info: {e}");
                         return Ok(());
                     }
                 }
@@ -304,7 +304,7 @@ pub async fn execute_command(
             let detected_external_ip = match stun_check.get_public_ip().await {
                 Ok(ip) => ip,
                 Err(e) => {
-                    error!("❌ Failed to get public IP: {}", e);
+                    error!("❌ Failed to get public IP: {e}");
                     std::process::exit(1);
                 }
             };
@@ -336,13 +336,13 @@ pub async fn execute_command(
             {
                 Ok(config) => config,
                 Err(e) => {
-                    Console::user_error(&format!("❌ Hardware check failed: {}", e));
+                    Console::user_error(&format!("❌ Hardware check failed: {e}"));
                     std::process::exit(1);
                 }
             };
             let software_checker = SoftwareChecker::new(Some(issue_tracker.clone()));
             if let Err(err) = software_checker.check_software(&node_config).await {
-                Console::user_error(&format!("❌ Software check failed: {}", err));
+                Console::user_error(&format!("❌ Software check failed: {err}"));
                 std::process::exit(1);
             }
 
@@ -350,8 +350,7 @@ pub async fn execute_command(
                 if *external_ip != detected_external_ip {
                     Console::warning(
                         &format!(
-                            "Automatically detected external IP {} does not match the provided external IP {}",
-                            detected_external_ip, external_ip
+                            "Automatically detected external IP {detected_external_ip} does not match the provided external IP {external_ip}"
                         ),
                     );
                 }
@@ -370,7 +369,7 @@ pub async fn execute_command(
             let required_specs = match ComputeRequirements::from_str(&pool_info.pool_data_uri) {
                 Ok(specs) => Some(specs),
                 Err(e) => {
-                    log::debug!("❌ Could not parse pool compute specs: {}", e);
+                    log::debug!("❌ Could not parse pool compute specs: {e}");
                     None
                 }
             };
@@ -382,7 +381,7 @@ pub async fn execute_command(
                         Console::user_error(
                             "❌ Your node does not meet the compute requirements for this pool.",
                         );
-                        info!("Required compute requirements:\n{}", required_specs);
+                        info!("Required compute requirements:\n{required_specs}");
                         if !*skip_system_checks {
                             std::process::exit(1);
                         } else {
@@ -488,7 +487,7 @@ pub async fn execute_command(
             let provider_exists = match provider_ops.check_provider_exists().await {
                 Ok(exists) => exists,
                 Err(e) => {
-                    error!("❌ Failed to check if provider exists: {}", e);
+                    error!("❌ Failed to check if provider exists: {e}");
                     std::process::exit(1);
                 }
             };
@@ -505,7 +504,7 @@ pub async fn execute_command(
             let is_whitelisted = match provider_ops.check_provider_whitelisted().await {
                 Ok(is_whitelisted) => is_whitelisted,
                 Err(e) => {
-                    error!("Failed to check provider whitelist status: {}", e);
+                    error!("Failed to check provider whitelist status: {e}");
                     std::process::exit(1);
                 }
             };
@@ -519,7 +518,7 @@ pub async fn execute_command(
                 {
                     Ok(stake) => stake,
                     Err(e) => {
-                        error!("❌ Failed to calculate required stake: {}", e);
+                        error!("❌ Failed to calculate required stake: {e}");
                         std::process::exit(1);
                     }
                 };
@@ -536,7 +535,7 @@ pub async fn execute_command(
                     )
                     .await
                 {
-                    error!("❌ Failed to register provider: {}", e);
+                    error!("❌ Failed to register provider: {e}");
                     std::process::exit(1);
                 }
             }
@@ -544,7 +543,7 @@ pub async fn execute_command(
             let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
                 Ok(exists) => exists,
                 Err(e) => {
-                    error!("❌ Failed to check if compute node exists: {}", e);
+                    error!("❌ Failed to check if compute node exists: {e}");
                     std::process::exit(1);
                 }
             };
@@ -558,7 +557,7 @@ pub async fn execute_command(
             {
                 Ok(compute) => compute,
                 Err(e) => {
-                    error!("❌ Failed to get provider total compute: {}", e);
+                    error!("❌ Failed to get provider total compute: {e}");
                     std::process::exit(1);
                 }
             };
@@ -580,7 +579,7 @@ pub async fn execute_command(
             {
                 Ok(stake) => stake,
                 Err(e) => {
-                    error!("❌ Failed to calculate required stake: {}", e);
+                    error!("❌ Failed to calculate required stake: {e}");
                     std::process::exit(1);
                 }
             };
@@ -603,7 +602,7 @@ pub async fn execute_command(
                         Console::success("Successfully increased stake");
                     }
                     Err(e) => {
-                        error!("❌ Failed to increase stake: {}", e);
+                        error!("❌ Failed to increase stake: {e}");
                         std::process::exit(1);
                     }
                 }
@@ -624,7 +623,7 @@ pub async fn execute_command(
                         }
                     }
                     Err(e) => {
-                        error!("❌ Failed to add compute node: {}", e);
+                        error!("❌ Failed to add compute node: {e}");
                         std::process::exit(1);
                     }
                 }
@@ -635,7 +634,7 @@ pub async fn execute_command(
             let heartbeat = match heartbeat_service.clone() {
                 Ok(service) => service,
                 Err(e) => {
-                    error!("❌ Heartbeat service is not available: {}", e);
+                    error!("❌ Heartbeat service is not available: {e}");
                     std::process::exit(1);
                 }
             };
@@ -652,7 +651,7 @@ pub async fn execute_command(
             let validators = match contracts.prime_network.get_validator_role().await {
                 Ok(validators) => validators,
                 Err(e) => {
-                    error!("Failed to get validator role: {}", e);
+                    error!("Failed to get validator role: {e}");
                     std::process::exit(1);
                 }
             };
@@ -678,13 +677,13 @@ pub async fn execute_command(
             {
                 Ok(service) => service,
                 Err(e) => {
-                    error!("❌ Failed to start P2P service: {}", e);
+                    error!("❌ Failed to start P2P service: {e}");
                     std::process::exit(1);
                 }
             };
 
             if let Err(e) = p2p_service.start().await {
-                error!("❌ Failed to start P2P listener: {}", e);
+                error!("❌ Failed to start P2P listener: {e}");
                 std::process::exit(1);
             }
 
@@ -718,8 +717,7 @@ pub async fn execute_command(
                                 || error_msg.contains("Attention Required!"))
                         {
                             error!(
-                                "Attempt {}: ❌ Discovery service blocked by Cloudflare protection. This may indicate:",
-                                attempts
+                                "Attempt {attempts}: ❌ Discovery service blocked by Cloudflare protection. This may indicate:"
                             );
                             error!("  • Your IP address has been flagged by Cloudflare security");
                             error!("  • Too many requests from your location");
@@ -729,10 +727,7 @@ pub async fn execute_command(
                                 "Please contact support or try from a different network/IP address"
                             );
                         } else {
-                            error!(
-                                "Attempt {}: ❌ Failed to upload discovery info: {}",
-                                attempts, e
-                            );
+                            error!("Attempt {attempts}: ❌ Failed to upload discovery info: {e}");
                         }
 
                         if attempts >= max_attempts {
@@ -740,7 +735,7 @@ pub async fn execute_command(
                                 && (error_msg.contains("Cloudflare")
                                     || error_msg.contains("Sorry, you have been blocked"))
                             {
-                                error!("❌ Unable to reach discovery service due to Cloudflare blocking after {} attempts", max_attempts);
+                                error!("❌ Unable to reach discovery service due to Cloudflare blocking after {max_attempts} attempts");
                                 error!("This is likely a network/IP issue rather than a worker configuration problem");
                             }
                             std::process::exit(1);
@@ -760,14 +755,14 @@ pub async fn execute_command(
             let pool_id = state.compute_pool_id.clone().unwrap_or("0".to_string());
             if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone(), pool_id)
             {
-                error!("❌ Failed to start node monitoring: {}", err);
+                error!("❌ Failed to start node monitoring: {err}");
                 std::process::exit(1);
             }
 
             discovery_updater.start_auto_update(node_config);
 
             if recover_last_state {
-                info!("Recovering from previous state: {}", recover_last_state);
+                info!("Recovering from previous state: {recover_last_state}");
                 heartbeat.activate_heartbeat_if_endpoint_exists().await;
             }
 
@@ -805,13 +800,13 @@ pub async fn execute_command(
             let node_config = match hardware_checker.check_hardware(node_config, None).await {
                 Ok(node_config) => node_config,
                 Err(err) => {
-                    Console::user_error(&format!("❌ Hardware check failed: {}", err));
+                    Console::user_error(&format!("❌ Hardware check failed: {err}"));
                     std::process::exit(1);
                 }
             };
 
             if let Err(err) = software_checker.check_software(&node_config).await {
-                Console::user_error(&format!("❌ Software check failed: {}", err));
+                Console::user_error(&format!("❌ Software check failed: {err}"));
                 std::process::exit(1);
             }
 
@@ -834,13 +829,13 @@ pub async fn execute_command(
 
             println!("Provider wallet:");
             println!("  Address: {}", provider_signer.address());
-            println!("  Private key: {}", provider_key);
+            println!("  Private key: {provider_key}");
             println!("\nNode wallet:");
             println!("  Address: {}", node_signer.address());
-            println!("  Private key: {}", node_key);
+            println!("  Private key: {node_key}");
             println!("\nTo set environment variables in your current shell session:");
-            println!("export PRIVATE_KEY_PROVIDER={}", provider_key);
-            println!("export PRIVATE_KEY_NODE={}", node_key);
+            println!("export PRIVATE_KEY_PROVIDER={provider_key}");
+            println!("export PRIVATE_KEY_NODE={node_key}");
 
             Ok(())
         }
@@ -851,9 +846,9 @@ pub async fn execute_command(
 
             println!("Node wallet:");
             println!("  Address: {}", node_signer.address());
-            println!("  Private key: {}", node_key);
+            println!("  Private key: {node_key}");
             println!("\nTo set environment variable in your current shell session:");
-            println!("export PRIVATE_KEY_NODE={}", node_key);
+            println!("export PRIVATE_KEY_NODE={node_key}");
 
             Ok(())
         }
@@ -886,7 +881,7 @@ pub async fn execute_command(
 
             let format_balance = format!("{}", provider_balance / U256::from(10u128.pow(18)));
 
-            println!("Provider balance: {}", format_balance);
+            println!("Provider balance: {format_balance}");
             Ok(())
         }
         Commands::SignMessage {
@@ -951,7 +946,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_provider, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        Console::user_error(&format!("Failed to create wallet: {}", err));
+                        Console::user_error(&format!("Failed to create wallet: {err}"));
                         std::process::exit(1);
                     }
                 };
@@ -960,7 +955,7 @@ pub async fn execute_command(
                 match Wallet::new(&private_key_node, Url::parse(rpc_url).unwrap()) {
                     Ok(wallet) => wallet,
                     Err(err) => {
-                        Console::user_error(&format!("❌ Failed to create wallet: {}", err));
+                        Console::user_error(&format!("❌ Failed to create wallet: {err}"));
                         std::process::exit(1);
                     }
                 };
@@ -991,10 +986,7 @@ pub async fn execute_command(
             let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
                 Ok(exists) => exists,
                 Err(e) => {
-                    Console::user_error(&format!(
-                        "❌ Failed to check if compute node exists: {}",
-                        e
-                    ));
+                    Console::user_error(&format!("❌ Failed to check if compute node exists: {e}"));
                     std::process::exit(1);
                 }
             };
@@ -1012,10 +1004,10 @@ pub async fn execute_command(
                     .await
                 {
                     Ok(result) => {
-                        Console::success(&format!("Leave compute pool tx: {:?}", result));
+                        Console::success(&format!("Leave compute pool tx: {result:?}"));
                     }
                     Err(e) => {
-                        Console::user_error(&format!("❌ Failed to leave compute pool: {}", e));
+                        Console::user_error(&format!("❌ Failed to leave compute pool: {e}"));
                         std::process::exit(1);
                     }
                 }
@@ -1027,13 +1019,13 @@ pub async fn execute_command(
                                 Console::success("Successfully reclaimed stake");
                             }
                             Err(e) => {
-                                Console::user_error(&format!("❌ Failed to reclaim stake: {}", e));
+                                Console::user_error(&format!("❌ Failed to reclaim stake: {e}"));
                                 std::process::exit(1);
                             }
                         }
                     }
                     Err(e) => {
-                        Console::user_error(&format!("❌ Failed to remove compute node: {}", e));
+                        Console::user_error(&format!("❌ Failed to remove compute node: {e}"));
                         std::process::exit(1);
                     }
                 }

@@ -147,7 +147,7 @@ pub async fn start_server(
     metrics: Arc<MetricsContext>,
     p2p_client: Arc<P2PClient>,
 ) -> Result<(), Error> {
-    info!("Starting server at http://{}:{}", host, port);
+    info!("Starting server at http://{host}:{port}");
     let app_state = Data::new(AppState {
         store_context,
         storage_provider,

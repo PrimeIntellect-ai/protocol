@@ -39,7 +39,7 @@ impl Console {
         let content_width = Self::get_content_width();
         let top_border = format!("╔{}╗", "═".repeat(content_width));
         let centered_title = Self::center_text(title, content_width);
-        let middle_line = format!("║{}║", centered_title);
+        let middle_line = format!("║{centered_title}║");
         let bottom_border = format!("╚{}╝", "═".repeat(content_width));
 
         println!();

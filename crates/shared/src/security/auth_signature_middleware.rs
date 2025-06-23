@@ -162,7 +162,7 @@ impl ValidatorState {
 
         if let Some(pool) = &self.redis_pool {
             let mut conn = pool.as_ref().clone();
-            let nonce_key = format!("nonce:{}", nonce);
+            let nonce_key = format!("nonce:{nonce}");
 
             let result: Option<String> = conn
                 .set_options(
@@ -306,7 +306,7 @@ where
                 let payload_value: serde_json::Value = match serde_json::from_slice(&body) {
                     Ok(val) => val,
                     Err(e) => {
-                        error!("Error parsing payload: {:?}", e);
+                        error!("Error parsing payload: {e:?}");
                         return Err(ErrorBadRequest(json!({
                             "error": "Invalid JSON payload",
                             "code": "INVALID_JSON",
@@ -332,7 +332,7 @@ where
                 payload_string = match serde_json::to_string(&payload_data) {
                     Ok(s) => s,
                     Err(e) => {
-                        error!("Error serializing payload: {:?}", e);
+                        error!("Error serializing payload: {e:?}");
                         return Err(ErrorBadRequest(json!({
                             "error": "Failed to serialize payload",
                             "code": "SERIALIZATION_ERROR",
@@ -354,7 +354,7 @@ where
                         .and_then(|value| match value.parse::<u64>() {
                             Ok(ts) => Some(ts),
                             Err(e) => {
-                                debug!("Failed to parse timestamp from query: {:?}", e);
+                                debug!("Failed to parse timestamp from query: {e:?}");
                                 None
                             }
                         })
@@ -373,7 +373,7 @@ where
             }
 
             // Combine path and payload
-            let msg: String = format!("{}{}", path, payload_string);
+            let msg: String = format!("{path}{payload_string}");
             // Validate signature
             if let (Some(address), Some(signature)) = (x_address, x_signature) {
                 let signature = signature.trim_start_matches("0x");
@@ -408,8 +408,8 @@ where
                 };
 
                 if recovered_address != expected_address {
-                    debug!("Recovered address: {:?}", recovered_address);
-                    debug!("Expected address: {:?}", expected_address);
+                    debug!("Recovered address: {recovered_address:?}");
+                    debug!("Expected address: {expected_address:?}");
                     return Err(ErrorBadRequest(json!({
                         "error": "Invalid signature",
                         "code": "SIGNATURE_MISMATCH",
@@ -432,7 +432,7 @@ where
                 }
 
                 if !validator_state.check_rate_limit(&recovered_address) {
-                    warn!("Rate limit exceeded for address: {}", recovered_address);
+                    warn!("Rate limit exceeded for address: {recovered_address}");
                     return Err(ErrorBadRequest(json!({
                         "error": "Rate limit exceeded",
                         "code": "RATE_LIMIT_EXCEEDED",
@@ -476,7 +476,7 @@ where
                             }
                         }
                         Err(e) => {
-                            error!("Redis error during nonce check: {:?}", e);
+                            error!("Redis error during nonce check: {e:?}");
                             return Err(ErrorBadRequest(json!({
                                 "error": "Nonce validation failed",
                                 "code": "NONCE_VALIDATION_ERROR",

@@ -15,7 +15,7 @@ pub async fn check_docker_installed(
         .map_err(|e| {
             issue_tracker.add_issue(
                 IssueType::DockerNotInstalled,
-                format!("Failed to execute 'which docker': {}", e),
+                format!("Failed to execute 'which docker': {e}"),
             );
             e
         })?;
@@ -29,8 +29,7 @@ pub async fn check_docker_installed(
         issue_tracker.add_issue(
             IssueType::DockerNotInstalled,
             format!(
-                "Failed to execute 'docker ps': {}. You may need to add your user to the docker group.",
-                e
+                "Failed to execute 'docker ps': {e}. You may need to add your user to the docker group."
             )
         );
         e
@@ -59,7 +58,7 @@ pub async fn check_docker_installed(
                 Err(e) => {
                     issue_tracker.add_issue(
                         IssueType::DockerNotInstalled,
-                        format!("Docker API permission denied: {}. You may need to add your user to the docker group. To fix this, run: 'sudo usermod -aG docker $USER' and then log out and back in.", e),
+                        format!("Docker API permission denied: {e}. You may need to add your user to the docker group. To fix this, run: 'sudo usermod -aG docker $USER' and then log out and back in."),
                     );
                 }
             }
@@ -67,7 +66,7 @@ pub async fn check_docker_installed(
         Err(e) => {
             issue_tracker.add_issue(
                 IssueType::DockerNotInstalled,
-                format!("Failed to connect to Docker API: {}. You may need to add your user to the docker group.", e),
+                format!("Failed to connect to Docker API: {e}. You may need to add your user to the docker group."),
             );
         }
     }
@@ -81,7 +80,7 @@ pub async fn check_docker_installed(
         .map_err(|e| {
             issue_tracker.add_issue(
                 IssueType::ContainerToolkitNotInstalled,
-                format!("Failed to check for nvidia-ctk: {}", e),
+                format!("Failed to check for nvidia-ctk: {e}"),
             );
             e
         })?;
@@ -94,7 +93,7 @@ pub async fn check_docker_installed(
             .map_err(|e| {
                 issue_tracker.add_issue(
                     IssueType::ContainerToolkitNotInstalled,
-                    format!("Failed to run nvidia-ctk: {}", e),
+                    format!("Failed to run nvidia-ctk: {e}"),
                 );
                 e
             })?;

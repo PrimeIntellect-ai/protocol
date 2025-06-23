@@ -111,7 +111,7 @@ impl DockerService {
                     let all_containers = match manager.list_containers(true).await {
                         Ok(containers) => containers,
                         Err(e) => {
-                            log::error!("Error listing containers: {}", e);
+                            log::error!("Error listing containers: {e}");
                             continue;
                         }
                     };
@@ -133,7 +133,7 @@ impl DockerService {
                                 let termination = terminate_manager_clone.remove_container(&task.id).await;
                                 match termination {
                                     Ok(_) => Console::info("DockerService", "Container terminated successfully"),
-                                    Err(e) => log::error!("Error terminating container: {}", e),
+                                    Err(e) => log::error!("Error terminating container: {e}"),
                                 }
                             });
                             terminating_container_tasks.lock().await.push(handle);
@@ -142,7 +142,7 @@ impl DockerService {
 
                     if current_task.is_some() && task_id.is_some() {
                         let container_task_id = task_id.as_ref().unwrap().clone();
-                        let container_match = all_containers.iter().find(|c| c.names.contains(&format!("/{}", container_task_id)));
+                        let container_match = all_containers.iter().find(|c| c.names.contains(&format!("/{container_task_id}")));
                         if container_match.is_none() {
                             let running_tasks = starting_container_tasks.lock().await;
                             let has_running_tasks = running_tasks.iter().any(|h| !h.is_finished());
@@ -164,7 +164,7 @@ impl DockerService {
                                     Console::info("DockerService", &format!("Waiting before starting new container ({}s remaining)...", backoff_seconds - elapsed));
                                 } else {
                                     if consecutive_failures > 0 {
-                                        Console::info("DockerService", &format!("Starting new container after {} failures ({}s interval)...", consecutive_failures, RESTART_INTERVAL_SECONDS));
+                                        Console::info("DockerService", &format!("Starting new container after {consecutive_failures} failures ({RESTART_INTERVAL_SECONDS}s interval)..."));
                                     } else {
                                         Console::info("DockerService", "Starting new container...");
                                     }
@@ -239,10 +239,10 @@ impl DockerService {
                                         };
                                         match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size), payload.entrypoint, None).await {
                                             Ok(container_id) => {
-                                                Console::info("DockerService", &format!("Container started with id: {}", container_id));
+                                                Console::info("DockerService", &format!("Container started with id: {container_id}"));
                                             },
                                             Err(e) => {
-                                                log::error!("Error starting container: {}", e);
+                                                log::error!("Error starting container: {e}");
                                                 state_clone.update_task_state(payload.id, TaskState::FAILED).await;
                                             }
                                         }
@@ -258,7 +258,7 @@ impl DockerService {
                             let status = match manager.get_container_details(&container_status.id).await {
                                 Ok(status) => status,
                                 Err(e) => {
-                                    log::error!("Error getting container details: {}", e);
+                                    log::error!("Error getting container details: {e}");
                                     continue;
                                 }
                             };
@@ -289,12 +289,12 @@ impl DockerService {
 
                                 // Only log if state changed
                                 if task_state_live != task_state_current {
-                                    Console::info("DockerService", &format!("Task state changed from {:?} to {:?}", task_state_current, task_state_live));
+                                    Console::info("DockerService", &format!("Task state changed from {task_state_current:?} to {task_state_live:?}"));
 
                                     if task_state_live == TaskState::FAILED {
 
                                         consecutive_failures += 1;
-                                        Console::info("DockerService", &format!("Task failed (attempt {}), waiting with exponential backoff before restart", consecutive_failures));
+                                        Console::info("DockerService", &format!("Task failed (attempt {consecutive_failures}), waiting with exponential backoff before restart"));
 
                                     } else if task_state_live == TaskState::RUNNING {
                                         // Reset failure counter when container runs successfully
@@ -357,7 +357,7 @@ impl DockerService {
             Ok(containers) => {
                 let container = containers
                     .iter()
-                    .find(|c| c.names.contains(&format!("/{}", container_name)));
+                    .find(|c| c.names.contains(&format!("/{container_name}")));
 
                 if let Some(container) = container {
                     match self
@@ -377,13 +377,13 @@ impl DockerService {
                             Some(TaskDetails {
                                 docker_image_id,
                                 container_id: Some(container.id.clone()),
-                                container_status: details.status.map(|s| format!("{:?}", s)),
+                                container_status: details.status.map(|s| format!("{s:?}")),
                                 container_created_at: Some(container.created),
                                 container_exit_code: details.status_code,
                             })
                         }
                         Err(e) => {
-                            debug!("Failed to get container details: {}", e);
+                            debug!("Failed to get container details: {e}");
                             Some(TaskDetails {
                                 docker_image_id: Some(container.image.clone()),
                                 container_id: Some(container.id.clone()),
@@ -402,7 +402,7 @@ impl DockerService {
                 }
             }
             Err(e) => {
-                debug!("Failed to list containers: {}", e);
+                debug!("Failed to list containers: {e}");
                 None
             }
         }

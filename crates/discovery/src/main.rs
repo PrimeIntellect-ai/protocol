@@ -36,8 +36,7 @@ impl std::str::FromStr for ServiceMode {
             "processor" => Ok(ServiceMode::Processor),
             "full" => Ok(ServiceMode::Full),
             _ => Err(format!(
-                "Invalid mode: {}. Use 'api', 'processor', or 'full'",
-                s
+                "Invalid mode: {s}. Use 'api', 'processor', or 'full'"
             )),
         }
     }
@@ -137,7 +136,7 @@ async fn main() -> Result<()> {
                 info!("Starting location enrichment service");
                 tokio::spawn(async move {
                     if let Err(e) = location_enrichment.run(30).await {
-                        error!("Location enrichment service failed: {}", e);
+                        error!("Location enrichment service failed: {e}");
                     }
                 });
             }
@@ -155,7 +154,7 @@ async fn main() -> Result<()> {
             )
             .await
             {
-                error!("❌ Failed to start server: {}", err);
+                error!("❌ Failed to start server: {err}");
             }
 
             tokio::signal::ctrl_c().await?;
@@ -175,7 +174,7 @@ async fn main() -> Result<()> {
             )
             .await
             {
-                error!("❌ Failed to start server: {}", err);
+                error!("❌ Failed to start server: {err}");
             }
         }
     }

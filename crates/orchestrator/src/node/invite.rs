@@ -66,7 +66,7 @@ impl<'a> NodeInviter<'a> {
             interval.tick().await;
             debug!("Running NodeInviter to process uninvited nodes...");
             if let Err(e) = self.process_uninvited_nodes().await {
-                error!("Error processing uninvited nodes: {}", e);
+                error!("Error processing uninvited nodes: {e}");
             }
             self.heartbeats.update_inviter();
         }
@@ -144,7 +144,7 @@ impl<'a> NodeInviter<'a> {
             nonce,
         };
 
-        info!("Sending invite to node: {}", p2p_id);
+        info!("Sending invite to node: {p2p_id}");
 
         match self
             .p2p_client
@@ -159,7 +159,7 @@ impl<'a> NodeInviter<'a> {
                     .update_node_status(&node.address, NodeStatus::WaitingForHeartbeat)
                     .await
                 {
-                    error!("Error updating node status: {}", e);
+                    error!("Error updating node status: {e}");
                 }
                 if let Err(e) = self
                     .store_context
@@ -167,12 +167,12 @@ impl<'a> NodeInviter<'a> {
                     .clear_unhealthy_counter(&node.address)
                     .await
                 {
-                    error!("Error clearing unhealthy counter: {}", e);
+                    error!("Error clearing unhealthy counter: {e}");
                 }
                 Ok(())
             }
             Err(e) => {
-                error!("Error sending invite to node: {:?}", e);
+                error!("Error sending invite to node: {e:?}");
                 Err(anyhow::anyhow!("Error sending invite to node: {:?}", e))
             }
         }
