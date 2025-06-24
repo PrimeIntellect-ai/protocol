@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use log::debug;
 use shared::models::heartbeat::TaskDetails;
 use shared::models::node::GpuSpecs;
+use shared::models::node::GpuVendor;
 use shared::models::task::Task;
 use shared::models::task::TaskState;
 use std::collections::HashMap;
@@ -204,6 +205,19 @@ impl DockerService {
                                                     processed_value = processed_value.replace("${WORKER_P2P_SEED}", &seed.to_string());
                                                 }
                                                 env_vars.insert(key.clone(), processed_value);
+                                            }
+                                        }
+
+                                        // Add AMD GPU-specific environment variables if AMD GPU is detected
+                                        if let Some(ref gpu_spec) = gpu {
+                                            if matches!(gpu_spec.vendor, Some(GpuVendor::Amd)) {
+                                                // Add ROCm environment variables
+                                                env_vars.insert("HSA_ENABLE_SDMA".to_string(), "0".to_string());
+                                                env_vars.insert("ROCR_VISIBLE_DEVICES".to_string(),
+                                                    gpu_spec.indices.as_ref()
+                                                        .map(|indices| indices.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","))
+                                                        .unwrap_or_else(|| "all".to_string())
+                                                );
                                             }
                                         }
 

@@ -365,6 +365,7 @@ async fn test_group_formation_with_requirements_and_single_node() {
                 model: Some("RTX4090".to_string()),
                 memory_mb: Some(24),
                 indices: Some(vec![0]),
+                vendor: None,
             }),
             ..Default::default()
         }),
@@ -442,6 +443,7 @@ async fn test_group_formation_with_requirements_and_multiple_nodes() {
                 model: Some("RTX4090".to_string()),
                 memory_mb: Some(24),
                 indices: Some(vec![0]),
+                vendor: None,
             }),
             ..Default::default()
         }),
@@ -474,6 +476,7 @@ async fn test_group_formation_with_requirements_and_multiple_nodes() {
                 model: Some("RTX4090".to_string()),
                 memory_mb: Some(24),
                 indices: Some(vec![0]),
+                vendor: None,
             }),
             ..Default::default()
         }),
@@ -2504,6 +2507,7 @@ async fn test_merge_only_compatible_groups() {
                 model: Some("RTX4090".to_string()),
                 memory_mb: Some(24),
                 indices: Some(vec![0]),
+                vendor: None,
             }),
             ..Default::default()
         }),
@@ -2517,6 +2521,7 @@ async fn test_merge_only_compatible_groups() {
                 model: Some("RTX4090".to_string()),
                 memory_mb: Some(24),
                 indices: Some(vec![1]),
+                vendor: None,
             }),
             ..Default::default()
         }),
