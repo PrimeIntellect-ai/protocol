@@ -31,6 +31,7 @@ const TASK_PREFIX: &str = "prime-task";
 const RESTART_INTERVAL_SECONDS: i64 = 10;
 
 impl DockerService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         cancellation_token: CancellationToken,
         gpu: Option<GpuSpecs>,
@@ -39,8 +40,10 @@ impl DockerService {
         storage_path: String,
         node_address: String,
         p2p_seed: Option<u64>,
+        disable_host_network_mode: bool,
     ) -> Self {
-        let docker_manager = Arc::new(DockerManager::new(storage_path).unwrap());
+        let docker_manager =
+            Arc::new(DockerManager::new(storage_path, disable_host_network_mode).unwrap());
         Self {
             docker_manager,
             cancellation_token,
@@ -429,6 +432,7 @@ mod tests {
             "/tmp/test-storage".to_string(),
             Address::ZERO.to_string(),
             None,
+            false,
         );
         let task = Task {
             image: "ubuntu:latest".to_string(),
@@ -477,6 +481,7 @@ mod tests {
             "/tmp/test-storage".to_string(),
             Address::ZERO.to_string(),
             Some(12345), // p2p_seed for testing
+            false,
         );
 
         // Test command argument replacement

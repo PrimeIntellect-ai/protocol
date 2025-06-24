@@ -46,6 +46,15 @@ pub struct ContainerDetails {
 pub struct DockerManager {
     docker: Docker,
     storage_path: String,
+    /// Controls whether to use host network mode for containers.
+    ///
+    /// Currently defaults to host mode (when false) to work around performance issues
+    /// with Docker bridge networking on certain cloud providers. This is a trade-off
+    /// between security isolation and performance.
+    ///
+    /// TODO: Investigate root cause of bridge network performance degradation and
+    /// implement a more optimal solution that maintains security isolation.
+    disable_host_network_mode: bool,
 }
 
 impl DockerManager {
@@ -128,7 +137,7 @@ impl DockerManager {
     }
 
     /// Create a new DockerManager instance
-    pub fn new(storage_path: String) -> Result<Self, DockerError> {
+    pub fn new(storage_path: String, disable_host_network_mode: bool) -> Result<Self, DockerError> {
         let docker = match Docker::connect_with_unix_defaults() {
             Ok(docker) => docker,
             Err(e) => {
@@ -159,6 +168,7 @@ impl DockerManager {
         Ok(Self {
             docker,
             storage_path,
+            disable_host_network_mode,
         })
     }
 
@@ -399,6 +409,11 @@ impl DockerManager {
             };
 
             Some(HostConfig {
+                network_mode: if self.disable_host_network_mode {
+                    Some("bridge".to_string())
+                } else {
+                    Some("host".to_string())
+                },
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 device_requests: Some(vec![DeviceRequest {
                     driver: Some("nvidia".into()),
@@ -417,6 +432,11 @@ impl DockerManager {
             })
         } else {
             Some(HostConfig {
+                network_mode: if self.disable_host_network_mode {
+                    Some("bridge".to_string())
+                } else {
+                    Some("host".to_string())
+                },
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 binds: volume_binds,
                 restart_policy: Some(bollard::models::RestartPolicy {
