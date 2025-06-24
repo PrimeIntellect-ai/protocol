@@ -475,12 +475,12 @@ impl SyntheticDataValidator<WalletProvider> {
         let work_info: Option<String> = con
             .get(&key)
             .await
-            .map_err(|e| Error::msg(format!("Failed to get work info: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to get work info: {e}")))?;
 
         match work_info {
             Some(work_info_str) => {
                 let work_info: WorkInfo = serde_json::from_str(&work_info_str)
-                    .map_err(|e| Error::msg(format!("Failed to parse work info: {}", e)))?;
+                    .map_err(|e| Error::msg(format!("Failed to parse work info: {e}")))?;
 
                 // Check if work_info has invalid values
                 if !work_info.is_valid() {
@@ -889,7 +889,7 @@ impl SyntheticDataValidator<WalletProvider> {
                         Ok(work_info) => {
                             match !work_info.is_valid() {
                                 true => {
-                                    error!("Got zero/default work info for key {}, likely not yet in contract", work_key);
+                                    error!("Got zero/default work info for key {work_key}, likely not yet in contract");
                                     None
                                 }
                                 false => Some((work_key, work_info)),
@@ -1244,7 +1244,7 @@ impl SyntheticDataValidator<WalletProvider> {
     }
 
     pub async fn process_group_status_check(&self, group: ToplocGroup) -> Result<(), Error> {
-        println!("processing group status check: {:?}", group);
+        println!("processing group status check: {group:?}");
         let toploc_config = self
             .find_matching_toploc_config(&group.prefix)
             .ok_or(Error::msg(format!(
@@ -1256,8 +1256,8 @@ impl SyntheticDataValidator<WalletProvider> {
             .get_group_file_validation_status(&group.group_file_name)
             .await?;
         let toploc_config_name = toploc_config.name();
-        println!("toploc config name: {:?}", toploc_config_name);
-        println!("status: {:?}", status);
+        println!("toploc config name: {toploc_config_name:?}");
+        println!("status: {status:?}");
 
         if let Some(metrics) = &self.metrics {
             metrics.record_group_validation_status(
@@ -1282,8 +1282,8 @@ impl SyntheticDataValidator<WalletProvider> {
 
         let mut toploc_nodes_to_invalidate = Vec::new();
         let mut nodes_with_wrong_work_unit_claims = Vec::new();
-        println!("node_work_units: {:?}", node_work_units);
-        println!("total_claimed_units: {:?}", total_claimed_units);
+        println!("node_work_units: {node_work_units:?}");
+        println!("total_claimed_units: {total_claimed_units:?}");
         println!("toploc status: {:?}", status.status);
 
         if status.status == ValidationResult::Reject {
@@ -1303,12 +1303,10 @@ impl SyntheticDataValidator<WalletProvider> {
         }
 
         println!(
-            "toploc_nodes_to_invalidate: {:?}",
-            toploc_nodes_to_invalidate
+            "toploc_nodes_to_invalidate: {toploc_nodes_to_invalidate:?}"
         );
         println!(
-            "nodes_with_wrong_work_unit_claims: {:?}",
-            nodes_with_wrong_work_unit_claims
+            "nodes_with_wrong_work_unit_claims: {nodes_with_wrong_work_unit_claims:?}"
         );
 
         for work_key in &group.sorted_work_keys {

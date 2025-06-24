@@ -397,8 +397,7 @@ impl DockerManager {
             "host".to_string()
         };
 
-        let host_config = if gpu.is_some() {
-            let gpu = gpu.unwrap();
+        let host_config = if let Some(gpu) = gpu {
             let device_ids = match &gpu.indices {
                 Some(indices) if !indices.is_empty() => {
                     // Use specific GPU indices if available
