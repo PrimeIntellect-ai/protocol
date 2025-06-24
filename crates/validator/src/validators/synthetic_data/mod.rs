@@ -1,7 +1,7 @@
 use crate::metrics::MetricsContext;
 use crate::store::redis::RedisStore;
 use crate::validators::synthetic_data::types::{InvalidationType, RejectionInfo};
-use alloy::primitives::U256;
+use alloy::primitives::{Address, U256};
 use anyhow::{Context as _, Error, Result};
 use chrono;
 use futures::future;
@@ -483,12 +483,21 @@ impl SyntheticDataValidator<WalletProvider> {
             .get(&key)
             .await
             .map_err(|e| Error::msg(format!("Failed to get work info: {}", e)))?;
-        work_info
-            .map(|work_info| {
-                serde_json::from_str(&work_info)
-                    .map_err(|e| Error::msg(format!("Failed to parse work info: {}", e)))
-            })
-            .transpose()
+        
+        match work_info {
+            Some(work_info_str) => {
+                let work_info: WorkInfo = serde_json::from_str(&work_info_str)
+                    .map_err(|e| Error::msg(format!("Failed to parse work info: {}", e)))?;
+                
+                // Check if work_info has invalid values
+                if work_info.node_id == Address::ZERO || work_info.work_units == U256::ZERO {
+                    Ok(None)
+                } else {
+                    Ok(Some(work_info))
+                }
+            }
+            None => Ok(None),
+        }
     }
 
     async fn get_file_name_for_work_key(
@@ -896,7 +905,14 @@ impl SyntheticDataValidator<WalletProvider> {
                 let pool_id = self.pool_id;
                 async move {
                     match validator.get_work_info(pool_id, &work_key).await {
-                        Ok(work_info) => Some((work_key, work_info)),
+                        Ok(work_info) => {
+                            if work_info.node_id == Address::ZERO || work_info.work_units == U256::ZERO {
+                                error!("Got zero/default work info for key {}, likely not yet in contract", work_key);
+                                None
+                            } else {
+                                Some((work_key, work_info))
+                            }
+                        }
                         Err(e) => {
                             error!("Failed to get work info for {}: {}", work_key, e);
                             None
