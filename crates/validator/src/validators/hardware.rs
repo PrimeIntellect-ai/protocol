@@ -1,6 +1,5 @@
 use alloy::primitives::Address;
 use anyhow::Result;
-use futures::future::join_all;
 use log::{debug, error, info};
 use shared::{
     models::node::DiscoveryNode,
@@ -9,8 +8,6 @@ use shared::{
         wallet::{Wallet, WalletProvider},
     },
 };
-use std::sync::Arc;
-use tokio::sync::Semaphore;
 
 use crate::p2p::client::P2PClient;
 use crate::validators::hardware_challenge::HardwareChallenge;
@@ -80,6 +77,8 @@ impl<'a> HardwareValidator<'a> {
             );
         }
 
+        debug!("Sending validation transaction for node {}", node.id);
+
         if let Err(e) = contracts
             .prime_network
             .validate_node(provider_address, node_address)
@@ -89,6 +88,9 @@ impl<'a> HardwareValidator<'a> {
             return Err(anyhow::anyhow!("Failed to validate node: {}", e));
         }
 
+        // Small delay to ensure nonce incrementation
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
         info!("Node {} successfully validated", node.id);
         Ok(())
     }
@@ -96,38 +98,25 @@ impl<'a> HardwareValidator<'a> {
     pub async fn validate_nodes(&self, nodes: Vec<DiscoveryNode>) -> Result<()> {
         let non_validated: Vec<_> = nodes.into_iter().filter(|n| !n.is_validated).collect();
         debug!("Non validated nodes: {:?}", non_validated);
+        info!("Starting validation for {} nodes", non_validated.len());
+
         let contracts = self.contracts.clone();
         let wallet = self.wallet;
         let p2p_client = self.p2p_client;
-        let semaphore = Arc::new(Semaphore::new(10));
-        let futures = non_validated
-            .into_iter()
-            .map(|node| {
-                let node_clone = node.clone();
-                let contracts_clone = contracts.clone();
-                let permit = semaphore.clone();
 
-                async move {
-                    let _permit = permit.acquire().await;
-
-                    match HardwareValidator::validate_node(
-                        wallet,
-                        contracts_clone,
-                        p2p_client,
-                        node_clone,
-                    )
-                    .await
-                    {
-                        Ok(_) => (),
-                        Err(e) => {
-                            error!("Failed to validate node: {}", e);
-                        }
-                    }
+        // Process non validated nodes sequentially as simple fix
+        // to avoid nonce conflicts for now. Will sophisticate this in the future
+        for node in non_validated {
+            let node_id = node.id.clone();
+            match HardwareValidator::validate_node(wallet, contracts.clone(), p2p_client, node)
+                .await
+            {
+                Ok(_) => (),
+                Err(e) => {
+                    error!("Failed to validate node {}: {}", node_id, e);
                 }
-            })
-            .collect::<Vec<_>>();
-
-        join_all(futures).await;
+            }
+        }
         Ok(())
     }
 }
@@ -138,6 +127,7 @@ mod tests {
     use shared::models::node::Node;
     use shared::web3::contracts::core::builder::ContractBuilder;
     use shared::web3::wallet::Wallet;
+    use std::sync::Arc;
     use url::Url;
 
     #[tokio::test]

@@ -1,3 +1,4 @@
+use crate::metrics::MetricsContext;
 use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
@@ -8,7 +9,7 @@ use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::WalletProvider;
 use std::result::Result;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::time::interval;
 
 pub struct NodeStatusUpdater {
@@ -20,6 +21,7 @@ pub struct NodeStatusUpdater {
     disable_ejection: bool,
     heartbeats: Arc<LoopHeartbeats>,
     plugins: Vec<StatusUpdatePlugin>,
+    metrics: Arc<MetricsContext>,
 }
 
 impl NodeStatusUpdater {
@@ -33,6 +35,7 @@ impl NodeStatusUpdater {
         disable_ejection: bool,
         heartbeats: Arc<LoopHeartbeats>,
         plugins: Vec<StatusUpdatePlugin>,
+        metrics: Arc<MetricsContext>,
     ) -> Self {
         Self {
             store_context,
@@ -43,6 +46,7 @@ impl NodeStatusUpdater {
             disable_ejection,
             heartbeats,
             plugins,
+            metrics,
         }
     }
 
@@ -127,6 +131,8 @@ impl NodeStatusUpdater {
             let pool_id = self.pool_id;
             let missing_heartbeat_threshold = self.missing_heartbeat_threshold;
             let plugins = self.plugins.clone();
+            let metrics = self.metrics.clone();
+
             futures.push(async move {
                 let address = node.address.clone();
                 (
@@ -137,6 +143,7 @@ impl NodeStatusUpdater {
                         pool_id,
                         missing_heartbeat_threshold,
                         plugins,
+                        metrics,
                     )
                     .await,
                     address,
@@ -167,8 +174,9 @@ async fn process_node(
     pool_id: u32,
     missing_heartbeat_threshold: u32,
     plugins: Vec<StatusUpdatePlugin>,
+    metrics: Arc<MetricsContext>,
 ) -> Result<(), anyhow::Error> {
-    let node = node.clone();
+    let start_time = Instant::now();
     let old_status = node.status.clone();
     let heartbeat = store_context
         .heartbeat_store
@@ -312,6 +320,12 @@ async fn process_node(
                     }
                 }
             }
+            // Record status update execution time
+            let duration = start_time.elapsed();
+            metrics.record_status_update_execution_time(
+                &node.address.to_string(),
+                duration.as_secs_f64(),
+            );
         }
 
         if let Err(e) = store_context
@@ -383,6 +397,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         let node = OrchestratorNode {
             address: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
@@ -487,6 +502,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -539,6 +555,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -607,6 +624,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -685,6 +703,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -771,6 +790,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -854,6 +874,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -931,6 +952,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
@@ -999,6 +1021,7 @@ mod tests {
             false,
             Arc::new(LoopHeartbeats::new(&mode)),
             vec![],
+            app_state.metrics.clone(),
         );
         tokio::spawn(async move {
             updater
