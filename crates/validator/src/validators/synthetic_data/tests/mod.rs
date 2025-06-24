@@ -135,7 +135,9 @@ async fn test_build_validation_plan() -> Result<(), Error> {
     ];
 
     let work_info = WorkInfo {
-        node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+        node_id: Address::from_str("0x182555b0Ab39EE313f22c07dbe88D950385b1f68").unwrap(),
+        provider: Address::from_str("0x182555b0Ab39EE313f22c07dbe88D950385b1f68").unwrap(),
+        work_units: U256::from(1000),
         ..Default::default()
     };
     for work_key in work_keys.clone() {
@@ -337,7 +339,7 @@ async fn test_group_e2e_accept() -> Result<(), Error> {
 
     const FILE_SHA: &str = "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
     const GROUP_ID: &str = "3450756714426841564";
-    const NODE_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
+    const NODE_ADDRESS: &str = "0xA1DDe6E4d2F127960e7C61f90a8b354Bc306bd2a";
 
     let mock_storage = MockStorageProvider::new();
     mock_storage
@@ -372,7 +374,7 @@ async fn test_group_e2e_accept() -> Result<(), Error> {
             format!("/statusgroup/dataset/samplingn-{}-1-0.parquet", GROUP_ID).as_str(),
         )
         .with_status(200)
-        .with_body(r#"{"status": "accept"}"#)
+        .with_body(r#"{"status": "accept", "input_flops": 1, "output_flops": 1000}"#)
         .create();
 
     let storage_provider = Arc::new(mock_storage);
@@ -403,6 +405,8 @@ async fn test_group_e2e_accept() -> Result<(), Error> {
 
     let work_info = WorkInfo {
         node_id: Address::from_str(NODE_ADDRESS).unwrap(),
+        work_units: U256::from(1000),
+        provider: Address::from_str("0x182555b0Ab39EE313f22c07dbe88D950385b1f68").unwrap(),
         ..Default::default()
     };
     for work_key in work_keys.clone() {
@@ -475,12 +479,12 @@ async fn test_group_e2e_work_unit_mismatch() -> Result<(), Error> {
         ..Default::default()
     };
 
-    const HONEST_NODE_ADDRESS: &str = "0x0000000000000000000000000000000000000001";
+    const HONEST_NODE_ADDRESS: &str = "0x182555b0Ab39EE313f22c07dbe88D950385b1f69";
     const HONEST_FILE_SHA: &str =
         "c257e3d3fe866a00df1285f8bbbe601fed6b85229d983bbbb75e19a068346641";
     const EXCESSIVE_FILE_SHA: &str =
         "88e4672c19e5a10bff2e23d223f8bfc38ae1425feaa18db9480e631a4fd98edf";
-    const EXCESSIVE_NODE_ADDRESS: &str = "0x0000000000000000000000000000000000000002";
+    const EXCESSIVE_NODE_ADDRESS: &str = "0x182555b0Ab39EE313f22c07dbe88D950385b1f68";
     const GROUP_ID: &str = "3456714426841564";
 
     let mock_storage = MockStorageProvider::new();
@@ -562,11 +566,13 @@ async fn test_group_e2e_work_unit_mismatch() -> Result<(), Error> {
     let work_info_1 = WorkInfo {
         node_id: Address::from_str(HONEST_NODE_ADDRESS).unwrap(),
         work_units: U256::from(EXPECTED_WORK_UNITS),
+        provider: Address::from_str("0x182555b0Ab39EE313f22c07dbe88D950385b1f68").unwrap(),
         ..Default::default()
     };
     let work_info_2 = WorkInfo {
         node_id: Address::from_str(EXCESSIVE_NODE_ADDRESS).unwrap(),
         work_units: U256::from(EXCESSIVE_WORK_UNITS),
+        provider: Address::from_str("0x182555b0Ab39EE313f22c07dbe88D950385b1f67").unwrap(),
         ..Default::default()
     };
 
@@ -781,6 +787,8 @@ async fn test_incomplete_group_recovery() -> Result<(), Error> {
     // Add work info for only the first file (making the group incomplete)
     let work_info = WorkInfo {
         node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+        work_units: U256::from(1000),
+        provider: Address::from_str("0x182555b0Ab39EE313f22c07dbe88D950385b1f68").unwrap(),
         ..Default::default()
     };
     validator
@@ -880,6 +888,8 @@ async fn test_expired_incomplete_group_soft_invalidation() -> Result<(), Error> 
     // Add work info for only the first file (making the group incomplete)
     let work_info = WorkInfo {
         node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+        work_units: U256::from(1000),
+        provider: Address::from_str("0x182555b0Ab39EE313f22c07dbe88D950385b1f68").unwrap(),
         ..Default::default()
     };
     validator
@@ -981,7 +991,9 @@ async fn test_incomplete_group_status_tracking() -> Result<(), Error> {
 
     // Add work info for only 1 of 3 expected files
     let work_info = WorkInfo {
-        node_id: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+        node_id: Address::from_str("0x182555b0Ab39EE313f22c07dbe88D950385b1f68").unwrap(),
+        work_units: U256::from(1000),
+        provider: Address::from_str("0x182555b0Ab39EE313f22c07dbe88D950385b1f68").unwrap(),
         ..Default::default()
     };
     validator
