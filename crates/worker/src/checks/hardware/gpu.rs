@@ -47,8 +47,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
 
     // Initialize NVML if not already initialized
     if nvml_guard.is_none() {
-        match Nvml::init() 
-        {
+        match Nvml::init() {
             Ok(nvml) => *nvml_guard = Some(nvml),
             Err(e) => {
                 Console::user_error(&format!("Failed to initialize NVML: {}", e));
