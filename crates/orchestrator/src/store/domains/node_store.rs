@@ -193,14 +193,11 @@ impl NodeStore {
         }
 
         nodes.sort_by(|a, b| match (&a.status, &b.status) {
-            (NodeStatus::Healthy, NodeStatus::Healthy) => std::cmp::Ordering::Equal,
+            (NodeStatus::Healthy, NodeStatus::Healthy) | (NodeStatus::Discovered, NodeStatus::Discovered) | (NodeStatus::Dead, NodeStatus::Dead) => std::cmp::Ordering::Equal,
             (NodeStatus::Healthy, _) => std::cmp::Ordering::Less,
             (_, NodeStatus::Healthy) => std::cmp::Ordering::Greater,
-            (NodeStatus::Discovered, NodeStatus::Discovered) => std::cmp::Ordering::Equal,
             (NodeStatus::Discovered, _) => std::cmp::Ordering::Less,
-            (_, NodeStatus::Discovered) => std::cmp::Ordering::Greater,
-            (NodeStatus::Dead, NodeStatus::Dead) => std::cmp::Ordering::Equal,
-            (NodeStatus::Dead, _) => std::cmp::Ordering::Greater,
+            (_, NodeStatus::Discovered) | (NodeStatus::Dead, _) => std::cmp::Ordering::Greater,
             (_, NodeStatus::Dead) => std::cmp::Ordering::Less,
             _ => std::cmp::Ordering::Equal,
         });

@@ -789,9 +789,7 @@ impl DockerManager {
             match log_result {
                 Ok(log_output) => {
                     let message_bytes = match log_output {
-                        LogOutput::StdOut { message } | LogOutput::StdErr { message } => message,
-                        LogOutput::Console { message } => message,
-                        LogOutput::StdIn { message } => message,
+                        LogOutput::StdOut { message } | LogOutput::StdErr { message } | LogOutput::Console { message } | LogOutput::StdIn { message } => message,
                     };
 
                     // Strip ANSI escape sequences, skipping on error.

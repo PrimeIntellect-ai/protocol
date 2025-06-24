@@ -132,7 +132,6 @@ async fn main() -> Result<()> {
     let log_level = match args.log_level.as_str() {
         "error" => LevelFilter::Error,
         "warn" => LevelFilter::Warn,
-        "info" => LevelFilter::Info,
         "debug" => LevelFilter::Debug,
         "trace" => LevelFilter::Trace,
         _ => LevelFilter::Info, // Default to Info if the level is unrecognized
@@ -148,7 +147,6 @@ async fn main() -> Result<()> {
         .init();
 
     let server_mode = match args.mode.as_str() {
-        "full" => ServerMode::Full,
         "api" => ServerMode::ApiOnly,
         "processor" => ServerMode::ProcessorOnly,
         _ => ServerMode::Full,

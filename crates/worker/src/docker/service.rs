@@ -286,7 +286,6 @@ impl DockerService {
                                     (Some(ContainerStateStatusEnum::DEAD), _) => TaskState::FAILED,
                                     (Some(ContainerStateStatusEnum::PAUSED), _) => TaskState::PAUSED,
                                     (Some(ContainerStateStatusEnum::RESTARTING), _) => TaskState::RESTARTING,
-                                    (Some(ContainerStateStatusEnum::REMOVING), _) => TaskState::UNKNOWN,
                                     _ => TaskState::UNKNOWN,
                                 };
 

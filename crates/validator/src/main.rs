@@ -212,7 +212,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let log_level = match args.log_level.as_str() {
         "error" => LevelFilter::Error,
         "warn" => LevelFilter::Warn,
-        "info" => LevelFilter::Info,
         "debug" => LevelFilter::Debug,
         "trace" => LevelFilter::Trace,
         _ => LevelFilter::Info,
