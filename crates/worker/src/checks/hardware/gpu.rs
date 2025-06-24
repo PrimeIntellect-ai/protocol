@@ -47,11 +47,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
 
     // Initialize NVML if not already initialized
     if nvml_guard.is_none() {
-        match Nvml::builder()
-            .lib_path(std::ffi::OsStr::new(
-                "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1",
-            ))
-            .init()
+        match Nvml::init() 
         {
             Ok(nvml) => *nvml_guard = Some(nvml),
             Err(e) => {
