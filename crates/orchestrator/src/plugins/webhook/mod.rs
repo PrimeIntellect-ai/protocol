@@ -95,7 +95,7 @@ impl WebhookPlugin {
         if let Some(token) = bearer_token {
             headers.insert(
                 reqwest::header::AUTHORIZATION,
-                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
                     .expect("Invalid bearer token"),
             );
         }

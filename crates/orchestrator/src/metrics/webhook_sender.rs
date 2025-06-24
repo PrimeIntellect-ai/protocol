@@ -62,7 +62,7 @@ impl MetricsWebhookSender {
             {
                 Ok(metrics) => metrics,
                 Err(e) => {
-                    error!("Error getting aggregate metrics for all tasks: {}", e);
+                    error!("Error getting aggregate metrics for all tasks: {e}");
                     continue;
                 }
             };

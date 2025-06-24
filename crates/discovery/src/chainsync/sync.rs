@@ -66,8 +66,7 @@ impl ChainSync {
             .await
             .map_err(|e| {
                 error!(
-                    "Error retrieving node info for provider {} and node {}: {}",
-                    provider_address, node_address, e
+                    "Error retrieving node info for provider {provider_address} and node {node_address}: {e}"
                 );
                 anyhow::anyhow!("Failed to retrieve node info")
             })?;
@@ -77,10 +76,7 @@ impl ChainSync {
             .get_provider(provider_address)
             .await
             .map_err(|e| {
-                error!(
-                    "Error retrieving provider info for {}: {}",
-                    provider_address, e
-                );
+                error!("Error retrieving provider info for {provider_address}: {e}");
                 anyhow::anyhow!("Failed to retrieve provider info")
             })?;
 
@@ -151,7 +147,7 @@ impl ChainSync {
                         match nodes {
                             Ok(nodes) => {
                                 let total_nodes = nodes.len();
-                                info!("Syncing {} nodes", total_nodes);
+                                info!("Syncing {total_nodes} nodes");
 
                                 // Process nodes in parallel with concurrency limit
                                 let results: Vec<Result<(), Error>> = stream::iter(nodes)
@@ -174,7 +170,7 @@ impl ChainSync {
                                         Ok(_) => success_count += 1,
                                         Err(e) => {
                                             failure_count += 1;
-                                            warn!("Node sync failed: {}", e);
+                                            warn!("Node sync failed: {e}");
                                         }
                                     }
                                 }
@@ -196,7 +192,7 @@ impl ChainSync {
                                 );
                             }
                             Err(e) => {
-                                error!("Error getting nodes from store: {}", e);
+                                error!("Error getting nodes from store: {e}");
                             }
                         }
                     }

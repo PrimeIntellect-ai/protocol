@@ -48,11 +48,11 @@ impl SystemState {
         compute_pool_id: Option<String>,
     ) -> Self {
         let default_state_dir = get_default_state_dir();
-        debug!("Default state dir: {:?}", default_state_dir);
+        debug!("Default state dir: {default_state_dir:?}");
         let state_path = state_dir
             .map(PathBuf::from)
             .or_else(|| default_state_dir.map(PathBuf::from));
-        debug!("State path: {:?}", state_path);
+        debug!("State path: {state_path:?}");
         let mut endpoint = None;
         let mut p2p_seed: Option<u64> = None;
         let mut worker_p2p_seed: Option<u64> = None;
@@ -62,16 +62,15 @@ impl SystemState {
                 let state_file = path.join(STATE_FILENAME);
                 if !state_file.exists() {
                     debug!(
-                        "No state file found at {:?}, will create on first state change",
-                        state_file
+                        "No state file found at {state_file:?}, will create on first state change"
                     );
                 } else if let Ok(Some(loaded_state)) = SystemState::load_state(path) {
-                    debug!("Loaded previous state from {:?}", state_file);
+                    debug!("Loaded previous state from {state_file:?}");
                     endpoint = loaded_state.endpoint;
                     p2p_seed = loaded_state.p2p_seed;
                     worker_p2p_seed = loaded_state.worker_p2p_seed;
                 } else {
-                    debug!("Failed to load state from {:?}", state_file);
+                    debug!("Failed to load state from {state_file:?}");
                 }
             }
         }
@@ -122,7 +121,7 @@ impl SystemState {
                         worker_p2p_seed: self.worker_p2p_seed,
                     };
 
-                    debug!("state: {:?}", state);
+                    debug!("state: {state:?}");
 
                     fs::create_dir_all(state_dir)?;
                     let state_path = state_dir.join(STATE_FILENAME);
@@ -131,10 +130,10 @@ impl SystemState {
                     match serde_json::to_string_pretty(&state) {
                         Ok(json_string) => {
                             fs::write(&state_path, json_string)?;
-                            debug!("Saved state to {:?}", state_path);
+                            debug!("Saved state to {state_path:?}");
                         }
                         Err(e) => {
-                            error!("Failed to serialize state: {}", e);
+                            error!("Failed to serialize state: {e}");
                             return Err(anyhow::anyhow!("Failed to serialize state: {}", e));
                         }
                     }
@@ -153,7 +152,7 @@ impl SystemState {
             match serde_json::from_str(&contents) {
                 Ok(state) => return Ok(Some(state)),
                 Err(e) => {
-                    debug!("Error parsing state file: {}", e);
+                    debug!("Error parsing state file: {e}");
                     return Ok(None);
                 }
             }
@@ -202,7 +201,7 @@ impl SystemState {
             if endpoint.is_some() {
                 if let Err(e) = self.save_state(endpoint.clone()) {
                     // Only save the endpoint
-                    error!("Failed to save heartbeat state: {}", e);
+                    error!("Failed to save heartbeat state: {e}");
                     return Err(e);
                 }
             }

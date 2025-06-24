@@ -154,8 +154,8 @@ async fn main() -> Result<()> {
         _ => ServerMode::Full,
     };
 
-    debug!("Log level: {}", log_level);
-    debug!("Server mode: {:?}", server_mode);
+    debug!("Log level: {log_level}");
+    debug!("Server mode: {server_mode:?}");
 
     let metrics_context = Arc::new(MetricsContext::new(args.compute_pool_id.to_string()));
 
@@ -169,7 +169,7 @@ async fn main() -> Result<()> {
     let mut tasks: JoinSet<Result<()>> = JoinSet::new();
 
     let wallet = Wallet::new(&coordinator_key, rpc_url).unwrap_or_else(|err| {
-        error!("Error creating wallet: {:?}", err);
+        error!("Error creating wallet: {err:?}");
         std::process::exit(1);
     });
 
@@ -197,7 +197,7 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Err(e) => {
-            error!("Failed to get pool info: {}", e);
+            error!("Failed to get pool info: {e}");
             return Ok(());
         }
     };
@@ -220,7 +220,7 @@ async fn main() -> Result<()> {
                 }
             }
             Err(e) => {
-                error!("Failed to parse webhook configs from environment: {}", e);
+                error!("Failed to parse webhook configs from environment: {e}");
             }
         }
     } else {
@@ -237,7 +237,7 @@ async fn main() -> Result<()> {
                 compute_pool_id,
             );
             if let Err(e) = webhook_sender.run().await {
-                error!("Error running webhook sender: {}", e);
+                error!("Error running webhook sender: {e}");
             }
             Ok(())
         });
@@ -263,7 +263,7 @@ async fn main() -> Result<()> {
 
                 // Register the plugin as a task observer
                 if let Err(e) = group_plugin_arc.clone().register_observer().await {
-                    error!("Failed to register node groups plugin as observer: {}", e);
+                    error!("Failed to register node groups plugin as observer: {e}");
                 }
 
                 node_groups_plugin = Some(group_plugin_arc);
@@ -277,10 +277,7 @@ async fn main() -> Result<()> {
                 );
             }
             Err(e) => {
-                error!(
-                    "Failed to parse node group configurations from environment: {}",
-                    e
-                );
+                error!("Failed to parse node group configurations from environment: {e}");
                 std::process::exit(1);
             }
         }
@@ -431,12 +428,12 @@ async fn main() -> Result<()> {
             p2p_client,
         ) => {
             if let Err(e) = res {
-                error!("Server error: {}", e);
+                error!("Server error: {e}");
             }
         }
         Some(res) = tasks.join_next() => {
             if let Err(e) = res? {
-                error!("Task error: {}", e);
+                error!("Task error: {e}");
             }
         }
         _ = tokio::signal::ctrl_c() => {

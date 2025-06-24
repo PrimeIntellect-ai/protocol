@@ -36,11 +36,11 @@ impl P2PClient {
         match response {
             P2PMessage::InviteResponse { status, error } => {
                 if status == "ok" {
-                    info!("Successfully invited worker {}", worker_p2p_id);
+                    info!("Successfully invited worker {worker_p2p_id}");
                     Ok(())
                 } else {
                     let error_msg = error.unwrap_or_else(|| "Unknown error".to_string());
-                    warn!("Failed to invite worker {}: {}", worker_p2p_id, error_msg);
+                    warn!("Failed to invite worker {worker_p2p_id}: {error_msg}");
                     Err(anyhow::anyhow!("Invite failed: {}", error_msg))
                 }
             }

@@ -81,25 +81,25 @@ impl fmt::Display for ProcessWorkKeyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ProcessWorkKeyError::FileNameResolutionError(msg) => {
-                write!(f, "File name resolution error: {}", msg)
+                write!(f, "File name resolution error: {msg}")
             }
             ProcessWorkKeyError::ValidationTriggerError(msg) => {
-                write!(f, "Validation trigger error: {}", msg)
+                write!(f, "Validation trigger error: {msg}")
             }
             ProcessWorkKeyError::ValidationPollingError(msg) => {
-                write!(f, "Validation polling error: {}", msg)
+                write!(f, "Validation polling error: {msg}")
             }
             ProcessWorkKeyError::InvalidatingWorkError(msg) => {
-                write!(f, "Invalidating work error: {}", msg)
+                write!(f, "Invalidating work error: {msg}")
             }
             ProcessWorkKeyError::MaxAttemptsReached(msg) => {
-                write!(f, "Max attempts reached: {}", msg)
+                write!(f, "Max attempts reached: {msg}")
             }
             ProcessWorkKeyError::GenericError(err) => {
-                write!(f, "Generic error: {}", err)
+                write!(f, "Generic error: {err}")
             }
             ProcessWorkKeyError::NoMatchingToplocConfig(msg) => {
-                write!(f, "No matching toploc config: {:?}", msg)
+                write!(f, "No matching toploc config: {msg:?}")
             }
         }
     }
@@ -119,7 +119,7 @@ impl FromStr for GroupInformation {
 
     fn from_str(file_name: &str) -> Result<Self, Self::Err> {
         let re = Regex::new(r".*?-([0-9a-fA-F]+)-(\d+)-(\d+)-(\d+)(\.[^.]+)$")
-            .map_err(|e| Error::msg(format!("Failed to compile regex: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to compile regex: {e}")))?;
 
         let caps = re
             .captures(file_name)
@@ -140,13 +140,13 @@ impl FromStr for GroupInformation {
             .ok_or_else(|| Error::msg("Failed to extract group size"))?
             .as_str()
             .parse::<u32>()
-            .map_err(|e| Error::msg(format!("Failed to parse group size: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to parse group size: {e}")))?;
         let filenumber = caps
             .get(3)
             .ok_or_else(|| Error::msg("Failed to extract file number"))?
             .as_str()
             .parse::<u32>()
-            .map_err(|e| Error::msg(format!("Failed to parse file number: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to parse file number: {e}")))?;
         let idx = caps
             .get(4)
             .ok_or_else(|| Error::msg("Failed to extract index"))?

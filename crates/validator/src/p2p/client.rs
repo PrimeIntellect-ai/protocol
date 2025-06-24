@@ -45,10 +45,7 @@ impl P2PClient {
                 ..
             } => {
                 if returned_nonce == nonce {
-                    info!(
-                        "Received valid pong from worker {} with nonce: {}",
-                        worker_p2p_id, nonce
-                    );
+                    info!("Received valid pong from worker {worker_p2p_id} with nonce: {nonce}");
                     Ok(nonce)
                 } else {
                     Err(anyhow::anyhow!("Invalid nonce in pong response"))
@@ -81,10 +78,7 @@ impl P2PClient {
 
         match response {
             P2PMessage::HardwareChallengeResponse { response, .. } => {
-                info!(
-                    "Received hardware challenge response from worker {}",
-                    worker_p2p_id
-                );
+                info!("Received hardware challenge response from worker {worker_p2p_id}");
                 Ok(response)
             }
             _ => Err(anyhow::anyhow!(

@@ -38,7 +38,7 @@ impl Toploc {
                 if let Some(token) = &config.auth_token {
                     headers.insert(
                         reqwest::header::AUTHORIZATION,
-                        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+                        reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
                             .expect("Invalid token"),
                     );
                 }
@@ -104,10 +104,7 @@ impl Toploc {
             "{}/validate/{}",
             self.config.server_url, processed_file_name
         );
-        debug!(
-            "Triggering remote toploc validation for {} {}",
-            file_name, validate_url
-        );
+        debug!("Triggering remote toploc validation for {file_name} {validate_url}");
 
         let body = serde_json::json!({
             "file_sha": file_sha,
@@ -119,7 +116,7 @@ impl Toploc {
             Ok(response) => {
                 let status = response.status();
                 if !status.is_success() {
-                    error!("Server returned error status {} for {}", status, file_name);
+                    error!("Server returned error status {status} for {file_name}");
                     if let Some(metrics) = &self.metrics {
                         metrics.record_api_request(
                             "toploc_single_file_validation",
@@ -127,8 +124,7 @@ impl Toploc {
                         );
                     }
                     return Err(Error::msg(format!(
-                        "Server returned error status: {}",
-                        status
+                        "Server returned error status: {status}"
                     )));
                 }
                 let trigger_duration = start_time.elapsed();
@@ -140,28 +136,19 @@ impl Toploc {
                     metrics
                         .record_api_request("toploc_single_file_validation", &status.to_string());
                 }
-                info!(
-                    "Remote toploc validation triggered for {} in {:?}",
-                    file_name, trigger_duration
-                );
+                info!("Remote toploc validation triggered for {file_name} in {trigger_duration:?}");
 
                 Ok(())
             }
             Err(e) => {
                 let error_msg = if e.is_timeout() {
-                    format!("Toploc request timed out for {}: {}", file_name, e)
+                    format!("Toploc request timed out for {file_name}: {e}")
                 } else if e.is_connect() {
-                    format!(
-                        "Failed to connect to toploc server for {}: {}",
-                        file_name, e
-                    )
+                    format!("Failed to connect to toploc server for {file_name}: {e}")
                 } else {
-                    format!(
-                        "Failed to trigger remote toploc validation for {}: {}",
-                        file_name, e
-                    )
+                    format!("Failed to trigger remote toploc validation for {file_name}: {e}")
                 };
-                error!("{}", error_msg);
+                error!("{error_msg}");
                 if let Some(metrics) = &self.metrics {
                     metrics.record_api_request("toploc_single_file_validation", "0");
                 }
@@ -184,10 +171,7 @@ impl Toploc {
             self.config.server_url, processed_file_name
         );
 
-        info!(
-            "Triggering remote toploc group validation for {} {}",
-            file_name, validate_url
-        );
+        info!("Triggering remote toploc group validation for {file_name} {validate_url}");
 
         let body = serde_json::json!({
             "file_shas": file_shas,
@@ -201,7 +185,7 @@ impl Toploc {
             Ok(response) => {
                 let status = response.status();
                 if !status.is_success() {
-                    error!("Server returned error status {} for {}", status, file_name);
+                    error!("Server returned error status {status} for {file_name}");
                     if let Some(metrics) = &self.metrics {
                         metrics.record_api_request(
                             "toploc_group_file_validation",
@@ -209,8 +193,7 @@ impl Toploc {
                         );
                     }
                     return Err(Error::msg(format!(
-                        "Server returned error status: {}",
-                        status
+                        "Server returned error status: {status}"
                     )));
                 }
                 let trigger_duration = start_time.elapsed();
@@ -222,27 +205,20 @@ impl Toploc {
                     metrics.record_api_request("toploc_group_file_validation", &status.to_string());
                 }
                 info!(
-                    "Remote toploc group validation triggered for {} in {:?}",
-                    file_name, trigger_duration
+                    "Remote toploc group validation triggered for {file_name} in {trigger_duration:?}"
                 );
 
                 Ok(())
             }
             Err(e) => {
                 let error_msg = if e.is_timeout() {
-                    format!("Toploc group request timed out for {}: {}", file_name, e)
+                    format!("Toploc group request timed out for {file_name}: {e}")
                 } else if e.is_connect() {
-                    format!(
-                        "Failed to connect to toploc server for group {}: {}",
-                        file_name, e
-                    )
+                    format!("Failed to connect to toploc server for group {file_name}: {e}")
                 } else {
-                    format!(
-                        "Failed to trigger remote toploc group validation for {}: {}",
-                        file_name, e
-                    )
+                    format!("Failed to trigger remote toploc group validation for {file_name}: {e}")
                 };
-                error!("{}", error_msg);
+                error!("{error_msg}");
                 if let Some(metrics) = &self.metrics {
                     metrics.record_api_request("toploc_group_file_validation", "0");
                 }
@@ -256,27 +232,27 @@ impl Toploc {
         file_name: &str,
     ) -> Result<GroupValidationResult, Error> {
         let processed_file_name = self.remove_prefix_if_present(file_name);
-        debug!("Processed file name: {}", processed_file_name);
+        debug!("Processed file name: {processed_file_name}");
         let url = format!(
             "{}/statusgroup/{}",
             self.config.server_url, processed_file_name
         );
-        debug!("Processing URL: {}", url);
+        debug!("Processing URL: {url}");
 
         let start_time = std::time::Instant::now();
         match self.client.get(&url).send().await {
             Ok(response) => {
                 let status = response.status();
                 if status != reqwest::StatusCode::OK {
-                    error!("Unexpected status code {} for {}", status, file_name);
+                    error!("Unexpected status code {status} for {file_name}");
                     if let Some(metrics) = &self.metrics {
                         metrics.record_api_request("toploc_get_group_status", &status.to_string());
                     }
-                    return Err(Error::msg(format!("Unexpected status code: {}", status)));
+                    return Err(Error::msg(format!("Unexpected status code: {status}")));
                 }
                 let status_json: serde_json::Value = response.json().await.map_err(|e| {
-                    error!("Failed to parse JSON response for {}: {}", file_name, e);
-                    Error::msg(format!("Failed to parse JSON response: {}", e))
+                    error!("Failed to parse JSON response for {file_name}: {e}");
+                    Error::msg(format!("Failed to parse JSON response: {e}"))
                 })?;
 
                 let duration = start_time.elapsed();
@@ -286,12 +262,12 @@ impl Toploc {
                 }
 
                 if status_json.get("status").is_none() {
-                    error!("No status found for {}", file_name);
+                    error!("No status found for {file_name}");
                     Err(Error::msg("No status found"))
                 } else {
                     match status_json.get("status").and_then(|s| s.as_str()) {
                         Some(status) => {
-                            debug!("Validation status for {}: {}", file_name, status);
+                            debug!("Validation status for {file_name}: {status}");
 
                             let validation_result = match status {
                                 "accept" => ValidationResult::Accept,
@@ -332,7 +308,7 @@ impl Toploc {
                             })
                         }
                         None => {
-                            error!("No status found for {}", file_name);
+                            error!("No status found for {file_name}");
                             Err(Error::msg("No status found"))
                         }
                     }
@@ -340,19 +316,13 @@ impl Toploc {
             }
             Err(e) => {
                 let error_msg = if e.is_timeout() {
-                    format!("Toploc status check timed out for {}: {}", file_name, e)
+                    format!("Toploc status check timed out for {file_name}: {e}")
                 } else if e.is_connect() {
-                    format!(
-                        "Failed to connect to toploc server for status check {}: {}",
-                        file_name, e
-                    )
+                    format!("Failed to connect to toploc server for status check {file_name}: {e}")
                 } else {
-                    format!(
-                        "Failed to poll remote toploc group validation for {}: {}",
-                        file_name, e
-                    )
+                    format!("Failed to poll remote toploc group validation for {file_name}: {e}")
                 };
-                error!("{}", error_msg);
+                error!("{error_msg}");
                 Err(Error::msg(error_msg))
             }
         }
@@ -379,17 +349,17 @@ impl Toploc {
                     )));
                 }
                 let status_json: serde_json::Value = response.json().await.map_err(|e| {
-                    error!("Failed to parse JSON response for {}: {}", file_name, e);
-                    Error::msg(format!("Failed to parse JSON response: {}", e))
+                    error!("Failed to parse JSON response for {file_name}: {e}");
+                    Error::msg(format!("Failed to parse JSON response: {e}"))
                 })?;
 
                 if status_json.get("status").is_none() {
-                    error!("No status found for {}", file_name);
+                    error!("No status found for {file_name}");
                     Err(Error::msg("No status found"))
                 } else {
                     match status_json.get("status").and_then(|s| s.as_str()) {
                         Some(status) => {
-                            debug!("Validation status for {}: {}", file_name, status);
+                            debug!("Validation status for {file_name}: {status}");
 
                             let validation_result = match status {
                                 "accept" => ValidationResult::Accept,
@@ -397,27 +367,23 @@ impl Toploc {
                                 "crashed" => ValidationResult::Crashed,
                                 "pending" => ValidationResult::Pending,
                                 _ => {
-                                    warn!("Unknown status found for {}: {}", file_name, status);
+                                    warn!("Unknown status found for {file_name}: {status}");
                                     ValidationResult::Unknown
                                 }
                             };
                             Ok(validation_result)
                         }
                         None => {
-                            error!("No status found for {}", file_name);
+                            error!("No status found for {file_name}");
                             Err(Error::msg("No status found"))
                         }
                     }
                 }
             }
             Err(e) => {
-                error!(
-                    "Failed to poll remote toploc validation for {}: {}",
-                    file_name, e
-                );
+                error!("Failed to poll remote toploc validation for {file_name}: {e}");
                 Err(Error::msg(format!(
-                    "Failed to poll remote toploc validation: {}",
-                    e
+                    "Failed to poll remote toploc validation: {e}"
                 )))
             }
         }

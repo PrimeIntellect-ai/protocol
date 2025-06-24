@@ -57,7 +57,7 @@ impl DiscoveryMonitor {
     async fn handle_status_change(&self, node: &OrchestratorNode, old_status: NodeStatus) {
         for handler in &self.status_change_handlers {
             if let Err(e) = handler.handle_status_change(node, &old_status).await {
-                error!("Status change handler failed: {}", e);
+                error!("Status change handler failed: {e}");
             }
         }
     }
@@ -100,7 +100,7 @@ impl DiscoveryMonitor {
                     );
                 }
                 Err(e) => {
-                    error!("Error syncing nodes from discovery service: {}", e);
+                    error!("Error syncing nodes from discovery service: {e}");
                 }
             }
             self.heartbeats.update_monitor();
@@ -117,7 +117,7 @@ impl DiscoveryMonitor {
             match sign_request_with_nonce(&discovery_route, &self.coordinator_wallet, None).await {
                 Ok(sig) => sig,
                 Err(e) => {
-                    error!("Failed to sign discovery request: {}", e);
+                    error!("Failed to sign discovery request: {e}");
                     return Ok(Vec::new());
                 }
             };
@@ -134,7 +134,7 @@ impl DiscoveryMonitor {
 
         let response = match self
             .http_client
-            .get(format!("{}{}", discovery_url, discovery_route))
+            .get(format!("{discovery_url}{discovery_route}"))
             .query(&[("nonce", signature.nonce)])
             .headers(headers)
             .send()
@@ -142,10 +142,7 @@ impl DiscoveryMonitor {
         {
             Ok(resp) => resp,
             Err(e) => {
-                error!(
-                    "Failed to fetch nodes from discovery service {}: {}",
-                    discovery_url, e
-                );
+                error!("Failed to fetch nodes from discovery service {discovery_url}: {e}");
                 return Ok(Vec::new());
             }
         };
@@ -153,10 +150,7 @@ impl DiscoveryMonitor {
         let response_text = match response.text().await {
             Ok(text) => text,
             Err(e) => {
-                error!(
-                    "Failed to read discovery response from {}: {}",
-                    discovery_url, e
-                );
+                error!("Failed to read discovery response from {discovery_url}: {e}");
                 return Ok(Vec::new());
             }
         };
@@ -165,10 +159,7 @@ impl DiscoveryMonitor {
             match serde_json::from_str(&response_text) {
                 Ok(resp) => resp,
                 Err(e) => {
-                    error!(
-                        "Failed to parse discovery response from {}: {}",
-                        discovery_url, e
-                    );
+                    error!("Failed to parse discovery response from {discovery_url}: {e}");
                     return Ok(Vec::new());
                 }
             };
@@ -198,7 +189,7 @@ impl DiscoveryMonitor {
                     any_success = true;
                 }
                 Err(e) => {
-                    error!("Failed to fetch nodes from {}: {}", discovery_url, e);
+                    error!("Failed to fetch nodes from {discovery_url}: {e}");
                 }
             }
         }
@@ -271,21 +262,20 @@ impl DiscoveryMonitor {
                         .update_node_status(&node_address, NodeStatus::Dead)
                         .await
                     {
-                        error!("Error updating node status: {}", e);
+                        error!("Error updating node status: {e}");
                     }
                     return Ok(());
                 }
 
                 if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
                     info!(
-                        "Node {} is validated but not provider whitelisted, marking as ejected",
-                        node_address
+                        "Node {node_address} is validated but not provider whitelisted, marking as ejected"
                     );
                     if let Err(e) = self
                         .update_node_status(&node_address, NodeStatus::Ejected)
                         .await
                     {
-                        error!("Error updating node status: {}", e);
+                        error!("Error updating node status: {e}");
                     }
                 }
 
@@ -296,14 +286,13 @@ impl DiscoveryMonitor {
                     && existing_node.status == NodeStatus::Ejected
                 {
                     info!(
-                        "Node {} is validated and provider whitelisted. Local store status was ejected, marking as dead so node can recover",
-                        node_address
+                        "Node {node_address} is validated and provider whitelisted. Local store status was ejected, marking as dead so node can recover"
                     );
                     if let Err(e) = self
                         .update_node_status(&node_address, NodeStatus::Dead)
                         .await
                     {
-                        error!("Error updating node status: {}", e);
+                        error!("Error updating node status: {e}");
                     }
                 }
                 if !discovery_node.is_active && existing_node.status == NodeStatus::Healthy {
@@ -322,26 +311,24 @@ impl DiscoveryMonitor {
 
                     if should_mark_inactive {
                         info!(
-                            "Node {} is no longer active on chain, marking as ejected",
-                            node_address
+                            "Node {node_address} is no longer active on chain, marking as ejected"
                         );
                         if !discovery_node.is_provider_whitelisted {
                             if let Err(e) = self
                                 .update_node_status(&node_address, NodeStatus::Ejected)
                                 .await
                             {
-                                error!("Error updating node status: {}", e);
+                                error!("Error updating node status: {e}");
                             }
                         } else if let Err(e) = self
                             .update_node_status(&node_address, NodeStatus::Dead)
                             .await
                         {
-                            error!("Error updating node status: {}", e);
+                            error!("Error updating node status: {e}");
                         }
                     } else {
                         info!(
-                            "Node {} is no longer active on chain but recently became healthy, waiting before marking inactive",
-                            node_address
+                            "Node {node_address} is no longer active on chain but recently became healthy, waiting before marking inactive"
                         );
                     }
                 }
@@ -375,12 +362,11 @@ impl DiscoveryMonitor {
                         discovery_node.last_updated,
                     ) {
                         if last_change < last_updated {
-                            info!("Node {} is dead but has been updated on discovery, marking as discovered", node_address);
+                            info!("Node {node_address} is dead but has been updated on discovery, marking as discovered");
 
                             if existing_node.compute_specs != discovery_node.compute_specs {
                                 info!(
-                                    "Node {} compute specs changed, marking as discovered",
-                                    node_address
+                                    "Node {node_address} compute specs changed, marking as discovered"
                                 );
                                 let mut node = existing_node.clone();
                                 node.compute_specs = discovery_node.compute_specs.clone();
@@ -390,7 +376,7 @@ impl DiscoveryMonitor {
                                 .update_node_status(&node_address, NodeStatus::Discovered)
                                 .await
                             {
-                                error!("Error updating node status: {}", e);
+                                error!("Error updating node status: {e}");
                             }
                         }
                     }
@@ -408,13 +394,13 @@ impl DiscoveryMonitor {
                     return Ok(());
                 }
 
-                info!("Discovered new validated node: {}", node_address);
+                info!("Discovered new validated node: {node_address}");
                 let mut node = OrchestratorNode::from(discovery_node.clone());
                 node.first_seen = Some(Utc::now());
                 let _ = self.store_context.node_store.add_node(node.clone()).await;
             }
             Err(e) => {
-                error!("Error syncing node with discovery: {}", e);
+                error!("Error syncing node with discovery: {e}");
                 return Err(e);
             }
         }
@@ -426,7 +412,7 @@ impl DiscoveryMonitor {
 
         for discovery_node in &discovery_nodes {
             if let Err(e) = self.sync_single_node_with_discovery(discovery_node).await {
-                error!("Error syncing node with discovery: {}", e);
+                error!("Error syncing node with discovery: {e}");
             }
         }
 

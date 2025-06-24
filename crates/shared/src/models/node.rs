@@ -85,15 +85,15 @@ impl fmt::Display for ComputeRequirements {
         }
 
         if let Some(cpu) = &self.cpu {
-            writeln!(f, "CPU: {}", cpu)?;
+            writeln!(f, "CPU: {cpu}")?;
         }
 
         if let Some(ram) = self.ram_mb {
-            writeln!(f, "RAM: {} MB", ram)?;
+            writeln!(f, "RAM: {ram} MB")?;
         }
 
         if let Some(storage) = self.storage_gb {
-            writeln!(f, "Storage: {} GB", storage)?;
+            writeln!(f, "Storage: {storage} GB")?;
         }
 
         Ok(())
@@ -105,15 +105,15 @@ impl fmt::Display for GpuRequirements {
         let mut parts = Vec::new();
 
         if let Some(count) = self.count {
-            parts.push(format!("{} GPU(s)", count));
+            parts.push(format!("{count} GPU(s)"));
         }
 
         if let Some(model) = &self.model {
-            parts.push(format!("Model: {}", model));
+            parts.push(format!("Model: {model}"));
         }
 
         if let Some(memory) = self.memory_mb {
-            parts.push(format!("Memory: {} MB", memory));
+            parts.push(format!("Memory: {memory} MB"));
         }
 
         if parts.is_empty() {
@@ -129,15 +129,15 @@ impl fmt::Display for GpuSpecs {
         let mut parts = Vec::new();
 
         if let Some(count) = self.count {
-            parts.push(format!("{} GPU(s)", count));
+            parts.push(format!("{count} GPU(s)"));
         }
 
         if let Some(model) = &self.model {
-            parts.push(format!("Model: {}", model));
+            parts.push(format!("Model: {model}"));
         }
 
         if let Some(memory) = self.memory_mb {
-            parts.push(format!("Memory: {} MB", memory));
+            parts.push(format!("Memory: {memory} MB"));
         }
 
         if parts.is_empty() {
@@ -159,11 +159,11 @@ impl fmt::Display for CpuSpecs {
         let mut parts = Vec::new();
 
         if let Some(cores) = self.cores {
-            parts.push(format!("{} cores", cores));
+            parts.push(format!("{cores} cores"));
         }
 
         if let Some(model) = &self.model {
-            parts.push(format!("Model: {}", model));
+            parts.push(format!("Model: {model}"));
         }
 
         if parts.is_empty() {

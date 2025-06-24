@@ -28,7 +28,7 @@ impl ProviderOperations {
             return true;
         }
 
-        print!("{} [y/N]: ", message);
+        print!("{message} [y/N]: ");
         io::stdout().flush().unwrap();
 
         let mut input = String::new();
@@ -91,7 +91,7 @@ impl ProviderOperations {
                                 Some(stake)
                             },
                             Err(e) => {
-                                error!("Failed to get stake: {}", e);
+                                error!("Failed to get stake: {e}");
                                 None
                             }
                         };
@@ -112,7 +112,7 @@ impl ProviderOperations {
                                 Some(balance)
                             },
                             Err(e) => {
-                                error!("Failed to get balance: {}", e);
+                                error!("Failed to get balance: {e}");
                                 None
                             }
                         };
@@ -132,7 +132,7 @@ impl ProviderOperations {
                                 }
                             },
                             Err(e) => {
-                                error!("Failed to get provider whitelist status: {}", e);
+                                error!("Failed to get provider whitelist status: {e}");
                             }
                         };
 
@@ -200,7 +200,7 @@ impl ProviderOperations {
                 },
             }
         }
-        log::error!("❌ Failed to register provider after {} attempts", attempts);
+        log::error!("❌ Failed to register provider after {attempts} attempts");
         Err(ProviderError::Other)
     }
 
@@ -258,7 +258,7 @@ impl ProviderOperations {
                     return Err(ProviderError::Other);
                 }
             };
-            Console::info("Registration tx", &format!("{:?}", register_tx));
+            Console::info("Registration tx", &format!("{register_tx:?}"));
         }
 
         // Get provider details again  - cleanup later
@@ -298,18 +298,18 @@ impl ProviderOperations {
 
             Console::progress("Approving Stake transaction");
             self.contracts.ai_token.approve(stake).await.map_err(|e| {
-                error!("Failed to approve stake: {}", e);
+                error!("Failed to approve stake: {e}");
                 ProviderError::Other
             })?;
             Console::progress("Registering Provider");
             let register_tx = match self.contracts.prime_network.register_provider(stake).await {
                 Ok(tx) => tx,
                 Err(e) => {
-                    error!("Registration Error: {}", e);
+                    error!("Registration Error: {e}");
                     return Err(ProviderError::Other);
                 }
             };
-            Console::info("Registration tx", &format!("{:?}", register_tx));
+            Console::info("Registration tx", &format!("{register_tx:?}"));
         }
 
         let provider = self
@@ -376,19 +376,19 @@ impl ProviderOperations {
             .approve(additional_stake)
             .await
             .map_err(|_| ProviderError::Other)?;
-        Console::info("Transaction approved", &format!("{:?}", approve_tx));
+        Console::info("Transaction approved", &format!("{approve_tx:?}"));
 
         Console::progress("Increasing stake");
         let stake_tx = match self.contracts.prime_network.stake(additional_stake).await {
             Ok(tx) => tx,
             Err(e) => {
-                println!("Failed to increase stake: {:?}", e);
+                println!("Failed to increase stake: {e:?}");
                 return Err(ProviderError::Other);
             }
         };
         Console::info(
             "Stake increase transaction completed: ",
-            &format!("{:?}", stake_tx),
+            &format!("{stake_tx:?}"),
         );
 
         Console::success("Provider stake increased successfully");
@@ -400,13 +400,13 @@ impl ProviderOperations {
         let reclaim_tx = match self.contracts.prime_network.reclaim_stake(amount).await {
             Ok(tx) => tx,
             Err(e) => {
-                println!("Failed to reclaim stake: {:?}", e);
+                println!("Failed to reclaim stake: {e:?}");
                 return Err(ProviderError::Other);
             }
         };
         Console::info(
             "Stake reclaim transaction completed: ",
-            &format!("{:?}", reclaim_tx),
+            &format!("{reclaim_tx:?}"),
         );
         Console::success("Provider stake reclaimed successfully");
         Ok(())

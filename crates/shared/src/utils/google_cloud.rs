@@ -63,7 +63,7 @@ impl StorageProvider for GcsStorageProvider {
 
         let object_path = object_path.strip_prefix('/').unwrap_or(object_path);
         let full_path = if !subpath.is_empty() {
-            format!("{}/{}", subpath, object_path)
+            format!("{subpath}/{object_path}")
         } else {
             object_path.to_string()
         };
@@ -82,14 +82,14 @@ impl StorageProvider for GcsStorageProvider {
     }
     async fn generate_mapping_file(&self, sha256: &str, file_name: &str) -> Result<String> {
         let client = self.client.clone();
-        let mapping_path = format!("mapping/{}", sha256);
+        let mapping_path = format!("mapping/{sha256}");
 
         let file_name = file_name.strip_prefix('/').unwrap_or(file_name);
         let content = file_name.to_string().into_bytes();
 
         let (bucket_name, subpath) = Self::get_bucket_name(&self.bucket);
         let object_path = if !subpath.is_empty() {
-            format!("{}/{}", subpath, mapping_path)
+            format!("{subpath}/{mapping_path}")
         } else {
             mapping_path.clone()
         };
@@ -114,10 +114,10 @@ impl StorageProvider for GcsStorageProvider {
     async fn resolve_mapping_for_sha(&self, sha256: &str) -> Result<String> {
         let client = self.client.clone();
         let (bucket_name, subpath) = Self::get_bucket_name(&self.bucket);
-        let mapping_path = format!("mapping/{}", sha256);
+        let mapping_path = format!("mapping/{sha256}");
 
         let object_path = if !subpath.is_empty() {
-            format!("{}/{}", subpath, mapping_path)
+            format!("{subpath}/{mapping_path}")
         } else {
             mapping_path.clone()
         };
@@ -153,7 +153,7 @@ impl StorageProvider for GcsStorageProvider {
         // Ensure object_path does not start with a /
         let object_path = object_path.strip_prefix('/').unwrap_or(object_path);
         let object_path = if !subpath.is_empty() {
-            format!("{}/{}", subpath, object_path)
+            format!("{subpath}/{object_path}")
         } else {
             object_path.to_string()
         };
