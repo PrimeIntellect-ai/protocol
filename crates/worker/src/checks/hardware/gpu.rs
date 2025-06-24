@@ -55,7 +55,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
         {
             Ok(nvml) => *nvml_guard = Some(nvml),
             Err(e) => {
-                Console::user_error(&format!("Failed to initialize NVML: {}", e));
+                Console::user_error(&format!("Failed to initialize NVML: {e}"));
                 return vec![];
             }
         }
@@ -67,7 +67,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
     let device_count = match nvml.device_count() {
         Ok(count) => count as usize,
         Err(e) => {
-            Console::user_error(&format!("Failed to get device count: {}", e));
+            Console::user_error(&format!("Failed to get device count: {e}"));
             return vec![];
         }
     };
@@ -106,7 +106,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
                 }
             }
             Err(e) => {
-                Console::user_error(&format!("Failed to get device {}: {}", i, e));
+                Console::user_error(&format!("Failed to get device {i}: {e}"));
             }
         }
     }

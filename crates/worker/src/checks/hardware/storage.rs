@@ -157,10 +157,10 @@ fn find_best_writable_path(mount_path: &str, username: &str) -> Option<String> {
         // Try to create our app directory within this base
         let app_path = if base_dir == mount_path.trim_end_matches('/') {
             // If using mount root, create the app directory directly
-            format!("{}/{}", base_dir, APP_DIR_NAME)
+            format!("{base_dir}/{APP_DIR_NAME}")
         } else {
             // Otherwise, nest it properly
-            format!("{}/{}", base_dir, APP_DIR_NAME)
+            format!("{base_dir}/{APP_DIR_NAME}")
         };
 
         // Test if we can create and write to our app directory
@@ -243,10 +243,10 @@ pub fn print_storage_info() {
     match get_storage_info() {
         Ok((total, free)) => {
             Console::title("Storage Information:");
-            Console::info("Total Storage", &format!("{:.1} GB", total));
-            Console::info("Free Storage", &format!("{:.1} GB", free));
+            Console::info("Total Storage", &format!("{total:.1} GB"));
+            Console::info("Free Storage", &format!("{free:.1} GB"));
         }
-        Err(e) => log::error!("Storage Error: {}", e),
+        Err(e) => log::error!("Storage Error: {e}"),
     }
 }
 

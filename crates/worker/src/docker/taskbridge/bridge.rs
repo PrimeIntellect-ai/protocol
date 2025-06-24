@@ -52,9 +52,9 @@ impl TaskBridge {
             Some(path) => path.to_string(),
             None => {
                 if cfg!(target_os = "macos") {
-                    format!("{}{}", DEFAULT_MACOS_SOCKET, SOCKET_NAME)
+                    format!("{DEFAULT_MACOS_SOCKET}{SOCKET_NAME}")
                 } else {
-                    format!("{}{}", DEFAULT_LINUX_SOCKET, SOCKET_NAME)
+                    format!("{DEFAULT_LINUX_SOCKET}{SOCKET_NAME}")
                 }
             }
         };
@@ -73,7 +73,7 @@ impl TaskBridge {
     async fn handle_metric(self: Arc<Self>, input: &MetricInput) -> Result<()> {
         debug!("Processing metric message");
         for (key, value) in input.metrics.iter() {
-            debug!("Metric - Key: {}, Value: {}", key, value);
+            debug!("Metric - Key: {key}, Value: {value}");
             let _ = self
                 .metrics_store
                 .update_metric(
@@ -92,10 +92,7 @@ impl TaskBridge {
 
             // Handle file upload if save_path is present
             if let Some(file_name) = file_info["output/save_path"].as_str() {
-                info!(
-                    "Handling file upload for task_id: {}, file: {}",
-                    task_id, file_name
-                );
+                info!("Handling file upload for task_id: {task_id}, file: {file_name}");
 
                 let storage_path_inner = self.docker_storage_path.clone();
                 let task_id_inner = task_id.to_string();
@@ -113,7 +110,7 @@ impl TaskBridge {
                     )
                     .await
                     {
-                        error!("Failed to handle file upload: {}", e);
+                        error!("Failed to handle file upload: {e}");
                     } else {
                         info!("File upload handled successfully");
                     }
@@ -127,8 +124,7 @@ impl TaskBridge {
                 let input_flops: f64 = file_info["output/input_flops"].as_f64().unwrap_or(0.0);
 
                 info!(
-                    "Handling file validation for task_id: {}, sha: {}, output_flops: {}, input_flops: {}",
-                    task_id, file_sha, output_flops, input_flops
+                    "Handling file validation for task_id: {task_id}, sha: {file_sha}, output_flops: {output_flops}, input_flops: {input_flops}"
                 );
 
                 if let (Some(contracts_ref), Some(node_ref)) =
@@ -146,7 +142,7 @@ impl TaskBridge {
                     };
 
                     if output_flops <= 0.0 {
-                        error!("Invalid work units calculation: output_flops ({}) must be greater than 0.0. Blocking file validation submission.", output_flops);
+                        error!("Invalid work units calculation: output_flops ({output_flops}) must be greater than 0.0. Blocking file validation submission.");
                         return Err(anyhow::anyhow!(
                             "Invalid work units: output_flops must be greater than 0.0"
                         ));
@@ -163,7 +159,7 @@ impl TaskBridge {
                         )
                         .await
                         {
-                            error!("Failed to handle file validation: {}", e);
+                            error!("Failed to handle file validation: {e}");
                         }
                     });
                 } else {
@@ -171,27 +167,27 @@ impl TaskBridge {
                 }
             }
         } else {
-            error!("Failed to parse JSON: {}", json_str);
+            error!("Failed to parse JSON: {json_str}");
         }
         Ok(())
     }
 
     async fn handle_message(self: Arc<Self>, json_str: &str) -> Result<()> {
-        debug!("Extracted JSON object: {}", json_str);
+        debug!("Extracted JSON object: {json_str}");
         if json_str.contains("output/save_path") {
             if let Err(e) = self.handle_file_upload(json_str).await {
-                error!("Failed to handle file upload: {}", e);
+                error!("Failed to handle file upload: {e}");
             }
         } else {
             debug!("Processing metric message");
             match serde_json::from_str::<MetricInput>(json_str) {
                 Ok(input) => {
                     if let Err(e) = self.handle_metric(&input).await {
-                        error!("Failed to handle metric: {}", e);
+                        error!("Failed to handle metric: {e}");
                     }
                 }
                 Err(e) => {
-                    error!("Failed to parse metric input: {} {}", json_str, e);
+                    error!("Failed to parse metric input: {json_str} {e}");
                 }
             }
         }
@@ -222,7 +218,7 @@ impl TaskBridge {
             match fs::remove_file(socket_path) {
                 Ok(_) => debug!("Removed existing socket file"),
                 Err(e) => {
-                    error!("Failed to remove existing socket file: {}", e);
+                    error!("Failed to remove existing socket file: {e}");
                     return Err(e.into());
                 }
             }
@@ -234,7 +230,7 @@ impl TaskBridge {
                 l
             }
             Err(e) => {
-                error!("Failed to bind Unix socket: {}", e);
+                error!("Failed to bind Unix socket: {e}");
                 return Err(e.into());
             }
         };
@@ -243,7 +239,7 @@ impl TaskBridge {
         match fs::set_permissions(socket_path, fs::Permissions::from_mode(0o666)) {
             Ok(_) => debug!("Set socket permissions to 0o666"),
             Err(e) => {
-                error!("Failed to set socket permissions: {}", e);
+                error!("Failed to set socket permissions: {e}");
                 return Err(e.into());
             }
         }
@@ -253,7 +249,7 @@ impl TaskBridge {
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     tokio::spawn(async move {
-                        debug!("Received connection from {:?}", _addr);
+                        debug!("Received connection from {_addr:?}");
                         let mut reader = BufReader::new(stream);
                         let mut buffer = vec![0; 1024];
                         let mut data = Vec::new();
@@ -265,11 +261,11 @@ impl TaskBridge {
                                     0
                                 }
                                 Ok(n) => {
-                                    debug!("Read {} bytes from socket", n);
+                                    debug!("Read {n} bytes from socket");
                                     n
                                 }
                                 Err(e) => {
-                                    error!("Error reading from stream: {}", e);
+                                    error!("Error reading from stream: {e}");
                                     break;
                                 }
                             };
@@ -278,7 +274,7 @@ impl TaskBridge {
                             debug!("Current data buffer size: {} bytes", data.len());
 
                             if let Ok(data_str) = std::str::from_utf8(&data) {
-                                debug!("Raw data received: {}", data_str);
+                                debug!("Raw data received: {data_str}");
                             } else {
                                 debug!("Raw data received (non-UTF8): {} bytes", data.len());
                             }
@@ -292,13 +288,12 @@ impl TaskBridge {
                                     let json_str = json_str.to_string();
                                     let bridge_clone = bridge.clone();
                                     if let Err(e) = bridge_clone.handle_message(&json_str).await {
-                                        error!("Error handling message: {}", e);
+                                        error!("Error handling message: {e}");
                                     }
 
                                     current_pos += byte_length;
                                     debug!(
-                                        "Advanced position to {} after processing JSON",
-                                        current_pos
+                                        "Advanced position to {current_pos} after processing JSON"
                                     );
                                 } else {
                                     debug!("No complete JSON object found, waiting for more data");
@@ -319,7 +314,7 @@ impl TaskBridge {
                                     // We have data but couldn't parse it as complete JSON objects
                                     // and the connection is closed - log and discard
                                     if let Ok(unparsed) = std::str::from_utf8(&data) {
-                                        warn!("Discarding unparseable data after connection close: {}", unparsed);
+                                        warn!("Discarding unparseable data after connection close: {unparsed}");
                                     } else {
                                         warn!("Discarding unparseable binary data after connection close ({} bytes)", data.len());
                                     }
@@ -330,7 +325,7 @@ impl TaskBridge {
                         }
                     });
                 }
-                Err(e) => error!("Accept failed on Unix socket: {}", e),
+                Err(e) => error!("Accept failed on Unix socket: {e}"),
             }
         }
     }

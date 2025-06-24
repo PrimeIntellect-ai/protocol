@@ -57,7 +57,7 @@ impl<P: alloy_provider::Provider> ComputePool<P> {
             0 => PoolStatus::PENDING,
             1 => PoolStatus::ACTIVE,
             2 => PoolStatus::COMPLETED,
-            _ => panic!("Unknown status value: {}", status),
+            _ => panic!("Unknown status value: {status}"),
         };
 
         let pool_info = PoolInfo {
@@ -400,7 +400,7 @@ impl ComputePool<WalletProvider> {
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
+        println!("Result: {result:?}");
         Ok(result)
     }
 
@@ -441,7 +441,7 @@ impl ComputePool<WalletProvider> {
             .await?
             .watch()
             .await?;
-        println!("Result: {:?}", result);
+        println!("Result: {result:?}");
         Ok(result)
     }
 

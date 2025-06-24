@@ -72,7 +72,7 @@ impl DockerManager {
         if sanitized.is_empty() || sanitized == "." || sanitized == ".." {
             return Err(DockerError::DockerResponseServerError {
                 status_code: 400,
-                message: format!("Invalid path component: {}", component),
+                message: format!("Invalid path component: {component}"),
             });
         }
 
@@ -112,7 +112,7 @@ impl DockerManager {
     fn create_secure_directory(path: &Path) -> Result<(), DockerError> {
         std::fs::create_dir_all(path).map_err(|e| DockerError::DockerResponseServerError {
             status_code: 500,
-            message: format!("Failed to create directory: {}", e),
+            message: format!("Failed to create directory: {e}"),
         })?;
 
         #[cfg(unix)]
@@ -121,14 +121,14 @@ impl DockerManager {
             let mut perms = std::fs::metadata(path)
                 .map_err(|e| DockerError::DockerResponseServerError {
                     status_code: 500,
-                    message: format!("Failed to get directory metadata: {}", e),
+                    message: format!("Failed to get directory metadata: {e}"),
                 })?
                 .permissions();
             perms.set_mode(0o777);
             std::fs::set_permissions(path, perms).map_err(|e| {
                 DockerError::DockerResponseServerError {
                     status_code: 500,
-                    message: format!("Failed to set directory permissions: {}", e),
+                    message: format!("Failed to set directory permissions: {e}"),
                 }
             })?;
         }
@@ -141,7 +141,7 @@ impl DockerManager {
         let docker = match Docker::connect_with_unix_defaults() {
             Ok(docker) => docker,
             Err(e) => {
-                error!("Failed to connect to Docker daemon: {}", e);
+                error!("Failed to connect to Docker daemon: {e}");
                 return Err(e);
             }
         };
@@ -149,22 +149,19 @@ impl DockerManager {
         // Validate and create storage directory
         let storage_path_buf = PathBuf::from(&storage_path);
         if !storage_path_buf.exists() {
-            info!("Creating storage directory: {}", storage_path);
+            info!("Creating storage directory: {storage_path}");
             Self::create_secure_directory(&storage_path_buf)?;
         } else {
             // Verify it's a directory and writable
             if !storage_path_buf.is_dir() {
                 return Err(DockerError::DockerResponseServerError {
                     status_code: 400,
-                    message: format!("Storage path is not a directory: {}", storage_path),
+                    message: format!("Storage path is not a directory: {storage_path}"),
                 });
             }
         }
 
-        info!(
-            "DockerManager initialized with storage path: {}",
-            storage_path
-        );
+        info!("DockerManager initialized with storage path: {storage_path}");
         Ok(Self {
             docker,
             storage_path,
@@ -174,24 +171,23 @@ impl DockerManager {
 
     /// Pull a Docker image if it doesn't exist locally
     pub async fn pull_image(&self, image: &str) -> Result<(), DockerError> {
-        debug!("Checking if image needs to be pulled: {}", image);
+        debug!("Checking if image needs to be pulled: {image}");
 
         // Check if the image uses :latest or :main tag
         let should_always_pull = image.ends_with(":latest") || image.ends_with(":main");
 
         // Only skip pulling if image exists locally AND it's not a :latest or :main tag
         if !should_always_pull && self.docker.inspect_image(image).await.is_ok() {
-            debug!("Image {} already exists locally", image);
+            debug!("Image {image} already exists locally");
             return Ok(());
         }
 
         if should_always_pull {
             info!(
-                "Image {} uses :latest or :main tag, pulling to ensure we have the newest version",
-                image
+                "Image {image} uses :latest or :main tag, pulling to ensure we have the newest version"
             );
         } else {
-            info!("Image {} not found locally, pulling...", image);
+            info!("Image {image} not found locally, pulling...");
         }
 
         // Split image name and tag
@@ -211,13 +207,13 @@ impl DockerManager {
         while let Some(info) = image_stream.next().await {
             match info {
                 Ok(create_info) => {
-                    debug!("Pull progress: {:?}", create_info);
+                    debug!("Pull progress: {create_info:?}");
                 }
                 Err(e) => return Err(e),
             }
         }
 
-        info!("Successfully pulled image {}", image);
+        info!("Successfully pulled image {image}");
         Ok(())
     }
 
@@ -236,10 +232,10 @@ impl DockerManager {
         entrypoint: Option<Vec<String>>,
         restart_policy_max_retries: Option<i64>,
     ) -> Result<String, DockerError> {
-        info!("Starting to pull image: {}", image);
+        info!("Starting to pull image: {image}");
 
         let mut final_volumes = Vec::new();
-        let volume_name = format!("{}_data", name);
+        let volume_name = format!("{name}_data");
 
         let data_dir_name = match TaskContainer::from_str(name) {
             Ok(task_container) => task_container.data_dir_name(),
@@ -301,7 +297,7 @@ impl DockerManager {
                 debug!("Shared volume 'shared_data' already exists, reusing");
             }
             Err(e) => {
-                error!("Failed to create shared volume: {}", e);
+                error!("Failed to create shared volume: {e}");
                 return Err(e);
             }
         }
@@ -312,7 +308,7 @@ impl DockerManager {
 
         let env = env_vars.map(|vars| {
             vars.iter()
-                .map(|(k, v)| format!("{}={}", k, v))
+                .map(|(k, v)| format!("{k}={v}"))
                 .collect::<Vec<String>>()
         });
         let volume_binds = {
@@ -320,9 +316,9 @@ impl DockerManager {
                 .iter()
                 .map(|(vol, container, read_only)| {
                     if *read_only {
-                        format!("{}:{}:ro", vol, container)
+                        format!("{vol}:{container}:ro")
                     } else {
-                        format!("{}:{}", vol, container)
+                        format!("{vol}:{container}")
                     }
                 })
                 .collect::<Vec<String>>();
@@ -367,7 +363,7 @@ impl DockerManager {
                                     )
                                 }
                                 Err(e) => {
-                                    error!("Failed to create secure path for volume mount: {}", e);
+                                    error!("Failed to create secure path for volume mount: {e}");
                                     // Fallback to original host path for non-task volumes
                                     (host_path, container_path, read_only)
                                 }
@@ -384,9 +380,9 @@ impl DockerManager {
                         .into_iter()
                         .map(|(host, container, read_only)| {
                             if read_only {
-                                format!("{}:{}:ro", host, container)
+                                format!("{host}:{container}:ro")
                             } else {
-                                format!("{}:{}", host, container)
+                                format!("{host}:{container}")
                             }
                         }),
                 );
@@ -401,8 +397,7 @@ impl DockerManager {
             "host".to_string()
         };
 
-        let host_config = if gpu.is_some() {
-            let gpu = gpu.unwrap();
+        let host_config = if let Some(gpu) = gpu {
             let device_ids = match &gpu.indices {
                 Some(indices) if !indices.is_empty() => {
                     // Use specific GPU indices if available
@@ -458,7 +453,7 @@ impl DockerManager {
             ..Default::default()
         };
 
-        info!("Creating container with name: {}", name);
+        info!("Creating container with name: {name}");
         // Create and start container
         let container = self
             .docker
@@ -471,7 +466,7 @@ impl DockerManager {
             )
             .await
             .map_err(|e| {
-                error!("Failed to create container: {}", e);
+                error!("Failed to create container: {e}");
                 e
             })?;
 
@@ -492,7 +487,7 @@ impl DockerManager {
 
         if container.is_some() {
             if let Err(e) = self.docker.stop_container(container_id, None).await {
-                error!("Failed to stop container: {}", e);
+                error!("Failed to stop container: {e}");
             }
         }
 
@@ -502,7 +497,7 @@ impl DockerManager {
         for attempt in 0..max_retries {
             match self.docker.remove_container(container_id, None).await {
                 Ok(_) => {
-                    info!("Container {} removed successfully", container_id);
+                    info!("Container {container_id} removed successfully");
                     break;
                 }
                 Err(DockerError::DockerResponseServerError {
@@ -521,7 +516,7 @@ impl DockerManager {
                     break;
                 }
                 Err(e) => {
-                    info!("Failed to remove container {}: {}", container_id, e);
+                    info!("Failed to remove container {container_id}: {e}");
                     return Err(e);
                 }
             }
@@ -536,7 +531,7 @@ impl DockerManager {
                 .await
             {
                 Ok(_) => {
-                    debug!("Container {} still exists, waiting...", container_id);
+                    debug!("Container {container_id} still exists, waiting...");
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 Err(DockerError::DockerResponseServerError {
@@ -546,31 +541,31 @@ impl DockerManager {
                     break;
                 }
                 Err(e) => {
-                    error!("Failed to inspect container {}: {}", container_id, e);
+                    error!("Failed to inspect container {container_id}: {e}");
                     break;
                 }
             }
         }
 
         if !gone {
-            error!("Container {} still exists after waiting", container_id);
+            error!("Container {container_id} still exists after waiting");
         }
 
         // --- Step 3: Remove volume with retries ---
         if let Some(container) = container {
             let trimmed_name = container.names.first().unwrap().trim_start_matches('/');
-            let volume_name = format!("{}_data", trimmed_name);
+            let volume_name = format!("{trimmed_name}_data");
 
             for attempt in 0..max_retries {
                 match self.docker.remove_volume(&volume_name, None).await {
                     Ok(_) => {
-                        info!("Volume {} removed successfully", volume_name);
+                        info!("Volume {volume_name} removed successfully");
                         break;
                     }
                     Err(DockerError::DockerResponseServerError {
                         status_code: 404, ..
                     }) => {
-                        debug!("Volume {} already removed", volume_name);
+                        debug!("Volume {volume_name} already removed");
                         break;
                     }
                     Err(DockerError::DockerResponseServerError {
@@ -585,7 +580,7 @@ impl DockerManager {
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                     Err(e) => {
-                        error!("Failed to remove volume {}: {}", volume_name, e);
+                        error!("Failed to remove volume {volume_name}: {e}");
                         break;
                     }
                 }
@@ -623,7 +618,7 @@ impl DockerManager {
                         }
                     }
                     Err(e) => {
-                        error!("Failed to list containers for cleanup check: {}", e);
+                        error!("Failed to list containers for cleanup check: {e}");
                         // Err on the side of caution - don't remove directory if we can't check
                         false
                     }
@@ -688,10 +683,10 @@ impl DockerManager {
                                         );
                                     }
                                     Ok(status) => {
-                                        error!("Fallback rm -rf failed with status {}", status);
+                                        error!("Fallback rm -rf failed with status {status}");
                                     }
                                     Err(e) => {
-                                        error!("Failed to execute fallback rm -rf: {}", e);
+                                        error!("Failed to execute fallback rm -rf: {e}");
                                     }
                                 }
                             }
@@ -703,7 +698,7 @@ impl DockerManager {
                         }
                     }
                     Err(e) => {
-                        error!("Failed to create secure path for directory removal: {}", e);
+                        error!("Failed to create secure path for directory removal: {e}");
                     }
                 }
             }
@@ -738,7 +733,7 @@ impl DockerManager {
         &self,
         container_id: &str,
     ) -> Result<ContainerDetails, DockerError> {
-        debug!("Getting details for container: {}", container_id);
+        debug!("Getting details for container: {container_id}");
         let container = self.docker.inspect_container(container_id, None).await?;
         let state = container.state.clone();
 
@@ -754,14 +749,14 @@ impl DockerManager {
                 .unwrap_or_default(),
         };
 
-        debug!("Retrieved details for container {}", container_id);
+        debug!("Retrieved details for container {container_id}");
         Ok(info)
     }
 
     pub async fn restart_container(&self, container_id: &str) -> Result<(), DockerError> {
-        debug!("Restarting container: {}", container_id);
+        debug!("Restarting container: {container_id}");
         self.docker.restart_container(container_id, None).await?;
-        debug!("Container {} restarted successfully", container_id);
+        debug!("Container {container_id} restarted successfully");
         Ok(())
     }
 
@@ -823,7 +818,7 @@ impl DockerManager {
                     }
                 }
                 Err(e) => {
-                    error!("Error getting logs: {}", e);
+                    error!("Error getting logs: {e}");
                     return Err(e);
                 }
             }
@@ -833,7 +828,7 @@ impl DockerManager {
             all_logs.push(current_line);
         }
         let logs = all_logs.join("\n");
-        debug!("Successfully retrieved logs for container {}", container_id);
+        debug!("Successfully retrieved logs for container {container_id}");
         Ok(logs)
     }
 

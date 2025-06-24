@@ -21,7 +21,7 @@ impl NodeStore {
     }
 
     pub async fn get_node(&self, address: String) -> Result<Option<DiscoveryNode>, Error> {
-        let key = format!("node:{}", address);
+        let key = format!("node:{address}");
         let mut con = self.get_connection().await?;
         let node: Option<String> = con.get(&key).await?;
         let node = match node {
@@ -39,7 +39,7 @@ impl NodeStore {
             return Ok(None);
         }
 
-        let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{}", id)).collect();
+        let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{id}")).collect();
         let serialized_nodes: Vec<String> =
             redis::pipe().get(&node_keys).query_async(&mut con).await?;
 
@@ -60,7 +60,7 @@ impl NodeStore {
             return Ok(0);
         }
 
-        let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{}", id)).collect();
+        let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{id}")).collect();
 
         let mut count = 0;
         for key in node_keys {
@@ -77,7 +77,7 @@ impl NodeStore {
 
     pub async fn register_node(&self, node: Node) -> Result<(), Error> {
         let address = node.id.clone();
-        let key = format!("node:{}", address);
+        let key = format!("node:{address}");
 
         let mut con = self.get_connection().await?;
 
@@ -104,7 +104,7 @@ impl NodeStore {
     pub async fn update_node(&self, node: DiscoveryNode) -> Result<(), Error> {
         let mut con = self.get_connection().await?;
         let address = node.id.clone();
-        let key = format!("node:{}", address);
+        let key = format!("node:{address}");
         let serialized_node = serde_json::to_string(&node)?;
 
         let _: () = redis::pipe()
@@ -125,7 +125,7 @@ impl NodeStore {
             return Ok(Vec::new());
         }
 
-        let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{}", id)).collect();
+        let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{id}")).collect();
 
         let mut pipe = redis::pipe();
         for key in &node_keys {
@@ -138,7 +138,7 @@ impl NodeStore {
         let serialized_nodes = match serialized_nodes {
             Ok(nodes) => nodes,
             Err(e) => {
-                error!("Error querying nodes from Redis: {}", e);
+                error!("Error querying nodes from Redis: {e}");
                 return Err(e.into());
             }
         };
@@ -159,7 +159,7 @@ impl NodeStore {
 
     pub async fn get_node_by_id(&self, node_id: &str) -> Result<Option<DiscoveryNode>, Error> {
         let mut con = self.get_connection().await?;
-        let key = format!("node:{}", node_id);
+        let key = format!("node:{node_id}");
 
         let serialized_node: Option<String> = con.get(&key).await?;
 

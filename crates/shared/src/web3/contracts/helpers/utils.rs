@@ -48,8 +48,7 @@ where
                 let new_gas_price = (gas_price as f64 * 1.2).round() as u128;
 
                 info!(
-                    "Retrying with bumped fees: max_fee={}, priority_fee={}",
-                    new_gas_price, new_priority_fee
+                    "Retrying with bumped fees: max_fee={new_gas_price}, priority_fee={new_priority_fee}"
                 );
 
                 call = call
@@ -66,12 +65,12 @@ where
                 debug!("Transaction sent, waiting for confirmation...");
                 match timeout(Duration::from_secs(30), result.watch()).await {
                     Ok(Ok(hash)) => return Ok(hash),
-                    Ok(Err(err)) => warn!("Transaction watch failed: {:?}", err),
+                    Ok(Err(err)) => warn!("Transaction watch failed: {err:?}"),
                     Err(_) => warn!("Watch timed out, retrying transaction..."),
                 }
             }
             Err(err) => {
-                warn!("Transaction send failed: {:?}", err);
+                warn!("Transaction send failed: {err:?}");
                 let err_str = err.to_string().to_lowercase();
                 if !err_str.contains("replacement transaction underpriced")
                     && !err_str.contains("nonce too low")

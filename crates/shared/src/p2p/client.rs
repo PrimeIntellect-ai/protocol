@@ -33,7 +33,7 @@ impl P2PClient {
             .bind()
             .await?;
 
-        info!("P2P client initialized with node ID: {}", node_id);
+        info!("P2P client initialized with node ID: {node_id}");
 
         Ok(Self {
             endpoint,
@@ -127,7 +127,7 @@ impl P2PClient {
         // Create node address
         let node_addr = NodeAddr::new(node_id).with_direct_addresses(socket_addrs);
 
-        debug!("Connecting to P2P node: {}", target_p2p_id);
+        debug!("Connecting to P2P node: {target_p2p_id}");
 
         // Connect to the target node
         let connection = self.endpoint.connect(node_addr, PRIME_P2P_PROTOCOL).await?;
@@ -178,7 +178,7 @@ impl P2PClient {
                     ));
                 }
 
-                debug!("Auth challenge received from node: {}", target_p2p_id);
+                debug!("Auth challenge received from node: {target_p2p_id}");
                 let signature = sign_message(&message, &self.wallet).await.unwrap();
                 P2PRequest::new(P2PMessage::AuthSolution {
                     signed_message: signature,
@@ -196,10 +196,10 @@ impl P2PClient {
         let auth_response: P2PResponse = Self::read_message(&mut recv).await?;
         match auth_response.message {
             P2PMessage::AuthGranted { .. } => {
-                debug!("Auth granted with node: {}", target_p2p_id);
+                debug!("Auth granted with node: {target_p2p_id}");
             }
             P2PMessage::AuthRejected { .. } => {
-                debug!("Auth rejected with node: {}", target_p2p_id);
+                debug!("Auth rejected with node: {target_p2p_id}");
                 return Err(anyhow::anyhow!(
                     "Auth rejected with node: {}",
                     target_p2p_id

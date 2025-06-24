@@ -37,7 +37,7 @@ impl MetricsStore {
 
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
-        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, sender_address);
+        let node_key = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:{sender_address}");
 
         for entry in metrics {
             let task_id = if entry.key.task_id.is_empty() {
@@ -46,7 +46,7 @@ impl MetricsStore {
                 entry.key.task_id.clone()
             };
             let cleaned_label = self.clean_label(&entry.key.label);
-            let metric_key = format!("{}:{}", task_id, cleaned_label);
+            let metric_key = format!("{task_id}:{cleaned_label}");
 
             // Check for dashboard-progress metrics to maintain max value behavior
             let should_update = if entry.key.label.contains("dashboard-progress") {
@@ -67,7 +67,7 @@ impl MetricsStore {
                     .hset::<_, _, _, ()>(&node_key, &metric_key, entry.value)
                     .await
                 {
-                    error!("Could not update metric value in redis: {}", err);
+                    error!("Could not update metric value in redis: {err}");
                 }
             }
         }
@@ -97,13 +97,13 @@ impl MetricsStore {
             Err(_) => return Ok(false), // Invalid address format
         };
 
-        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
-        let metric_key = format!("{}:{}", task_id, cleaned_label);
+        let node_key = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:{node_address}");
+        let metric_key = format!("{task_id}:{cleaned_label}");
 
         match con.hdel::<_, _, i32>(&node_key, &metric_key).await {
             Ok(deleted) => Ok(deleted == 1),
             Err(err) => {
-                error!("Could not delete metric from redis: {}", err);
+                error!("Could not delete metric from redis: {err}");
                 Err(anyhow!("Failed to delete metric from redis: {}", err))
             }
         }
@@ -114,7 +114,7 @@ impl MetricsStore {
         node_address: Address,
     ) -> Result<HashMap<String, HashMap<String, f64>>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
+        let node_key = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:{node_address}");
 
         // Get all metrics for this node using O(1) HGETALL operation
         let node_metrics: HashMap<String, f64> = con.hgetall(&node_key).await?;
@@ -133,7 +133,7 @@ impl MetricsStore {
 
     pub async fn get_metric_keys_for_node(&self, node_address: Address) -> Result<Vec<String>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let node_key = format!("{}:{}", ORCHESTRATOR_NODE_METRICS_STORE, node_address);
+        let node_key = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:{node_address}");
 
         // Use HKEYS to get all field names for this node (O(1) operation)
         let keys: Vec<String> = con.hkeys(&node_key).await?;
@@ -176,7 +176,7 @@ impl MetricsStore {
 
     pub async fn get_aggregate_metrics_for_all_tasks(&self) -> Result<HashMap<String, f64>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let pattern = format!("{}:*", ORCHESTRATOR_NODE_METRICS_STORE);
+        let pattern = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:*");
 
         // Scan all node keys
         let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;
@@ -206,7 +206,7 @@ impl MetricsStore {
         &self,
     ) -> Result<HashMap<String, HashMap<String, HashMap<String, f64>>>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let pattern = format!("{}:*", ORCHESTRATOR_NODE_METRICS_STORE);
+        let pattern = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:*");
 
         // Scan all node keys
         let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;

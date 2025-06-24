@@ -53,8 +53,8 @@ impl Issue {
 
     pub fn print(&self) {
         match self.severity() {
-            Severity::Error => Console::user_error(&format!("{}", self)),
-            Severity::Warning => Console::warning(&format!("{}", self)),
+            Severity::Error => Console::user_error(&format!("{self}")),
+            Severity::Warning => Console::warning(&format!("{self}")),
         }
     }
 }

@@ -42,7 +42,7 @@ impl MetricsSyncService {
                 if !labels.is_empty() {
                     return labels
                         .iter()
-                        .map(|(k, v)| format!("{}:{}", k, v))
+                        .map(|(k, v)| format!("{k}:{v}"))
                         .collect::<Vec<_>>()
                         .join("|");
                 }
@@ -60,7 +60,7 @@ impl MetricsSyncService {
                 match node_groups_plugin.get_all_node_group_mappings().await {
                     Ok(mappings) => mappings,
                     Err(e) => {
-                        error!("Failed to get node group mappings: {}", e);
+                        error!("Failed to get node group mappings: {e}");
                         return Ok(HashMap::new());
                     }
                 };
@@ -69,7 +69,7 @@ impl MetricsSyncService {
             let groups = match node_groups_plugin.get_all_groups().await {
                 Ok(groups) => groups,
                 Err(e) => {
-                    error!("Failed to get all groups: {}", e);
+                    error!("Failed to get all groups: {e}");
                     return Ok(HashMap::new());
                 }
             };
@@ -87,7 +87,7 @@ impl MetricsSyncService {
                     result.insert(node_address, (group_id, config_name.clone()));
                 } else {
                     // If we can't find the config name, still include the group_id
-                    debug!("No configuration name found for group_id: {}", group_id);
+                    debug!("No configuration name found for group_id: {group_id}");
                     result.insert(node_address, (group_id, "unknown".to_string()));
                 }
             }
@@ -116,10 +116,10 @@ impl MetricsSyncService {
         loop {
             interval.tick().await;
             if let Err(e) = self.sync_metrics_from_redis().await {
-                error!("Error syncing metrics from Redis: {}", e);
+                error!("Error syncing metrics from Redis: {e}");
             }
             if let Err(e) = self.sync_orchestrator_statistics().await {
-                error!("Error syncing orchestrator statistics: {}", e);
+                error!("Error syncing orchestrator statistics: {e}");
             }
         }
     }
@@ -131,7 +131,7 @@ impl MetricsSyncService {
         let redis_metrics = match self.store_context.metrics_store.get_all_metrics().await {
             Ok(metrics) => metrics,
             Err(e) => {
-                error!("Failed to get metrics from Redis: {}", e);
+                error!("Failed to get metrics from Redis: {e}");
                 return Err(e);
             }
         };
@@ -143,7 +143,7 @@ impl MetricsSyncService {
             .get_all_tasks()
             .await
             .unwrap_or_else(|e| {
-                error!("Failed to get tasks for task name mapping: {}", e);
+                error!("Failed to get tasks for task name mapping: {e}");
                 Vec::new()
             });
         let task_name_map: HashMap<String, String> = tasks
@@ -155,7 +155,7 @@ impl MetricsSyncService {
             match self.get_all_node_group_info().await {
                 Ok(info) => info,
                 Err(e) => {
-                    error!("Failed to get node group info: {}", e);
+                    error!("Failed to get node group info: {e}");
                     HashMap::new()
                 }
             }
@@ -170,7 +170,7 @@ impl MetricsSyncService {
         let mut total_metrics = 0;
         for (task_id, task_metrics) in redis_metrics {
             let task_name = task_name_map.get(&task_id).cloned().unwrap_or_else(|| {
-                debug!("No task name found for task_id: {}", task_id);
+                debug!("No task name found for task_id: {task_id}");
                 "unknown".to_string()
             });
 
@@ -195,10 +195,7 @@ impl MetricsSyncService {
             }
         }
 
-        debug!(
-            "Synced {} metric entries from Redis to Prometheus",
-            total_metrics
-        );
+        debug!("Synced {total_metrics} metric entries from Redis to Prometheus");
         Ok(())
     }
 
@@ -212,7 +209,7 @@ impl MetricsSyncService {
         let nodes = match self.store_context.node_store.get_nodes().await {
             Ok(nodes) => nodes,
             Err(e) => {
-                error!("Failed to get nodes for statistics: {}", e);
+                error!("Failed to get nodes for statistics: {e}");
                 Vec::new()
             }
         };
@@ -232,7 +229,7 @@ impl MetricsSyncService {
         if let Ok(tasks) = self.store_context.task_store.get_all_tasks().await {
             let total_tasks = tasks.len() as f64;
             self.metrics_context.set_tasks_count(total_tasks);
-            debug!("Synced task statistics: {} total tasks", total_tasks);
+            debug!("Synced task statistics: {total_tasks} total tasks");
 
             // Sync task info metrics with metadata
             for task in &tasks {
@@ -261,7 +258,7 @@ impl MetricsSyncService {
             // Set metrics for each task with active nodes
             for (task_id, count) in task_node_counts {
                 let task_name = task_name_map.get(&task_id).cloned().unwrap_or_else(|| {
-                    debug!("No task name found for task_id: {}", task_id);
+                    debug!("No task name found for task_id: {task_id}");
                     "unknown".to_string()
                 });
                 self.metrics_context
