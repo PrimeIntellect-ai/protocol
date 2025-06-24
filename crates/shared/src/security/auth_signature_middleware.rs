@@ -32,6 +32,7 @@ const MAX_NONCE_LENGTH: usize = 64;
 const MIN_NONCE_LENGTH: usize = 16;
 const RATE_LIMIT_WINDOW_SECS: u64 = 60;
 const MAX_REQUESTS_PER_WINDOW: usize = 100;
+const REQUEST_EXPIRY_SECS: u64 = 300;
 
 type SyncAddressValidator = Arc<dyn Fn(&Address) -> bool + Send + Sync>;
 type AsyncAddressValidator = Arc<dyn Fn(&Address) -> LocalBoxFuture<'static, bool> + Send + Sync>;
@@ -445,7 +446,7 @@ where
                         .duration_since(UNIX_EPOCH)
                         .unwrap()
                         .as_secs();
-                    if current_time - timestamp > 10 {
+                    if current_time - timestamp > REQUEST_EXPIRY_SECS {
                         return Err(ErrorBadRequest(json!({
                             "error": "Request expired",
                             "code": "REQUEST_EXPIRED",
