@@ -395,6 +395,12 @@ impl DockerManager {
             Some(binds)
         };
 
+        let network_mode = if self.disable_host_network_mode {
+            "bridge".to_string()
+        } else {
+            "host".to_string()
+        };
+
         let host_config = if gpu.is_some() {
             let gpu = gpu.unwrap();
             let device_ids = match &gpu.indices {
@@ -409,11 +415,7 @@ impl DockerManager {
             };
 
             Some(HostConfig {
-                network_mode: if self.disable_host_network_mode {
-                    Some("bridge".to_string())
-                } else {
-                    Some("host".to_string())
-                },
+                network_mode: Some(network_mode),
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 device_requests: Some(vec![DeviceRequest {
                     driver: Some("nvidia".into()),
@@ -432,11 +434,7 @@ impl DockerManager {
             })
         } else {
             Some(HostConfig {
-                network_mode: if self.disable_host_network_mode {
-                    Some("bridge".to_string())
-                } else {
-                    Some("host".to_string())
-                },
+                network_mode: Some(network_mode),
                 extra_hosts: Some(vec!["host.docker.internal:host-gateway".into()]),
                 binds: volume_binds,
                 restart_policy: Some(bollard::models::RestartPolicy {
