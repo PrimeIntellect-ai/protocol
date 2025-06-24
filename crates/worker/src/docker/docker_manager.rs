@@ -391,9 +391,6 @@ impl DockerManager {
             Some(binds)
         };
 
-<<<<<<< HEAD
-        let host_config = if let Some(gpu) = gpu {
-=======
         let network_mode = if self.disable_host_network_mode {
             "bridge".to_string()
         } else {
@@ -402,7 +399,6 @@ impl DockerManager {
 
         let host_config = if gpu.is_some() {
             let gpu = gpu.unwrap();
->>>>>>> 7ea8996104f4f2055d5b48f51f7f8cea76162ec0
             let device_ids = match &gpu.indices {
                 Some(indices) if !indices.is_empty() => {
                     // Use specific GPU indices if available
