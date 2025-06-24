@@ -124,6 +124,9 @@ impl TaskStore {
         // Clear the task list
         let _: () = con.del(TASK_LIST_KEY).await?;
 
+        // Clear the task names index
+        let _: () = con.del(TASK_NAME_INDEX_KEY).await?;
+
         // Notify observers synchronously
         let observers = self.observers.lock().await.clone();
         for task in tasks {
