@@ -134,7 +134,7 @@ impl NodeStatusUpdater {
             let metrics = self.metrics.clone();
 
             futures.push(async move {
-                let address = node.address.clone();
+                let address = node.address;
                 (
                     process_node(
                         node,
@@ -361,12 +361,11 @@ async fn is_node_in_pool(
     pool_id: u32,
     node: &OrchestratorNode,
 ) -> bool {
-    let node_in_pool = contracts
+    contracts
         .compute_pool
         .is_node_in_pool(pool_id, node.address)
         .await
-        .unwrap_or(false);
-    node_in_pool
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
