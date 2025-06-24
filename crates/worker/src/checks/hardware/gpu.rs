@@ -51,7 +51,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
         let lib_paths = [
             "libnvidia-ml.so.1",                           // Standard Linux path
             "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1", // Explicit path as fallback
-            "/usr/lib/libnvidia-ml.so.1",     // CUDA installation path
+            "/usr/lib/libnvidia-ml.so.1",                  // CUDA installation path
         ];
 
         let mut success = false;
