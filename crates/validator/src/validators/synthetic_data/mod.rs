@@ -1302,12 +1302,8 @@ impl SyntheticDataValidator<WalletProvider> {
             nodes_with_wrong_work_unit_claims.extend(wrong_claim_nodes);
         }
 
-        println!(
-            "toploc_nodes_to_invalidate: {toploc_nodes_to_invalidate:?}"
-        );
-        println!(
-            "nodes_with_wrong_work_unit_claims: {nodes_with_wrong_work_unit_claims:?}"
-        );
+        println!("toploc_nodes_to_invalidate: {toploc_nodes_to_invalidate:?}");
+        println!("nodes_with_wrong_work_unit_claims: {nodes_with_wrong_work_unit_claims:?}");
 
         for work_key in &group.sorted_work_keys {
             if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
