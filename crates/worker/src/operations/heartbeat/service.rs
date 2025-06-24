@@ -44,7 +44,7 @@ impl HeartbeatService {
         state: Arc<SystemState>,
     ) -> Result<Arc<Self>, HeartbeatError> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(5)) // 5 second timeout
+            .timeout(Duration::from_secs(20))
             .build()
             .map_err(|_| HeartbeatError::InitFailed)?; // Adjusted to match the expected error type
 
