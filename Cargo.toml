@@ -5,7 +5,7 @@ members = [
     "crates/validator",
     "crates/shared",
     "crates/orchestrator",
-    "crates/dev-utils",
+    "crates/admin-cli",
 ]
 resolver = "2"
 

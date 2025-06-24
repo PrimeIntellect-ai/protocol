@@ -4,43 +4,43 @@ ENV_FILE ?= .env
 
 mint-ai-tokens-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example mint_ai_token -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} 
+	cargo run -p admin-cli -- token mint --address $${PROVIDER_ADDRESS} --key env:PRIVATE_KEY_FEDERATOR --rpc-url $${RPC_URL} 
 
 test-concurrent-calls:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example test_concurrent_calls -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p admin-cli -- test concurrent-calls --address $${PROVIDER_ADDRESS} --key env:PRIVATE_KEY_FEDERATOR --rpc-url $${RPC_URL}
 
 mint-ai-tokens-to-federator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example mint_ai_token -- --address $${FEDERATOR_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
+	cargo run -p admin-cli -- token mint --address $${FEDERATOR_ADDRESS} --key env:PRIVATE_KEY_FEDERATOR --rpc-url $${RPC_URL} --amount 1000000000000000000
 
 transfer-eth-to-provider:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example transfer_eth -- --address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 100000000000000000
+	cargo run -p admin-cli -- token transfer-eth --address $${PROVIDER_ADDRESS} --key env:PRIVATE_KEY_FEDERATOR --rpc-url $${RPC_URL} --amount 0.1
 
 transfer-eth-to-pool-owner:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example transfer_eth -- --address $${POOL_OWNER_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --amount 1000000000000000000
+	cargo run -p admin-cli -- token transfer-eth --address $${POOL_OWNER_ADDRESS} --key env:PRIVATE_KEY_FEDERATOR --rpc-url $${RPC_URL} --amount 1
 
 create-domain:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-default_domain}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --validation-logic $${WORK_VALIDATION_CONTRACT} --rpc-url $${RPC_URL}
+	cargo run -p admin-cli -- domain create --domain-name "$${DOMAIN_NAME:-default_domain}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key env:PRIVATE_KEY_FEDERATOR --validation-logic $${WORK_VALIDATION_CONTRACT} --rpc-url $${RPC_URL}
 
 create-training-domain:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-training}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --validation-logic $${WORK_VALIDATION_CONTRACT}
+	cargo run -p admin-cli -- domain create-training --domain-name "$${DOMAIN_NAME:-training}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key env:PRIVATE_KEY_FEDERATOR --rpc-url $${RPC_URL}
 
 create-synth-data-domain:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example create_domain -- --domain-name "$${DOMAIN_NAME:-synth_data}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL} --validation-logic $${WORK_VALIDATION_CONTRACT}
+	cargo run -p admin-cli -- domain create-synth-data --domain-name "$${DOMAIN_NAME:-synth_data}" --domain-uri "$${DOMAIN_URI:-http://default.uri}" --key env:PRIVATE_KEY_FEDERATOR --rpc-url $${RPC_URL}
 
 create-compute-pool:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example compute_pool -- --domain-id "$${DOMAIN_ID:-0}" --compute-manager-key "$${POOL_OWNER_ADDRESS}" --pool-name "$${POOL_NAME:-default_pool}" --pool-data-uri "$${POOL_DATA_URI:-http://default.pool.data}" --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p admin-cli -- pool create --domain-id "$${DOMAIN_ID:-0}" --compute-manager-key "$${POOL_OWNER_ADDRESS}" --pool-name "$${POOL_NAME:-default_pool}" --pool-data-uri "$${POOL_DATA_URI:-http://default.pool.data}" --key env:PRIVATE_KEY_FEDERATOR --rpc-url $${RPC_URL}
 
 start-compute-pool:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example start_compute_pool -- --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL} --pool-id="$${POOL_ID:-0}"
+	cargo run -p admin-cli -- pool start --key env:POOL_OWNER_PRIVATE_KEY --rpc-url $${RPC_URL} --pool-id="$${POOL_ID:-0}"
 
 setup: 
 	make mint-ai-tokens-to-provider
@@ -71,7 +71,7 @@ down:
 
 whitelist-provider:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
+	cargo run -p admin-cli -- provider whitelist --provider-address $${PROVIDER_ADDRESS} --key env:PRIVATE_KEY_VALIDATOR --rpc-url $${RPC_URL}
 
 watch-discovery:
 	set -a; source .env; set +a; \
@@ -200,7 +200,7 @@ remote-worker-two:
 # testing:
 eject-node:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example eject_node -- --pool-id $${WORKER_COMPUTE_POOL_ID} --node $${NODE_ADDRESS} --provider-address $${PROVIDER_ADDRESS} --key $${POOL_OWNER_PRIVATE_KEY} --rpc-url $${RPC_URL}
+	cargo run -p admin-cli -- node eject --pool-id $${WORKER_COMPUTE_POOL_ID} --node $${NODE_ADDRESS} --provider-address $${PROVIDER_ADDRESS} --key env:POOL_OWNER_PRIVATE_KEY --rpc-url $${RPC_URL}
 
 sign-message:
 	set -a; source ${ENV_FILE}; set +a; \
@@ -212,15 +212,15 @@ balance:
 
 get-node-info:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example get_node_info -- --provider-address $${PROVIDER_ADDRESS} --node-address $${NODE_ADDRESS} --key $${PRIVATE_KEY_FEDERATOR} --rpc-url $${RPC_URL}
+	cargo run -p admin-cli -- node info --provider-address $${PROVIDER_ADDRESS} --node-address $${NODE_ADDRESS} --key env:PRIVATE_KEY_FEDERATOR --rpc-url $${RPC_URL}
 
 submit-work:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example submit_work -- --pool-id $${POOL_ID:-0} --node $${NODE_ADDRESS} --work-key $${WORK_KEY} --key $${PRIVATE_KEY_PROVIDER} --rpc-url $${RPC_URL}
+	cargo run -p admin-cli -- work submit --pool-id $${POOL_ID:-0} --node $${NODE_ADDRESS} --work-key $${WORK_KEY} --key env:PRIVATE_KEY_PROVIDER --rpc-url $${RPC_URL}
 
 invalidate-work:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo run -p dev-utils --example invalidate_work -- --pool-id $${POOL_ID:-0} --penalty $${PENALTY} --work-key $${WORK_KEY} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
+	cargo run -p admin-cli -- work invalidate --pool-id $${POOL_ID:-0} --penalty $${PENALTY} --work-key $${WORK_KEY} --key env:PRIVATE_KEY_VALIDATOR --rpc-url $${RPC_URL}
 
 deregister-worker:
 	set -a; source ${ENV_FILE}; set +a; \
