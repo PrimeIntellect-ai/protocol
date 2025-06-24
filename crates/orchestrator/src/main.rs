@@ -1,6 +1,5 @@
 mod api;
 mod discovery;
-mod events;
 mod metrics;
 mod models;
 mod node;
@@ -202,8 +201,8 @@ async fn main() -> Result<()> {
         }
     };
     let group_store_context = store_context.clone();
-    let mut scheduler_plugins: Vec<Box<dyn SchedulerPlugin>> = Vec::new();
-    let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
+    let mut scheduler_plugins: Vec<SchedulerPlugin> = Vec::new();
+    let mut status_update_plugins: Vec<StatusUpdatePlugin> = vec![];
     let mut node_groups_plugin: Option<Arc<NodeGroupsPlugin>> = None;
     let mut webhook_plugins: Vec<WebhookPlugin> = vec![];
 
@@ -215,7 +214,7 @@ async fn main() -> Result<()> {
                     let plugin = WebhookPlugin::new(config);
                     let plugin_clone = plugin.clone();
                     webhook_plugins.push(plugin_clone);
-                    status_update_plugins.push(Box::new(plugin));
+                    status_update_plugins.push(plugin.into());
                     info!("Plugin: Webhook plugin initialized");
                 }
             }
@@ -249,26 +248,27 @@ async fn main() -> Result<()> {
         match serde_json::from_str::<Vec<NodeGroupConfiguration>>(&node_group_configs) {
             Ok(configs) if !configs.is_empty() => {
                 let node_groups_heartbeats = heartbeats.clone();
-                let group_plugin = NodeGroupsPlugin::new(
+
+                let group_plugin = Arc::new(NodeGroupsPlugin::new(
                     configs,
                     store.clone(),
                     group_store_context.clone(),
                     Some(node_groups_heartbeats.clone()),
                     Some(webhook_plugins.clone()),
-                );
+                ));
+
+                // Register the plugin as a task observer
+                group_store_context
+                    .task_store
+                    .add_observer(group_plugin.clone())
+                    .await;
 
                 let status_group_plugin = group_plugin.clone();
                 let group_plugin_for_server = group_plugin.clone();
-                let group_plugin_arc = Arc::new(group_plugin_for_server);
 
-                // Register the plugin as a task observer
-                if let Err(e) = group_plugin_arc.clone().register_observer().await {
-                    error!("Failed to register node groups plugin as observer: {}", e);
-                }
-
-                node_groups_plugin = Some(group_plugin_arc);
-                scheduler_plugins.push(Box::new(group_plugin));
-                status_update_plugins.push(Box::new(status_group_plugin));
+                node_groups_plugin = Some(group_plugin_for_server);
+                scheduler_plugins.push(group_plugin.into());
+                status_update_plugins.push(status_group_plugin.into());
                 info!("Plugin: Node group plugin initialized");
             }
             Ok(_) => {
@@ -314,16 +314,16 @@ async fn main() -> Result<()> {
         }
 
         // Create status_update_plugins for discovery monitor
-        let mut discovery_status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
+        let mut discovery_status_update_plugins: Vec<StatusUpdatePlugin> = vec![];
 
         // Add webhook plugins to discovery status update plugins
         for plugin in &webhook_plugins {
-            discovery_status_update_plugins.push(Box::new(plugin.clone()));
+            discovery_status_update_plugins.push(plugin.into());
         }
 
         // Add node groups plugin if available
         if let Some(group_plugin) = node_groups_plugin.clone() {
-            discovery_status_update_plugins.push(Box::new(group_plugin.as_ref().clone()));
+            discovery_status_update_plugins.push(group_plugin.into());
         }
 
         let discovery_store_context = store_context.clone();
@@ -367,16 +367,16 @@ async fn main() -> Result<()> {
         });
 
         // Create status_update_plugins for status updater
-        let mut status_updater_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];
+        let mut status_updater_plugins: Vec<StatusUpdatePlugin> = vec![];
 
         // Add webhook plugins to status updater plugins
         for plugin in &webhook_plugins {
-            status_updater_plugins.push(Box::new(plugin.clone()));
+            status_updater_plugins.push(plugin.into());
         }
 
         // Add node groups plugin if available
         if let Some(group_plugin) = node_groups_plugin.clone() {
-            status_updater_plugins.push(Box::new(group_plugin.as_ref().clone()));
+            status_updater_plugins.push(group_plugin.into());
         }
 
         let status_update_store_context = store_context.clone();

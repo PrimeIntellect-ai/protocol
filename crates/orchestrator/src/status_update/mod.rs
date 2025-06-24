@@ -2,6 +2,7 @@ use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
+use futures::stream::FuturesUnordered;
 use log::{debug, error, info};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::WalletProvider;
@@ -18,7 +19,7 @@ pub struct NodeStatusUpdater {
     pool_id: u32,
     disable_ejection: bool,
     heartbeats: Arc<LoopHeartbeats>,
-    plugins: Vec<Box<dyn StatusUpdatePlugin>>,
+    plugins: Vec<StatusUpdatePlugin>,
 }
 
 impl NodeStatusUpdater {
@@ -31,7 +32,7 @@ impl NodeStatusUpdater {
         pool_id: u32,
         disable_ejection: bool,
         heartbeats: Arc<LoopHeartbeats>,
-        plugins: Vec<Box<dyn StatusUpdatePlugin>>,
+        plugins: Vec<StatusUpdatePlugin>,
     ) -> Self {
         Self {
             store_context,
@@ -61,27 +62,11 @@ impl NodeStatusUpdater {
         }
     }
 
-    #[cfg(test)]
-    async fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
-        true
-    }
-
-    #[cfg(not(test))]
-    async fn is_node_in_pool(&self, node: &OrchestratorNode) -> bool {
-        let node_in_pool: bool = (self
-            .contracts
-            .compute_pool
-            .is_node_in_pool(self.pool_id, node.address)
-            .await)
-            .unwrap_or(false);
-        node_in_pool
-    }
-
     async fn sync_dead_node_with_chain(
         &self,
         node: &OrchestratorNode,
     ) -> Result<(), anyhow::Error> {
-        let node_in_pool = self.is_node_in_pool(node).await;
+        let node_in_pool = is_node_in_pool(self.contracts.clone(), self.pool_id, node).await;
         if node_in_pool {
             match self
                 .contracts
@@ -111,7 +96,8 @@ impl NodeStatusUpdater {
         let nodes = self.store_context.node_store.get_nodes().await?;
         for node in nodes {
             if node.status == NodeStatus::Dead {
-                let node_in_pool = self.is_node_in_pool(&node).await;
+                let node_in_pool =
+                    is_node_in_pool(self.contracts.clone(), self.pool_id, &node).await;
                 debug!("Node {:?} is in pool: {}", node.address, node_in_pool);
                 if node_in_pool {
                     if !self.disable_ejection {
@@ -131,191 +117,242 @@ impl NodeStatusUpdater {
     }
 
     pub async fn process_nodes(&self) -> Result<(), anyhow::Error> {
+        use futures::StreamExt as _;
+
         let nodes = self.store_context.node_store.get_nodes().await?;
+        let futures = FuturesUnordered::new();
         for node in nodes {
-            let node = node.clone();
-            let old_status = node.status.clone();
-            let heartbeat = self
-                .store_context
-                .heartbeat_store
-                .get_heartbeat(&node.address)
-                .await?;
-            let unhealthy_counter: u32 = self
-                .store_context
-                .heartbeat_store
-                .get_unhealthy_counter(&node.address)
-                .await?;
+            let store_context = self.store_context.clone();
+            let contracts = self.contracts.clone();
+            let pool_id = self.pool_id;
+            let missing_heartbeat_threshold = self.missing_heartbeat_threshold;
+            let plugins = self.plugins.clone();
+            futures.push(async move {
+                let address = node.address.clone();
+                (
+                    process_node(
+                        node,
+                        store_context,
+                        contracts,
+                        pool_id,
+                        missing_heartbeat_threshold,
+                        plugins,
+                    )
+                    .await,
+                    address,
+                )
+            });
+        }
 
-            let is_node_in_pool = self.is_node_in_pool(&node).await;
-            let mut status_changed = false;
-            let mut new_status = node.status.clone();
-
-            match heartbeat {
-                Some(beat) => {
-                    // Update version if necessary
-                    if let Some(version) = &beat.version {
-                        if node.version.as_ref() != Some(version) {
-                            if let Err(e) = self
-                                .store_context
-                                .node_store
-                                .update_node_version(&node.address, version)
-                                .await
-                            {
-                                error!("Error updating node version: {}", e);
-                            }
-                        }
-                    }
-
-                    // Check if the node is in the pool (needed for status transitions)
-
-                    // If node is Unhealthy or WaitingForHeartbeat:
-                    if node.status == NodeStatus::Unhealthy
-                        || node.status == NodeStatus::WaitingForHeartbeat
-                    {
-                        if is_node_in_pool {
-                            new_status = NodeStatus::Healthy;
-                        } else {
-                            // Reset to discovered to init re-invite to pool
-                            new_status = NodeStatus::Discovered;
-                        }
-                        status_changed = true;
-                    }
-                    // If node is Discovered or Dead:
-                    else if node.status == NodeStatus::Discovered
-                        || node.status == NodeStatus::Dead
-                    {
-                        if is_node_in_pool {
-                            new_status = NodeStatus::Healthy;
-                        } else {
-                            new_status = NodeStatus::Discovered;
-                        }
-                        status_changed = true;
-                    }
-
-                    // Clear unhealthy counter on heartbeat receipt
-                    if let Err(e) = self
-                        .store_context
-                        .heartbeat_store
-                        .clear_unhealthy_counter(&node.address)
-                        .await
-                    {
-                        error!("Error clearing unhealthy counter: {}", e);
-                    }
+        let results: Vec<_> = futures.collect().await;
+        for result in results {
+            match result {
+                (Ok(()), address) => {
+                    debug!("Successfully processed node: {:?}", address);
                 }
-                None => {
-                    // We don't have a heartbeat, increment unhealthy counter
-                    if let Err(e) = self
-                        .store_context
-                        .heartbeat_store
-                        .increment_unhealthy_counter(&node.address)
+                (Err(e), address) => {
+                    error!("Error processing node {:?}: {}", address, e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+async fn process_node(
+    node: OrchestratorNode,
+    store_context: Arc<StoreContext>,
+    contracts: Contracts<WalletProvider>,
+    pool_id: u32,
+    missing_heartbeat_threshold: u32,
+    plugins: Vec<StatusUpdatePlugin>,
+) -> Result<(), anyhow::Error> {
+    let node = node.clone();
+    let old_status = node.status.clone();
+    let heartbeat = store_context
+        .heartbeat_store
+        .get_heartbeat(&node.address)
+        .await?;
+    let unhealthy_counter: u32 = store_context
+        .heartbeat_store
+        .get_unhealthy_counter(&node.address)
+        .await?;
+
+    let is_node_in_pool = is_node_in_pool(contracts, pool_id, &node).await;
+    let mut status_changed = false;
+    let mut new_status = node.status.clone();
+
+    match heartbeat {
+        Some(beat) => {
+            // Update version if necessary
+            if let Some(version) = &beat.version {
+                if node.version.as_ref() != Some(version) {
+                    if let Err(e) = store_context
+                        .node_store
+                        .update_node_version(&node.address, version)
                         .await
                     {
-                        error!("Error incrementing unhealthy counter: {}", e);
-                    }
-
-                    match node.status {
-                        NodeStatus::Healthy => {
-                            new_status = NodeStatus::Unhealthy;
-                            status_changed = true;
-                        }
-                        NodeStatus::Unhealthy => {
-                            if unhealthy_counter + 1 >= self.missing_heartbeat_threshold {
-                                new_status = NodeStatus::Dead;
-                                status_changed = true;
-                            }
-                        }
-                        NodeStatus::Discovered => {
-                            if is_node_in_pool {
-                                // We have caught a very interesting edge case here.
-                                // The node is in pool but does not send heartbeats - maybe due to a downtime of the orchestrator?
-                                // Node invites fail now since the node cannot be in pool again.
-                                // We have to eject and re-invite - we can simply do this by setting the status to unhealthy. The node will eventually be ejected.
-                                new_status = NodeStatus::Unhealthy;
-                                status_changed = true;
-                            } else {
-                                // if we've been trying to invite this node for a while, we eventually give up and mark it as dead
-                                // The node will simply be in status discovered again when the discovery svc date > status change date.
-                                if unhealthy_counter + 1 > 360 {
-                                    new_status = NodeStatus::Dead;
-                                    status_changed = true;
-                                }
-                            }
-                        }
-                        NodeStatus::WaitingForHeartbeat => {
-                            if unhealthy_counter + 1 >= self.missing_heartbeat_threshold {
-                                // Unhealthy counter is reset when node is invited
-                                // usually it starts directly with heartbeat
-                                new_status = NodeStatus::Unhealthy;
-                                status_changed = true;
-                            }
-                        }
-                        _ => (),
+                        error!("Error updating node version: {}", e);
                     }
                 }
             }
 
-            if status_changed {
-                // Clean up metrics when node becomes Dead, Ejected, or Banned
-                if matches!(
-                    &new_status,
-                    NodeStatus::Dead | NodeStatus::Ejected | NodeStatus::Banned
-                ) {
-                    let node_metrics = match self
-                        .store_context
-                        .metrics_store
-                        .get_metrics_for_node(node.address)
-                        .await
-                    {
-                        Ok(metrics) => metrics,
-                        Err(e) => {
-                            error!("Error getting metrics for node: {}", e);
-                            Default::default()
-                        }
-                    };
+            // Check if the node is in the pool (needed for status transitions)
 
-                    for (task_id, task_metrics) in node_metrics {
-                        for (label, _value) in task_metrics {
-                            // Remove from Redis metrics store
-                            if let Err(e) = self
-                                .store_context
-                                .metrics_store
-                                .delete_metric(&task_id, &label, &node.address.to_string())
-                                .await
-                            {
-                                error!("Error deleting metric: {}", e);
-                            }
+            // If node is Unhealthy or WaitingForHeartbeat:
+            if node.status == NodeStatus::Unhealthy
+                || node.status == NodeStatus::WaitingForHeartbeat
+            {
+                if is_node_in_pool {
+                    new_status = NodeStatus::Healthy;
+                } else {
+                    // Reset to discovered to init re-invite to pool
+                    new_status = NodeStatus::Discovered;
+                }
+                status_changed = true;
+            }
+            // If node is Discovered or Dead:
+            else if node.status == NodeStatus::Discovered || node.status == NodeStatus::Dead {
+                if is_node_in_pool {
+                    new_status = NodeStatus::Healthy;
+                } else {
+                    new_status = NodeStatus::Discovered;
+                }
+                status_changed = true;
+            }
+
+            // Clear unhealthy counter on heartbeat receipt
+            if let Err(e) = store_context
+                .heartbeat_store
+                .clear_unhealthy_counter(&node.address)
+                .await
+            {
+                error!("Error clearing unhealthy counter: {}", e);
+            }
+        }
+        None => {
+            // We don't have a heartbeat, increment unhealthy counter
+            if let Err(e) = store_context
+                .heartbeat_store
+                .increment_unhealthy_counter(&node.address)
+                .await
+            {
+                error!("Error incrementing unhealthy counter: {}", e);
+            }
+
+            match node.status {
+                NodeStatus::Healthy => {
+                    new_status = NodeStatus::Unhealthy;
+                    status_changed = true;
+                }
+                NodeStatus::Unhealthy => {
+                    if unhealthy_counter + 1 >= missing_heartbeat_threshold {
+                        new_status = NodeStatus::Dead;
+                        status_changed = true;
+                    }
+                }
+                NodeStatus::Discovered => {
+                    if is_node_in_pool {
+                        // We have caught a very interesting edge case here.
+                        // The node is in pool but does not send heartbeats - maybe due to a downtime of the orchestrator?
+                        // Node invites fail now since the node cannot be in pool again.
+                        // We have to eject and re-invite - we can simply do this by setting the status to unhealthy. The node will eventually be ejected.
+                        new_status = NodeStatus::Unhealthy;
+                        status_changed = true;
+                    } else {
+                        // if we've been trying to invite this node for a while, we eventually give up and mark it as dead
+                        // The node will simply be in status discovered again when the discovery svc date > status change date.
+                        if unhealthy_counter + 1 > 360 {
+                            new_status = NodeStatus::Dead;
+                            status_changed = true;
                         }
                     }
                 }
-
-                if let Err(e) = self
-                    .store_context
-                    .node_store
-                    .update_node_status(&node.address, new_status)
-                    .await
-                {
-                    error!("Error updating node status: {}", e);
+                NodeStatus::WaitingForHeartbeat => {
+                    if unhealthy_counter + 1 >= missing_heartbeat_threshold {
+                        // Unhealthy counter is reset when node is invited
+                        // usually it starts directly with heartbeat
+                        new_status = NodeStatus::Unhealthy;
+                        status_changed = true;
+                    }
                 }
+                _ => (),
+            }
+        }
+    }
 
-                if let Some(updated_node) = self
-                    .store_context
-                    .node_store
-                    .get_node(&node.address)
-                    .await?
-                {
-                    for plugin in self.plugins.iter() {
-                        if let Err(e) = plugin
-                            .handle_status_change(&updated_node, &old_status)
-                            .await
-                        {
-                            error!("Error handling status change: {}", e);
-                        }
+    if status_changed {
+        // Clean up metrics when node becomes Dead, Ejected, or Banned
+        if matches!(
+            &new_status,
+            NodeStatus::Dead | NodeStatus::Ejected | NodeStatus::Banned
+        ) {
+            let node_metrics = match store_context
+                .metrics_store
+                .get_metrics_for_node(node.address)
+                .await
+            {
+                Ok(metrics) => metrics,
+                Err(e) => {
+                    error!("Error getting metrics for node: {}", e);
+                    Default::default()
+                }
+            };
+
+            for (task_id, task_metrics) in node_metrics {
+                for (label, _value) in task_metrics {
+                    // Remove from Redis metrics store
+                    if let Err(e) = store_context
+                        .metrics_store
+                        .delete_metric(&task_id, &label, &node.address.to_string())
+                        .await
+                    {
+                        error!("Error deleting metric: {}", e);
                     }
                 }
             }
         }
-        Ok(())
+
+        if let Err(e) = store_context
+            .node_store
+            .update_node_status(&node.address, new_status)
+            .await
+        {
+            error!("Error updating node status: {}", e);
+        }
+
+        if let Some(updated_node) = store_context.node_store.get_node(&node.address).await? {
+            for plugin in plugins.iter() {
+                if let Err(e) = plugin
+                    .handle_status_change(&updated_node, &old_status)
+                    .await
+                {
+                    error!("Error handling status change: {}", e);
+                }
+            }
+        }
     }
+    Ok(())
+}
+
+#[cfg(test)]
+async fn is_node_in_pool(_: Contracts<WalletProvider>, _: u32, _: &OrchestratorNode) -> bool {
+    true
+}
+
+#[cfg(not(test))]
+async fn is_node_in_pool(
+    contracts: Contracts<WalletProvider>,
+    pool_id: u32,
+    node: &OrchestratorNode,
+) -> bool {
+    let node_in_pool = contracts
+        .compute_pool
+        .is_node_in_pool(pool_id, node.address)
+        .await
+        .unwrap_or(false);
+    node_in_pool
 }
 
 #[cfg(test)]

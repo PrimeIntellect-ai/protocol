@@ -1,5 +1,5 @@
-use crate::events::TaskObserver;
 use crate::store::core::RedisStore;
+use crate::NodeGroupsPlugin;
 use anyhow::Result;
 use futures::future;
 use log::error;
@@ -14,7 +14,7 @@ const TASK_NAME_INDEX_KEY: &str = "orchestrator:task_names";
 
 pub struct TaskStore {
     redis: Arc<RedisStore>,
-    observers: Arc<Mutex<Vec<Arc<dyn TaskObserver>>>>,
+    observers: Arc<Mutex<Vec<Arc<NodeGroupsPlugin>>>>,
 }
 
 impl TaskStore {
@@ -25,7 +25,7 @@ impl TaskStore {
         }
     }
 
-    pub async fn add_observer(&self, observer: Arc<dyn TaskObserver>) {
+    pub async fn add_observer(&self, observer: Arc<NodeGroupsPlugin>) {
         let mut observers = self.observers.lock().await;
         observers.push(observer);
     }

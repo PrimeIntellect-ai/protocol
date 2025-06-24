@@ -1,16 +1,18 @@
-use super::{NodeGroupsPlugin, SchedulerPlugin};
+use super::NodeGroupsPlugin;
 use alloy::primitives::Address;
 use anyhow::Result;
-use async_trait::async_trait;
 use log::{error, info};
 use rand::seq::IteratorRandom;
 use redis::AsyncCommands;
 use shared::models::task::Task;
 use std::str::FromStr;
 
-#[async_trait]
-impl SchedulerPlugin for NodeGroupsPlugin {
-    async fn filter_tasks(&self, tasks: &[Task], node_address: &Address) -> Result<Vec<Task>> {
+impl NodeGroupsPlugin {
+    pub(crate) async fn filter_tasks(
+        &self,
+        tasks: &[Task],
+        node_address: &Address,
+    ) -> Result<Vec<Task>> {
         if let Ok(Some(group)) = self.get_node_group(&node_address.to_string()).await {
             info!(
                 "Node {} is in group {} with {} nodes",

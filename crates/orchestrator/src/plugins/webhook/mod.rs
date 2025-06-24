@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::node::{NodeStatus, OrchestratorNode};
 
-use super::{Plugin, StatusUpdatePlugin};
 use log::{error, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -287,13 +286,8 @@ impl WebhookPlugin {
 
         self.send_event(event).await
     }
-}
 
-impl Plugin for WebhookPlugin {}
-
-#[async_trait::async_trait]
-impl StatusUpdatePlugin for WebhookPlugin {
-    async fn handle_status_change(
+    pub(crate) async fn handle_status_change(
         &self,
         node: &OrchestratorNode,
         old_status: &NodeStatus,
