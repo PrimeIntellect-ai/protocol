@@ -1,4 +1,4 @@
-use prometheus::{CounterVec, GaugeVec, Opts, Registry, TextEncoder};
+use prometheus::{CounterVec, GaugeVec, HistogramOpts, HistogramVec, Opts, Registry, TextEncoder};
 pub mod sync_service;
 pub mod webhook_sender;
 
@@ -14,6 +14,7 @@ pub struct MetricsContext {
     pub heartbeat_requests_total: CounterVec,
     pub nodes_per_task: GaugeVec,
     pub task_state: GaugeVec,
+    pub status_update_execution_time: HistogramVec,
 }
 
 impl MetricsContext {
@@ -90,13 +91,25 @@ impl MetricsContext {
             &["task_id", "task_name", "pool_id"],
         )
         .unwrap();
-
         let task_state = GaugeVec::new(
             Opts::new(
                 "orchestrator_task_state",
                 "Task state reported from nodes (1 for active state, 0 for inactive)",
             ),
             &["node_address", "task_id", "task_state", "pool_id"],
+        )
+        .unwrap();
+
+        let status_update_execution_time = HistogramVec::new(
+            HistogramOpts::new(
+                "orchestrator_status_update_execution_time_seconds",
+                "Duration of status update execution",
+            )
+            .buckets(vec![
+                0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 45.0, 60.0, 90.0,
+                120.0,
+            ]),
+            &["node_address", "pool_id"],
         )
         .unwrap();
 
@@ -110,6 +123,7 @@ impl MetricsContext {
         let _ = registry.register(Box::new(heartbeat_requests_total.clone()));
         let _ = registry.register(Box::new(nodes_per_task.clone()));
         let _ = registry.register(Box::new(task_state.clone()));
+        let _ = registry.register(Box::new(status_update_execution_time.clone()));
 
         Self {
             compute_task_gauges,
@@ -123,6 +137,7 @@ impl MetricsContext {
             heartbeat_requests_total,
             nodes_per_task,
             task_state,
+            status_update_execution_time,
         }
     }
 
@@ -216,6 +231,12 @@ impl MetricsContext {
         // Clear all time series from the compute_task_gauges metric family
         // This removes all existing metrics so we can rebuild from Redis
         self.compute_task_gauges.reset();
+    }
+
+    pub fn record_status_update_execution_time(&self, node_address: &str, duration: f64) {
+        self.status_update_execution_time
+            .with_label_values(&[node_address, &self.pool_id])
+            .observe(duration);
     }
 
     /// Clear all orchestrator statistics metrics

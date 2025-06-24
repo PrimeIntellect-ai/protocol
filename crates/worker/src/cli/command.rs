@@ -113,6 +113,10 @@ pub enum Commands {
         /// Storage path for worker data (overrides automatic selection)
         #[arg(long)]
         storage_path: Option<String>,
+
+        /// Disable host network mode
+        #[arg(long, default_value = "false")]
+        disable_host_network_mode: bool,
     },
     Check {},
 
@@ -192,6 +196,7 @@ pub async fn execute_command(
             loki_url: _,
             log_level: _,
             storage_path,
+            disable_host_network_mode,
         } => {
             if *disable_state_storing && !(*no_auto_recover) {
                 Console::user_error(
@@ -449,6 +454,7 @@ pub async fn execute_command(
                     .address()
                     .to_string(),
                 state.get_p2p_seed(),
+                *disable_host_network_mode,
             ));
 
             let bridge_cancellation_token = cancellation_token.clone();

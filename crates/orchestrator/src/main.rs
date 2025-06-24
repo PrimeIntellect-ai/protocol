@@ -381,6 +381,7 @@ async fn main() -> Result<()> {
 
         let status_update_store_context = store_context.clone();
         let status_update_heartbeats = heartbeats.clone();
+        let status_update_metrics = metrics_context.clone();
         tasks.spawn({
             let contracts = contracts.clone();
             async move {
@@ -393,6 +394,7 @@ async fn main() -> Result<()> {
                     args.disable_ejection,
                     status_update_heartbeats.clone(),
                     status_updater_plugins,
+                    status_update_metrics,
                 );
                 status_updater.run().await
             }
