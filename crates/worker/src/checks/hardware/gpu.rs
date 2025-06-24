@@ -47,17 +47,30 @@ fn get_gpu_status() -> Vec<GpuDevice> {
 
     // Initialize NVML if not already initialized
     if nvml_guard.is_none() {
-        match Nvml::builder()
-            .lib_path(std::ffi::OsStr::new(
-                "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1",
-            ))
-            .init()
-        {
-            Ok(nvml) => *nvml_guard = Some(nvml),
-            Err(e) => {
-                Console::user_error(&format!("Failed to initialize NVML: {e}"));
-                return vec![];
+        // Try to load the NVIDIA management library dynamically
+        let lib_paths = [
+            "libnvidia-ml.so.1",                           // Standard Linux path
+            "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1", // Explicit path as fallback
+            "/usr/lib/libnvidia-ml.so.1",                  // CUDA installation path
+        ];
+
+        let mut success = false;
+        for path in lib_paths {
+            match Nvml::builder().lib_path(std::ffi::OsStr::new(path)).init() {
+                Ok(nvml) => {
+                    *nvml_guard = Some(nvml);
+                    success = true;
+                    break;
+                }
+                Err(_) => continue,
             }
+        }
+
+        if !success {
+            Console::user_error(
+                "Failed to initialize NVML: could not load NVIDIA management library (libnvidia-ml.so.1)",
+            );
+            return vec![];
         }
     }
 
