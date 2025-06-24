@@ -298,20 +298,38 @@ impl DiscoveryMonitor {
                 if !discovery_node.is_active && existing_node.status == NodeStatus::Healthy {
                     // Node is active False but we have it in store and it is healthy
                     // This means that the node likely got kicked by e.g. the validator
-                    // We simply remove it from the store now and will rediscover it later?
-                    info!("Node {node_address} is no longer active on chain, marking as ejected");
-                    if !discovery_node.is_provider_whitelisted {
-                        if let Err(e) = self
-                            .update_node_status(&node_address, NodeStatus::Ejected)
+                    // Add a grace period check to avoid immediately marking nodes that just became healthy
+                    let should_mark_inactive =
+                        if let Some(last_status_change) = existing_node.last_status_change {
+                            let grace_period = chrono::Duration::minutes(5); // 5 minute grace period
+                            let now = chrono::Utc::now();
+                            now.signed_duration_since(last_status_change) > grace_period
+                        } else {
+                            // If no last_status_change, assume it's been healthy for a while
+                            true
+                        };
+
+                    if should_mark_inactive {
+                        info!(
+                            "Node {node_address} is no longer active on chain, marking as ejected"
+                        );
+                        if !discovery_node.is_provider_whitelisted {
+                            if let Err(e) = self
+                                .update_node_status(&node_address, NodeStatus::Ejected)
+                                .await
+                            {
+                                error!("Error updating node status: {e}");
+                            }
+                        } else if let Err(e) = self
+                            .update_node_status(&node_address, NodeStatus::Dead)
                             .await
                         {
                             error!("Error updating node status: {e}");
                         }
-                    } else if let Err(e) = self
-                        .update_node_status(&node_address, NodeStatus::Dead)
-                        .await
-                    {
-                        error!("Error updating node status: {e}");
+                    } else {
+                        info!(
+                            "Node {node_address} is no longer active on chain but recently became healthy, waiting before marking inactive"
+                        );
                     }
                 }
 
@@ -345,6 +363,15 @@ impl DiscoveryMonitor {
                     ) {
                         if last_change < last_updated {
                             info!("Node {node_address} is dead but has been updated on discovery, marking as discovered");
+
+                            if existing_node.compute_specs != discovery_node.compute_specs {
+                                info!(
+                                    "Node {node_address} compute specs changed, marking as discovered"
+                                );
+                                let mut node = existing_node.clone();
+                                node.compute_specs = discovery_node.compute_specs.clone();
+                                let _ = self.store_context.node_store.add_node(node.clone()).await;
+                            }
                             if let Err(e) = self
                                 .update_node_status(&node_address, NodeStatus::Discovered)
                                 .await
