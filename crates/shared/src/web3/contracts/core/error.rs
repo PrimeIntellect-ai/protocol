@@ -31,33 +31,31 @@ impl fmt::Display for ContractError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             // Initialization errors
-            ContractError::AbiParseError(msg) => write!(f, "Failed to parse ABI: {}", msg),
-            ContractError::ArtifactReadError(msg) => write!(f, "Failed to read artifact: {}", msg),
+            ContractError::AbiParseError(msg) => write!(f, "Failed to parse ABI: {msg}"),
+            ContractError::ArtifactReadError(msg) => write!(f, "Failed to read artifact: {msg}"),
 
             // Contract interaction errors
-            ContractError::CallError(msg) => write!(f, "Contract call failed: {}", msg),
-            ContractError::TransactionError(msg) => write!(f, "Transaction failed: {}", msg),
+            ContractError::CallError(msg) => write!(f, "Contract call failed: {msg}"),
+            ContractError::TransactionError(msg) => write!(f, "Transaction failed: {msg}"),
 
             // Data parsing errors
-            ContractError::DecodingError(msg) => write!(f, "Failed to decode data: {}", msg),
-            ContractError::InvalidResponse(msg) => write!(f, "Invalid contract response: {}", msg),
+            ContractError::DecodingError(msg) => write!(f, "Failed to decode data: {msg}"),
+            ContractError::InvalidResponse(msg) => write!(f, "Invalid contract response: {msg}"),
 
             // Business logic errors
             ContractError::ProviderNotFound(address) => {
-                write!(f, "Provider not found: {:?}", address)
+                write!(f, "Provider not found: {address:?}")
             }
-            ContractError::NodeNotRegistered { provider, node } => write!(
-                f,
-                "Node {:?} not registered for provider {:?}",
-                node, provider
-            ),
+            ContractError::NodeNotRegistered { provider, node } => {
+                write!(f, "Node {node:?} not registered for provider {provider:?}")
+            }
             ContractError::InvalidProviderState(msg) => {
-                write!(f, "Invalid provider state: {}", msg)
+                write!(f, "Invalid provider state: {msg}")
             }
 
             // Generic errors
-            ContractError::Web3Error(msg) => write!(f, "Web3 error: {}", msg),
-            ContractError::Other(e) => write!(f, "Other error: {}", e),
+            ContractError::Web3Error(msg) => write!(f, "Web3 error: {msg}"),
+            ContractError::Other(e) => write!(f, "Other error: {e}"),
         }
     }
 }

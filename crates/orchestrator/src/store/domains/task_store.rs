@@ -47,7 +47,7 @@ impl TaskStore {
         let observers = self.observers.lock().await.clone();
         for observer in observers.iter() {
             if let Err(e) = observer.on_task_created(&task) {
-                error!("Error notifying observer: {}", e);
+                error!("Error notifying observer: {e}");
             }
         }
 
@@ -64,7 +64,7 @@ impl TaskStore {
         let task_futures: Vec<_> = task_ids
             .into_iter()
             .map(|id| {
-                let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
+                let task_key = format!("{TASK_KEY_PREFIX}{id}");
                 let mut con = con.clone();
                 async move {
                     let task: Option<Task> = con.get(&task_key).await.ok().flatten();
@@ -87,7 +87,7 @@ impl TaskStore {
         let task = self.get_task(&id).await?;
 
         // Delete task from individual storage
-        let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
+        let task_key = format!("{TASK_KEY_PREFIX}{id}");
         let _: () = con.del(&task_key).await?;
 
         // Remove task ID from list
@@ -102,7 +102,7 @@ impl TaskStore {
         let observers = self.observers.lock().await.clone();
         for observer in observers.iter() {
             if let Err(e) = observer.on_task_deleted(task.clone()) {
-                error!("Error notifying observer: {}", e);
+                error!("Error notifying observer: {e}");
             }
         }
 
@@ -132,7 +132,7 @@ impl TaskStore {
         for task in tasks {
             for observer in observers.iter() {
                 if let Err(e) = observer.on_task_deleted(Some(task.clone())) {
-                    error!("Error notifying observer: {}", e);
+                    error!("Error notifying observer: {e}");
                 }
             }
         }
@@ -142,7 +142,7 @@ impl TaskStore {
 
     pub async fn get_task(&self, id: &str) -> Result<Option<Task>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let task_key = format!("{}{}", TASK_KEY_PREFIX, id);
+        let task_key = format!("{TASK_KEY_PREFIX}{id}");
         let task: Option<Task> = con.get(&task_key).await?;
         Ok(task)
     }

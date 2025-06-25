@@ -375,7 +375,7 @@ impl NodeGroupsPlugin {
                     group_json.and_then(|json| {
                         serde_json::from_str::<NodeGroup>(&json)
                             .map_err(|e| {
-                                error!("Failed to parse group {} data: {}", group_id, e);
+                                error!("Failed to parse group {group_id} data: {e}");
                                 e
                             })
                             .ok()
@@ -436,7 +436,7 @@ impl NodeGroupsPlugin {
 
     async fn get_current_group_task(&self, group_id: &str) -> Result<Option<Task>, Error> {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
-        let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
+        let task_key = format!("{GROUP_TASK_KEY_PREFIX}{group_id}");
         let task_id: Option<String> = conn.get(&task_key).await?;
 
         if let Some(task_id) = task_id {
@@ -471,7 +471,7 @@ impl NodeGroupsPlugin {
 
     pub async fn assign_task_to_group(&self, group_id: &str, task_id: &str) -> Result<bool, Error> {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
-        let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
+        let task_key = format!("{GROUP_TASK_KEY_PREFIX}{group_id}");
         let result: bool = conn.set_nx::<_, _, bool>(&task_key, task_id).await?;
         Ok(result)
     }
@@ -482,13 +482,13 @@ impl NodeGroupsPlugin {
         let mut formed_groups = Vec::new();
 
         let available_configurations = self.get_available_configurations().await;
-        debug!("Available configurations: {:?}", available_configurations);
+        debug!("Available configurations: {available_configurations:?}");
 
         let nodes = self.store_context.node_store.get_nodes().await?;
         let assigned_nodes: std::collections::HashMap<String, String> =
             conn.hgetall(NODE_GROUP_MAP_KEY).await?;
 
-        debug!("Assigned nodes: {:?}", assigned_nodes);
+        debug!("Assigned nodes: {assigned_nodes:?}");
 
         let mut healthy_nodes = nodes
             .iter()
@@ -504,7 +504,7 @@ impl NodeGroupsPlugin {
         let mut total_available = healthy_nodes.len();
 
         for config in &available_configurations {
-            debug!("Checking configuration: {:?}", config);
+            debug!("Checking configuration: {config:?}");
             while total_available >= config.min_group_size {
                 let initial_available = total_available;
 
@@ -568,7 +568,7 @@ impl NodeGroupsPlugin {
 
                 // Create new group
                 let group_id = generate_group_id();
-                debug!("Generating new group with ID: {}", group_id);
+                debug!("Generating new group with ID: {group_id}");
 
                 let group = NodeGroup {
                     id: group_id.clone(),
@@ -576,7 +576,7 @@ impl NodeGroupsPlugin {
                     created_at: chrono::Utc::now(),
                     configuration_name: config.name.clone(),
                 };
-                debug!("Created new group structure: {:?}", group);
+                debug!("Created new group structure: {group:?}");
 
                 // Use atomic group creation helper
                 self.create_group_atomically(&group, &mut conn).await?;
@@ -602,7 +602,7 @@ impl NodeGroupsPlugin {
                         ""
                     }
                 );
-                debug!("Group details: {:?}", group);
+                debug!("Group details: {group:?}");
                 formed_groups.push(group);
                 if total_available == initial_available {
                     break; // No progress made, exit this config
@@ -614,20 +614,13 @@ impl NodeGroupsPlugin {
         for group in webhook_groups {
             if let Some(plugins) = &self.webhook_plugins {
                 for plugin in plugins.iter() {
-                    let group_clone = group.clone();
-                    let plugin_clone = plugin.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = plugin_clone
-                            .send_group_created(
-                                group_clone.id.to_string(),
-                                group_clone.configuration_name.to_string(),
-                                group_clone.nodes.iter().cloned().collect(),
-                            )
-                            .await
-                        {
-                            error!("Failed to send group created webhook: {}", e);
-                        }
-                    });
+                    if let Err(e) = plugin.send_group_created(
+                        group.id.clone(),
+                        group.configuration_name.clone(),
+                        group.nodes.iter().cloned().collect(),
+                    ) {
+                        error!("Failed to send group created webhook: {}", e);
+                    }
                 }
             }
         }
@@ -647,10 +640,7 @@ impl NodeGroupsPlugin {
         // Quick optimization: check if there are any solo groups before proceeding
         let solo_groups_count = all_groups.iter().filter(|g| g.nodes.len() == 1).count();
         if solo_groups_count < 2 {
-            debug!(
-                "Found {} solo groups, merging not beneficial",
-                solo_groups_count
-            );
+            debug!("Found {solo_groups_count} solo groups, merging not beneficial");
             return Ok(merged_groups);
         }
 
@@ -926,7 +916,7 @@ impl NodeGroupsPlugin {
             pipe.srem(GROUPS_INDEX_KEY, group_id);
 
             // Delete group task assignment
-            let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
+            let task_key = format!("{GROUP_TASK_KEY_PREFIX}{group_id}");
             pipe.del(&task_key);
 
             // Delete group
@@ -948,7 +938,7 @@ impl NodeGroupsPlugin {
 
         // Assign task to new group if one was found
         if let Some(task) = &selected_task {
-            let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, new_group_id);
+            let task_key = format!("{GROUP_TASK_KEY_PREFIX}{new_group_id}");
             pipe.set_nx(&task_key, task.id.to_string());
         }
 
@@ -976,51 +966,36 @@ impl NodeGroupsPlugin {
         }
 
         // Send webhook notifications
-        self.send_merge_webhooks(groups_to_merge, &merged_group)
-            .await;
+        self.send_merge_webhooks(groups_to_merge, &merged_group);
 
         Ok(Some((merged_group, group_ids_to_dissolve)))
     }
 
     /// Send webhook notifications for group merging
-    async fn send_merge_webhooks(&self, dissolved_groups: &[NodeGroup], merged_group: &NodeGroup) {
+    fn send_merge_webhooks(&self, dissolved_groups: &[NodeGroup], merged_group: &NodeGroup) {
         if let Some(plugins) = &self.webhook_plugins {
             // Send dissolved notifications
             for group in dissolved_groups {
                 for plugin in plugins.iter() {
-                    let plugin_clone = plugin.clone();
-                    let group_clone = group.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = plugin_clone
-                            .send_group_destroyed(
-                                group_clone.id,
-                                group_clone.configuration_name,
-                                group_clone.nodes.iter().cloned().collect(),
-                            )
-                            .await
-                        {
-                            error!("Failed to send group dissolved webhook: {}", e);
-                        }
-                    });
+                    if let Err(e) = plugin.send_group_destroyed(
+                        group.id.clone(),
+                        group.configuration_name.clone(),
+                        group.nodes.iter().cloned().collect(),
+                    ) {
+                        error!("Failed to send group dissolved webhook: {}", e);
+                    }
                 }
             }
 
             // Send created notification
             for plugin in plugins.iter() {
-                let plugin_clone = plugin.clone();
-                let group_clone = merged_group.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = plugin_clone
-                        .send_group_created(
-                            group_clone.id,
-                            group_clone.configuration_name,
-                            group_clone.nodes.iter().cloned().collect(),
-                        )
-                        .await
-                    {
-                        error!("Failed to send group created webhook: {}", e);
-                    }
-                });
+                if let Err(e) = plugin.send_group_created(
+                    merged_group.id.clone(),
+                    merged_group.configuration_name.clone(),
+                    merged_group.nodes.iter().cloned().collect(),
+                ) {
+                    error!("Failed to send group created webhook: {}", e);
+                }
             }
         }
     }
@@ -1055,11 +1030,11 @@ impl NodeGroupsPlugin {
                 match serde_json::from_str::<NodeGroup>(group_data) {
                     Ok(group) => groups.push(group),
                     Err(e) => {
-                        error!("Failed to parse group {} data: {}", group_id, e);
+                        error!("Failed to parse group {group_id} data: {e}");
                     }
                 }
             } else {
-                warn!("Group {} exists in index but has no data", group_id);
+                warn!("Group {group_id} exists in index but has no data");
             }
         }
 
@@ -1102,8 +1077,7 @@ impl NodeGroupsPlugin {
         task_id: &str,
     ) -> Result<(), Error> {
         warn!(
-            "Group {} not found during task assignment for task {}, attempting recovery",
-            group_id, task_id
+            "Group {group_id} not found during task assignment for task {task_id}, attempting recovery"
         );
 
         // Try to find another suitable group for the task
@@ -1140,8 +1114,7 @@ impl NodeGroupsPlugin {
         }
 
         warn!(
-            "Could not find alternative group for task {} after group {} was dissolved",
-            task_id, group_id
+            "Could not find alternative group for task {task_id} after group {group_id} was dissolved"
         );
         Ok(())
     }
@@ -1275,7 +1248,7 @@ impl NodeGroupsPlugin {
 
     pub(crate) fn on_task_deleted(&self, task: Option<Task>) -> Result<()> {
         if let Some(task) = task {
-            debug!("Task deleted event received: {:?}", task);
+            debug!("Task deleted event received: {task:?}");
             let task_id = task.id.to_string();
             let topologies = get_task_topologies(&task)?;
             debug!("Found {} topologies for task cleanup", topologies.len());
@@ -1288,11 +1261,11 @@ impl NodeGroupsPlugin {
                 let topologies = topologies.clone();
                 async move {
                     // Immediately dissolve all groups assigned to this specific task
-                    debug!("Dissolving groups for deleted task: {}", task_id);
+                    debug!("Dissolving groups for deleted task: {task_id}");
                     let groups_for_task = match get_groups_for_task(store.clone(), &task_id).await {
                         Ok(groups) => groups,
                         Err(e) => {
-                            error!("Failed to get groups for task {}: {}", task_id, e);
+                            error!("Failed to get groups for task {task_id}: {e}");
                             return;
                         }
                     };
@@ -1305,28 +1278,26 @@ impl NodeGroupsPlugin {
                         );
 
                         for group_id in &groups_for_task {
-                            debug!("Dissolving group {} for deleted task {}", group_id, task_id);
+                            debug!("Dissolving group {group_id} for deleted task {task_id}");
                             if let Err(e) = dissolve_group(group_id, &store, &webhook_plugins).await
                             {
                                 error!(
-                                    "Failed to dissolve group {} for task {}: {}",
-                                    group_id, task_id, e
+                                    "Failed to dissolve group {group_id} for task {task_id}: {e}"
                                 );
                             } else {
                                 info!(
-                                    "Successfully dissolved group {} for deleted task {}",
-                                    group_id, task_id
+                                    "Successfully dissolved group {group_id} for deleted task {task_id}"
                                 );
                             }
                         }
                     } else {
-                        debug!("No groups found for deleted task {}", task_id);
+                        debug!("No groups found for deleted task {task_id}");
                     }
 
                     // Also check if we need to disable configurations when no tasks remain for a topology
                     // This is secondary to the immediate group dissolution above
                     for topology in topologies {
-                        debug!("Checking topology {} for configuration cleanup", topology);
+                        debug!("Checking topology {topology} for configuration cleanup");
                         let remaining_tasks = match get_all_tasks_for_topology(
                             store_context.clone(),
                             &topology,
@@ -1342,13 +1313,11 @@ impl NodeGroupsPlugin {
 
                         if remaining_tasks.is_empty() {
                             debug!(
-                                "No tasks remaining for topology {}, disabling configuration",
-                                topology
+                                "No tasks remaining for topology {topology}, disabling configuration"
                             );
                             if let Err(e) = disable_configuration(&store, &topology).await {
                                 error!(
-                                    "Failed to disable configuration for topology {}: {}",
-                                    topology, e
+                                    "Failed to disable configuration for topology {topology}: {e}"
                                 );
                             }
                         }
@@ -1505,18 +1474,13 @@ async fn dissolve_group(
             for plugin in plugins.iter() {
                 let plugin_clone = plugin.clone();
                 let group_clone = group.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = plugin_clone
-                        .send_group_destroyed(
-                            group_clone.id.to_string(),
-                            group_clone.configuration_name.to_string(),
-                            group_clone.nodes.iter().cloned().collect(),
-                        )
-                        .await
-                    {
-                        error!("Failed to send group dissolved webhook: {}", e);
-                    }
-                });
+                if let Err(e) = plugin_clone.send_group_destroyed(
+                    group_clone.id.to_string(),
+                    group_clone.configuration_name.to_string(),
+                    group_clone.nodes.iter().cloned().collect(),
+                ) {
+                    error!("Failed to send group dissolved webhook: {}", e);
+                }
             }
         }
     } else {

@@ -57,20 +57,39 @@ impl NodeStatusUpdater {
             interval.tick().await;
             debug!("Running NodeStatusUpdater to process nodes heartbeats");
             if let Err(e) = self.process_nodes().await {
-                error!("Error processing nodes: {}", e);
+                error!("Error processing nodes: {e}");
             }
             if let Err(e) = self.sync_chain_with_nodes().await {
-                error!("Error syncing chain with nodes: {}", e);
+                error!("Error syncing chain with nodes: {e}");
             }
             self.heartbeats.update_status_updater();
         }
+    }
+
+    #[cfg(test)]
+    fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
+        true
+    }
+
+    #[cfg(not(test))]
+    async fn is_node_in_pool(&self, node: &OrchestratorNode) -> bool {
+        let node_in_pool: bool = (self
+            .contracts
+            .compute_pool
+            .is_node_in_pool(self.pool_id, node.address)
+            .await)
+            .unwrap_or(false);
+        node_in_pool
     }
 
     async fn sync_dead_node_with_chain(
         &self,
         node: &OrchestratorNode,
     ) -> Result<(), anyhow::Error> {
-        let node_in_pool = is_node_in_pool(self.contracts.clone(), self.pool_id, node).await;
+        #[cfg(test)]
+        let node_in_pool = self.is_node_in_pool(node);
+        #[cfg(not(test))]
+        let node_in_pool = self.is_node_in_pool(node).await;
         if node_in_pool {
             match self
                 .contracts
@@ -83,7 +102,7 @@ impl NodeStatusUpdater {
                     return Ok(());
                 }
                 Result::Err(e) => {
-                    error!("Error ejecting node: {}", e);
+                    error!("Error ejecting node: {e}");
                     return Err(anyhow::anyhow!("Error ejecting node: {}", e));
                 }
             }
@@ -100,13 +119,15 @@ impl NodeStatusUpdater {
         let nodes = self.store_context.node_store.get_nodes().await?;
         for node in nodes {
             if node.status == NodeStatus::Dead {
-                let node_in_pool =
-                    is_node_in_pool(self.contracts.clone(), self.pool_id, &node).await;
+                #[cfg(test)]
+                let node_in_pool = self.is_node_in_pool(&node);
+                #[cfg(not(test))]
+                let node_in_pool = self.is_node_in_pool(&node).await;
                 debug!("Node {:?} is in pool: {}", node.address, node_in_pool);
                 if node_in_pool {
                     if !self.disable_ejection {
                         if let Err(e) = self.sync_dead_node_with_chain(&node).await {
-                            error!("Error syncing dead node with chain: {}", e);
+                            error!("Error syncing dead node with chain: {e}");
                         }
                     } else {
                         debug!(

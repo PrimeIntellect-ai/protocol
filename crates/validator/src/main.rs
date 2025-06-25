@@ -55,10 +55,7 @@ async fn get_rejections(
             } else {
                 // Fallback to all rejections (but warn about potential performance impact)
                 if limit >= 1000 {
-                    info!(
-                        "Large limit requested ({}), this may impact performance",
-                        limit
-                    );
+                    info!("Large limit requested ({limit}), this may impact performance");
                 }
                 validator.get_all_rejections().await
             };
@@ -69,10 +66,10 @@ async fn get_rejections(
                     data: rejections,
                 }),
                 Err(e) => {
-                    error!("Failed to get rejections: {}", e);
+                    error!("Failed to get rejections: {e}");
                     HttpResponse::InternalServerError().json(ApiResponse {
                         success: false,
-                        data: format!("Failed to get rejections: {}", e),
+                        data: format!("Failed to get rejections: {e}"),
                     })
                 }
             }
@@ -259,7 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let redis_store = RedisStore::new(&args.redis_url);
 
     let validator_wallet = Wallet::new(&private_key_validator, rpc_url).unwrap_or_else(|err| {
-        error!("Error creating wallet: {:?}", err);
+        error!("Error creating wallet: {err:?}");
         std::process::exit(1);
     });
 
@@ -284,7 +281,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(client)
             }
             Err(e) => {
-                error!("Failed to initialize P2P client: {}", e);
+                error!("Failed to initialize P2P client: {e}");
                 None
             }
         }
@@ -298,7 +295,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             Ok(pool_info) => pool_info,
             Err(e) => {
-                error!("Failed to get pool info: {:?}", e);
+                error!("Failed to get pool info: {e:?}");
                 std::process::exit(1);
             }
         };
@@ -335,43 +332,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         std::process::exit(1);
                     }
                 };
-                info!("Toploc configs: {}", toploc_configs);
+                info!("Toploc configs: {toploc_configs}");
 
                 let configs = match serde_json::from_str(&toploc_configs) {
                     Ok(configs) => configs,
                     Err(e) => {
-                        error!("Failed to parse toploc configs: {}", e);
+                        error!("Failed to parse toploc configs: {e}");
                         std::process::exit(1);
                     }
                 };
-
                 let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-                let gcs_storage =
-                    GcsStorageProvider::new(&args.bucket_name.unwrap(), &s3_credentials.unwrap())
-                        .await
-                        .unwrap();
-                let storage_provider = Arc::new(gcs_storage);
 
-                Some(SyntheticDataValidator::new(
-                    pool_id,
-                    validator,
-                    contracts.prime_network.clone(),
-                    configs,
-                    penalty,
-                    storage_provider,
-                    redis_store,
-                    cancellation_token,
-                    args.toploc_work_validation_interval,
-                    args.toploc_work_validation_unknown_status_expiry_seconds,
-                    args.toploc_grace_interval,
-                    args.batch_trigger_size,
-                    args.use_grouping,
-                    args.disable_toploc_invalidation,
-                    args.incomplete_group_grace_period_minutes,
-                    args.toploc_invalidation_type,
-                    args.work_unit_invalidation_type,
-                    Some(metrics_ctx.clone()),
-                ))
+                match (args.bucket_name.as_ref(), s3_credentials) {
+                    (Some(bucket_name), Some(s3_credentials))
+                        if !bucket_name.is_empty() && !s3_credentials.is_empty() =>
+                    {
+                        let gcs_storage = GcsStorageProvider::new(bucket_name, &s3_credentials)
+                            .await
+                            .unwrap_or_else(|_| panic!("Failed to create GCS storage provider"));
+                        let storage_provider = Arc::new(gcs_storage);
+
+                        Some(SyntheticDataValidator::new(
+                            pool_id,
+                            validator,
+                            contracts.prime_network.clone(),
+                            configs,
+                            penalty,
+                            storage_provider,
+                            redis_store,
+                            cancellation_token,
+                            args.toploc_work_validation_interval,
+                            args.toploc_work_validation_unknown_status_expiry_seconds,
+                            args.toploc_grace_interval,
+                            args.batch_trigger_size,
+                            args.use_grouping,
+                            args.disable_toploc_invalidation,
+                            args.incomplete_group_grace_period_minutes,
+                            args.toploc_invalidation_type,
+                            args.work_unit_invalidation_type,
+                            Some(metrics_ctx.clone()),
+                        ))
+                    }
+                    _ => {
+                        info!("Bucket name or S3 credentials not provided, skipping synthetic data validation");
+                        None
+                    }
+                }
             }
             None => {
                 error!("Synthetic data validator not found");
@@ -406,7 +412,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 HttpResponse::Ok().content_type("text/plain").body(metrics)
                             }
                             Err(e) => {
-                                error!("Error exporting metrics: {:?}", e);
+                                error!("Error exporting metrics: {e:?}");
                                 HttpResponse::InternalServerError().finish()
                             }
                         }
@@ -418,7 +424,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .run()
         .await
         {
-            error!("Actix server error: {:?}", e);
+            error!("Actix server error: {e:?}");
         }
     });
 
@@ -440,7 +446,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if let Some(validator) = synthetic_validator.clone() {
             if let Err(e) = validator.validate_work().await {
-                error!("Failed to validate work: {}", e);
+                error!("Failed to validate work: {e}");
             }
         }
 
@@ -472,9 +478,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .context("Failed to create signature header")?,
                 );
 
-                debug!("Fetching nodes from: {}{}", discovery_url, discovery_route);
+                debug!("Fetching nodes from: {discovery_url}{discovery_route}");
                 let response = reqwest::Client::new()
-                    .get(format!("{}{}", discovery_url, discovery_route))
+                    .get(format!("{discovery_url}{discovery_route}"))
                     .query(&[("nonce", signature.nonce)])
                     .headers(headers)
                     .timeout(Duration::from_secs(10))
@@ -491,10 +497,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     serde_json::from_str(&response_text).context("Failed to parse response")?;
 
                 if !parsed_response.success {
-                    error!(
-                        "Failed to fetch nodes from {}: {:?}",
-                        discovery_url, parsed_response
-                    );
+                    error!("Failed to fetch nodes from {discovery_url}: {parsed_response:?}");
                     return Ok(vec![]);
                 }
 
@@ -517,7 +520,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             any_success = true;
                         }
                         Err(e) => {
-                            error!("Failed to fetch nodes from {}: {:#}", discovery_url, e);
+                            error!("Failed to fetch nodes from {discovery_url}: {e:#}");
                         }
                     }
                 }
@@ -546,7 +549,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 Ok(n) => n,
                 Err(e) => {
-                    error!("Error in node fetching loop: {:#}", e);
+                    error!("Error in node fetching loop: {e:#}");
                     std::thread::sleep(std::time::Duration::from_secs(10));
                     continue;
                 }
@@ -569,10 +572,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let provider_address = match Address::from_str(provider_address_str) {
                     Ok(address) => address,
                     Err(e) => {
-                        error!(
-                            "Failed to parse provider address {}: {}",
-                            provider_address_str, e
-                        );
+                        error!("Failed to parse provider address {provider_address_str}: {e}");
                         continue;
                     }
                 };
@@ -616,7 +616,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .validate_nodes(nodes_with_enough_stake)
                 .await
             {
-                error!("Error validating nodes: {:#}", e);
+                error!("Error validating nodes: {e:#}");
             }
         }
 
@@ -626,7 +626,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         LAST_LOOP_DURATION_MS.store(loop_duration_ms, Ordering::Relaxed);
 
         metrics_ctx.record_validation_loop_duration(loop_duration.as_secs_f64());
-        info!("Validation loop completed in {}ms", loop_duration_ms);
+        info!("Validation loop completed in {loop_duration_ms}ms");
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
     Ok(())

@@ -24,7 +24,7 @@ impl NodeGroupsPlugin {
             let idx = match self.get_idx_in_group(&group, &node_address.to_string()) {
                 Ok(idx) => idx,
                 Err(e) => {
-                    error!("Failed to get index in group: {}", e);
+                    error!("Failed to get index in group: {e}");
                     return Ok(vec![]);
                 }
             };
@@ -84,7 +84,7 @@ impl NodeGroupsPlugin {
                                 }
                             }
                             Err(e) => {
-                                error!("Failed to assign task to group: {}", e);
+                                error!("Failed to assign task to group: {e}");
 
                                 // Check if group still exists - might have been dissolved during merge
                                 if let Ok(false) = self.validate_group_exists(&group.id).await {
@@ -97,8 +97,7 @@ impl NodeGroupsPlugin {
                                         self.handle_group_not_found(&group.id, &task_id).await
                                     {
                                         error!(
-                                            "Failed to recover from dissolved group: {}",
-                                            recovery_err
+                                            "Failed to recover from dissolved group: {recovery_err}"
                                         );
                                     }
                                     return Ok(vec![]); // Node should retry on next scheduling cycle
@@ -142,13 +141,13 @@ impl NodeGroupsPlugin {
                                     keys.len().to_string()
                                 }
                                 Err(e) => {
-                                    error!("Failed to scan upload keys: {}", e);
+                                    error!("Failed to scan upload keys: {e}");
                                     "0".to_string()
                                 }
                             }
                         }
                         Err(e) => {
-                            error!("Failed to get Redis connection: {}", e);
+                            error!("Failed to get Redis connection: {e}");
                             "0".to_string()
                         }
                     };

@@ -51,7 +51,7 @@ pub async fn sign_request_with_custom_nonce(
     let message = if request_data_string.is_empty() {
         endpoint.to_string()
     } else {
-        format!("{}{}", endpoint, request_data_string)
+        format!("{endpoint}{request_data_string}")
     };
     let signature = wallet
         .signer

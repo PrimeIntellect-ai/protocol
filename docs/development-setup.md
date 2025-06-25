@@ -36,7 +36,7 @@ git submodule update --init --recursive
 # Install Foundry
 curl -L https://foundry.paradigm.xyz | bash
 
-# Reload .bashrc (or .bash_profile, depends on the system)
+# Reload your shell environment 
 source ~/.bashrc
 
 foundryup
@@ -46,6 +46,9 @@ foundryup
 ```bash
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Reload your shell environment
+source ~/.bashrc
 
 # Install cargo-watch
 cargo install cargo-watch
@@ -57,25 +60,21 @@ cargo install cargo-watch
 brew install redis
 
 # Install Redis (Ubuntu)
+sudo apt-get update
 sudo apt-get install redis-server
 ```
 
-#### Ruby and Tmux
+#### Tmux
 ```bash
-# Install Ruby (MacOS)
-brew install ruby
-
-# Install Ruby (Ubuntu)
-sudo apt-get install ruby
-
-# Install tmuxinator (do not use brew)
-gem install tmuxinator
-
 # Install Tmux (MacOS)
 brew install tmux
 
 # Install Tmux (Ubuntu)
 sudo apt install tmux
+```
+
+### Ubuntu:
+```bash
 sudo apt-get install libssl-dev
 ```
 
@@ -85,9 +84,9 @@ sudo apt-get install libssl-dev
   ```bash
   sudo usermod -aG docker $USER
   ```
-- Create `.env` files in base folder and discovery folder
 
 ### 4. Launch Core Services
+- Copy the `.env.example` file to `.env` 
 ```bash
 make up
 ```
@@ -100,36 +99,20 @@ This will start:
 - Redis instance
 - Supporting infrastructure
 
-## Docker Compose Setup
-
-You can run all supporting services (chain, validator, discovery, orchestrator) in docker compose.
-
-1. Start docker compose:
-   ```bash
-   docker compose up
-   ```
-
-2. Run Setup:  
-   ```bash
-   make setup
-   ```
-
-3. Launch a worker:
-   - Adjust the .env var `WORKER_EXTERNAL_IP` to: `WORKER_EXTERNAL_IP=host.docker.internal` 
-   - Launch the worker using `make watch-worker`
-   - Whitelist the worker once you see the whitelist alert using: `make whitelist-provider`
-
 ## Running a Worker Node
 
 Once the core services are running, you can start a worker node in a new terminal:
 ```bash
 make watch-worker
 ```
+Your worker will show an error indicating it is not whitelisted yet. You'll need to run `make whitelist-provider` to resolve this.
 
-The worker will automatically connect to the discovery service and begin processing tasks.
-It takes a couple of seconds until the worker is whitelisted. This is done using a simple loop on the second page of tmux.
+You should see your worker appear on the orchestrator. You can also check the orchestrator documentation at: `http://localhost:8090/docs`
 
-You can find more details on the APIs in the orchestrator and discovery service directory.
+Quick check in the api of the orchestrator:
+```bash
+curl -H "Authorization: Bearer admin" http://localhost:8090/nodes 
+```
 
 ## Remote GPU Development
 > ⚠️ **IMPORTANT**: The video shows the whitelist process happening automatically. Currently, this must be done manually using the command `make whitelist-provider`.
@@ -156,3 +139,21 @@ To gracefully shutdown all services:
 ```bash
 make down
 ```
+
+## Docker Compose Setup
+You can run all supporting services (chain, validator, discovery, orchestrator) (if you only want to work on the worker sw) in docker compose.
+
+1. Start docker compose:
+   ```bash
+   docker compose up
+   ```
+
+2. Run Setup:  
+   ```bash
+   make setup
+   ```
+
+3. Launch a worker:
+   - Adjust the .env var `WORKER_EXTERNAL_IP` to: `WORKER_EXTERNAL_IP=host.docker.internal` 
+   - Launch the worker using `make watch-worker`
+   - Whitelist the worker once you see the whitelist alert using: `make whitelist-provider`

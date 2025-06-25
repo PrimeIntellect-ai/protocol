@@ -22,7 +22,7 @@ impl RedisStore {
     pub fn new(redis_url: &str) -> Self {
         match Client::open(redis_url) {
             Ok(client) => {
-                info!("Successfully connected to Redis at {}", redis_url);
+                info!("Successfully connected to Redis at {redis_url}");
                 Self {
                     client,
                     #[cfg(test)]
@@ -30,7 +30,7 @@ impl RedisStore {
                 }
             }
             Err(e) => {
-                panic!("Redis connection error: {}", e);
+                panic!("Redis connection error: {e}");
             }
         }
     }

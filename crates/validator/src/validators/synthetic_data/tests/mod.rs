@@ -1016,7 +1016,7 @@ async fn test_incomplete_group_status_tracking() -> Result<(), Error> {
     assert_eq!(work_keys.len(), 1);
 
     // Soft invalidate and set status to IncompleteGroup
-    validator.soft_invalidate_work(FILE_SHA_1).await?;
+    validator.soft_invalidate_work(FILE_SHA_1)?;
     validator
         .update_work_validation_status(FILE_SHA_1, &ValidationResult::IncompleteGroup)
         .await?;

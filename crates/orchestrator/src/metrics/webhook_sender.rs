@@ -62,7 +62,7 @@ impl MetricsWebhookSender {
             {
                 Ok(metrics) => metrics,
                 Err(e) => {
-                    error!("Error getting aggregate metrics for all tasks: {}", e);
+                    error!("Error getting aggregate metrics for all tasks: {e}");
                     continue;
                 }
             };
@@ -70,9 +70,7 @@ impl MetricsWebhookSender {
             if Self::metrics_changed(&metrics, &self.last_sent_metrics) {
                 info!("Sending {} metrics via webhook", metrics.len());
                 for plugin in &self.webhook_plugins {
-                    let _ = plugin
-                        .send_metrics_updated(self.pool_id, metrics.clone())
-                        .await;
+                    let _ = plugin.send_metrics_updated(self.pool_id, metrics.clone());
                 }
                 // Update last sent metrics
                 self.last_sent_metrics = metrics.clone();

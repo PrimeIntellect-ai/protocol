@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 fn try_bind_port(port: u16) -> Result<()> {
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("0.0.0.0:{port}");
     // If bind succeeds, port is available; if it fails, port is taken.
     let listener = TcpListener::bind(addr)?;
     drop(listener); // Release the port immediately.
@@ -21,7 +21,7 @@ pub async fn check_port_available(issues: &Arc<RwLock<IssueReport>>, port: u16) 
         Err(e) => {
             issue_tracker.add_issue(
                 IssueType::PortUnavailable,
-                format!("Port {} is not available: {}", port, e),
+                format!("Port {port} is not available: {e}"),
             );
         }
     }

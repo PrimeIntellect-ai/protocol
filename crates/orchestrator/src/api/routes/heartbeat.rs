@@ -65,7 +65,7 @@ async fn heartbeat(
         )
         .await
     {
-        error!("Error updating node task: {}", e);
+        error!("Error updating node task: {e}");
     }
 
     // Record task state metric if task information is available
@@ -82,7 +82,7 @@ async fn heartbeat(
             .update_node_p2p_id(&node_address, p2p_id)
             .await
         {
-            error!("Error updating node p2p id: {}", e);
+            error!("Error updating node p2p id: {e}");
         }
     }
 
@@ -92,7 +92,7 @@ async fn heartbeat(
         .beat(&heartbeat)
         .await
     {
-        error!("Heartbeat Error: {}", e);
+        error!("Heartbeat Error: {e}");
     }
     if let Some(metrics) = heartbeat.metrics.clone() {
         // Get current metric keys for this node efficiently using HKEYS
@@ -104,7 +104,7 @@ async fn heartbeat(
         {
             Ok(keys) => keys,
             Err(e) => {
-                error!("Error getting metric keys for node: {}", e);
+                error!("Error getting metric keys for node: {e}");
                 Vec::new()
             }
         };
@@ -137,7 +137,7 @@ async fn heartbeat(
                     .delete_metric(task_id, label, &node_address.to_string())
                     .await
                 {
-                    error!("Error deleting metric: {}", e);
+                    error!("Error deleting metric: {e}");
                 }
             }
         }
@@ -149,7 +149,7 @@ async fn heartbeat(
             .store_metrics(Some(metrics.clone()), node_address)
             .await
         {
-            error!("Error storing metrics: {}", e);
+            error!("Error storing metrics: {e}");
         }
     }
 

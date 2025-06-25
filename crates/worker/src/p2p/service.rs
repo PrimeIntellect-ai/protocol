@@ -77,7 +77,7 @@ impl P2PService {
         };
 
         let node_id = secret_key.public().to_string();
-        info!("Starting P2P service with node ID: {}", node_id);
+        info!("Starting P2P service with node ID: {node_id}");
 
         // Create the endpoint
         let endpoint = Endpoint::builder()
@@ -96,7 +96,7 @@ impl P2PService {
             .map(|addr| addr.to_string())
             .collect::<Vec<_>>();
 
-        info!("P2P service listening on: {:?}", listening_addrs);
+        info!("P2P service listening on: {listening_addrs:?}");
 
         Ok(Self {
             endpoint,
@@ -139,14 +139,11 @@ impl P2PService {
             .map(|addr| addr.to_string())
             .collect::<Vec<_>>();
 
-        info!(
-            "P2P endpoint recreated, listening on: {:?}",
-            listening_addrs
-        );
+        info!("P2P endpoint recreated, listening on: {listening_addrs:?}");
         Ok(endpoint)
     }
     /// Start accepting incoming connections with automatic recovery
-    pub async fn start(&self) -> Result<()> {
+    pub fn start(&self) -> Result<()> {
         let service = Arc::new(self.clone());
         let cancellation_token = self.cancellation_token.clone();
 
@@ -173,7 +170,7 @@ impl P2PService {
                     match result {
                         EndpointLoopResult::Shutdown => break,
                         EndpointLoopResult::EndpointClosed => {
-                            warn!("P2P endpoint closed, attempting recovery in {:?}", retry_delay);
+                            warn!("P2P endpoint closed, attempting recovery in {retry_delay:?}");
 
                             tokio::select! {
                                 _ = cancellation_token.cancelled() => break,
@@ -187,7 +184,7 @@ impl P2PService {
                                     retry_delay = Duration::from_secs(1);
                                 }
                                 Err(e) => {
-                                    error!("Failed to recreate P2P endpoint: {}", e);
+                                    error!("Failed to recreate P2P endpoint: {e}");
                                     retry_delay = std::cmp::min(retry_delay * 2, MAX_RETRY_DELAY);
                                 }
                             }
@@ -239,13 +236,13 @@ impl P2PService {
                             Self::handle_stream(send, recv, context, allowed_addresses, wallet)
                                 .await
                         {
-                            error!("Error handling stream: {}", e);
+                            error!("Error handling stream: {e}");
                         }
                         // Wait a bit before closing to ensure client has processed response
                         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                     }
                     Err(e) => {
-                        error!("Failed to accept bi-stream: {}", e);
+                        error!("Failed to accept bi-stream: {e}");
                         connection.close(1u32.into(), b"stream error");
                     }
                 }
@@ -255,9 +252,9 @@ impl P2PService {
                 if e.to_string()
                     .contains("peer doesn't support any known protocol")
                 {
-                    debug!("Connection attempt with unsupported protocol: {}", e);
+                    debug!("Connection attempt with unsupported protocol: {e}");
                 } else {
-                    error!("Failed to accept connection: {}", e);
+                    error!("Failed to accept connection: {e}");
                 }
             }
         }
@@ -270,7 +267,7 @@ impl P2PService {
         match recv.read_exact(&mut msg_len_bytes).await {
             Ok(_) => {}
             Err(e) => {
-                debug!("Stream read ended: {}", e);
+                debug!("Stream read ended: {e}");
                 return Err(anyhow::anyhow!("Stream closed"));
             }
         }
@@ -278,10 +275,7 @@ impl P2PService {
 
         // Enforce maximum message size
         if msg_len > MAX_MESSAGE_SIZE {
-            error!(
-                "Message size {} exceeds maximum allowed size {}",
-                msg_len, MAX_MESSAGE_SIZE
-            );
+            error!("Message size {msg_len} exceeds maximum allowed size {MAX_MESSAGE_SIZE}");
             return Err(anyhow::anyhow!("Message too large"));
         }
 
@@ -291,7 +285,7 @@ impl P2PService {
         let request: P2PRequest = serde_json::from_slice(&msg_bytes)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize P2P request: {}", e))?;
 
-        debug!("Received P2P request: {:?}", request);
+        debug!("Received P2P request: {request:?}");
         Ok(request)
     }
 
@@ -338,7 +332,7 @@ impl P2PService {
             // Handle the request
             let response = match request.message {
                 P2PMessage::Ping { nonce, .. } => {
-                    info!("Received ping with nonce: {}", nonce);
+                    info!("Received ping with nonce: {nonce}");
                     P2PResponse::new(
                         request.id,
                         P2PMessage::Pong {
@@ -356,7 +350,7 @@ impl P2PService {
                     let signature = match sign_message(&message, &wallet).await {
                         Ok(signature) => signature,
                         Err(e) => {
-                            error!("Failed to sign message: {}", e);
+                            error!("Failed to sign message: {e}");
                             return Err(anyhow::anyhow!("Failed to sign message: {}", e));
                         }
                     };
@@ -391,10 +385,7 @@ impl P2PService {
 
                     // Check if challenge message has been used before (replay attack prevention)
                     if !NONCE_CACHE.contains_key(challenge_message) {
-                        warn!(
-                            "Challenge message not found or expired: {}",
-                            challenge_message
-                        );
+                        warn!("Challenge message not found or expired: {challenge_message}");
                         let response = P2PResponse::new(request.id, P2PMessage::AuthRejected {});
                         Self::write_response(&mut send, response).await?;
                         continue;
@@ -531,7 +522,7 @@ impl P2PService {
         let invite_bytes = match hex::decode(&invite.invite) {
             Ok(bytes) => bytes,
             Err(err) => {
-                error!("Failed to decode invite hex string: {:?}", err);
+                error!("Failed to decode invite hex string: {err:?}");
                 return (
                     "error".to_string(),
                     Some("Invalid invite format".to_string()),
@@ -566,7 +557,7 @@ impl P2PService {
         let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
             Ok(info) => info,
             Err(err) => {
-                error!("Failed to get pool info: {:?}", err);
+                error!("Failed to get pool info: {err:?}");
                 return (
                     "error".to_string(),
                     Some("Failed to get pool information".to_string()),
@@ -596,7 +587,7 @@ impl P2PService {
         ) {
             Ok(call) => call,
             Err(err) => {
-                error!("Failed to build join compute pool call: {:?}", err);
+                error!("Failed to build join compute pool call: {err:?}");
                 return (
                     "error".to_string(),
                     Some("Failed to build join compute pool call".to_string()),
@@ -608,8 +599,7 @@ impl P2PService {
             Ok(result) => {
                 Console::section("WORKER JOINED COMPUTE POOL");
                 Console::success(&format!(
-                    "Successfully registered on chain with tx: {}",
-                    result
+                    "Successfully registered on chain with tx: {result}"
                 ));
                 Console::info(
                     "Status",
@@ -617,18 +607,18 @@ impl P2PService {
                 );
             }
             Err(err) => {
-                error!("Failed to join compute pool: {:?}", err);
+                error!("Failed to join compute pool: {err:?}");
                 return (
                     "error".to_string(),
-                    Some(format!("Failed to join compute pool: {}", err)),
+                    Some(format!("Failed to join compute pool: {err}")),
                 );
             }
         }
         let endpoint = if let Some(url) = &invite.master_url {
-            format!("{}/heartbeat", url)
+            format!("{url}/heartbeat")
         } else {
             match (&invite.master_ip, &invite.master_port) {
-                (Some(ip), Some(port)) => format!("http://{}:{}/heartbeat", ip, port),
+                (Some(ip), Some(port)) => format!("http://{ip}:{port}/heartbeat"),
                 _ => {
                     error!("Missing master IP or port in invite request");
                     return (
@@ -640,7 +630,7 @@ impl P2PService {
         };
 
         if let Err(err) = context.heartbeat_service.start(endpoint).await {
-            error!("Failed to start heartbeat service: {:?}", err);
+            error!("Failed to start heartbeat service: {err:?}");
             return (
                 "error".to_string(),
                 Some("Failed to start heartbeat service".to_string()),
@@ -706,7 +696,7 @@ mod tests {
         let random_nonce = rand_v8::thread_rng().gen::<u64>();
 
         tokio::spawn(async move {
-            service.start().await.unwrap();
+            service.start().unwrap();
         });
 
         let ping = P2PMessage::Ping {
@@ -733,7 +723,7 @@ mod tests {
         let addresses = service.listening_addresses().to_vec();
 
         tokio::spawn(async move {
-            service.start().await.unwrap();
+            service.start().unwrap();
         });
 
         let ping = P2PMessage::Ping {

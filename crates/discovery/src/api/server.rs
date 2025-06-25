@@ -85,12 +85,12 @@ pub async fn start_server(
     max_nodes_per_ip: u32,
     chain_sync_enabled: bool,
 ) -> std::io::Result<()> {
-    info!("Starting server at http://{}:{}", host, port);
+    info!("Starting server at http://{host}:{port}");
 
     let validators = match contracts.prime_network.get_validator_role().await {
         Ok(validators) => validators,
         Err(e) => {
-            error!("❌ Failed to get validator role: {}", e);
+            error!("❌ Failed to get validator role: {e}");
             std::process::exit(1);
         }
     };
@@ -108,7 +108,7 @@ pub async fn start_server(
             .with_redis(redis_store.client.clone())
             .await
             .map_err(|e| {
-                std::io::Error::other(format!("Failed to initialize Redis connection pool: {}", e))
+                std::io::Error::other(format!("Failed to initialize Redis connection pool: {e}"))
             })?,
     );
     let validate_signatures = Arc::new(
@@ -116,7 +116,7 @@ pub async fn start_server(
             .with_redis(redis_store.client.clone())
             .await
             .map_err(|e| {
-                std::io::Error::other(format!("Failed to initialize Redis connection pool: {}", e))
+                std::io::Error::other(format!("Failed to initialize Redis connection pool: {e}"))
             })?
             .with_validator(move |_| true),
     );
