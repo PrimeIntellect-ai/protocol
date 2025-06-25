@@ -26,6 +26,13 @@ async fn request_upload(
     request_upload: web::Json<RequestUploadRequest>,
     app_state: Data<AppState>,
 ) -> HttpResponse {
+    let Some(storage_provider) = &app_state.storage_provider else {
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "success": false,
+            "error": "Storage provider not found"
+        }));
+    };
+
     // Check file size limit first
     if request_upload.file_size > MAX_FILE_SIZE {
         return HttpResponse::PayloadTooLarge().json(serde_json::json!({
@@ -217,8 +224,7 @@ async fn request_upload(
 
     log::info!("Generating mapping file for sha256: {sha256} to file: {file_name}",);
 
-    if let Err(e) = app_state
-        .storage_provider
+    if let Err(e) = storage_provider
         .generate_mapping_file(sha256, &file_name)
         .await
     {
@@ -234,8 +240,7 @@ async fn request_upload(
     );
 
     // Generate signed upload URL
-    match app_state
-        .storage_provider
+    match storage_provider
         .generate_upload_signed_url(
             &file_name,
             Some(file_type.to_string()),
