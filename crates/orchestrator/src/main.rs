@@ -400,13 +400,22 @@ async fn main() -> Result<()> {
 
     let port = args.port;
     let server_store_context = store_context.clone();
-
     let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-
-    let gcs_storage = GcsStorageProvider::new(&args.bucket_name.unwrap(), &s3_credentials.unwrap())
-        .await
-        .unwrap();
-    let storage_provider = Arc::new(gcs_storage);
+    let storage_provider: Option<Arc<dyn shared::utils::StorageProvider>> =
+        match (args.bucket_name.as_ref(), s3_credentials) {
+            (Some(bucket_name), Some(s3_credentials))
+                if !bucket_name.is_empty() && !s3_credentials.is_empty() =>
+            {
+                let gcs_storage = GcsStorageProvider::new(bucket_name, &s3_credentials)
+                    .await
+                    .unwrap_or_else(|_| panic!("Failed to create GCS storage provider"));
+                Some(Arc::new(gcs_storage) as Arc<dyn shared::utils::StorageProvider>)
+            }
+            _ => {
+                info!("Bucket name or S3 credentials not provided, storage provider disabled");
+                None
+            }
+        };
 
     // Always start server regardless of mode
     tokio::select! {

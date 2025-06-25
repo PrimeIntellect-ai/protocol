@@ -23,14 +23,14 @@ pub async fn handle_file_upload(
     wallet: &Wallet,
     state: &Arc<SystemState>,
 ) -> Result<()> {
-    info!("📄 Received file upload request: {}", file_name);
-    info!("Task ID: {}, Storage path: {}", task_id, storage_path);
+    info!("📄 Received file upload request: {file_name}");
+    info!("Task ID: {task_id}, Storage path: {storage_path}");
 
     // Get orchestrator endpoint
     let endpoint = match state.get_heartbeat_endpoint().await {
         Some(ep) => {
             let clean_ep = ep.replace("/heartbeat", "");
-            info!("Using orchestrator endpoint: {}", clean_ep);
+            info!("Using orchestrator endpoint: {clean_ep}");
             clean_ep
         }
         None => {
@@ -41,25 +41,25 @@ pub async fn handle_file_upload(
 
     // Clean filename by removing /data prefix if present
     let clean_file_name = file_name.trim_start_matches("/data/");
-    info!("Clean file name: {}", clean_file_name);
+    info!("Clean file name: {clean_file_name}");
 
-    let task_dir = format!("prime-task-{}", task_id);
+    let task_dir = format!("prime-task-{task_id}");
     let file_path = Path::new(storage_path)
         .join(&task_dir)
         .join("data")
         .join(clean_file_name);
     let file = file_path.to_string_lossy().to_string();
-    info!("Full file path: {}", file);
+    info!("Full file path: {file}");
 
     // Get file size
     let file_size = match std::fs::metadata(&file) {
         Ok(metadata) => {
             let size = metadata.len();
-            info!("File size: {} bytes", size);
+            info!("File size: {size} bytes");
             size
         }
         Err(e) => {
-            error!("Failed to get file metadata: {}", e);
+            error!("Failed to get file metadata: {e}");
             return Err(anyhow::anyhow!("Failed to get file metadata: {}", e));
         }
     };
@@ -71,11 +71,11 @@ pub async fn handle_file_upload(
             let mut hasher = Sha256::new();
             hasher.update(&contents);
             let sha = format!("{:x}", hasher.finalize());
-            info!("Calculated file SHA: {}", sha);
+            info!("Calculated file SHA: {sha}");
             sha
         }
         Err(e) => {
-            error!("Failed to read file for SHA calculation: {}", e);
+            error!("Failed to read file for SHA calculation: {e}");
             return Err(anyhow::anyhow!("Failed to read file: {}", e));
         }
     };
@@ -99,10 +99,7 @@ pub async fn handle_file_upload(
     let mut last_error = None;
     let mut signed_url = None;
 
-    info!(
-        "Starting signed URL request with max {} retries",
-        MAX_RETRIES
-    );
+    info!("Starting signed URL request with max {MAX_RETRIES} retries");
     while retry_count < MAX_RETRIES {
         if retry_count > 0 {
             let delay = INITIAL_RETRY_DELAY_MS * (1 << retry_count); // Exponential backoff
@@ -119,7 +116,7 @@ pub async fn handle_file_upload(
         let request_value = match serde_json::to_value(&request) {
             Ok(val) => val,
             Err(e) => {
-                error!("Failed to serialize request: {}", e);
+                error!("Failed to serialize request: {e}");
                 return Err(anyhow::anyhow!(e));
             }
         };
@@ -133,7 +130,7 @@ pub async fn handle_file_upload(
                     sig
                 }
                 Err(e) => {
-                    error!("Failed to sign request: {}", e);
+                    error!("Failed to sign request: {e}");
                     last_error = Some(anyhow::anyhow!(e.to_string()));
                     retry_count += 1;
                     continue;
@@ -148,7 +145,7 @@ pub async fn handle_file_upload(
                 debug!("Added x-address header: {}", wallet.address());
             }
             Err(e) => {
-                error!("Failed to create header value: {}", e);
+                error!("Failed to create header value: {e}");
                 last_error = Some(anyhow::anyhow!(e));
                 retry_count += 1;
                 continue;
@@ -161,7 +158,7 @@ pub async fn handle_file_upload(
                 debug!("Added x-signature header");
             }
             Err(e) => {
-                error!("Failed to create signature header: {}", e);
+                error!("Failed to create signature header: {e}");
                 last_error = Some(anyhow::anyhow!(e));
                 retry_count += 1;
                 continue;
@@ -169,8 +166,8 @@ pub async fn handle_file_upload(
         }
 
         // Create upload URL
-        let upload_url = format!("{}/storage/request-upload", endpoint);
-        debug!("Requesting signed URL from: {}", upload_url);
+        let upload_url = format!("{endpoint}/storage/request-upload");
+        debug!("Requesting signed URL from: {upload_url}");
 
         // Send request
         debug!(
@@ -190,7 +187,7 @@ pub async fn handle_file_upload(
                 resp
             }
             Err(e) => {
-                error!("Failed to send upload request: {}", e);
+                error!("Failed to send upload request: {e}");
                 last_error = Some(anyhow::anyhow!(e));
                 retry_count += 1;
                 continue;
@@ -200,11 +197,11 @@ pub async fn handle_file_upload(
         // Process response
         let json = match response.json::<serde_json::Value>().await {
             Ok(j) => {
-                debug!("Parsed response JSON: {:?}", j);
+                debug!("Parsed response JSON: {j:?}");
                 j
             }
             Err(e) => {
-                error!("Failed to parse response: {}", e);
+                error!("Failed to parse response: {e}");
                 last_error = Some(anyhow::anyhow!(e));
                 retry_count += 1;
                 continue;
@@ -214,10 +211,10 @@ pub async fn handle_file_upload(
         if let Some(url) = json["signed_url"].as_str() {
             signed_url = Some(url.to_string());
             debug!("Got signed URL for upload (length: {})", url.len());
-            debug!("Signed URL: {}", url);
+            debug!("Signed URL: {url}");
             break;
         } else {
-            error!("Missing signed_url in response: {:?}", json);
+            error!("Missing signed_url in response: {json:?}");
             last_error = Some(anyhow::anyhow!("Missing signed_url in response"));
             retry_count += 1;
             continue;
@@ -227,7 +224,7 @@ pub async fn handle_file_upload(
     let signed_url = match signed_url {
         Some(url) => url,
         None => {
-            error!("Failed to get signed URL after {} attempts", MAX_RETRIES);
+            error!("Failed to get signed URL after {MAX_RETRIES} attempts");
             return Err(last_error.unwrap_or_else(|| {
                 anyhow::anyhow!("Failed to get signed URL after {} attempts", MAX_RETRIES)
             }));
@@ -239,19 +236,19 @@ pub async fn handle_file_upload(
     last_error = None;
 
     // Read file contents once outside the loop
-    info!("Reading file contents for S3 upload: {}", file);
+    info!("Reading file contents for S3 upload: {file}");
     let file_contents = match tokio::fs::read(&file).await {
         Ok(contents) => {
             info!("Successfully read file ({} bytes)", contents.len());
             contents
         }
         Err(e) => {
-            error!("Failed to read file: {}", e);
+            error!("Failed to read file: {e}");
             return Err(anyhow::anyhow!("Failed to read file: {}", e));
         }
     };
 
-    debug!("Starting S3 upload with max {} retries", MAX_RETRIES);
+    debug!("Starting S3 upload with max {MAX_RETRIES} retries");
     while retry_count < MAX_RETRIES {
         if retry_count > 0 {
             let delay = INITIAL_RETRY_DELAY_MS * (1 << retry_count); // Exponential backoff
@@ -279,7 +276,7 @@ pub async fn handle_file_upload(
         {
             Ok(resp) => {
                 let status = resp.status();
-                debug!("S3 upload response status: {}", status);
+                debug!("S3 upload response status: {status}");
 
                 if status.is_success() {
                     info!("Successfully uploaded file to S3");
@@ -289,7 +286,7 @@ pub async fn handle_file_upload(
                         .text()
                         .await
                         .unwrap_or_else(|_| "Unknown error".to_string());
-                    error!("S3 upload failed with status {}: {}", status, error_text);
+                    error!("S3 upload failed with status {status}: {error_text}");
                     last_error = Some(anyhow::anyhow!(
                         "S3 upload failed: {} - {}",
                         status,
@@ -300,7 +297,7 @@ pub async fn handle_file_upload(
                 }
             }
             Err(e) => {
-                error!("Failed to upload to S3: {}", e);
+                error!("Failed to upload to S3: {e}");
                 last_error = Some(anyhow::anyhow!(e));
                 retry_count += 1;
                 continue;
@@ -308,7 +305,7 @@ pub async fn handle_file_upload(
         }
     }
 
-    error!("Failed to upload file to S3 after {} attempts", MAX_RETRIES);
+    error!("Failed to upload file to S3 after {MAX_RETRIES} attempts");
     Err(last_error.unwrap_or_else(|| {
         anyhow::anyhow!("Failed to upload file to S3 after {} attempts", MAX_RETRIES)
     }))
@@ -322,7 +319,7 @@ pub async fn handle_file_validation(
     provider: &WalletProvider,
     work_units: f64,
 ) -> Result<()> {
-    info!("📄 Received file SHA for validation: {}", file_sha);
+    info!("📄 Received file SHA for validation: {file_sha}");
     info!(
         "Node address: {}, Pool ID: {}",
         node.id, node.compute_pool_id
@@ -332,11 +329,11 @@ pub async fn handle_file_validation(
     let node_address = &node.id;
     let decoded_sha = match hex::decode(file_sha) {
         Ok(sha) => {
-            debug!("Decoded SHA bytes: {:?}", sha);
+            debug!("Decoded SHA bytes: {sha:?}");
             sha
         }
         Err(e) => {
-            error!("Failed to decode SHA hex string: {}", e);
+            error!("Failed to decode SHA hex string: {e}");
             return Err(anyhow::anyhow!("Failed to decode SHA: {}", e));
         }
     };
@@ -344,7 +341,7 @@ pub async fn handle_file_validation(
     let node_addr = match Address::from_str(node_address) {
         Ok(addr) => addr,
         Err(e) => {
-            error!("Failed to parse node address: {}", e);
+            error!("Failed to parse node address: {e}");
             return Err(anyhow::anyhow!("Invalid node address: {}", e));
         }
     };
@@ -359,13 +356,12 @@ pub async fn handle_file_validation(
             decoded_sha.to_vec(),
             U256::from(work_units),
         )
-        .await
         .unwrap();
 
     let tx = retry_call(call, 20, provider.clone(), None)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to submit work: {}", e))?;
 
-    info!("Successfully submitted work to blockchain: {:?}", tx);
+    info!("Successfully submitted work to blockchain: {tx:?}");
     Ok(())
 }

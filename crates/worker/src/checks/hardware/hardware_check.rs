@@ -104,8 +104,8 @@ impl HardwareChecker {
         Console::progress("Starting network speed test...");
         match InterconnectCheck::check_speeds().await {
             Ok((download_speed, upload_speed)) => {
-                Console::info("Download Speed", &format!("{:.2} Mbps", download_speed));
-                Console::info("Upload Speed", &format!("{:.2} Mbps", upload_speed));
+                Console::info("Download Speed", &format!("{download_speed:.2} Mbps"));
+                Console::info("Upload Speed", &format!("{upload_speed:.2} Mbps"));
 
                 if download_speed < 50.0 || upload_speed < 50.0 {
                     let issue_tracker = self.issues.write().await;
@@ -188,7 +188,7 @@ impl HardwareChecker {
             // Print Storage Info
             if let Some(storage_gb) = &compute_specs.storage_gb {
                 Console::title("Storage Information:");
-                Console::info("Total Storage", &format!("{} GB", storage_gb));
+                Console::info("Total Storage", &format!("{storage_gb} GB"));
             }
             Console::info(
                 "Storage Path for docker mounts",
@@ -211,7 +211,7 @@ impl HardwareChecker {
                 } else {
                     0.0
                 };
-                Console::info("Memory", &format!("{:.0} GB", memory_gb));
+                Console::info("Memory", &format!("{memory_gb:.0} GB"));
             }
         } else {
             Console::warning("No compute specs available");

@@ -84,7 +84,7 @@ impl<'a> HardwareValidator<'a> {
             .validate_node(provider_address, node_address)
             .await
         {
-            error!("Failed to validate node: {}", e);
+            error!("Failed to validate node: {e}");
             return Err(anyhow::anyhow!("Failed to validate node: {}", e));
         }
 
@@ -97,7 +97,7 @@ impl<'a> HardwareValidator<'a> {
 
     pub async fn validate_nodes(&self, nodes: Vec<DiscoveryNode>) -> Result<()> {
         let non_validated: Vec<_> = nodes.into_iter().filter(|n| !n.is_validated).collect();
-        debug!("Non validated nodes: {:?}", non_validated);
+        debug!("Non validated nodes: {non_validated:?}");
         info!("Starting validation for {} nodes", non_validated.len());
 
         let contracts = self.contracts.clone();
@@ -113,7 +113,7 @@ impl<'a> HardwareValidator<'a> {
             {
                 Ok(_) => (),
                 Err(e) => {
-                    error!("Failed to validate node {}: {}", node_id, e);
+                    error!("Failed to validate node {node_id}: {e}");
                 }
             }
         }

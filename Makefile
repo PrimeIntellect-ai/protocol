@@ -57,18 +57,60 @@ setup-dev-env:
 	make transfer-eth-to-pool-owner
 
 
+# Start development environment
+.PHONY: up
 up:
-	tmuxinator start prime-dev
-down:
-	docker compose down
-	tmuxinator stop prime-dev
-	pkill -f "target/debug/worker" 2>/dev/null || true
-	pkill -f "target/debug/orchestrator" 2>/dev/null || true
-	pkill -f "target/debug/validator" 2>/dev/null || true
-	pkill -f "target/debug/discovery" 2>/dev/null || true
-	pkill -9 -f "cargo run --bin discovery" 2>/dev/null || true
-	pkill -9 -f "cargo watch" 2>/dev/null || true
+	@echo "Starting Prime development environment..."
+	@# Start Docker services
+	@docker compose up -d reth redis --wait --wait-timeout 180
+	@# Deploy contracts
+	@cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd ..
+	@# Run setup
+	@$(MAKE) setup
+	@# Kill any existing session
+	@tmux kill-session -t prime-dev 2>/dev/null || true
+	@# Create new tmux session
+	@tmux new-session -d -s prime-dev -n services
+	@# Enable pane titles and borders
+	@tmux set -t prime-dev pane-border-status top
+	@tmux set -t prime-dev pane-border-format " #{pane_title} "
+	@# Start Worker pane first (pane 0)
+	@tmux select-pane -t prime-dev:services.0 -T "Worker"
+	@# Discovery pane (pane 1)
+	@tmux split-window -h -t prime-dev:services
+	@tmux select-pane -t prime-dev:services.1 -T "Discovery"
+	@tmux send-keys -t prime-dev:services.1 'make watch-discovery' C-m
+	@# Validator pane (pane 2)
+	@tmux split-window -h -t prime-dev:services.1
+	@tmux select-pane -t prime-dev:services.2 -T "Validator"
+	@tmux send-keys -t prime-dev:services.2 'make watch-validator' C-m
+	@# Orchestrator pane (pane 3)
+	@tmux split-window -h -t prime-dev:services.2
+	@tmux select-pane -t prime-dev:services.3 -T "Orchestrator"
+	@tmux send-keys -t prime-dev:services.3 'make watch-orchestrator' C-m
+	@tmux select-layout -t prime-dev:services even-horizontal
+	@# Create background window for docker logs
+	@tmux new-window -t prime-dev -n background
+	@tmux send-keys -t prime-dev:background 'docker compose logs -f reth redis' C-m
+	@# Switch back to first window before attaching
+	@tmux select-window -t prime-dev:services
+	@# Attach to session
+	@tmux attach-session -t prime-dev
 
+# Stop development environment
+.PHONY: down
+down:
+	@docker compose down
+	@tmux kill-session -t prime-dev 2>/dev/null || true
+	@pkill -f "target/debug/worker" 2>/dev/null || true
+	@pkill -f "target/debug/orchestrator" 2>/dev/null || true
+	@pkill -f "target/debug/validator" 2>/dev/null || true
+	@pkill -f "target/debug/discovery" 2>/dev/null || true
+	@pkill -9 -f "cargo run --bin discovery" 2>/dev/null || true
+	@pkill -9 -f "cargo watch" 2>/dev/null || true
+
+# Whitelist provider
+.PHONY: whitelist-provider
 whitelist-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
@@ -90,11 +132,11 @@ watch-check:
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --discovery-urls $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --pool-id $${WORKER_COMPUTE_POOL_ID} --bucket-name $${BUCKET_NAME} -l $${LOG_LEVEL:-info} --toploc-grace-interval $${TOPLOC_GRACE_INTERVAL:-30} --incomplete-group-grace-period-minutes $${INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES:-1} --use-grouping"
+	cargo watch -w crates/validator/src -x "run --bin validator -- --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --discovery-urls $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --pool-id $${WORKER_COMPUTE_POOL_ID} $${BUCKET_NAME:+--bucket-name $${BUCKET_NAME}} -l $${LOG_LEVEL:-info} --toploc-grace-interval $${TOPLOC_GRACE_INTERVAL:-30} --incomplete-group-grace-period-minutes $${INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES:-1} --use-grouping"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --discovery-urls $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --bucket-name $$BUCKET_NAME -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3} --max-healthy-nodes-with-same-endpoint $${MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT:-2}"
+	cargo watch -w crates/orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --discovery-urls $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --compute-pool-id $$WORKER_COMPUTE_POOL_ID $${BUCKET_NAME:+--bucket-name $$BUCKET_NAME} -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3} --max-healthy-nodes-with-same-endpoint $${MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT:-2}"
 
 build-worker:
 	cargo build --release --bin worker

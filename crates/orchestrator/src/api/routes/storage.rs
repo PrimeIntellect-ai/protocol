@@ -26,6 +26,13 @@ async fn request_upload(
     request_upload: web::Json<RequestUploadRequest>,
     app_state: Data<AppState>,
 ) -> HttpResponse {
+    let Some(storage_provider) = &app_state.storage_provider else {
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "success": false,
+            "error": "Storage provider not found"
+        }));
+    };
+
     // Check file size limit first
     if request_upload.file_size > MAX_FILE_SIZE {
         return HttpResponse::PayloadTooLarge().json(serde_json::json!({
@@ -70,7 +77,7 @@ async fn request_upload(
         })
         .unwrap();
 
-    let rate_limit_key = format!("rate_limit:storage:upload:{}", address);
+    let rate_limit_key = format!("rate_limit:storage:upload:{address}");
     let hourly_limit = app_state.hourly_upload_limit;
 
     // Check current request count
@@ -85,18 +92,13 @@ async fn request_upload(
             }));
         }
         Ok(Some(count)) => {
-            log::info!(
-                "Current rate limit count for {}: {}/{} per hour",
-                address,
-                count,
-                hourly_limit
-            );
+            log::info!("Current rate limit count for {address}: {count}/{hourly_limit} per hour");
         }
         Ok(None) => {
-            log::info!("No rate limit record for {} yet", address);
+            log::info!("No rate limit record for {address} yet");
         }
         Err(e) => {
-            log::error!("Redis rate limiting error: {}", e);
+            log::error!("Redis rate limiting error: {e}");
             // Continue processing if rate limiting fails
         }
     }
@@ -156,12 +158,11 @@ async fn request_upload(
                     }
                     Ok(None) => {
                         log::warn!(
-                            "Node group not found for address for upload request: {}",
-                            address
+                            "Node group not found for address for upload request: {address}"
                         );
                     }
                     Err(e) => {
-                        log::error!("Error getting node group: {}", e);
+                        log::error!("Error getting node group: {e}");
                     }
                 }
             }
@@ -176,12 +177,12 @@ async fn request_upload(
     let upload_exists: Result<Option<String>, redis::RedisError> = redis_con.get(&upload_key).await;
     if let Ok(None) = upload_exists {
         if let Err(e) = redis_con.set::<_, _, ()>(&upload_key, "pending").await {
-            log::error!("Failed to set upload status in Redis: {}", e);
+            log::error!("Failed to set upload status in Redis: {e}");
         }
     }
     let pattern = match &group_id {
-        Some(gid) => format!("upload:{}:{}:*", address, gid),
-        None => format!("upload:{}:no-group:*", address),
+        Some(gid) => format!("upload:{address}:{gid}:*"),
+        None => format!("upload:{address}:no-group:*"),
     };
 
     let total_uploads: Result<Vec<String>, redis::RedisError> = {
@@ -200,7 +201,7 @@ async fn request_upload(
     let upload_count = match total_uploads {
         Ok(keys) => keys.len(),
         Err(e) => {
-            log::error!("Failed to count uploads: {}", e);
+            log::error!("Failed to count uploads: {e}");
             0
         }
     };
@@ -218,25 +219,16 @@ async fn request_upload(
     let sha256 = &request_upload.sha256;
 
     log::info!(
-        "Received upload request for file: {}, size: {}, type: {}, sha256: {}",
-        file_name,
-        file_size,
-        file_type,
-        sha256
+        "Received upload request for file: {file_name}, size: {file_size}, type: {file_type}, sha256: {sha256}"
     );
 
-    log::info!(
-        "Generating mapping file for sha256: {} to file: {}",
-        sha256,
-        file_name,
-    );
+    log::info!("Generating mapping file for sha256: {sha256} to file: {file_name}",);
 
-    if let Err(e) = app_state
-        .storage_provider
+    if let Err(e) = storage_provider
         .generate_mapping_file(sha256, &file_name)
         .await
     {
-        log::error!("Failed to generate mapping file: {}", e);
+        log::error!("Failed to generate mapping file: {e}");
         return HttpResponse::InternalServerError().json(serde_json::json!({
             "success": false,
             "error": format!("Failed to generate mapping file: {}", e)
@@ -244,13 +236,11 @@ async fn request_upload(
     }
 
     log::info!(
-        "Successfully generated mapping file. Generating signed upload URL for file: {}",
-        file_name
+        "Successfully generated mapping file. Generating signed upload URL for file: {file_name}"
     );
 
     // Generate signed upload URL
-    match app_state
-        .storage_provider
+    match storage_provider
         .generate_upload_signed_url(
             &file_name,
             Some(file_type.to_string()),
@@ -262,7 +252,7 @@ async fn request_upload(
         Ok(signed_url) => {
             // Increment rate limit counter after successful URL generation
 
-            let rate_limit_key = format!("rate_limit:storage:upload:{}", address);
+            let rate_limit_key = format!("rate_limit:storage:upload:{address}");
             let expiry_seconds = 3600; // 1 hour
 
             // Increment the counter or create it if it doesn't exist
@@ -284,14 +274,11 @@ async fn request_upload(
                     );
                 }
                 Err(e) => {
-                    log::error!("Failed to update rate limit counter: {}", e);
+                    log::error!("Failed to update rate limit counter: {e}");
                 }
             }
 
-            log::info!(
-                "Successfully generated signed upload URL for file: {}",
-                file_name
-            );
+            log::info!("Successfully generated signed upload URL for file: {file_name}");
 
             app_state.metrics.increment_file_upload_requests(
                 &request_upload.task_id,
@@ -312,7 +299,7 @@ async fn request_upload(
             }))
         }
         Err(e) => {
-            log::error!("Failed to generate upload URL: {}", e);
+            log::error!("Failed to generate upload URL: {e}");
             HttpResponse::InternalServerError().json(serde_json::json!({
                 "success": false,
                 "error": format!("Failed to generate upload URL: {}", e)

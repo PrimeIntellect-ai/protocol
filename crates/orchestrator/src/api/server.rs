@@ -117,7 +117,7 @@ async fn health_check(data: web::Data<AppState>) -> HttpResponse {
 
 pub struct AppState {
     pub store_context: Arc<StoreContext>,
-    pub storage_provider: Arc<dyn StorageProvider>,
+    pub storage_provider: Option<Arc<dyn StorageProvider>>,
     pub heartbeats: Arc<LoopHeartbeats>,
     pub redis_store: Arc<RedisStore>,
     pub hourly_upload_limit: i64,
@@ -135,7 +135,7 @@ pub async fn start_server(
     port: u16,
     store_context: Arc<StoreContext>,
     admin_api_key: String,
-    storage_provider: Arc<dyn StorageProvider>,
+    storage_provider: Option<Arc<dyn StorageProvider>>,
     heartbeats: Arc<LoopHeartbeats>,
     redis_store: Arc<RedisStore>,
     hourly_upload_limit: i64,
@@ -147,7 +147,7 @@ pub async fn start_server(
     metrics: Arc<MetricsContext>,
     p2p_client: Arc<P2PClient>,
 ) -> Result<(), Error> {
-    info!("Starting server at http://{}:{}", host, port);
+    info!("Starting server at http://{host}:{port}");
     let app_state = Data::new(AppState {
         store_context,
         storage_provider,

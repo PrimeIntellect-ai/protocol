@@ -29,7 +29,7 @@ impl FormatTime for SimpleTimeFormatter {
             .format(format)
             .unwrap_or_else(|_| String::from("??:??:??"));
 
-        write!(w, "{}", formatted)
+        write!(w, "{formatted}")
     }
 }
 
@@ -69,7 +69,7 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
     }
 
     let env_filter = TracingEnvFilter::from_default_env()
-        .add_directive(format!("{}", log_level).parse()?)
+        .add_directive(format!("{log_level}").parse()?)
         .add_directive("reqwest=warn".parse()?)
         .add_directive("hyper=warn".parse()?)
         .add_directive("hyper_util=warn".parse()?)
@@ -116,7 +116,7 @@ pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error 
 
         tokio::spawn(task);
         registry.with(loki_layer).init();
-        debug!("Logging to console and Loki at {}", loki_url_str);
+        debug!("Logging to console and Loki at {loki_url_str}");
     } else {
         registry.init();
     }

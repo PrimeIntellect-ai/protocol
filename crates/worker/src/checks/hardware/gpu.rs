@@ -45,19 +45,46 @@ pub fn detect_gpu() -> Vec<GpuSpecs> {
 fn get_gpu_status() -> Vec<GpuDevice> {
     let mut nvml_guard = NVML.lock().unwrap();
 
+    // Read WORKER_VISIBLE_DEVICES environment variable
+    let visible_devices: Option<Vec<u32>> =
+        std::env::var("WORKER_VISIBLE_DEVICES").ok().and_then(|s| {
+            if s.trim().is_empty() {
+                None
+            } else {
+                Some(
+                    s.split(',')
+                        .filter_map(|idx| idx.trim().parse::<u32>().ok())
+                        .collect(),
+                )
+            }
+        });
+
     // Initialize NVML if not already initialized
     if nvml_guard.is_none() {
-        match Nvml::builder()
-            .lib_path(std::ffi::OsStr::new(
-                "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1",
-            ))
-            .init()
-        {
-            Ok(nvml) => *nvml_guard = Some(nvml),
-            Err(e) => {
-                Console::user_error(&format!("Failed to initialize NVML: {}", e));
-                return vec![];
+        // Try to load the NVIDIA management library dynamically
+        let lib_paths = [
+            "libnvidia-ml.so.1",                           // Standard Linux path
+            "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1", // Explicit path as fallback
+            "/usr/lib/libnvidia-ml.so.1",                  // CUDA installation path
+        ];
+
+        let mut success = false;
+        for path in lib_paths {
+            match Nvml::builder().lib_path(std::ffi::OsStr::new(path)).init() {
+                Ok(nvml) => {
+                    *nvml_guard = Some(nvml);
+                    success = true;
+                    break;
+                }
+                Err(_) => continue,
             }
+        }
+
+        if !success {
+            Console::user_error(
+                "Failed to initialize NVML: could not load NVIDIA management library (libnvidia-ml.so.1)",
+            );
+            return vec![];
         }
     }
 
@@ -67,7 +94,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
     let device_count = match nvml.device_count() {
         Ok(count) => count as usize,
         Err(e) => {
-            Console::user_error(&format!("Failed to get device count: {}", e));
+            Console::user_error(&format!("Failed to get device count: {e}"));
             return vec![];
         }
     };
@@ -81,6 +108,15 @@ fn get_gpu_status() -> Vec<GpuDevice> {
         std::collections::HashMap::new();
 
     for i in 0..device_count {
+        let device_index = i as u32;
+
+        // Skip this device if it's not in the visible devices list
+        if let Some(ref visible) = visible_devices {
+            if !visible.contains(&device_index) {
+                continue;
+            }
+        }
+
         match nvml.device_by_index(i as u32) {
             Ok(device) => {
                 let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
@@ -106,7 +142,7 @@ fn get_gpu_status() -> Vec<GpuDevice> {
                 }
             }
             Err(e) => {
-                Console::user_error(&format!("Failed to get device {}: {}", i, e));
+                Console::user_error(&format!("Failed to get device {i}: {e}"));
             }
         }
     }

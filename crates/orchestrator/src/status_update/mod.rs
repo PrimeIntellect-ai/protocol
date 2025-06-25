@@ -56,17 +56,17 @@ impl NodeStatusUpdater {
             interval.tick().await;
             debug!("Running NodeStatusUpdater to process nodes heartbeats");
             if let Err(e) = self.process_nodes().await {
-                error!("Error processing nodes: {}", e);
+                error!("Error processing nodes: {e}");
             }
             if let Err(e) = self.sync_chain_with_nodes().await {
-                error!("Error syncing chain with nodes: {}", e);
+                error!("Error syncing chain with nodes: {e}");
             }
             self.heartbeats.update_status_updater();
         }
     }
 
     #[cfg(test)]
-    async fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
+    fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
         true
     }
 
@@ -85,6 +85,9 @@ impl NodeStatusUpdater {
         &self,
         node: &OrchestratorNode,
     ) -> Result<(), anyhow::Error> {
+        #[cfg(test)]
+        let node_in_pool = self.is_node_in_pool(node);
+        #[cfg(not(test))]
         let node_in_pool = self.is_node_in_pool(node).await;
         if node_in_pool {
             match self
@@ -98,7 +101,7 @@ impl NodeStatusUpdater {
                     return Ok(());
                 }
                 Result::Err(e) => {
-                    error!("Error ejecting node: {}", e);
+                    error!("Error ejecting node: {e}");
                     return Err(anyhow::anyhow!("Error ejecting node: {}", e));
                 }
             }
@@ -115,12 +118,15 @@ impl NodeStatusUpdater {
         let nodes = self.store_context.node_store.get_nodes().await?;
         for node in nodes {
             if node.status == NodeStatus::Dead {
+                #[cfg(test)]
+                let node_in_pool = self.is_node_in_pool(&node);
+                #[cfg(not(test))]
                 let node_in_pool = self.is_node_in_pool(&node).await;
                 debug!("Node {:?} is in pool: {}", node.address, node_in_pool);
                 if node_in_pool {
                     if !self.disable_ejection {
                         if let Err(e) = self.sync_dead_node_with_chain(&node).await {
-                            error!("Error syncing dead node with chain: {}", e);
+                            error!("Error syncing dead node with chain: {e}");
                         }
                     } else {
                         debug!(
@@ -151,6 +157,9 @@ impl NodeStatusUpdater {
                 .get_unhealthy_counter(&node.address)
                 .await?;
 
+            #[cfg(test)]
+            let is_node_in_pool = self.is_node_in_pool(&node);
+            #[cfg(not(test))]
             let is_node_in_pool = self.is_node_in_pool(&node).await;
             let mut status_changed = false;
             let mut new_status = node.status.clone();
@@ -166,7 +175,7 @@ impl NodeStatusUpdater {
                                 .update_node_version(&node.address, version)
                                 .await
                             {
-                                error!("Error updating node version: {}", e);
+                                error!("Error updating node version: {e}");
                             }
                         }
                     }
@@ -204,7 +213,7 @@ impl NodeStatusUpdater {
                         .clear_unhealthy_counter(&node.address)
                         .await
                     {
-                        error!("Error clearing unhealthy counter: {}", e);
+                        error!("Error clearing unhealthy counter: {e}");
                     }
                 }
                 None => {
@@ -215,7 +224,7 @@ impl NodeStatusUpdater {
                         .increment_unhealthy_counter(&node.address)
                         .await
                     {
-                        error!("Error incrementing unhealthy counter: {}", e);
+                        error!("Error incrementing unhealthy counter: {e}");
                     }
 
                     match node.status {
@@ -273,7 +282,7 @@ impl NodeStatusUpdater {
                     {
                         Ok(metrics) => metrics,
                         Err(e) => {
-                            error!("Error getting metrics for node: {}", e);
+                            error!("Error getting metrics for node: {e}");
                             Default::default()
                         }
                     };
@@ -287,7 +296,7 @@ impl NodeStatusUpdater {
                                 .delete_metric(&task_id, &label, &node.address.to_string())
                                 .await
                             {
-                                error!("Error deleting metric: {}", e);
+                                error!("Error deleting metric: {e}");
                             }
                         }
                     }
@@ -299,7 +308,7 @@ impl NodeStatusUpdater {
                     .update_node_status(&node.address, new_status)
                     .await
                 {
-                    error!("Error updating node status: {}", e);
+                    error!("Error updating node status: {e}");
                 }
 
                 if let Some(updated_node) = self
@@ -313,7 +322,7 @@ impl NodeStatusUpdater {
                             .handle_status_change(&updated_node, &old_status)
                             .await
                         {
-                            error!("Error handling status change: {}", e);
+                            error!("Error handling status change: {e}");
                         }
                     }
                 }
