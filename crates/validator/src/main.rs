@@ -341,34 +341,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         std::process::exit(1);
                     }
                 };
-
                 let s3_credentials = std::env::var("S3_CREDENTIALS").ok();
-                let gcs_storage =
-                    GcsStorageProvider::new(&args.bucket_name.unwrap(), &s3_credentials.unwrap())
-                        .await
-                        .unwrap();
-                let storage_provider = Arc::new(gcs_storage);
 
-                Some(SyntheticDataValidator::new(
-                    pool_id,
-                    validator,
-                    contracts.prime_network.clone(),
-                    configs,
-                    penalty,
-                    storage_provider,
-                    redis_store,
-                    cancellation_token,
-                    args.toploc_work_validation_interval,
-                    args.toploc_work_validation_unknown_status_expiry_seconds,
-                    args.toploc_grace_interval,
-                    args.batch_trigger_size,
-                    args.use_grouping,
-                    args.disable_toploc_invalidation,
-                    args.incomplete_group_grace_period_minutes,
-                    args.toploc_invalidation_type,
-                    args.work_unit_invalidation_type,
-                    Some(metrics_ctx.clone()),
-                ))
+                match (args.bucket_name.as_ref(), s3_credentials) {
+                    (Some(bucket_name), Some(s3_credentials))
+                        if !bucket_name.is_empty() && !s3_credentials.is_empty() =>
+                    {
+                        let gcs_storage = GcsStorageProvider::new(bucket_name, &s3_credentials)
+                            .await
+                            .unwrap_or_else(|_| panic!("Failed to create GCS storage provider"));
+                        let storage_provider = Arc::new(gcs_storage);
+
+                        Some(SyntheticDataValidator::new(
+                            pool_id,
+                            validator,
+                            contracts.prime_network.clone(),
+                            configs,
+                            penalty,
+                            storage_provider,
+                            redis_store,
+                            cancellation_token,
+                            args.toploc_work_validation_interval,
+                            args.toploc_work_validation_unknown_status_expiry_seconds,
+                            args.toploc_grace_interval,
+                            args.batch_trigger_size,
+                            args.use_grouping,
+                            args.disable_toploc_invalidation,
+                            args.incomplete_group_grace_period_minutes,
+                            args.toploc_invalidation_type,
+                            args.work_unit_invalidation_type,
+                            Some(metrics_ctx.clone()),
+                        ))
+                    }
+                    _ => {
+                        info!("Bucket name or S3 credentials not provided, skipping synthetic data validation");
+                        None
+                    }
+                }
             }
             None => {
                 error!("Synthetic data validator not found");

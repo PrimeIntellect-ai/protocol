@@ -100,25 +100,6 @@ This will start:
 - Redis instance
 - Supporting infrastructure
 
-## Docker Compose Setup
-
-You can run all supporting services (chain, validator, discovery, orchestrator) in docker compose.
-
-1. Start docker compose:
-   ```bash
-   docker compose up
-   ```
-
-2. Run Setup:  
-   ```bash
-   make setup
-   ```
-
-3. Launch a worker:
-   - Adjust the .env var `WORKER_EXTERNAL_IP` to: `WORKER_EXTERNAL_IP=host.docker.internal` 
-   - Launch the worker using `make watch-worker`
-   - Whitelist the worker once you see the whitelist alert using: `make whitelist-provider`
-
 ## Running a Worker Node
 
 Once the core services are running, you can start a worker node in a new terminal:
@@ -127,9 +108,9 @@ make watch-worker
 ```
 
 The worker will automatically connect to the discovery service and begin processing tasks.
+Your worker will show an error that it is not whitelisted yet. You'll have to run `make whitelist-provider` here.
 It takes a couple of seconds until the worker is whitelisted. This is done using a simple loop on the second page of tmux.
-
-You can find more details on the APIs in the orchestrator and discovery service directory.
+You should see your worker eventually on the orchestrator. Checkout the orchestrator doc also: `http://localhost:8090/docs`
 
 ## Remote GPU Development
 > ⚠️ **IMPORTANT**: The video shows the whitelist process happening automatically. Currently, this must be done manually using the command `make whitelist-provider`.
@@ -156,3 +137,21 @@ To gracefully shutdown all services:
 ```bash
 make down
 ```
+
+## Docker Compose Setup
+You can run all supporting services (chain, validator, discovery, orchestrator) (if you only want to work on the worker sw) in docker compose.
+
+1. Start docker compose:
+   ```bash
+   docker compose up
+   ```
+
+2. Run Setup:  
+   ```bash
+   make setup
+   ```
+
+3. Launch a worker:
+   - Adjust the .env var `WORKER_EXTERNAL_IP` to: `WORKER_EXTERNAL_IP=host.docker.internal` 
+   - Launch the worker using `make watch-worker`
+   - Whitelist the worker once you see the whitelist alert using: `make whitelist-provider`
