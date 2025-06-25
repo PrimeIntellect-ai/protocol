@@ -31,7 +31,6 @@ impl From<&str> for TaskState {
             "FAILED" => TaskState::FAILED,
             "PAUSED" => TaskState::PAUSED,
             "RESTARTING" => TaskState::RESTARTING,
-            // Handle UNKNOWN and any other string values
             "UNKNOWN" | &_ => TaskState::UNKNOWN,
         }
     }
@@ -49,7 +48,7 @@ impl std::fmt::Display for TaskState {
             TaskState::RESTARTING => "RESTARTING",
             TaskState::UNKNOWN => "UNKNOWN",
         };
-        write!(f, "{}", state_str)
+        write!(f, "{state_str}")
     }
 }
 
@@ -123,8 +122,7 @@ impl VolumeMount {
             let var = cap.as_str();
             if !supported_vars.contains(&var) {
                 return Err(format!(
-                    "Volume mount host_path contains unsupported variable: {}. Supported variables: {:?}",
-                    var, supported_vars
+                    "Volume mount host_path contains unsupported variable: {var}. Supported variables: {supported_vars:?}"
                 ));
             }
         }
@@ -134,8 +132,7 @@ impl VolumeMount {
             let var = cap.as_str();
             if !supported_vars.contains(&var) {
                 return Err(format!(
-                    "Volume mount container_path contains unsupported variable: {}. Supported variables: {:?}",
-                    var, supported_vars
+                    "Volume mount container_path contains unsupported variable: {var}. Supported variables: {supported_vars:?}"
                 ));
             }
         }
@@ -266,8 +263,7 @@ impl StorageConfig {
                 let var = cap.as_str();
                 if !valid_vars.contains(&var) {
                     return Err(format!(
-                        "Storage config template contains invalid variable: {}",
-                        var
+                        "Storage config template contains invalid variable: {var}"
                     ));
                 }
             }
@@ -316,7 +312,7 @@ impl FromRedisValue for Task {
                     RedisError::from((
                         ErrorKind::TypeError,
                         "Failed to deserialize Task from string",
-                        format!("Invalid JSON string: {:?}", s),
+                        format!("Invalid JSON string: {s:?}"),
                     ))
                 })?;
                 Ok(task)
@@ -324,7 +320,7 @@ impl FromRedisValue for Task {
             _ => Err(RedisError::from((
                 ErrorKind::TypeError,
                 "Response type not compatible with Task",
-                format!("Received: {:?}", v),
+                format!("Received: {v:?}"),
             ))),
         }
     }

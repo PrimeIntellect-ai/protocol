@@ -24,8 +24,15 @@ pub enum IssueType {
 impl IssueType {
     pub const fn severity(&self) -> Severity {
         match self {
-            Self::NetworkConnectivityIssue | Self::InsufficientCpu | Self::InsufficientMemory | Self::InsufficientStorage => Severity::Warning,
-            Self::NoGpu | Self::DockerNotInstalled | Self::ContainerToolkitNotInstalled | Self::NoStoragePath | Self::PortUnavailable => Severity::Error,
+            Self::NetworkConnectivityIssue
+            | Self::InsufficientCpu
+            | Self::InsufficientMemory
+            | Self::InsufficientStorage => Severity::Warning,
+            Self::NoGpu
+            | Self::DockerNotInstalled
+            | Self::ContainerToolkitNotInstalled
+            | Self::NoStoragePath
+            | Self::PortUnavailable => Severity::Error,
         }
     }
 }
@@ -50,8 +57,8 @@ impl Issue {
 
     pub fn print(&self) {
         match self.severity() {
-            Severity::Error => Console::user_error(&format!("{}", self)),
-            Severity::Warning => Console::warning(&format!("{}", self)),
+            Severity::Error => Console::user_error(&format!("{self}")),
+            Severity::Warning => Console::warning(&format!("{self}")),
         }
     }
 }
