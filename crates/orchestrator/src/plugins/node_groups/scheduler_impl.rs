@@ -205,9 +205,7 @@ impl NodeGroupsPlugin {
                 return Ok(vec![task_clone]);
             }
         }
-        info!(
-            "Node {node_address} is not in a group, skipping all tasks"
-        );
+        info!("Node {node_address} is not in a group, skipping all tasks");
         Ok(vec![])
     }
 }

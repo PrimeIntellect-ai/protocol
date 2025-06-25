@@ -1234,9 +1234,7 @@ impl NodeGroupsPlugin {
                 let topology = topology.clone();
                 async move {
                     if let Err(e) = enable_configuration(&store, &topology).await {
-                        error!(
-                            "Failed to enable configuration for topology {topology}: {e}"
-                        );
+                        error!("Failed to enable configuration for topology {topology}: {e}");
                     }
                 }
             });
