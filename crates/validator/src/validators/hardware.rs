@@ -12,6 +12,8 @@ use shared::{
 use crate::p2p::client::P2PClient;
 use crate::validators::hardware_challenge::HardwareChallenge;
 
+const NONCE_DELAY_MS: u64 = 100;
+
 /// Hardware validator implementation
 ///
 /// NOTE: This is a temporary implementation that will be replaced with a proper
@@ -89,7 +91,7 @@ impl<'a> HardwareValidator<'a> {
         }
 
         // Small delay to ensure nonce incrementation
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(NONCE_DELAY_MS)).await;
 
         info!("Node {} successfully validated", node.id);
         Ok(())

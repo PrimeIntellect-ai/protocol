@@ -147,6 +147,8 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
+
+    const TEST_DELAY_MS: u64 = 100;
     use std::time::SystemTime;
     use tokio::sync::Mutex;
 
@@ -226,7 +228,7 @@ mod tests {
         }
 
         // Wait a moment to ensure timestamps are different
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(TEST_DELAY_MS));
 
         // Register newer node
         let newer_node = Node {

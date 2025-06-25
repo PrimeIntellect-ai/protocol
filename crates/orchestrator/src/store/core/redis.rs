@@ -10,6 +10,8 @@ use std::sync::Arc;
 use std::thread;
 #[cfg(test)]
 use std::time::Duration;
+#[cfg(test)]
+const REDIS_RETRY_DELAY_MS: u64 = 100;
 #[derive(Clone)]
 pub struct RedisStore {
     pub client: Client,
@@ -49,7 +51,7 @@ impl RedisStore {
         debug!("Starting test Redis server at {}", redis_url);
 
         // Add a small delay to ensure server is ready
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(REDIS_RETRY_DELAY_MS));
 
         // Try to connect with retry logic
         let client = loop {
@@ -62,7 +64,7 @@ impl RedisStore {
                     }
                 }
             }
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(REDIS_RETRY_DELAY_MS));
         };
 
         Self {

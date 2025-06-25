@@ -541,7 +541,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(n) => n,
                 Err(e) => {
                     error!("Error in node fetching loop: {e:#}");
-                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                     continue;
                 }
             };

@@ -23,6 +23,8 @@ use shared::web3::wallet::{Wallet, WalletProvider};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+
+const STREAM_CLOSE_DELAY_MS: u64 = 100;
 use tokio_util::sync::CancellationToken;
 
 lazy_static! {
@@ -239,7 +241,10 @@ impl P2PService {
                             error!("Error handling stream: {e}");
                         }
                         // Wait a bit before closing to ensure client has processed response
-                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(
+                            STREAM_CLOSE_DELAY_MS,
+                        ))
+                        .await;
                     }
                     Err(e) => {
                         error!("Failed to accept bi-stream: {e}");

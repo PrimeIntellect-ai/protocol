@@ -434,6 +434,8 @@ mod tests {
     use crate::store::core::{RedisStore, StoreContext};
     use crate::ServerMode;
 
+    const TEST_DELAY_MS: u64 = 100;
+
     #[tokio::test]
     async fn test_sync_single_node_with_discovery() {
         let node_address = "0x1234567890123456789012345678901234567890";
@@ -623,7 +625,7 @@ mod tests {
 
         // Test case: Sync the same node again to verify first_seen is preserved
         // Simulate some time passing
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(TEST_DELAY_MS)).await;
 
         // Update discovery data to simulate a change (e.g., IP address change)
         let updated_discovery_node = DiscoveryNode {

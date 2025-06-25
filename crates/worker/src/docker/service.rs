@@ -29,6 +29,7 @@ pub struct DockerService {
 
 const TASK_PREFIX: &str = "prime-task";
 const RESTART_INTERVAL_SECONDS: i64 = 10;
+const DEFAULT_SHM_SIZE_BYTES: u64 = 64 * 1024 * 1024;
 
 impl DockerService {
     #[allow(clippy::too_many_arguments)]
@@ -234,10 +235,10 @@ impl DockerService {
                                             }
                                         }
                                         let shm_size = match system_memory_mb {
-                                            Some(mem_mb) => (mem_mb as u64) * 1024 * 1024 / 2, // Convert MB to bytes and divide by 2
+                                            Some(mem_mb) => (mem_mb as u64) * 1024 * 1024 / 2,
                                             None => {
                                                 Console::warning("System memory not available, using default shm size");
-                                                67108864 // Default to 64MB in bytes
+                                                DEFAULT_SHM_SIZE_BYTES
                                             }
                                         };
                                         match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size), payload.entrypoint, None).await {

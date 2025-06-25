@@ -19,6 +19,9 @@ use tokio::{io::BufReader, net::UnixListener};
 pub const SOCKET_NAME: &str = "metrics.sock";
 const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.worker/";
 const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.worker/";
+const READ_BUFFER_SIZE: usize = 1024;
+#[cfg(test)]
+const TEST_DELAY_MS: u64 = 100;
 
 pub struct TaskBridge {
     pub socket_path: String,
@@ -251,7 +254,7 @@ impl TaskBridge {
                     tokio::spawn(async move {
                         debug!("Received connection from {_addr:?}");
                         let mut reader = BufReader::new(stream);
-                        let mut buffer = vec![0; 1024];
+                        let mut buffer = vec![0; READ_BUFFER_SIZE];
                         let mut data = Vec::new();
 
                         loop {
@@ -361,7 +364,7 @@ mod tests {
 
         // Run the bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(TEST_DELAY_MS)).await;
 
         // Verify socket exists with correct permissions
         assert!(socket_path.exists());
@@ -393,7 +396,7 @@ mod tests {
         // Run bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(TEST_DELAY_MS)).await;
 
         // Test client connection
         let stream = UnixStream::connect(&socket_path).await?;
@@ -425,7 +428,7 @@ mod tests {
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(TEST_DELAY_MS)).await;
 
         let mut stream = UnixStream::connect(&socket_path).await?;
         let data = json!({
@@ -439,7 +442,7 @@ mod tests {
         stream.write_all(msg.as_bytes()).await?;
         stream.flush().await?;
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(TEST_DELAY_MS)).await;
 
         let all_metrics = metrics_store.get_all_metrics().await;
 
@@ -472,7 +475,7 @@ mod tests {
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(TEST_DELAY_MS)).await;
 
         let mut stream = UnixStream::connect(&socket_path).await?;
         let json = json!({
@@ -488,7 +491,7 @@ mod tests {
         stream.write_all(msg.as_bytes()).await?;
         stream.flush().await?;
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(TEST_DELAY_MS)).await;
 
         let all_metrics = metrics_store.get_all_metrics().await;
         assert!(
@@ -519,7 +522,7 @@ mod tests {
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(TEST_DELAY_MS)).await;
 
         let mut clients = vec![];
         for _ in 0..3 {

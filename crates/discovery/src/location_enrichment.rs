@@ -10,6 +10,7 @@ use tokio::time::interval;
 const LOCATION_RETRY_KEY: &str = "location:retries:";
 const MAX_RETRIES: u32 = 3;
 const BATCH_SIZE: usize = 10;
+const RATE_LIMIT_DELAY_MS: u64 = 100;
 
 pub struct LocationEnrichmentService {
     node_store: Arc<NodeStore>,
@@ -107,7 +108,7 @@ impl LocationEnrichmentService {
                 }
 
                 // Rate limiting - wait between requests
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
             }
 
             // Longer wait between batches
