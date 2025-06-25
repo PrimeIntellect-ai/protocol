@@ -1,4 +1,7 @@
 name: Check Format & Lint
+env:
+  RUSTFLAGS: "--cfg tokio_unstable"
+
 on:
   pull_request:
     branches: [ main, master, develop ]
