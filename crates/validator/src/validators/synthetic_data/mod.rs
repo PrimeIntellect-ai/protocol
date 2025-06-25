@@ -529,6 +529,11 @@ impl SyntheticDataValidator<WalletProvider> {
         const MAX_ATTEMPTS: i64 = 60;
         if attempts >= MAX_ATTEMPTS {
             // If we've tried too many times, soft invalidate the work and update its status
+            #[cfg(test)]
+            if let Err(_e) = self.soft_invalidate_work(work_key) {
+                // Test mode: error handling skipped
+            }
+            #[cfg(not(test))]
             if let Err(e) = self.soft_invalidate_work(work_key).await {
                 error!(
                     "Failed to soft invalidate work after max filename resolution attempts: {e}"
@@ -1009,7 +1014,7 @@ impl SyntheticDataValidator<WalletProvider> {
         Ok(rejected_nodes)
     }
 
-    async fn handle_group_toploc_acceptance(
+    fn handle_group_toploc_acceptance(
         &self,
         group: &ToplocGroup,
         status: &GroupValidationResult,
@@ -1038,22 +1043,20 @@ impl SyntheticDataValidator<WalletProvider> {
         }
 
         if !work_units_match {
-            let nodes_with_wrong_work_unit_claims = self
-                .handle_work_units_mismatch(
-                    group,
-                    status,
-                    total_claimed_units,
-                    node_work_units,
-                    output_flops_u256,
-                )
-                .await?;
+            let nodes_with_wrong_work_unit_claims = self.handle_work_units_mismatch(
+                group,
+                status,
+                total_claimed_units,
+                node_work_units,
+                output_flops_u256,
+            )?;
             Ok(nodes_with_wrong_work_unit_claims)
         } else {
             Ok(Vec::new())
         }
     }
 
-    async fn handle_work_units_mismatch(
+    fn handle_work_units_mismatch(
         &self,
         group: &ToplocGroup,
         status: &GroupValidationResult,
@@ -1290,15 +1293,13 @@ impl SyntheticDataValidator<WalletProvider> {
             let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
             toploc_nodes_to_invalidate.extend(rejected_nodes);
         } else if status.status == ValidationResult::Accept {
-            let wrong_claim_nodes = self
-                .handle_group_toploc_acceptance(
-                    &group,
-                    &status,
-                    total_claimed_units,
-                    &node_work_units,
-                    &toploc_config_name,
-                )
-                .await?;
+            let wrong_claim_nodes = self.handle_group_toploc_acceptance(
+                &group,
+                &status,
+                total_claimed_units,
+                &node_work_units,
+                &toploc_config_name,
+            )?;
             nodes_with_wrong_work_unit_claims.extend(wrong_claim_nodes);
         }
 
@@ -1563,6 +1564,25 @@ impl SyntheticDataValidator<WalletProvider> {
 
                         for work_key in work_keys {
                             // Soft invalidate (less penalty than hard invalidation)
+                            #[cfg(test)]
+                            if let Err(_e) = self.soft_invalidate_work(&work_key) {
+                                // Test mode: error handling skipped
+                            } else {
+                                // Mark work as soft invalidated due to incomplete group
+                                if let Err(e) = self
+                                    .update_work_validation_status(
+                                        &work_key,
+                                        &ValidationResult::IncompleteGroup,
+                                    )
+                                    .await
+                                {
+                                    error!(
+                                        "Failed to update work validation status for {}: {}",
+                                        work_key, e
+                                    );
+                                }
+                            }
+                            #[cfg(not(test))]
                             if let Err(e) = self.soft_invalidate_work(&work_key).await {
                                 error!("Failed to soft invalidate work key {work_key}: {e}");
                             } else {

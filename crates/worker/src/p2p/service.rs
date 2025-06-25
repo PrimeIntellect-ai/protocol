@@ -143,7 +143,7 @@ impl P2PService {
         Ok(endpoint)
     }
     /// Start accepting incoming connections with automatic recovery
-    pub async fn start(&self) -> Result<()> {
+    pub fn start(&self) -> Result<()> {
         let service = Arc::new(self.clone());
         let cancellation_token = self.cancellation_token.clone();
 
@@ -696,7 +696,7 @@ mod tests {
         let random_nonce = rand_v8::thread_rng().gen::<u64>();
 
         tokio::spawn(async move {
-            service.start().await.unwrap();
+            service.start().unwrap();
         });
 
         let ping = P2PMessage::Ping {
@@ -723,7 +723,7 @@ mod tests {
         let addresses = service.listening_addresses().to_vec();
 
         tokio::spawn(async move {
-            service.start().await.unwrap();
+            service.start().unwrap();
         });
 
         let ping = P2PMessage::Ping {

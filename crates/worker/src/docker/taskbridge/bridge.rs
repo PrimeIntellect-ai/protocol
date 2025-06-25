@@ -85,7 +85,7 @@ impl TaskBridge {
         }
         Ok(())
     }
-    async fn handle_file_upload(self: Arc<Self>, json_str: &str) -> Result<()> {
+    fn handle_file_upload(self: Arc<Self>, json_str: &str) -> Result<()> {
         debug!("Handling file upload");
         if let Ok(file_info) = serde_json::from_str::<serde_json::Value>(json_str) {
             let task_id = file_info["task_id"].as_str().unwrap_or("unknown");
@@ -175,8 +175,8 @@ impl TaskBridge {
     async fn handle_message(self: Arc<Self>, json_str: &str) -> Result<()> {
         debug!("Extracted JSON object: {json_str}");
         if json_str.contains("output/save_path") {
-            if let Err(e) = self.handle_file_upload(json_str).await {
-                error!("Failed to handle file upload: {e}");
+            if let Err(e) = self.handle_file_upload(json_str) {
+                error!("Failed to handle file upload: {}", e);
             }
         } else {
             debug!("Processing metric message");

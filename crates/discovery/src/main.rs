@@ -119,7 +119,7 @@ async fn main() -> Result<()> {
                 contracts.clone(),
                 last_chain_sync.clone(),
             );
-            chain_sync.run().await?;
+            chain_sync.run()?;
 
             // Start location enrichment service if enabled
             if let Some(location_url) = args.location_service_url.clone() {

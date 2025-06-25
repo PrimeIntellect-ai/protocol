@@ -66,7 +66,7 @@ impl NodeStatusUpdater {
     }
 
     #[cfg(test)]
-    async fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
+    fn is_node_in_pool(&self, _: &OrchestratorNode) -> bool {
         true
     }
 
@@ -85,6 +85,9 @@ impl NodeStatusUpdater {
         &self,
         node: &OrchestratorNode,
     ) -> Result<(), anyhow::Error> {
+        #[cfg(test)]
+        let node_in_pool = self.is_node_in_pool(node);
+        #[cfg(not(test))]
         let node_in_pool = self.is_node_in_pool(node).await;
         if node_in_pool {
             match self
@@ -115,6 +118,9 @@ impl NodeStatusUpdater {
         let nodes = self.store_context.node_store.get_nodes().await?;
         for node in nodes {
             if node.status == NodeStatus::Dead {
+                #[cfg(test)]
+                let node_in_pool = self.is_node_in_pool(&node);
+                #[cfg(not(test))]
                 let node_in_pool = self.is_node_in_pool(&node).await;
                 debug!("Node {:?} is in pool: {}", node.address, node_in_pool);
                 if node_in_pool {
@@ -151,6 +157,9 @@ impl NodeStatusUpdater {
                 .get_unhealthy_counter(&node.address)
                 .await?;
 
+            #[cfg(test)]
+            let is_node_in_pool = self.is_node_in_pool(&node);
+            #[cfg(not(test))]
             let is_node_in_pool = self.is_node_in_pool(&node).await;
             let mut status_changed = false;
             let mut new_status = node.status.clone();
