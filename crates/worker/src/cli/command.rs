@@ -688,7 +688,7 @@ pub async fn execute_command(
             };
 
             if let Err(e) = p2p_service.start() {
-                error!("❌ Failed to start P2P listener: {}", e);
+                error!("❌ Failed to start P2P listener: {e}");
                 std::process::exit(1);
             }
 

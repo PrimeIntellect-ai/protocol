@@ -145,14 +145,16 @@ impl TaskBridge {
         let (file_validation_futures_tx, mut file_validation_futures_rx) =
             tokio::sync::mpsc::channel::<(String, BoxFuture<anyhow::Result<()>>)>(100);
         let mut file_validation_futures_map = tokio_util::task::JoinMap::new();
+        let (file_upload_futures_tx, mut file_upload_futures_rx) =
+            tokio::sync::mpsc::channel::<BoxFuture<anyhow::Result<()>>>(100);
+        let mut file_upload_futures_set = tokio::task::JoinSet::new();
 
         loop {
-            // let bridge = self.clone();
             tokio::select! {
                 Some(res) = listener_stream.next() => {
                     match res {
                         Ok(stream) => {
-                            let handle_future = handle_stream(config.clone(), stream, file_validation_futures_tx.clone()).fuse();
+                            let handle_future = handle_stream(config.clone(), stream, file_upload_futures_tx.clone(), file_validation_futures_tx.clone()).fuse();
                             handle_stream_futures.spawn(handle_future);
                         }
                         Err(e) => {
@@ -193,20 +195,31 @@ impl TaskBridge {
                         }
                     }
                 }
+                Some(fut) = file_upload_futures_rx.recv() => {
+                    file_upload_futures_set.spawn(fut);
+                }
+                Some(task) = file_upload_futures_set.join_next() => {
+                    match task {
+                        Ok(Ok(())) => {
+                            debug!("File upload task completed successfully");
+                        }
+                        Ok(Err(e)) => {
+                            error!("File upload task failed: {e}");
+                        }
+                        Err(e) => {
+                            error!("Error joining file upload task: {e}");
+                        }
+                    }
+                }
             }
         }
-        // match listener.accept().await {
-        //     Ok((stream, addr)) => handle_stream(stream, addr)
-        //         .await
-        //         .unwrap_or_else(|e| error!("Error handling stream: {e}")),
-        //     Err(e) => error!("Accept failed on Unix socket: {e}"),
-        // }
     }
 }
 
 async fn handle_stream(
     config: TaskBridgeConfig,
     stream: tokio::net::UnixStream,
+    file_upload_futures_tx: tokio::sync::mpsc::Sender<BoxFuture<'_, anyhow::Result<()>>>,
     file_validation_futures_tx: tokio::sync::mpsc::Sender<(
         String,
         BoxFuture<'_, anyhow::Result<()>>,
@@ -252,6 +265,7 @@ async fn handle_stream(
                 if let Err(e) = handle_message(
                     config.clone(),
                     &json_str,
+                    file_upload_futures_tx.clone(),
                     file_validation_futures_tx.clone(),
                 )
                 .await
@@ -314,6 +328,7 @@ async fn handle_metric(config: TaskBridgeConfig, input: &MetricInput) -> Result<
 async fn handle_file_upload(
     config: TaskBridgeConfig,
     json_str: &str,
+    file_upload_futures_tx: tokio::sync::mpsc::Sender<BoxFuture<'_, anyhow::Result<()>>>,
     file_validation_futures_tx: tokio::sync::mpsc::Sender<(
         String,
         BoxFuture<'_, anyhow::Result<()>>,
@@ -327,27 +342,19 @@ async fn handle_file_upload(
         if let Some(file_name) = file_info["output/save_path"].as_str() {
             info!("Handling file upload for task_id: {task_id}, file: {file_name}");
 
-            let storage_path_inner = config.docker_storage_path.clone();
-            let task_id_inner = task_id.to_string();
-            let file_name_inner = file_name.to_string();
-            let wallet_inner = config.node_wallet.as_ref().unwrap().clone();
-            let state_inner = config.state.clone();
+            let Some(wallet) = config.node_wallet.as_ref() else {
+                bail!("no wallet found; must be set to upload files");
+            };
 
-            tokio::spawn(async move {
-                if let Err(e) = file_handler::handle_file_upload(
-                    &storage_path_inner,
-                    &task_id_inner,
-                    &file_name_inner,
-                    &wallet_inner,
-                    &state_inner,
-                )
-                .await
-                {
-                    error!("Failed to handle file upload: {e}");
-                } else {
-                    info!("File upload handled successfully");
-                }
-            });
+            let _ = file_upload_futures_tx
+                .send(Box::pin(file_handler::handle_file_upload(
+                    config.docker_storage_path.clone(),
+                    task_id.to_string(),
+                    file_name.to_string(),
+                    wallet.clone(),
+                    config.state.clone(),
+                )))
+                .await;
         }
 
         // Handle file validation if sha256 is present
@@ -404,6 +411,7 @@ async fn handle_file_upload(
 async fn handle_message(
     config: TaskBridgeConfig,
     json_str: &str,
+    file_upload_futures_tx: tokio::sync::mpsc::Sender<BoxFuture<'_, anyhow::Result<()>>>,
     file_validation_futures_tx: tokio::sync::mpsc::Sender<(
         String,
         BoxFuture<'_, anyhow::Result<()>>,
@@ -411,8 +419,15 @@ async fn handle_message(
 ) -> Result<()> {
     debug!("Extracted JSON object: {json_str}");
     if json_str.contains("output/save_path") {
-        if let Err(e) = handle_file_upload(config, json_str, file_validation_futures_tx).await {
-            error!("Failed to handle file upload: {}", e);
+        if let Err(e) = handle_file_upload(
+            config,
+            json_str,
+            file_upload_futures_tx,
+            file_validation_futures_tx,
+        )
+        .await
+        {
+            error!("Failed to handle file upload: {e}");
         }
     } else {
         debug!("Processing metric message");
