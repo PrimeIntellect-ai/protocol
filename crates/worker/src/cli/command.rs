@@ -445,7 +445,7 @@ pub async fn execute_command(
                 cancellation_token.clone(),
                 gpu,
                 system_memory,
-                task_bridge.socket_path.clone(),
+                task_bridge.get_socket_path().to_string(),
                 docker_storage_path,
                 node_wallet_instance
                     .wallet
@@ -458,11 +458,10 @@ pub async fn execute_command(
 
             let bridge_cancellation_token = cancellation_token.clone();
             tokio::spawn(async move {
-                let bridge_clone = task_bridge.clone();
                 tokio::select! {
                     _ = bridge_cancellation_token.cancelled() => {
                     }
-                    _ = bridge_clone.run() => {
+                    _ = task_bridge.run() => {
                     }
                 }
             });

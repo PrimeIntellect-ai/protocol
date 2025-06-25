@@ -2,7 +2,11 @@ use crate::docker::taskbridge::file_handler;
 use crate::docker::taskbridge::json_helper;
 use crate::metrics::store::MetricsStore;
 use crate::state::system_state::SystemState;
+use anyhow::bail;
 use anyhow::Result;
+use futures::future::BoxFuture;
+use futures::FutureExt;
+use futures::StreamExt as _;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
@@ -21,13 +25,18 @@ const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.worker/";
 const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.worker/";
 
 pub struct TaskBridge {
-    pub socket_path: String,
-    pub metrics_store: Arc<MetricsStore>,
-    pub contracts: Option<Contracts<WalletProvider>>,
-    pub node_config: Option<Node>,
-    pub node_wallet: Option<Wallet>,
-    pub docker_storage_path: String,
-    pub state: Arc<SystemState>,
+    socket_path: String,
+    config: TaskBridgeConfig,
+}
+
+#[derive(Clone)]
+struct TaskBridgeConfig {
+    metrics_store: Arc<MetricsStore>,
+    contracts: Option<Contracts<WalletProvider>>,
+    node_config: Option<Node>,
+    node_wallet: Option<Wallet>,
+    docker_storage_path: String,
+    state: Arc<SystemState>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -39,7 +48,7 @@ struct MetricInput {
 
 impl TaskBridge {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         socket_path: Option<&str>,
         metrics_store: Arc<MetricsStore>,
         contracts: Option<Contracts<WalletProvider>>,
@@ -47,7 +56,7 @@ impl TaskBridge {
         node_wallet: Option<Wallet>,
         docker_storage_path: String,
         state: Arc<SystemState>,
-    ) -> Arc<Self> {
+    ) -> Self {
         let path = match socket_path {
             Some(path) => path.to_string(),
             None => {
@@ -59,144 +68,30 @@ impl TaskBridge {
             }
         };
 
-        Arc::new(Self {
+        Self {
             socket_path: path,
-            metrics_store,
-            contracts,
-            node_config,
-            node_wallet,
-            docker_storage_path,
-            state,
-        })
-    }
-
-    async fn handle_metric(self: Arc<Self>, input: &MetricInput) -> Result<()> {
-        debug!("Processing metric message");
-        for (key, value) in input.metrics.iter() {
-            debug!("Metric - Key: {key}, Value: {value}");
-            let _ = self
-                .metrics_store
-                .update_metric(
-                    input.task_id.clone(),
-                    key.to_string(),
-                    value.as_f64().unwrap_or(0.0),
-                )
-                .await;
+            config: TaskBridgeConfig {
+                metrics_store,
+                contracts,
+                node_config,
+                node_wallet,
+                docker_storage_path,
+                state,
+            },
         }
-        Ok(())
-    }
-    fn handle_file_upload(self: Arc<Self>, json_str: &str) -> Result<()> {
-        debug!("Handling file upload");
-        if let Ok(file_info) = serde_json::from_str::<serde_json::Value>(json_str) {
-            let task_id = file_info["task_id"].as_str().unwrap_or("unknown");
-
-            // Handle file upload if save_path is present
-            if let Some(file_name) = file_info["output/save_path"].as_str() {
-                info!("Handling file upload for task_id: {task_id}, file: {file_name}");
-
-                let storage_path_inner = self.docker_storage_path.clone();
-                let task_id_inner = task_id.to_string();
-                let file_name_inner = file_name.to_string();
-                let wallet_inner = self.node_wallet.as_ref().unwrap().clone();
-                let state_inner = self.state.clone();
-
-                tokio::spawn(async move {
-                    if let Err(e) = file_handler::handle_file_upload(
-                        &storage_path_inner,
-                        &task_id_inner,
-                        &file_name_inner,
-                        &wallet_inner,
-                        &state_inner,
-                    )
-                    .await
-                    {
-                        error!("Failed to handle file upload: {e}");
-                    } else {
-                        info!("File upload handled successfully");
-                    }
-                });
-            }
-
-            // Handle file validation if sha256 is present
-            if let Some(file_sha) = file_info["output/sha256"].as_str() {
-                debug!("Processing file validation message");
-                let output_flops: f64 = file_info["output/output_flops"].as_f64().unwrap_or(0.0);
-                let input_flops: f64 = file_info["output/input_flops"].as_f64().unwrap_or(0.0);
-
-                info!(
-                    "Handling file validation for task_id: {task_id}, sha: {file_sha}, output_flops: {output_flops}, input_flops: {input_flops}"
-                );
-
-                if let (Some(contracts_ref), Some(node_ref)) =
-                    (self.contracts.clone(), self.node_config.clone())
-                {
-                    let file_sha_inner = file_sha.to_string();
-                    let contracts_inner = contracts_ref.clone();
-                    let node_inner = node_ref.clone();
-                    let provider = match self.node_wallet.as_ref() {
-                        Some(wallet) => wallet.provider(),
-                        None => {
-                            error!("No wallet provider found");
-                            return Err(anyhow::anyhow!("No wallet provider found"));
-                        }
-                    };
-
-                    if output_flops <= 0.0 {
-                        error!("Invalid work units calculation: output_flops ({output_flops}) must be greater than 0.0. Blocking file validation submission.");
-                        return Err(anyhow::anyhow!(
-                            "Invalid work units: output_flops must be greater than 0.0"
-                        ));
-                    }
-                    let work_units = output_flops;
-
-                    tokio::spawn(async move {
-                        if let Err(e) = file_handler::handle_file_validation(
-                            &file_sha_inner,
-                            &contracts_inner,
-                            &node_inner,
-                            &provider,
-                            work_units,
-                        )
-                        .await
-                        {
-                            error!("Failed to handle file validation: {e}");
-                        }
-                    });
-                } else {
-                    error!("Missing contracts or node configuration for file validation");
-                }
-            }
-        } else {
-            error!("Failed to parse JSON: {json_str}");
-        }
-        Ok(())
     }
 
-    async fn handle_message(self: Arc<Self>, json_str: &str) -> Result<()> {
-        debug!("Extracted JSON object: {json_str}");
-        if json_str.contains("output/save_path") {
-            if let Err(e) = self.handle_file_upload(json_str) {
-                error!("Failed to handle file upload: {}", e);
-            }
-        } else {
-            debug!("Processing metric message");
-            match serde_json::from_str::<MetricInput>(json_str) {
-                Ok(input) => {
-                    if let Err(e) = self.handle_metric(&input).await {
-                        error!("Failed to handle metric: {e}");
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to parse metric input: {json_str} {e}");
-                }
-            }
-        }
-
-        Ok(())
+    pub(crate) fn get_socket_path(&self) -> &str {
+        &self.socket_path
     }
 
-    pub async fn run(self: Arc<Self>) -> Result<()> {
-        let socket_path = Path::new(&self.socket_path);
+    pub(crate) async fn run(self) -> Result<()> {
+        let Self {
+            socket_path,
+            config,
+        } = self;
+
+        let socket_path = Path::new(&socket_path);
         debug!("Setting up TaskBridge socket at: {}", socket_path.display());
 
         if let Some(parent) = socket_path.parent() {
@@ -244,91 +139,296 @@ impl TaskBridge {
             }
         }
         info!("TaskBridge socket created at: {}", socket_path.display());
+
+        let mut handle_stream_futures = tokio::task::JoinSet::new();
+        let mut listener_stream = tokio_stream::wrappers::UnixListenerStream::new(listener);
+        let (file_validation_futures_tx, mut file_validation_futures_rx) =
+            tokio::sync::mpsc::channel::<(String, BoxFuture<anyhow::Result<()>>)>(100);
+        let mut file_validation_futures_map = tokio_util::task::JoinMap::new();
+
         loop {
-            let bridge = self.clone();
-            match listener.accept().await {
-                Ok((stream, _addr)) => {
-                    tokio::spawn(async move {
-                        debug!("Received connection from {_addr:?}");
-                        let mut reader = BufReader::new(stream);
-                        let mut buffer = vec![0; 1024];
-                        let mut data = Vec::new();
-
-                        loop {
-                            let n = match reader.read(&mut buffer).await {
-                                Ok(0) => {
-                                    debug!("Connection closed by client");
-                                    0
-                                }
-                                Ok(n) => {
-                                    debug!("Read {n} bytes from socket");
-                                    n
-                                }
-                                Err(e) => {
-                                    error!("Error reading from stream: {e}");
-                                    break;
-                                }
-                            };
-
-                            data.extend_from_slice(&buffer[..n]);
-                            debug!("Current data buffer size: {} bytes", data.len());
-
-                            if let Ok(data_str) = std::str::from_utf8(&data) {
-                                debug!("Raw data received: {data_str}");
-                            } else {
-                                debug!("Raw data received (non-UTF8): {} bytes", data.len());
-                            }
-
-                            let mut current_pos = 0;
-                            while current_pos < data.len() {
-                                // Try to find a complete JSON object
-                                if let Some((json_str, byte_length)) =
-                                    json_helper::extract_next_json(&data[current_pos..])
-                                {
-                                    let json_str = json_str.to_string();
-                                    let bridge_clone = bridge.clone();
-                                    if let Err(e) = bridge_clone.handle_message(&json_str).await {
-                                        error!("Error handling message: {e}");
-                                    }
-
-                                    current_pos += byte_length;
-                                    debug!(
-                                        "Advanced position to {current_pos} after processing JSON"
-                                    );
-                                } else {
-                                    debug!("No complete JSON object found, waiting for more data");
-                                    break;
-                                }
-                            }
-
-                            data = data.split_off(current_pos);
-                            debug!(
-                                "Remaining data buffer size after processing: {} bytes",
-                                data.len()
-                            );
-                            if n == 0 {
-                                if data.is_empty() {
-                                    // No data left to process, we can break
-                                    break;
-                                } else {
-                                    // We have data but couldn't parse it as complete JSON objects
-                                    // and the connection is closed - log and discard
-                                    if let Ok(unparsed) = std::str::from_utf8(&data) {
-                                        warn!("Discarding unparseable data after connection close: {unparsed}");
-                                    } else {
-                                        warn!("Discarding unparseable binary data after connection close ({} bytes)", data.len());
-                                    }
-                                    // Break out of the loop
-                                    break;
-                                }
-                            }
+            // let bridge = self.clone();
+            tokio::select! {
+                Some(res) = listener_stream.next() => {
+                    match res {
+                        Ok(stream) => {
+                            let handle_future = handle_stream(config.clone(), stream, file_validation_futures_tx.clone()).fuse();
+                            handle_stream_futures.spawn(handle_future);
                         }
-                    });
+                        Err(e) => {
+                            error!("Accept failed on Unix socket: {e}");
+                        }
+                    }
                 }
-                Err(e) => error!("Accept failed on Unix socket: {e}"),
+                Some(task) = handle_stream_futures.join_next() => {
+                    match task {
+                        Ok(Ok(())) => {
+                            debug!("Stream handled successfully");
+                        }
+                        Ok(Err(e)) => {
+                            error!("Error handling stream: {e}");
+                        }
+                        Err(e) => {
+                            error!("Task join error: {e}");
+                        }
+                    }
+                }
+                Some((hash, fut)) = file_validation_futures_rx.recv() => {
+                    if file_validation_futures_map.contains_key(&hash) {
+                        debug!("duplicate file validation task for hash: {hash}, skipping");
+                        continue;
+                    }
+                    file_validation_futures_map.spawn(hash, fut);
+                }
+                Some((hash, task)) = file_validation_futures_map.join_next() => {
+                    match task {
+                        Ok(Ok(())) => {
+                            debug!("File validation task for hash {hash} completed successfully");
+                        }
+                        Ok(Err(e)) => {
+                            error!("File validation task for hash {hash} failed: {e}");
+                        }
+                        Err(e) => {
+                            error!("Error joining file validation task for hash {hash}: {e}");
+                        }
+                    }
+                }
+            }
+        }
+        // match listener.accept().await {
+        //     Ok((stream, addr)) => handle_stream(stream, addr)
+        //         .await
+        //         .unwrap_or_else(|e| error!("Error handling stream: {e}")),
+        //     Err(e) => error!("Accept failed on Unix socket: {e}"),
+        // }
+    }
+}
+
+async fn handle_stream(
+    config: TaskBridgeConfig,
+    stream: tokio::net::UnixStream,
+    file_validation_futures_tx: tokio::sync::mpsc::Sender<(
+        String,
+        BoxFuture<'_, anyhow::Result<()>>,
+    )>,
+) -> Result<()> {
+    let addr = stream.peer_addr()?;
+    debug!("Received connection from {addr:?}");
+    let mut reader = BufReader::new(stream);
+    let mut buffer = vec![0; 1024];
+    let mut data = Vec::new();
+
+    loop {
+        let n = match reader.read(&mut buffer).await {
+            Ok(0) => {
+                debug!("Connection closed by client");
+                0
+            }
+            Ok(n) => {
+                debug!("Read {n} bytes from socket");
+                n
+            }
+            Err(e) => {
+                bail!("Error reading from stream: {e}");
+            }
+        };
+
+        data.extend_from_slice(&buffer[..n]);
+        debug!("Current data buffer size: {} bytes", data.len());
+
+        if let Ok(data_str) = std::str::from_utf8(&data) {
+            debug!("Raw data received: {data_str}");
+        } else {
+            debug!("Raw data received (non-UTF8): {} bytes", data.len());
+        }
+
+        let mut current_pos = 0;
+        while current_pos < data.len() {
+            // Try to find a complete JSON object
+            if let Some((json_str, byte_length)) =
+                json_helper::extract_next_json(&data[current_pos..])
+            {
+                let json_str = json_str.to_string();
+                if let Err(e) = handle_message(
+                    config.clone(),
+                    &json_str,
+                    file_validation_futures_tx.clone(),
+                )
+                .await
+                {
+                    error!("Error handling message: {e}");
+                }
+
+                current_pos += byte_length;
+                debug!("Advanced position to {current_pos} after processing JSON");
+            } else {
+                debug!("No complete JSON object found, waiting for more data");
+                break;
+            }
+        }
+
+        data = data.split_off(current_pos);
+        debug!(
+            "Remaining data buffer size after processing: {} bytes",
+            data.len()
+        );
+        if n == 0 {
+            if data.is_empty() {
+                // No data left to process, we can break
+                break;
+            } else {
+                // We have data but couldn't parse it as complete JSON objects
+                // and the connection is closed - log and discard
+                if let Ok(unparsed) = std::str::from_utf8(&data) {
+                    warn!("Discarding unparseable data after connection close: {unparsed}");
+                } else {
+                    warn!(
+                        "Discarding unparseable binary data after connection close ({} bytes)",
+                        data.len()
+                    );
+                }
+                // Break out of the loop
+                break;
             }
         }
     }
+    Ok(())
+}
+
+async fn handle_metric(config: TaskBridgeConfig, input: &MetricInput) -> Result<()> {
+    debug!("Processing metric message");
+    for (key, value) in input.metrics.iter() {
+        debug!("Metric - Key: {key}, Value: {value}");
+        let _ = config
+            .metrics_store
+            .update_metric(
+                input.task_id.clone(),
+                key.to_string(),
+                value.as_f64().unwrap_or(0.0),
+            )
+            .await;
+    }
+    Ok(())
+}
+
+async fn handle_file_upload(
+    config: TaskBridgeConfig,
+    json_str: &str,
+    file_validation_futures_tx: tokio::sync::mpsc::Sender<(
+        String,
+        BoxFuture<'_, anyhow::Result<()>>,
+    )>,
+) -> Result<()> {
+    debug!("Handling file upload");
+    if let Ok(file_info) = serde_json::from_str::<serde_json::Value>(json_str) {
+        let task_id = file_info["task_id"].as_str().unwrap_or("unknown");
+
+        // Handle file upload if save_path is present
+        if let Some(file_name) = file_info["output/save_path"].as_str() {
+            info!("Handling file upload for task_id: {task_id}, file: {file_name}");
+
+            let storage_path_inner = config.docker_storage_path.clone();
+            let task_id_inner = task_id.to_string();
+            let file_name_inner = file_name.to_string();
+            let wallet_inner = config.node_wallet.as_ref().unwrap().clone();
+            let state_inner = config.state.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = file_handler::handle_file_upload(
+                    &storage_path_inner,
+                    &task_id_inner,
+                    &file_name_inner,
+                    &wallet_inner,
+                    &state_inner,
+                )
+                .await
+                {
+                    error!("Failed to handle file upload: {e}");
+                } else {
+                    info!("File upload handled successfully");
+                }
+            });
+        }
+
+        // Handle file validation if sha256 is present
+        if let Some(file_sha) = file_info["output/sha256"].as_str() {
+            debug!("Processing file validation message");
+            let output_flops: f64 = file_info["output/output_flops"].as_f64().unwrap_or(0.0);
+            let input_flops: f64 = file_info["output/input_flops"].as_f64().unwrap_or(0.0);
+
+            info!(
+                "Handling file validation for task_id: {task_id}, sha: {file_sha}, output_flops: {output_flops}, input_flops: {input_flops}"
+            );
+
+            if let (Some(contracts), Some(node)) =
+                (config.contracts.clone(), config.node_config.clone())
+            {
+                let provider = match config.node_wallet.as_ref() {
+                    Some(wallet) => wallet.provider(),
+                    None => {
+                        error!("No wallet provider found");
+                        return Err(anyhow::anyhow!("No wallet provider found"));
+                    }
+                };
+
+                if output_flops <= 0.0 {
+                    error!("Invalid work units calculation: output_flops ({output_flops}) must be greater than 0.0. Blocking file validation submission.");
+                    return Err(anyhow::anyhow!(
+                        "Invalid work units: output_flops must be greater than 0.0"
+                    ));
+                }
+                let work_units = output_flops;
+
+                let _ = file_validation_futures_tx
+                    .send((
+                        file_sha.to_string(),
+                        Box::pin(file_handler::handle_file_validation(
+                            file_sha.to_string(),
+                            contracts.clone(),
+                            node.clone(),
+                            provider,
+                            work_units,
+                        )),
+                    ))
+                    .await;
+            } else {
+                error!("Missing contracts or node configuration for file validation");
+            }
+        }
+    } else {
+        error!("Failed to parse JSON: {json_str}");
+    }
+    Ok(())
+}
+
+async fn handle_message(
+    config: TaskBridgeConfig,
+    json_str: &str,
+    file_validation_futures_tx: tokio::sync::mpsc::Sender<(
+        String,
+        BoxFuture<'_, anyhow::Result<()>>,
+    )>,
+) -> Result<()> {
+    debug!("Extracted JSON object: {json_str}");
+    if json_str.contains("output/save_path") {
+        if let Err(e) = handle_file_upload(config, json_str, file_validation_futures_tx).await {
+            error!("Failed to handle file upload: {}", e);
+        }
+    } else {
+        debug!("Processing metric message");
+        match serde_json::from_str::<MetricInput>(json_str) {
+            Ok(input) => {
+                if let Err(e) = handle_metric(config, &input).await {
+                    error!("Failed to handle metric: {e}");
+                }
+            }
+            Err(e) => {
+                error!("Failed to parse metric input: {json_str} {e}");
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

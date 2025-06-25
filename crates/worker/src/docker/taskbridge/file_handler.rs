@@ -313,10 +313,10 @@ pub async fn handle_file_upload(
 
 /// Handles a file validation request
 pub async fn handle_file_validation(
-    file_sha: &str,
-    contracts: &Contracts<WalletProvider>,
-    node: &Node,
-    provider: &WalletProvider,
+    file_sha: String,
+    contracts: Contracts<WalletProvider>,
+    node: Node,
+    provider: WalletProvider,
     work_units: f64,
 ) -> Result<()> {
     info!("📄 Received file SHA for validation: {file_sha}");
