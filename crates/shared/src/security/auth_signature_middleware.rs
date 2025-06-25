@@ -315,7 +315,7 @@ where
                         })));
                     }
                 };
-                let mut payload_data = payload_value.clone();
+                let mut payload_data = payload_value;
                 if let Some(obj) = payload_data.as_object_mut() {
                     nonce = obj
                         .get("nonce")
@@ -388,24 +388,18 @@ where
                     }
                 };
 
-                let recovered_address = match parsed_signature.recover_address_from_msg(msg) {
-                    Ok(addr) => addr,
-                    Err(_) => {
-                        return Err(ErrorBadRequest(json!({
-                            "error": "Failed to recover address from message",
-                            "code": "ADDRESS_RECOVERY_FAILED"
-                        })))
-                    }
+                let Ok(recovered_address) = parsed_signature.recover_address_from_msg(msg) else {
+                    return Err(ErrorBadRequest(json!({
+                        "error": "Failed to recover address from message",
+                        "code": "ADDRESS_RECOVERY_FAILED"
+                    })));
                 };
 
-                let expected_address = match Address::from_str(&address) {
-                    Ok(addr) => addr,
-                    Err(_) => {
-                        return Err(ErrorBadRequest(json!({
-                            "error": "Invalid address format",
-                            "code": "INVALID_ADDRESS_FORMAT"
-                        })))
-                    }
+                let Ok(expected_address) = Address::from_str(&address) else {
+                    return Err(ErrorBadRequest(json!({
+                        "error": "Invalid address format",
+                        "code": "INVALID_ADDRESS_FORMAT"
+                    })));
                 };
 
                 if recovered_address != expected_address {

@@ -20,3 +20,6 @@ shared = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 url = { workspace = true }
+
+[lints]
+workspace = true

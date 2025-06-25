@@ -20,7 +20,7 @@ impl NodeStore {
             .await
     }
 
-    pub async fn get_node(&self, address: String) -> Result<Option<DiscoveryNode>, Error> {
+    pub async fn get_node(&self, address: &str) -> Result<Option<DiscoveryNode>, Error> {
         let key = format!("node:{address}");
         let mut con = self.get_connection().await?;
         let node: Option<String> = con.get(&key).await?;
@@ -31,7 +31,7 @@ impl NodeStore {
         Ok(node)
     }
 
-    pub async fn get_active_node_by_ip(&self, ip: String) -> Result<Option<DiscoveryNode>, Error> {
+    pub async fn get_active_node_by_ip(&self, ip: &str) -> Result<Option<DiscoveryNode>, Error> {
         let mut con = self.get_connection().await?;
         let node_ids: Vec<String> = con.smembers("node:ids").await?;
 
@@ -52,7 +52,7 @@ impl NodeStore {
         Ok(None)
     }
 
-    pub async fn count_active_nodes_by_ip(&self, ip: String) -> Result<u32, Error> {
+    pub async fn count_active_nodes_by_ip(&self, ip: &str) -> Result<u32, Error> {
         let mut con = self.get_connection().await?;
         let node_ids: Vec<String> = con.smembers("node:ids").await?;
 
@@ -61,15 +61,14 @@ impl NodeStore {
         }
 
         let node_keys: Vec<String> = node_ids.iter().map(|id| format!("node:{id}")).collect();
+        let serialized_nodes: Vec<String> =
+            redis::pipe().get(&node_keys).query_async(&mut con).await?;
 
         let mut count = 0;
-        for key in node_keys {
-            let serialized_node: Option<String> = con.get(&key).await?;
-            if let Some(serialized_node) = serialized_node {
-                let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node)?;
-                if deserialized_node.ip_address == ip && deserialized_node.is_active {
-                    count += 1;
-                }
+        for serialized_node in serialized_nodes {
+            let deserialized_node: DiscoveryNode = serde_json::from_str(&serialized_node)?;
+            if deserialized_node.ip_address == ip && deserialized_node.is_active {
+                count += 1;
             }
         }
         Ok(count)
@@ -82,7 +81,7 @@ impl NodeStore {
         let mut con = self.get_connection().await?;
 
         if con.exists(&key).await? {
-            let existing_node = self.get_node(address.clone()).await?;
+            let existing_node = self.get_node(&address).await?;
             if let Some(existing_node) = existing_node {
                 let updated_node = existing_node.with_updated_node(node);
                 self.update_node(updated_node).await?;

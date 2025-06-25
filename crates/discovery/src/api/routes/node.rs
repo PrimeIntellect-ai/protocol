@@ -17,7 +17,7 @@ pub async fn register_node(
     // Check for the x-address header
     let address_str = match req.headers().get("x-address") {
         Some(address) => match address.to_str() {
-            Ok(addr) => addr.to_string(),
+            Ok(addr) => addr,
             Err(_) => {
                 return HttpResponse::BadRequest()
                     .json(ApiResponse::new(false, "Invalid x-address header"))
@@ -33,32 +33,34 @@ pub async fn register_node(
         return HttpResponse::BadRequest()
             .json(ApiResponse::new(false, "Invalid x-address header"));
     }
-
-    let update_node = node.clone();
-    let existing_node = data.node_store.get_node(update_node.id.clone()).await;
+    let node = node.into_inner();
+    let existing_node = data.node_store.get_node(&node.id).await;
     if let Ok(Some(existing_node)) = existing_node {
         // Node already exists - check if it's active in a pool
         if existing_node.is_active {
-            if existing_node.node == update_node {
-                log::info!("Node {} is already active in a pool", update_node.id);
+            if existing_node.node == node {
+                log::info!("Node {} is already active in a pool", node.id);
                 return HttpResponse::Ok()
                     .json(ApiResponse::new(true, "Node registered successfully"));
             }
             // Temp. adjustment: The gpu object has changed and includes a vec of indices now.
             // This now causes the discovery svc to reject nodes that have just updated their software.
             // This is a temporary fix to ensure the node is accepted even though the indices are different.
-            let mut existing_clone = existing_node.node.clone();
-            existing_clone.worker_p2p_id = update_node.worker_p2p_id.clone();
-            existing_clone.worker_p2p_addresses = update_node.worker_p2p_addresses.clone();
-            match &update_node.compute_specs {
+            let mut existing_clone = existing_node.node;
+            existing_clone.worker_p2p_id.clone_from(&node.worker_p2p_id);
+            existing_clone
+                .worker_p2p_addresses
+                .clone_from(&node.worker_p2p_addresses);
+            match &node.compute_specs {
                 Some(compute_specs) => {
                     if let Some(ref mut existing_compute_specs) = existing_clone.compute_specs {
                         match &compute_specs.gpu {
                             Some(gpu_specs) => {
                                 existing_compute_specs.gpu = Some(gpu_specs.clone());
                                 existing_compute_specs.storage_gb = compute_specs.storage_gb;
-                                existing_compute_specs.storage_path =
-                                    compute_specs.storage_path.clone();
+                                existing_compute_specs
+                                    .storage_path
+                                    .clone_from(&compute_specs.storage_path);
                             }
                             None => {
                                 existing_compute_specs.gpu = None;
@@ -71,15 +73,15 @@ pub async fn register_node(
                 }
             }
 
-            if existing_clone == update_node {
-                log::info!("Node {} is already active in a pool", update_node.id);
+            if existing_clone == node {
+                log::info!("Node {} is already active in a pool", node.id);
                 return HttpResponse::Ok()
                     .json(ApiResponse::new(true, "Node registered successfully"));
             }
 
             warn!(
                 "Node {} tried to change discovery but is already active in a pool",
-                update_node.id
+                node.id
             );
             // Node is currently active in pool - cannot be updated
             // Did the user actually change node information?
@@ -92,21 +94,17 @@ pub async fn register_node(
 
     let active_nodes_count = data
         .node_store
-        .count_active_nodes_by_ip(update_node.ip_address.clone())
+        .count_active_nodes_by_ip(&node.ip_address)
         .await;
 
     if let Ok(count) = active_nodes_count {
         let existing_node_by_ip = data
             .node_store
-            .get_active_node_by_ip(update_node.ip_address.clone())
+            .get_active_node_by_ip(&node.ip_address)
             .await;
 
         let is_existing_node = existing_node_by_ip
-            .map(|result| {
-                result
-                    .map(|node| node.id == update_node.id)
-                    .unwrap_or(false)
-            })
+            .map(|result| result.is_some_and(|n| n.id == node.id))
             .unwrap_or(false);
 
         let effective_count = if is_existing_node { count - 1 } else { count };
@@ -114,33 +112,27 @@ pub async fn register_node(
         if effective_count >= data.max_nodes_per_ip {
             warn!(
                 "Node {} registration would exceed IP limit. Current active nodes on IP {}: {}, max allowed: {}",
-                update_node.id, update_node.ip_address, count, data.max_nodes_per_ip
+                node.id, node.ip_address, count, data.max_nodes_per_ip
             );
             return HttpResponse::BadRequest().json(ApiResponse::new(
                 false,
                 &format!(
                     "IP address {} already has {} active nodes (max allowed: {})",
-                    update_node.ip_address, count, data.max_nodes_per_ip
+                    node.ip_address, count, data.max_nodes_per_ip
                 ),
             ));
         }
     }
 
-    if let Some(contracts) = data.contracts.clone() {
-        let provider_address = match node.provider_address.parse() {
-            Ok(addr) => addr,
-            Err(_) => {
-                return HttpResponse::BadRequest()
-                    .json(ApiResponse::new(false, "Invalid provider address format"));
-            }
+    if let Some(contracts) = &data.contracts {
+        let Ok(provider_address) = node.provider_address.parse() else {
+            return HttpResponse::BadRequest()
+                .json(ApiResponse::new(false, "Invalid provider address format"));
         };
 
-        let node_id = match node.id.parse() {
-            Ok(id) => id,
-            Err(_) => {
-                return HttpResponse::BadRequest()
-                    .json(ApiResponse::new(false, "Invalid node ID format"));
-            }
+        let Ok(node_id) = node.id.parse() else {
+            return HttpResponse::BadRequest()
+                .json(ApiResponse::new(false, "Invalid node ID format"));
         };
 
         if contracts
@@ -202,9 +194,7 @@ pub async fn register_node(
         }
     }
 
-    let node_store = data.node_store.clone();
-
-    match node_store.register_node(node.into_inner()).await {
+    match data.node_store.register_node(node).await {
         Ok(_) => HttpResponse::Ok().json(ApiResponse::new(true, "Node registered successfully")),
         Err(_) => HttpResponse::InternalServerError()
             .json(ApiResponse::new(false, "Internal server error")),
@@ -469,13 +459,7 @@ mod tests {
         assert!(body.success);
         assert_eq!(body.data, "Node registered successfully");
 
-        let nodes = app_state.node_store.get_nodes().await;
-        let nodes = match nodes {
-            Ok(nodes) => nodes,
-            Err(_) => {
-                panic!("Error getting nodes");
-            }
-        };
+        let nodes = app_state.node_store.get_nodes().await.unwrap();
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, node.id);
         assert_eq!(nodes[0].last_updated, None);
@@ -615,13 +599,7 @@ mod tests {
         assert!(body.success);
         assert_eq!(body.data, "Node registered successfully");
 
-        let nodes = app_state.node_store.get_nodes().await;
-        let nodes = match nodes {
-            Ok(nodes) => nodes,
-            Err(_) => {
-                panic!("Error getting nodes");
-            }
-        };
+        let nodes = app_state.node_store.get_nodes().await.unwrap();
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, node.id);
     }

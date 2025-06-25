@@ -121,7 +121,7 @@ impl ChainSync {
         }
     }
 
-    pub async fn run(self) -> Result<(), Error> {
+    pub fn run(self) -> Result<(), Error> {
         let ChainSync {
             node_store,
             cancel_token,

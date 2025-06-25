@@ -31,7 +31,7 @@ impl LocationService {
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
-            .expect("Failed to build HTTP client");
+            .unwrap_or_else(|_| panic!("Failed to build HTTP client"));
 
         Self {
             client,

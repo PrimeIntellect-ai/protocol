@@ -21,26 +21,24 @@ pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
 }
 
 fn filter_nodes_for_pool(nodes: Vec<DiscoveryNode>, pool_id: u32) -> Vec<DiscoveryNode> {
-    let nodes_for_pool: Vec<DiscoveryNode> = nodes
-        .iter()
-        .filter(|node| node.compute_pool_id == pool_id)
-        .cloned()
-        .collect();
+    // First pass: collect nodes for the target pool
+    let mut nodes_for_pool = Vec::new();
+    let mut other_active_ips = std::collections::HashSet::new();
 
-    // Filter out nodes with IPs that are currently active in another pool
-    let filtered: Vec<DiscoveryNode> = nodes_for_pool
-        .iter()
-        .filter(|node| {
-            // Check if there's any other node with the same IP address in a different pool that is active
-            !nodes.iter().any(|other| {
-                other.ip_address == node.ip_address
-                    && other.compute_pool_id != node.compute_pool_id
-                    && other.is_active
-            })
-        })
-        .cloned()
-        .collect();
-    filtered
+    // Single pass through all nodes to collect both target pool nodes and active IPs from other pools
+    for node in nodes {
+        if node.compute_pool_id == pool_id {
+            nodes_for_pool.push(node);
+        } else if node.is_active {
+            other_active_ips.insert(node.ip_address.clone());
+        }
+    }
+
+    // Filter out nodes whose IPs are active in other pools
+    nodes_for_pool
+        .into_iter()
+        .filter(|node| !other_active_ips.contains(&node.ip_address))
+        .collect()
 }
 
 pub async fn get_nodes_for_pool(
@@ -51,14 +49,14 @@ pub async fn get_nodes_for_pool(
     let nodes = data.node_store.get_nodes().await;
     match nodes {
         Ok(nodes) => {
-            let id_clone = pool_id.clone();
-            let pool_contract_id: U256 = match id_clone.parse::<U256>() {
+            let pool_contract_id: U256 = match pool_id.parse::<U256>() {
                 Ok(id) => id,
                 Err(_) => {
                     return HttpResponse::BadRequest()
                         .json(ApiResponse::new(false, "Invalid pool ID format"));
                 }
             };
+
             let pool_id: u32 = match pool_id.parse() {
                 Ok(id) => id,
                 Err(_) => {
@@ -69,19 +67,17 @@ pub async fn get_nodes_for_pool(
 
             match data.contracts.clone() {
                 Some(contracts) => {
-                    let pool_info =
-                        match contracts.compute_pool.get_pool_info(pool_contract_id).await {
-                            Ok(info) => info,
-                            Err(_) => {
-                                return HttpResponse::NotFound()
-                                    .json(ApiResponse::new(false, "Pool not found"));
-                            }
-                        };
+                    let Ok(pool_info) =
+                        contracts.compute_pool.get_pool_info(pool_contract_id).await
+                    else {
+                        return HttpResponse::NotFound()
+                            .json(ApiResponse::new(false, "Pool not found"));
+                    };
                     let owner = pool_info.creator;
                     let manager = pool_info.compute_manager_key;
                     let address_str = match req.headers().get("x-address") {
                         Some(address) => match address.to_str() {
-                            Ok(addr) => addr.to_string(),
+                            Ok(addr) => addr,
                             Err(_) => {
                                 return HttpResponse::BadRequest().json(ApiResponse::new(
                                     false,
@@ -424,7 +420,7 @@ mod tests {
         assert!(filtered_nodes.iter().any(|n| n.id == "0x2222"));
 
         // The pool 1 node should be included in pool 1 results
-        let filtered_nodes = filter_nodes_for_pool(nodes.clone(), 1);
+        let filtered_nodes = filter_nodes_for_pool(nodes, 1);
         assert_eq!(filtered_nodes.len(), 1);
         assert!(filtered_nodes.iter().any(|n| n.id == "0x1111"));
     }
