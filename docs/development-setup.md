@@ -60,13 +60,17 @@ brew install redis
 sudo apt-get install redis-server
 ```
 
-#### Ruby and Tmux
+#### Tmux
 ```bash
 # Install Tmux (MacOS)
 brew install tmux
 
 # Install Tmux (Ubuntu)
 sudo apt install tmux
+```
+
+### Ubuntu:
+```bash
 sudo apt-get install libssl-dev
 ```
 
@@ -79,6 +83,7 @@ sudo apt-get install libssl-dev
 - Create `.env` files in base folder and discovery folder
 
 ### 4. Launch Core Services
+- Copy the `.env.example` file 
 ```bash
 make up
 ```
