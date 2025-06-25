@@ -195,29 +195,14 @@ impl NodeStore {
         nodes.sort_by(|a, b| match (&a.status, &b.status) {
             (NodeStatus::Healthy, NodeStatus::Healthy)
             | (NodeStatus::Discovered, NodeStatus::Discovered)
-            | (NodeStatus::Dead, NodeStatus::Dead)
-            | (NodeStatus::WaitingForHeartbeat, NodeStatus::WaitingForHeartbeat)
-            | (NodeStatus::Unhealthy, NodeStatus::Unhealthy)
-            | (NodeStatus::Ejected, NodeStatus::Ejected)
-            | (NodeStatus::Banned, NodeStatus::Banned) => std::cmp::Ordering::Equal,
-            (NodeStatus::Healthy, _)
-            | (NodeStatus::Discovered, _)
-            | (NodeStatus::WaitingForHeartbeat, NodeStatus::Unhealthy)
-            | (NodeStatus::WaitingForHeartbeat, NodeStatus::Ejected)
-            | (NodeStatus::WaitingForHeartbeat, NodeStatus::Banned)
-            | (NodeStatus::Unhealthy, NodeStatus::Ejected)
-            | (NodeStatus::Unhealthy, NodeStatus::Banned)
-            | (NodeStatus::Ejected, NodeStatus::Banned) => std::cmp::Ordering::Less,
-            (_, NodeStatus::Healthy)
-            | (_, NodeStatus::Discovered)
-            | (NodeStatus::Dead, _)
-            | (NodeStatus::Unhealthy, NodeStatus::WaitingForHeartbeat)
-            | (NodeStatus::Ejected, NodeStatus::WaitingForHeartbeat)
-            | (NodeStatus::Banned, NodeStatus::WaitingForHeartbeat)
-            | (NodeStatus::Ejected, NodeStatus::Unhealthy)
-            | (NodeStatus::Banned, NodeStatus::Unhealthy)
-            | (NodeStatus::Banned, NodeStatus::Ejected) => std::cmp::Ordering::Greater,
-            (_, NodeStatus::Dead) => std::cmp::Ordering::Less,
+            | (NodeStatus::Dead, NodeStatus::Dead) => std::cmp::Ordering::Equal,
+            (NodeStatus::Healthy, _) | (_, NodeStatus::Dead) | (NodeStatus::Discovered, _) => {
+                std::cmp::Ordering::Less
+            }
+            (_, NodeStatus::Healthy) | (_, NodeStatus::Discovered) | (NodeStatus::Dead, _) => {
+                std::cmp::Ordering::Greater
+            }
+            _ => std::cmp::Ordering::Equal,
         });
 
         Ok(nodes)
