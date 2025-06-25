@@ -45,6 +45,20 @@ pub fn detect_gpu() -> Vec<GpuSpecs> {
 fn get_gpu_status() -> Vec<GpuDevice> {
     let mut nvml_guard = NVML.lock().unwrap();
 
+    // Read WORKER_VISIBLE_DEVICES environment variable
+    let visible_devices: Option<Vec<u32>> =
+        std::env::var("WORKER_VISIBLE_DEVICES").ok().and_then(|s| {
+            if s.trim().is_empty() {
+                None
+            } else {
+                Some(
+                    s.split(',')
+                        .filter_map(|idx| idx.trim().parse::<u32>().ok())
+                        .collect(),
+                )
+            }
+        });
+
     // Initialize NVML if not already initialized
     if nvml_guard.is_none() {
         // Try to load the NVIDIA management library dynamically
@@ -94,6 +108,15 @@ fn get_gpu_status() -> Vec<GpuDevice> {
         std::collections::HashMap::new();
 
     for i in 0..device_count {
+        let device_index = i as u32;
+
+        // Skip this device if it's not in the visible devices list
+        if let Some(ref visible) = visible_devices {
+            if !visible.contains(&device_index) {
+                continue;
+            }
+        }
+
         match nvml.device_by_index(i as u32) {
             Ok(device) => {
                 let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
