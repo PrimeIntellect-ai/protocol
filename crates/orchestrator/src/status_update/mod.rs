@@ -176,10 +176,10 @@ impl NodeStatusUpdater {
         for result in results {
             match result {
                 (Ok(()), address) => {
-                    debug!("Successfully processed node: {:?}", address);
+                    debug!("Successfully processed node: {address:?}");
                 }
                 (Err(e), address) => {
-                    error!("Error processing node {:?}: {}", address, e);
+                    error!("Error processing node {address:?}: {e}");
                 }
             }
         }
@@ -222,7 +222,7 @@ async fn process_node(
                         .update_node_version(&node.address, version)
                         .await
                     {
-                        error!("Error updating node version: {}", e);
+                        error!("Error updating node version: {e}");
                     }
                 }
             }
@@ -257,7 +257,7 @@ async fn process_node(
                 .clear_unhealthy_counter(&node.address)
                 .await
             {
-                error!("Error clearing unhealthy counter: {}", e);
+                error!("Error clearing unhealthy counter: {e}");
             }
         }
         None => {
@@ -267,7 +267,7 @@ async fn process_node(
                 .increment_unhealthy_counter(&node.address)
                 .await
             {
-                error!("Error incrementing unhealthy counter: {}", e);
+                error!("Error incrementing unhealthy counter: {e}");
             }
 
             match node.status {
@@ -324,7 +324,7 @@ async fn process_node(
             {
                 Ok(metrics) => metrics,
                 Err(e) => {
-                    error!("Error getting metrics for node: {}", e);
+                    error!("Error getting metrics for node: {e}");
                     Default::default()
                 }
             };
@@ -337,7 +337,7 @@ async fn process_node(
                         .delete_metric(&task_id, &label, &node.address.to_string())
                         .await
                     {
-                        error!("Error deleting metric: {}", e);
+                        error!("Error deleting metric: {e}");
                     }
                 }
             }
@@ -354,7 +354,7 @@ async fn process_node(
             .update_node_status(&node.address, new_status)
             .await
         {
-            error!("Error updating node status: {}", e);
+            error!("Error updating node status: {e}");
         }
 
         if let Some(updated_node) = store_context.node_store.get_node(&node.address).await? {
@@ -363,7 +363,7 @@ async fn process_node(
                     .handle_status_change(&updated_node, &old_status)
                     .await
                 {
-                    error!("Error handling status change: {}", e);
+                    error!("Error handling status change: {e}");
                 }
             }
         }

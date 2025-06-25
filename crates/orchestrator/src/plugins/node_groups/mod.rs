@@ -186,11 +186,11 @@ impl NodeGroupsPlugin {
 
             // First, form new groups with optimal sizing
             if let Err(e) = self.try_form_new_groups().await {
-                error!("Error in group formation: {}", e);
+                error!("Error in group formation: {e}");
             }
 
             if let Err(e) = self.try_merge_solo_groups().await {
-                error!("Error in group merging: {}", e);
+                error!("Error in group merging: {e}");
             }
 
             if let Some(heartbeats) = &self.node_groups_heartbeats {
@@ -198,7 +198,7 @@ impl NodeGroupsPlugin {
             }
 
             let elapsed = start.elapsed();
-            log::info!("Group management loop completed in {:?}", elapsed);
+            log::info!("Group management loop completed in {elapsed:?}");
         }
     }
 
@@ -619,7 +619,7 @@ impl NodeGroupsPlugin {
                         group.configuration_name.clone(),
                         group.nodes.iter().cloned().collect(),
                     ) {
-                        error!("Failed to send group created webhook: {}", e);
+                        error!("Failed to send group created webhook: {e}");
                     }
                 }
             }
@@ -982,7 +982,7 @@ impl NodeGroupsPlugin {
                         group.configuration_name.clone(),
                         group.nodes.iter().cloned().collect(),
                     ) {
-                        error!("Failed to send group dissolved webhook: {}", e);
+                        error!("Failed to send group dissolved webhook: {e}");
                     }
                 }
             }
@@ -994,7 +994,7 @@ impl NodeGroupsPlugin {
                     merged_group.configuration_name.clone(),
                     merged_group.nodes.iter().cloned().collect(),
                 ) {
-                    error!("Failed to send group created webhook: {}", e);
+                    error!("Failed to send group created webhook: {e}");
                 }
             }
         }
@@ -1223,20 +1223,19 @@ impl NodeGroupsPlugin {
     }
 
     pub(crate) fn on_task_created(&self, task: &Task) -> Result<()> {
-        debug!("Task created event received: {:?}", task);
+        debug!("Task created event received: {task:?}");
         let topologies = get_task_topologies(task)?;
         debug!("Found {} topologies for new task", topologies.len());
 
         for topology in topologies {
-            debug!("Enabling configuration for topology: {}", topology);
+            debug!("Enabling configuration for topology: {topology}");
             let store = self.store.clone();
             tokio::spawn({
                 let topology = topology.clone();
                 async move {
                     if let Err(e) = enable_configuration(&store, &topology).await {
                         error!(
-                            "Failed to enable configuration for topology {}: {}",
-                            topology, e
+                            "Failed to enable configuration for topology {topology}: {e}"
                         );
                     }
                 }
@@ -1306,7 +1305,7 @@ impl NodeGroupsPlugin {
                         {
                             Ok(tasks) => tasks,
                             Err(e) => {
-                                error!("Failed to get tasks for topology {}: {}", topology, e);
+                                error!("Failed to get tasks for topology {topology}: {e}");
                                 continue;
                             }
                         };
@@ -1352,11 +1351,11 @@ pub(crate) async fn disable_configuration(
 /// Get all groups assigned to a specific task
 /// Returns a list of group IDs that are currently working on the given task
 async fn get_groups_for_task(store: Arc<RedisStore>, task_id: &str) -> Result<Vec<String>, Error> {
-    debug!("Getting all groups for task: {}", task_id);
+    debug!("Getting all groups for task: {task_id}");
     let mut conn = store.client.get_multiplexed_async_connection().await?;
 
     // First, collect all group_task keys
-    let pattern = format!("{}*", GROUP_TASK_KEY_PREFIX);
+    let pattern = format!("{GROUP_TASK_KEY_PREFIX}*");
     let mut iter: redis::AsyncIter<String> = conn.scan_match(&pattern).await?;
     let mut all_keys = Vec::new();
 
@@ -1393,7 +1392,7 @@ async fn get_all_tasks_for_topology(
     store_context: Arc<StoreContext>,
     topology: &str,
 ) -> Result<Vec<Task>, Error> {
-    debug!("Getting all tasks for topology: {}", topology);
+    debug!("Getting all tasks for topology: {topology}");
     let all_tasks = store_context.task_store.get_all_tasks().await?;
     debug!("Found {} total tasks to check", all_tasks.len());
 
@@ -1409,12 +1408,12 @@ async fn get_all_tasks_for_topology(
 }
 
 pub(crate) fn get_task_topologies(task: &Task) -> Result<Vec<String>, Error> {
-    debug!("Getting topologies for task: {:?}", task);
+    debug!("Getting topologies for task: {task:?}");
     if let Some(config) = &task.scheduling_config {
         if let Some(plugins) = &config.plugins {
             if let Some(node_groups) = plugins.get("node_groups") {
                 if let Some(allowed_topologies) = node_groups.get("allowed_topologies") {
-                    debug!("Found allowed topologies: {:?}", allowed_topologies);
+                    debug!("Found allowed topologies: {allowed_topologies:?}");
                     return Ok(allowed_topologies.iter().map(|t| t.to_string()).collect());
                 }
             }
@@ -1429,7 +1428,7 @@ async fn dissolve_group(
     store: &Arc<RedisStore>,
     webhook_plugins: &Option<Vec<WebhookPlugin>>,
 ) -> Result<(), Error> {
-    debug!("Attempting to dissolve group: {}", group_id);
+    debug!("Attempting to dissolve group: {group_id}");
     let mut conn = store.client.get_multiplexed_async_connection().await?;
 
     let group_key = get_group_key(group_id);
@@ -1437,7 +1436,7 @@ async fn dissolve_group(
 
     if let Some(group_data) = group_data {
         let group: NodeGroup = serde_json::from_str(&group_data)?;
-        debug!("Found group to dissolve: {:?}", group);
+        debug!("Found group to dissolve: {group:?}");
 
         // Use a Redis transaction to atomically dissolve the group
         let mut pipe = redis::pipe();
@@ -1453,12 +1452,12 @@ async fn dissolve_group(
         pipe.srem(GROUPS_INDEX_KEY, group_id);
 
         // Delete group task assignment
-        let task_key = format!("{}{}", GROUP_TASK_KEY_PREFIX, group_id);
-        debug!("Deleting group task assignment from key: {}", task_key);
+        let task_key = format!("{GROUP_TASK_KEY_PREFIX}{group_id}");
+        debug!("Deleting group task assignment from key: {task_key}");
         pipe.del(&task_key);
 
         // Delete group
-        debug!("Deleting group data from key: {}", group_key);
+        debug!("Deleting group data from key: {group_key}");
         pipe.del(&group_key);
 
         // Execute all operations atomically
@@ -1479,12 +1478,12 @@ async fn dissolve_group(
                     group_clone.configuration_name.to_string(),
                     group_clone.nodes.iter().cloned().collect(),
                 ) {
-                    error!("Failed to send group dissolved webhook: {}", e);
+                    error!("Failed to send group dissolved webhook: {e}");
                 }
             }
         }
     } else {
-        debug!("No group found with ID: {}", group_id);
+        debug!("No group found with ID: {group_id}");
     }
 
     Ok(())
@@ -1497,5 +1496,5 @@ fn generate_group_id() -> String {
 }
 
 fn get_group_key(group_id: &str) -> String {
-    format!("{}{}", GROUP_KEY_PREFIX, group_id)
+    format!("{GROUP_KEY_PREFIX}{group_id}")
 }

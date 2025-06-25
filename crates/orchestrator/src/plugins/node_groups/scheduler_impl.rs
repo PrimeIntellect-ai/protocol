@@ -206,8 +206,7 @@ impl NodeGroupsPlugin {
             }
         }
         info!(
-            "Node {} is not in a group, skipping all tasks",
-            node_address
+            "Node {node_address} is not in a group, skipping all tasks"
         );
         Ok(vec![])
     }
