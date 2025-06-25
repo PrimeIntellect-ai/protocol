@@ -43,7 +43,7 @@ impl ChainSync {
         }
     }
 
-    pub async fn run(self) -> Result<(), Error> {
+    pub fn run(self) -> Result<(), Error> {
         let ChainSync {
             node_store,
             cancel_token,
@@ -70,7 +70,7 @@ impl ChainSync {
                         match nodes {
                             Ok(nodes) => {
                                 let total_nodes = nodes.len();
-                                info!("Syncing {} nodes", total_nodes);
+                                info!("Syncing {total_nodes} nodes");
 
                                 // Process nodes in parallel with concurrency limit
                                 let results: Vec<Result<(), Error>> = stream::iter(nodes)
@@ -94,7 +94,7 @@ impl ChainSync {
                                         Ok(_) => success_count += 1,
                                         Err(e) => {
                                             failure_count += 1;
-                                            warn!("Node sync failed: {}", e);
+                                            warn!("Node sync failed: {e}");
                                         }
                                     }
                                 }
@@ -116,7 +116,7 @@ impl ChainSync {
                                 );
                             }
                             Err(e) => {
-                                error!("Error getting nodes from store: {}", e);
+                                error!("Error getting nodes from store: {e}");
                             }
                         }
                     }

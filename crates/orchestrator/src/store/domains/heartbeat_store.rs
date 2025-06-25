@@ -21,7 +21,7 @@ impl HeartbeatStore {
     pub async fn beat(&self, payload: &HeartbeatRequest) -> Result<()> {
         let address =
             Address::from_str(&payload.address).map_err(|_| anyhow!("Failed to parse address"))?;
-        let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, address);
+        let key = format!("{ORCHESTRATOR_HEARTBEAT_KEY}:{address}");
 
         let payload_string =
             serde_json::to_string(payload).map_err(|_| anyhow!("Failed to serialize payload"))?;
@@ -29,7 +29,7 @@ impl HeartbeatStore {
         con.set_options::<_, _, ()>(
             &key,
             payload_string,
-            redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(60)),
+            redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(90)),
         )
         .await
         .map_err(|_| anyhow!("Failed to set options"))?;
@@ -44,7 +44,7 @@ impl HeartbeatStore {
             .get_multiplexed_async_connection()
             .await
             .map_err(|_| anyhow!("Failed to get connection"))?;
-        let key = format!("{}:{}", ORCHESTRATOR_HEARTBEAT_KEY, address);
+        let key = format!("{ORCHESTRATOR_HEARTBEAT_KEY}:{address}");
         let value: Option<String> = con
             .get(key)
             .await
@@ -59,7 +59,7 @@ impl HeartbeatStore {
             .get_multiplexed_async_connection()
             .await
             .map_err(|_| anyhow!("Failed to get connection"))?;
-        let key = format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, address);
+        let key = format!("{ORCHESTRATOR_UNHEALTHY_COUNTER_KEY}:{address}");
         let value: Option<String> = con
             .get(key)
             .await
@@ -93,7 +93,7 @@ impl HeartbeatStore {
             .get_multiplexed_async_connection()
             .await
             .map_err(|_| anyhow!("Failed to get connection"))?;
-        let key = format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, address);
+        let key = format!("{ORCHESTRATOR_UNHEALTHY_COUNTER_KEY}:{address}");
         con.incr(key, 1)
             .await
             .map_err(|_| anyhow!("Failed to increment value"))
@@ -106,7 +106,7 @@ impl HeartbeatStore {
             .get_multiplexed_async_connection()
             .await
             .map_err(|_| anyhow!("Failed to get connection"))?;
-        let key = format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, address);
+        let key = format!("{ORCHESTRATOR_UNHEALTHY_COUNTER_KEY}:{address}");
         con.del(key)
             .await
             .map_err(|_| anyhow!("Failed to delete value"))

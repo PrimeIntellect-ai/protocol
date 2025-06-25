@@ -57,7 +57,7 @@ impl DiscoveryUpdater {
 
                 if should_update {
                     if let Err(e) = discovery_service.upload_discovery_info(&node_config).await {
-                        error!("Failed to update discovery info: {}", e);
+                        error!("Failed to update discovery info: {e}");
                     } else {
                         info!("Successfully updated discovery info");
                     }

@@ -26,10 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     if let Err(e) = setup_logging(Some(&cli)) {
-        eprintln!(
-            "Warning: Failed to initialize logging: {}. Using default logging.",
-            e
-        );
+        eprintln!("Warning: Failed to initialize logging: {e}. Using default logging.");
     }
 
     // Set up panic hook to log panics
@@ -85,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::select! {
         cmd_result = execute_command(&cli.command, command_token, task_handles_clone) => {
             if let Err(e) = cmd_result {
-                log::error!("Command execution error: {}", e);
+                log::error!("Command execution error: {e}");
             }
         }
         _ = cancellation_token.cancelled() => {

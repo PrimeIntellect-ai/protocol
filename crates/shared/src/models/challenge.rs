@@ -39,7 +39,7 @@ impl<'de> Deserialize<'de> for FixedF64 {
                 value
                     .parse::<f64>()
                     .map(FixedF64)
-                    .map_err(|_| E::custom(format!("invalid f64: {}", value)))
+                    .map_err(|_| E::custom(format!("invalid f64: {value}")))
             }
         }
 

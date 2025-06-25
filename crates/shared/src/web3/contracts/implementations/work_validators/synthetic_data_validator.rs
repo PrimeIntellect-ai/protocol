@@ -20,6 +20,14 @@ pub struct WorkInfo {
     pub work_units: U256,
 }
 
+impl WorkInfo {
+    pub fn is_valid(&self) -> bool {
+        self.node_id != Address::ZERO
+            && self.work_units != U256::ZERO
+            && self.provider != Address::ZERO
+    }
+}
+
 impl<P: alloy_provider::Provider> SyntheticDataWorkValidator<P> {
     pub fn new(address: Address, provider: P, abi_file_path: &str) -> Self {
         let instance = Contract::new(address, provider, abi_file_path);

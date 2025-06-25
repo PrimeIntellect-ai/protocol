@@ -226,7 +226,7 @@ async fn fetch_node_logs_p2p(
     {
         Ok(node) => node,
         Err(e) => {
-            error!("Failed to get node {}: {}", node_address, e);
+            error!("Failed to get node {node_address}: {e}");
             return json!({
                 "success": false,
                 "error": format!("Failed to get node: {}", e)
@@ -244,7 +244,7 @@ async fn fetch_node_logs_p2p(
                 match (&node.worker_p2p_id, &node.worker_p2p_addresses) {
                     (Some(p2p_id), Some(p2p_addrs)) if !p2p_addrs.is_empty() => (p2p_id, p2p_addrs),
                     _ => {
-                        error!("Node {} does not have P2P information", node_address);
+                        error!("Node {node_address} does not have P2P information");
                         return json!({
                             "success": false,
                             "error": "Node does not have P2P information",
@@ -268,7 +268,7 @@ async fn fetch_node_logs_p2p(
                     })
                 }
                 Ok(Err(e)) => {
-                    error!("P2P request failed for node {}: {}", node_address, e);
+                    error!("P2P request failed for node {node_address}: {e}");
                     json!({
                         "success": false,
                         "error": format!("P2P request failed: {}", e),
@@ -276,7 +276,7 @@ async fn fetch_node_logs_p2p(
                     })
                 }
                 Err(_) => {
-                    error!("P2P request timed out for node {}", node_address);
+                    error!("P2P request timed out for node {node_address}");
                     json!({
                         "success": false,
                         "error": "P2P request timed out",
@@ -286,7 +286,7 @@ async fn fetch_node_logs_p2p(
             }
         }
         None => {
-            error!("Node {} not found in orchestrator", node_address);
+            error!("Node {node_address} not found in orchestrator");
             json!({
                 "success": false,
                 "error": "Node not found in orchestrator",

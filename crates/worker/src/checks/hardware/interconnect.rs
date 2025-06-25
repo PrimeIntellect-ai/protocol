@@ -12,10 +12,7 @@ impl InterconnectCheck {
         // Cloudflare's speed test endpoint is not officially documented or guaranteed
         // Consider using a more reliable speed test service or implementing our own test server
         let download_bytes = 10 * 1024 * 1024; // 10 MB
-        let download_url = format!(
-            "https://speed.cloudflare.com/__down?bytes={}",
-            download_bytes
-        );
+        let download_url = format!("https://speed.cloudflare.com/__down?bytes={download_bytes}");
         let start = Instant::now();
         let response = client.get(&download_url).send().await?;
 

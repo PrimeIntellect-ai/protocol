@@ -88,11 +88,8 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
             toploc.push(Toploc::new(config, metrics.clone()));
         }
 
-        info!("Toploc invalidation type: {:?}", toploc_invalidation_type);
-        info!(
-            "Work unit invalidation type: {:?}",
-            work_unit_invalidation_type
-        );
+        info!("Toploc invalidation type: {toploc_invalidation_type:?}");
+        info!("Work unit invalidation type: {work_unit_invalidation_type:?}");
 
         Self {
             pool_id,
@@ -117,7 +114,7 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
     }
 
     fn get_key_for_work_key(&self, work_key: &str) -> String {
-        format!("work_validation_status:{}", work_key)
+        format!("work_validation_status:{work_key}")
     }
 
     /// Starts tracking an incomplete group with a grace period for recovery.
@@ -147,7 +144,7 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
         let group_exists: bool = con
             .exists(group_key)
             .await
-            .map_err(|e| Error::msg(format!("Failed to check group existence: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to check group existence: {e}")))?;
 
         if !group_exists {
             // No point tracking a group that doesn't exist yet
@@ -169,7 +166,7 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
         let added: i32 = cmd
             .query_async(&mut con)
             .await
-            .map_err(|e| Error::msg(format!("Failed to track incomplete group: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to track incomplete group: {e}")))?;
 
         if added > 0 {
             debug!(
@@ -177,10 +174,7 @@ impl<P: alloy::providers::Provider + Clone + 'static> SyntheticDataValidator<P> 
                 group_key, self.incomplete_group_grace_period_minutes, grace_period_deadline
             );
         } else {
-            debug!(
-                "Group {} already being tracked, preserving original deadline",
-                group_key
-            );
+            debug!("Group {group_key} already being tracked, preserving original deadline");
         }
 
         Ok(())
@@ -207,14 +201,14 @@ impl SyntheticDataValidator<WalletProvider> {
         let groups_past_deadline: Vec<String> = con
             .zrangebyscore("incomplete_groups", "-inf", current_timestamp)
             .await
-            .map_err(|e| Error::msg(format!("Failed to get groups past grace period: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to get groups past grace period: {e}")))?;
 
         // Remove these groups from tracking since their grace period is over
         if !groups_past_deadline.is_empty() {
             let _: () = con
                 .zrem("incomplete_groups", &groups_past_deadline)
                 .await
-                .map_err(|e| Error::msg(format!("Failed to remove groups from tracking: {}", e)))?;
+                .map_err(|e| Error::msg(format!("Failed to remove groups from tracking: {e}")))?;
 
             debug!(
                 "Found {} groups past their grace period",
@@ -305,12 +299,10 @@ impl SyntheticDataValidator<WalletProvider> {
         let removed: i32 = con
             .zrem("incomplete_groups", group_key)
             .await
-            .map_err(|e| {
-                Error::msg(format!("Failed to remove incomplete group tracking: {}", e))
-            })?;
+            .map_err(|e| Error::msg(format!("Failed to remove incomplete group tracking: {e}")))?;
 
         if removed > 0 {
-            debug!("Stopped tracking incomplete group: {}", group_key);
+            debug!("Stopped tracking incomplete group: {group_key}");
         }
 
         Ok(())
@@ -357,12 +349,12 @@ impl SyntheticDataValidator<WalletProvider> {
                     redis::SetOptions::default().with_expiration(redis::SetExpiry::EX(expiry)),
                 )
                 .await
-                .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
+                .map_err(|e| Error::msg(format!("Failed to set work validation status: {e}")))?;
         } else {
             let _: () = con
                 .set(&key, &validation_data)
                 .await
-                .map_err(|e| Error::msg(format!("Failed to set work validation status: {}", e)))?;
+                .map_err(|e| Error::msg(format!("Failed to set work validation status: {e}")))?;
         }
 
         // Manage rejection tracking for efficient querying
@@ -379,7 +371,7 @@ impl SyntheticDataValidator<WalletProvider> {
         validation_info: &WorkValidationInfo,
     ) -> Result<(), Error> {
         let rejection_set_key = "work_rejections";
-        let rejection_data_key = format!("work_rejection_data:{}", work_key);
+        let rejection_data_key = format!("work_rejection_data:{work_key}");
         let is_rejected = validation_info.status == ValidationResult::Reject;
 
         if is_rejected {
@@ -388,7 +380,7 @@ impl SyntheticDataValidator<WalletProvider> {
             let _: () = con
                 .zadd(rejection_set_key, work_key, timestamp)
                 .await
-                .map_err(|e| Error::msg(format!("Failed to add to rejections set: {}", e)))?;
+                .map_err(|e| Error::msg(format!("Failed to add to rejections set: {e}")))?;
 
             // Store rejection details if reason exists
             if let Some(reason) = &validation_info.reason {
@@ -399,7 +391,7 @@ impl SyntheticDataValidator<WalletProvider> {
                 let _: () = con
                     .set(&rejection_data_key, rejection_detail.to_string())
                     .await
-                    .map_err(|e| Error::msg(format!("Failed to set rejection data: {}", e)))?;
+                    .map_err(|e| Error::msg(format!("Failed to set rejection data: {e}")))?;
             }
         }
 
@@ -414,6 +406,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let validation_info = self.get_work_validation_info_from_redis(work_key).await?;
         Ok(validation_info.map(|info| info.status))
     }
+
     #[cfg(test)]
     async fn get_work_validation_info_from_redis(
         &self,
@@ -463,12 +456,12 @@ impl SyntheticDataValidator<WalletProvider> {
             .client
             .get_multiplexed_async_connection()
             .await?;
-        let key = format!("work_info:{}", work_key);
+        let key = format!("work_info:{work_key}");
         let work_info = serde_json::to_string(&work_info)?;
         let _: () = con
             .set(&key, work_info)
             .await
-            .map_err(|e| Error::msg(format!("Failed to set work info: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to set work info: {e}")))?;
         Ok(())
     }
 
@@ -478,25 +471,34 @@ impl SyntheticDataValidator<WalletProvider> {
             .client
             .get_multiplexed_async_connection()
             .await?;
-        let key = format!("work_info:{}", work_key);
+        let key = format!("work_info:{work_key}");
         let work_info: Option<String> = con
             .get(&key)
             .await
-            .map_err(|e| Error::msg(format!("Failed to get work info: {}", e)))?;
-        work_info
-            .map(|work_info| {
-                serde_json::from_str(&work_info)
-                    .map_err(|e| Error::msg(format!("Failed to parse work info: {}", e)))
-            })
-            .transpose()
+            .map_err(|e| Error::msg(format!("Failed to get work info: {e}")))?;
+
+        match work_info {
+            Some(work_info_str) => {
+                let work_info: WorkInfo = serde_json::from_str(&work_info_str)
+                    .map_err(|e| Error::msg(format!("Failed to parse work info: {e}")))?;
+
+                // Check if work_info has invalid values
+                if !work_info.is_valid() {
+                    Ok(None)
+                } else {
+                    Ok(Some(work_info))
+                }
+            }
+            None => Ok(None),
+        }
     }
 
     async fn get_file_name_for_work_key(
         &self,
         work_key: &str,
     ) -> Result<String, ProcessWorkKeyError> {
-        let redis_key = format!("file_name:{}", work_key);
-        let attempts_key = format!("file_name_attempts:{}", work_key);
+        let redis_key = format!("file_name:{work_key}");
+        let attempts_key = format!("file_name_attempts:{work_key}");
         let mut con = self
             .redis_store
             .client
@@ -527,10 +529,14 @@ impl SyntheticDataValidator<WalletProvider> {
         const MAX_ATTEMPTS: i64 = 60;
         if attempts >= MAX_ATTEMPTS {
             // If we've tried too many times, soft invalidate the work and update its status
+            #[cfg(test)]
+            if let Err(_e) = self.soft_invalidate_work(work_key) {
+                // Test mode: error handling skipped
+            }
+            #[cfg(not(test))]
             if let Err(e) = self.soft_invalidate_work(work_key).await {
                 error!(
-                    "Failed to soft invalidate work after max filename resolution attempts: {}",
-                    e
+                    "Failed to soft invalidate work after max filename resolution attempts: {e}"
                 );
             }
             // Set the validation status to FileNameResolutionFailed to prevent future processing
@@ -541,14 +547,10 @@ impl SyntheticDataValidator<WalletProvider> {
                 )
                 .await
             {
-                error!(
-                    "Failed to update validation status after max attempts: {}",
-                    e
-                );
+                error!("Failed to update validation status after max attempts: {e}");
             }
             return Err(ProcessWorkKeyError::MaxAttemptsReached(format!(
-                "Failed to resolve filename after {} attempts for work key: {}",
-                MAX_ATTEMPTS, work_key
+                "Failed to resolve filename after {MAX_ATTEMPTS} attempts for work key: {work_key}"
             )));
         }
 
@@ -559,16 +561,12 @@ impl SyntheticDataValidator<WalletProvider> {
             .map_err(|e| ProcessWorkKeyError::FileNameResolutionError(e.to_string()))?;
 
         if original_file_name.is_empty() {
-            error!(
-                "Failed to resolve original file name for work key: {}",
-                work_key
-            );
+            error!("Failed to resolve original file name for work key: {work_key}");
             if let Some(metrics) = &self.metrics {
                 metrics.record_work_key_error("file_name_resolution_failed");
             }
             return Err(ProcessWorkKeyError::FileNameResolutionError(format!(
-                "Failed to resolve original file name for work key: {}",
-                work_key
+                "Failed to resolve original file name for work key: {work_key}"
             )));
         }
 
@@ -596,15 +594,13 @@ impl SyntheticDataValidator<WalletProvider> {
             Err(ProcessWorkKeyError::MaxAttemptsReached(_)) => {
                 // Status is already set in get_file_name_for_work_key
                 return Err(Error::msg(format!(
-                    "Failed to resolve filename after max attempts for work key: {}",
-                    work_key
+                    "Failed to resolve filename after max attempts for work key: {work_key}"
                 )));
             }
             Err(e) => {
-                error!("Failed to get file name for work key: {}", e);
+                error!("Failed to get file name for work key: {e}");
                 return Err(Error::msg(format!(
-                    "Failed to get file name for work key: {}",
-                    e
+                    "Failed to get file name for work key: {e}"
                 )));
             }
         };
@@ -622,7 +618,7 @@ impl SyntheticDataValidator<WalletProvider> {
         redis
             .hset::<_, _, _, ()>(&group_key, work_key, group_info.to_redis()?)
             .await
-            .map_err(|e| Error::msg(format!("Failed to set group info in Redis: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to set group info in Redis: {e}")))?;
 
         Ok(group_key)
     }
@@ -636,14 +632,14 @@ impl SyntheticDataValidator<WalletProvider> {
         let group_size: u32 = redis
             .hlen::<_, u32>(group_key)
             .await
-            .map_err(|e| Error::msg(format!("Failed to get group size from Redis: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to get group size from Redis: {e}")))?;
 
         let expected_size = group_key
             .split(':')
             .nth(2)
             .ok_or_else(|| Error::msg("Failed to get group size from group key"))?
             .parse::<u32>()
-            .map_err(|e| Error::msg(format!("Failed to parse group size: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to parse group size: {e}")))?;
 
         Ok(group_size == expected_size)
     }
@@ -652,7 +648,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let group_key = match self.build_group_for_key(work_key).await {
             Ok(key) => key,
             Err(e) => {
-                error!("Failed to build group key for work key {}: {}", work_key, e);
+                error!("Failed to build group key for work key {work_key}: {e}");
                 return Ok(None);
             }
         };
@@ -660,7 +656,7 @@ impl SyntheticDataValidator<WalletProvider> {
         if ready_for_validation {
             // Remove from incomplete group tracking since it's now complete
             if let Err(e) = self.remove_incomplete_group_tracking(&group_key).await {
-                error!("Failed to remove incomplete group tracking: {}", e);
+                error!("Failed to remove incomplete group tracking: {e}");
             }
             let mut redis = self
                 .redis_store
@@ -671,7 +667,7 @@ impl SyntheticDataValidator<WalletProvider> {
             let mut entries: Vec<(String, GroupInformation)> = Vec::new();
             for (key, value) in group_entries {
                 let info = GroupInformation::from_redis(&value)
-                    .map_err(|e| Error::msg(format!("Failed to parse group info: {}", e)))?;
+                    .map_err(|e| Error::msg(format!("Failed to parse group info: {e}")))?;
                 entries.push((key, info));
             }
 
@@ -690,7 +686,7 @@ impl SyntheticDataValidator<WalletProvider> {
         } else {
             // Track incomplete group for potential soft invalidation
             if let Err(e) = self.track_incomplete_group(&group_key).await {
-                error!("Failed to track incomplete group: {}", e);
+                error!("Failed to track incomplete group: {e}");
             }
         }
         Ok(None)
@@ -745,12 +741,12 @@ impl SyntheticDataValidator<WalletProvider> {
                         .update_work_info_in_redis(&work_key_clone, &info_copy)
                         .await
                     {
-                        error!("Failed to cache work info for {}: {}", work_key_clone, e);
+                        error!("Failed to cache work info for {work_key_clone}: {e}");
                     }
                 });
                 info
             } else {
-                error!("Failed to get work info for {}", work_key);
+                error!("Failed to get work info for {work_key}");
                 continue;
             };
 
@@ -797,8 +793,7 @@ impl SyntheticDataValidator<WalletProvider> {
         }
 
         info!(
-            "keys_to_process: {} (including keys with no status or pending status)",
-            keys_to_process
+            "keys_to_process: {keys_to_process} (including keys with no status or pending status)"
         );
         if let Some(metrics) = &self.metrics {
             metrics.record_work_keys_to_process(keys_to_process as f64);
@@ -826,7 +821,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let mut pipe = redis::pipe();
 
         for work_key in work_keys {
-            let work_info_key = format!("work_info:{}", work_key);
+            let work_info_key = format!("work_info:{work_key}");
             pipe.get(&work_info_key);
         }
 
@@ -838,7 +833,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let results: Vec<Option<String>> = pipe
             .query_async(&mut con)
             .await
-            .map_err(|e| Error::msg(format!("Failed to execute Redis pipeline: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to execute Redis pipeline: {e}")))?;
 
         let mut work_info_map = HashMap::new();
         let mut status_map = HashMap::new();
@@ -852,7 +847,7 @@ impl SyntheticDataValidator<WalletProvider> {
                         work_info_map.insert(work_key.clone(), work_info);
                     }
                     Err(e) => {
-                        debug!("Failed to parse work info for {}: {}", work_key, e);
+                        debug!("Failed to parse work info for {work_key}: {e}");
                     }
                 }
             }
@@ -870,7 +865,7 @@ impl SyntheticDataValidator<WalletProvider> {
                             status_map.insert(work_key.clone(), status);
                         }
                         Err(e) => {
-                            debug!("Failed to parse validation status for {}: {}", work_key, e);
+                            debug!("Failed to parse validation status for {work_key}: {e}");
                         }
                     }
                 }
@@ -896,9 +891,17 @@ impl SyntheticDataValidator<WalletProvider> {
                 let pool_id = self.pool_id;
                 async move {
                     match validator.get_work_info(pool_id, &work_key).await {
-                        Ok(work_info) => Some((work_key, work_info)),
+                        Ok(work_info) => {
+                            match !work_info.is_valid() {
+                                true => {
+                                    error!("Got zero/default work info for key {work_key}, likely not yet in contract");
+                                    None
+                                }
+                                false => Some((work_key, work_info)),
+                            }
+                        }
                         Err(e) => {
-                            error!("Failed to get work info for {}: {}", work_key, e);
+                            error!("Failed to get work info for {work_key}: {e}");
                             None
                         }
                     }
@@ -920,8 +923,8 @@ impl SyntheticDataValidator<WalletProvider> {
             .get_file_name_for_work_key(&work_info.0)
             .await
             .map_err(|e| {
-                error!("Failed to get file name for work key: {}", e);
-                Error::msg(format!("Failed to get file name for work key: {}", e))
+                error!("Failed to get file name for work key: {e}");
+                Error::msg(format!("Failed to get file name for work key: {e}"))
             })?;
         let toploc_config = self
             .find_matching_toploc_config(&file_name)
@@ -1011,7 +1014,7 @@ impl SyntheticDataValidator<WalletProvider> {
         Ok(rejected_nodes)
     }
 
-    async fn handle_group_toploc_acceptance(
+    fn handle_group_toploc_acceptance(
         &self,
         group: &ToplocGroup,
         status: &GroupValidationResult,
@@ -1040,22 +1043,20 @@ impl SyntheticDataValidator<WalletProvider> {
         }
 
         if !work_units_match {
-            let nodes_with_wrong_work_unit_claims = self
-                .handle_work_units_mismatch(
-                    group,
-                    status,
-                    total_claimed_units,
-                    node_work_units,
-                    output_flops_u256,
-                )
-                .await?;
+            let nodes_with_wrong_work_unit_claims = self.handle_work_units_mismatch(
+                group,
+                status,
+                total_claimed_units,
+                node_work_units,
+                output_flops_u256,
+            )?;
             Ok(nodes_with_wrong_work_unit_claims)
         } else {
             Ok(Vec::new())
         }
     }
 
-    async fn handle_work_units_mismatch(
+    fn handle_work_units_mismatch(
         &self,
         group: &ToplocGroup,
         status: &GroupValidationResult,
@@ -1107,7 +1108,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let work_keys_with_scores: Vec<(String, f64)> = con
             .zrange_withscores(rejection_set_key, 0, -1)
             .await
-            .map_err(|e| Error::msg(format!("Failed to get rejections from set: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to get rejections from set: {e}")))?;
 
         if work_keys_with_scores.is_empty() {
             return Ok(Vec::new());
@@ -1118,13 +1119,13 @@ impl SyntheticDataValidator<WalletProvider> {
         // Batch fetch rejection details using MGET for efficiency
         let rejection_data_keys: Vec<String> = work_keys
             .iter()
-            .map(|key| format!("work_rejection_data:{}", key))
+            .map(|key| format!("work_rejection_data:{key}"))
             .collect();
 
         let rejection_details: Vec<Option<String>> = con
             .mget(&rejection_data_keys)
             .await
-            .map_err(|e| Error::msg(format!("Failed to batch get rejection details: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to batch get rejection details: {e}")))?;
 
         let mut rejections = Vec::new();
 
@@ -1168,7 +1169,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let work_keys: Vec<String> = con
             .zrevrange(rejection_set_key, 0, limit - 1)
             .await
-            .map_err(|e| Error::msg(format!("Failed to get recent rejections: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to get recent rejections: {e}")))?;
 
         if work_keys.is_empty() {
             return Ok(Vec::new());
@@ -1177,13 +1178,13 @@ impl SyntheticDataValidator<WalletProvider> {
         // Batch fetch rejection details
         let rejection_data_keys: Vec<String> = work_keys
             .iter()
-            .map(|key| format!("work_rejection_data:{}", key))
+            .map(|key| format!("work_rejection_data:{key}"))
             .collect();
 
         let rejection_details: Vec<Option<String>> = con
             .mget(&rejection_data_keys)
             .await
-            .map_err(|e| Error::msg(format!("Failed to batch get rejection details: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to batch get rejection details: {e}")))?;
 
         let mut rejections = Vec::new();
 
@@ -1234,19 +1235,19 @@ impl SyntheticDataValidator<WalletProvider> {
             );
         } else {
             debug!(
-                "No work keys to validate in the last {} seconds creation time",
-                max_age_in_seconds
+                "No work keys to validate in the last {max_age_in_seconds} seconds creation time"
             );
         }
         // Process incomplete groups past their grace period before handling new work
         if let Err(e) = self.process_groups_past_grace_period().await {
-            error!("Failed to process groups past grace period: {}", e);
+            error!("Failed to process groups past grace period: {e}");
         }
 
         self.process_work_keys(work_keys).await
     }
 
     pub async fn process_group_status_check(&self, group: ToplocGroup) -> Result<(), Error> {
+        println!("processing group status check: {group:?}");
         let toploc_config = self
             .find_matching_toploc_config(&group.prefix)
             .ok_or(Error::msg(format!(
@@ -1258,6 +1259,8 @@ impl SyntheticDataValidator<WalletProvider> {
             .get_group_file_validation_status(&group.group_file_name)
             .await?;
         let toploc_config_name = toploc_config.name();
+        println!("toploc config name: {toploc_config_name:?}");
+        println!("status: {status:?}");
 
         if let Some(metrics) = &self.metrics {
             metrics.record_group_validation_status(
@@ -1282,22 +1285,26 @@ impl SyntheticDataValidator<WalletProvider> {
 
         let mut toploc_nodes_to_invalidate = Vec::new();
         let mut nodes_with_wrong_work_unit_claims = Vec::new();
+        println!("node_work_units: {node_work_units:?}");
+        println!("total_claimed_units: {total_claimed_units:?}");
+        println!("toploc status: {:?}", status.status);
 
         if status.status == ValidationResult::Reject {
             let rejected_nodes = self.handle_group_toploc_rejection(&group, &status).await?;
             toploc_nodes_to_invalidate.extend(rejected_nodes);
         } else if status.status == ValidationResult::Accept {
-            let wrong_claim_nodes = self
-                .handle_group_toploc_acceptance(
-                    &group,
-                    &status,
-                    total_claimed_units,
-                    &node_work_units,
-                    &toploc_config_name,
-                )
-                .await?;
+            let wrong_claim_nodes = self.handle_group_toploc_acceptance(
+                &group,
+                &status,
+                total_claimed_units,
+                &node_work_units,
+                &toploc_config_name,
+            )?;
             nodes_with_wrong_work_unit_claims.extend(wrong_claim_nodes);
         }
+
+        println!("toploc_nodes_to_invalidate: {toploc_nodes_to_invalidate:?}");
+        println!("nodes_with_wrong_work_unit_claims: {nodes_with_wrong_work_unit_claims:?}");
 
         for work_key in &group.sorted_work_keys {
             if let Some(work_info) = self.get_work_info_from_redis(work_key).await? {
@@ -1373,7 +1380,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let trigger_handle = tokio::spawn(async move {
             for work_info in batch_single_trigger_task {
                 if let Err(e) = validator_clone_trigger.process_single_task(work_info).await {
-                    error!("Failed to process single task: {}", e);
+                    error!("Failed to process single task: {e}");
                 }
                 info!(
                     "waiting before next task: {}",
@@ -1392,7 +1399,7 @@ impl SyntheticDataValidator<WalletProvider> {
                     .process_single_workkey_status(&work_key)
                     .await
                 {
-                    error!("Failed to process work key {}: {}", work_key, e);
+                    error!("Failed to process work key {work_key}: {e}");
                 }
             }
         });
@@ -1403,7 +1410,7 @@ impl SyntheticDataValidator<WalletProvider> {
                     .process_group_task(group)
                     .await
                 {
-                    error!("Failed to process group task: {}", e);
+                    error!("Failed to process group task: {e}");
                 }
                 tokio::time::sleep(tokio::time::Duration::from_secs(
                     validator_clone_group_trigger.grace_interval,
@@ -1418,7 +1425,7 @@ impl SyntheticDataValidator<WalletProvider> {
                     .process_group_status_check(group)
                     .await
                 {
-                    error!("Failed to process group status check: {}", e);
+                    error!("Failed to process group status check: {e}");
                 }
             }
         });
@@ -1431,16 +1438,16 @@ impl SyntheticDataValidator<WalletProvider> {
             );
 
             if let Err(e) = trigger_res {
-                error!("Single trigger task panicked: {:?}", e);
+                error!("Single trigger task panicked: {e:?}");
             }
             if let Err(e) = group_trigger_res {
-                error!("Group trigger task panicked: {:?}", e);
+                error!("Group trigger task panicked: {e:?}");
             }
             if let Err(e) = status_res {
-                error!("Single status task panicked: {:?}", e);
+                error!("Single status task panicked: {e:?}");
             }
             if let Err(e) = group_status_res {
-                error!("Group status task panicked: {:?}", e);
+                error!("Group status task panicked: {e:?}");
             }
         };
 
@@ -1468,22 +1475,18 @@ impl SyntheticDataValidator<WalletProvider> {
             .iter()
             .find(|t| t.matches_file_name(&cleaned_file_name))
             .ok_or(ProcessWorkKeyError::NoMatchingToplocConfig(format!(
-                "No matching toploc config found for {}",
-                cleaned_file_name
+                "No matching toploc config found for {cleaned_file_name}"
             )))?;
 
         let result = toploc_config
             .get_single_file_validation_status(&cleaned_file_name)
             .await;
         let validation_result = result?;
-        info!(
-            "Validation result for {}: {:?}",
-            work_key, validation_result
-        );
+        info!("Validation result for {work_key}: {validation_result:?}");
 
         match validation_result {
             ValidationResult::Accept => {
-                info!("Validation accepted for {}", cleaned_file_name);
+                info!("Validation accepted for {cleaned_file_name}");
             }
             ValidationResult::Reject => {
                 if let Err(e) = self
@@ -1493,7 +1496,7 @@ impl SyntheticDataValidator<WalletProvider> {
                     )
                     .await
                 {
-                    error!("Failed to invalidate work {}: {}", work_key, e);
+                    error!("Failed to invalidate work {work_key}: {e}");
                     return Err(ProcessWorkKeyError::InvalidatingWorkError(e.to_string()));
                 }
             }
@@ -1504,10 +1507,7 @@ impl SyntheticDataValidator<WalletProvider> {
             .update_work_validation_status(work_key, &validation_result)
             .await
         {
-            error!(
-                "Failed to update work validation status for {}: {}",
-                work_key, e
-            );
+            error!("Failed to update work validation status for {work_key}: {e}");
             return Err(ProcessWorkKeyError::ValidationPollingError(e.to_string()));
         }
 
@@ -1564,8 +1564,9 @@ impl SyntheticDataValidator<WalletProvider> {
 
                         for work_key in work_keys {
                             // Soft invalidate (less penalty than hard invalidation)
-                            if let Err(e) = self.soft_invalidate_work(&work_key).await {
-                                error!("Failed to soft invalidate work key {}: {}", work_key, e);
+                            #[cfg(test)]
+                            if let Err(_e) = self.soft_invalidate_work(&work_key) {
+                                // Test mode: error handling skipped
                             } else {
                                 // Mark work as soft invalidated due to incomplete group
                                 if let Err(e) = self
@@ -1581,25 +1582,38 @@ impl SyntheticDataValidator<WalletProvider> {
                                     );
                                 }
                             }
+                            #[cfg(not(test))]
+                            if let Err(e) = self.soft_invalidate_work(&work_key).await {
+                                error!("Failed to soft invalidate work key {work_key}: {e}");
+                            } else {
+                                // Mark work as soft invalidated due to incomplete group
+                                if let Err(e) = self
+                                    .update_work_validation_status(
+                                        &work_key,
+                                        &ValidationResult::IncompleteGroup,
+                                    )
+                                    .await
+                                {
+                                    error!(
+                                        "Failed to update work validation status for {work_key}: {e}"
+                                    );
+                                }
+                            }
                         }
                     }
                     Err(e) => {
-                        error!(
-                            "Failed to get work keys for incomplete group {}: {}",
-                            group_key, e
-                        );
+                        error!("Failed to get work keys for incomplete group {group_key}: {e}");
                     }
                 }
             } else {
                 info!(
-                    "Group {} completed just before grace period deadline - not invalidating",
-                    group_key
+                    "Group {group_key} completed just before grace period deadline - not invalidating"
                 );
             }
 
             // Always stop tracking the group (whether we invalidated it or it completed)
             if let Err(e) = self.remove_incomplete_group_tracking(&group_key).await {
-                error!("Failed to stop tracking group {}: {}", group_key, e);
+                error!("Failed to stop tracking group {group_key}: {e}");
             }
         }
 
@@ -1616,7 +1630,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let work_keys: Vec<String> = redis
             .hkeys(group_key)
             .await
-            .map_err(|e| Error::msg(format!("Failed to get work keys from group: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to get work keys from group: {e}")))?;
 
         Ok(work_keys)
     }

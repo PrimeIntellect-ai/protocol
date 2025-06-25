@@ -36,7 +36,7 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
             nodes
         }
         Err(e) => {
-            error!("Error getting nodes: {}", e);
+            error!("Error getting nodes: {e}");
             return HttpResponse::InternalServerError().json(json!({
                 "success": false,
                 "error": "Failed to get nodes"
@@ -92,7 +92,7 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
                 }
             }
             Err(e) => {
-                error!("Error getting node groups batch: {}", e);
+                error!("Error getting node groups batch: {e}");
                 // Fall back to nodes without group information
                 nodes_with_groups = nodes.iter().map(|node| json!(node)).collect();
             }
@@ -143,7 +143,7 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
             }));
         }
         Err(e) => {
-            error!("Error getting node: {}", e);
+            error!("Error getting node: {e}");
             return HttpResponse::InternalServerError().json(json!({
                 "success": false,
                 "error": "Failed to get node"
@@ -218,7 +218,7 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
             return HttpResponse::Ok().json(json!({"success": false, "logs": "Node not found"}));
         }
         Err(e) => {
-            error!("Error getting node: {}", e);
+            error!("Error getting node: {e}");
             return HttpResponse::InternalServerError().json(json!({
                 "success": false,
                 "error": "Failed to get node"
@@ -300,7 +300,7 @@ async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>)
     {
         Ok(metrics) => metrics,
         Err(e) => {
-            error!("Error getting metrics for node: {}", e);
+            error!("Error getting metrics for node: {e}");
             Default::default()
         }
     };
@@ -322,7 +322,7 @@ async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>)
     tag = "nodes"
 )]
 async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    info!("banning node: {}", node_id);
+    info!("banning node: {node_id}");
     let node_address = match Address::from_str(&node_id) {
         Ok(address) => address,
         Err(_) => {
@@ -347,7 +347,7 @@ async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> Http
             }));
         }
         Err(e) => {
-            error!("Error getting node: {}", e);
+            error!("Error getting node: {e}");
             return HttpResponse::InternalServerError().json(json!({
                 "success": false,
                 "error": "Failed to get node"
@@ -361,7 +361,7 @@ async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> Http
         .update_node_status(&node.address, crate::models::node::NodeStatus::Banned)
         .await
     {
-        error!("Error updating node status: {}", e);
+        error!("Error updating node status: {e}");
         return HttpResponse::InternalServerError().json(json!({
             "success": false,
             "error": "Failed to update node status"

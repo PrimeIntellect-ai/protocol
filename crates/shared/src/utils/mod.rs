@@ -76,11 +76,11 @@ impl StorageProvider for MockStorageProvider {
 
     async fn generate_mapping_file(&self, sha256: &str, file_name: &str) -> Result<String> {
         // Store the mapping of SHA256 to filename
-        let mapping_path = format!("mapping/{}", sha256);
+        let mapping_path = format!("mapping/{sha256}");
         self.add_mapping_file(sha256, file_name).await;
 
         // Also store the mapping file content in our mock storage
-        let mapping_content = format!("{}:{}", sha256, file_name);
+        let mapping_content = format!("{sha256}:{file_name}");
         self.add_file(&mapping_path, &mapping_content).await;
 
         Ok(mapping_path)
@@ -104,8 +104,7 @@ impl StorageProvider for MockStorageProvider {
     ) -> Result<String> {
         // For a mock, we can return a fake signed URL
         Ok(format!(
-            "https://mock-storage.example.com/upload/{}",
-            object_path
+            "https://mock-storage.example.com/upload/{object_path}"
         ))
     }
 }

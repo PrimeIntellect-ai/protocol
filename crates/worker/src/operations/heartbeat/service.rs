@@ -44,7 +44,7 @@ impl HeartbeatService {
         state: Arc<SystemState>,
     ) -> Result<Arc<Self>, HeartbeatError> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(5)) // 5 second timeout
+            .timeout(Duration::from_secs(20))
             .build()
             .map_err(|_| HeartbeatError::InitFailed)?; // Adjusted to match the expected error type
 
@@ -73,7 +73,7 @@ impl HeartbeatService {
         }
 
         if let Err(e) = self.state.set_running(true, Some(endpoint)).await {
-            log::error!("Failed to set running to true: {:?}", e);
+            log::error!("Failed to set running to true: {e:?}");
         }
         let state = self.state.clone();
         let client = self.client.clone();
@@ -106,7 +106,7 @@ impl HeartbeatService {
                                 }
                             }
                             Err(e) => {
-                                log::error!("{}", &format!("Failed to sync with orchestrator: {:?}", e));
+                                log::error!("{}", &format!("Failed to sync with orchestrator: {e:?}"));
                                 had_error = true;
                             }
                         }
@@ -114,7 +114,7 @@ impl HeartbeatService {
                     _ = cancellation_token.cancelled() => {
                         log::info!("Sync service received cancellation signal"); // Updated log message
                         if let Err(e) = state.set_running(false, None).await {
-                            log::error!("Failed to set running to false: {:?}", e);
+                            log::error!("Failed to set running to false: {e:?}");
                         }
                         break;
                     }
@@ -132,7 +132,7 @@ impl HeartbeatService {
     #[allow(dead_code)]
     pub async fn stop(&self) {
         if let Err(e) = self.state.set_running(false, None).await {
-            log::error!("Failed to set running to false: {:?}", e);
+            log::error!("Failed to set running to false: {e:?}");
         }
     }
 }
@@ -197,13 +197,13 @@ async fn send_heartbeat(
         "/heartbeat",
         &wallet,
         Some(&serde_json::to_value(&request).map_err(|e| {
-            log::error!("Failed to serialize request: {:?}", e);
+            log::error!("Failed to serialize request: {e:?}");
             HeartbeatError::RequestFailed
         })?),
     )
     .await
     .map_err(|e| {
-        log::error!("Failed to sign request: {:?}", e);
+        log::error!("Failed to sign request: {e:?}");
         HeartbeatError::RequestFailed
     })?;
 
@@ -218,7 +218,7 @@ async fn send_heartbeat(
         .send()
         .await
         .map_err(|e| {
-            log::error!("Request failed: {:?}", e);
+            log::error!("Request failed: {e:?}");
             HeartbeatError::RequestFailed
         })?;
 
@@ -230,11 +230,7 @@ async fn send_heartbeat(
             .text()
             .await
             .unwrap_or_else(|_| "Failed to read error response".to_string());
-        log::error!(
-            "Error response received: status={}, body={}",
-            status,
-            error_text
-        );
+        log::error!("Error response received: status={status}, body={error_text}");
         return Err(HeartbeatError::RequestFailed);
     };
 
@@ -242,12 +238,12 @@ async fn send_heartbeat(
         .json::<ApiResponse<HeartbeatResponse>>()
         .await
         .map_err(|e| {
-            log::error!("Failed to parse response: {:?}", e);
+            log::error!("Failed to parse response: {e:?}");
             HeartbeatError::RequestFailed
         })?;
 
     let heartbeat_response = response.data.clone();
-    log::debug!("Heartbeat response: {:?}", heartbeat_response);
+    log::debug!("Heartbeat response: {heartbeat_response:?}");
 
     // Get current task before updating
     let old_task = docker_service.state.get_current_task().await;
@@ -275,9 +271,8 @@ async fn send_heartbeat(
                 .clear_metrics_for_task(&old.id.to_string())
                 .await;
         }
-    } else if old_task.is_some() && new_task.is_none() {
+    } else if let (Some(old), None) = (&old_task, &new_task) {
         // Clear metrics when transitioning from having a task to no task
-        let old = old_task.as_ref().unwrap();
         log::info!("Clearing metrics for completed task: {}", old.id);
         metrics_store
             .clear_metrics_for_task(&old.id.to_string())
@@ -289,7 +284,7 @@ async fn send_heartbeat(
     if !is_running {
         tokio::spawn(async move {
             if let Err(e) = docker_service.run().await {
-                log::error!("❌ Docker service failed: {}", e);
+                log::error!("❌ Docker service failed: {e}");
             }
         });
     }

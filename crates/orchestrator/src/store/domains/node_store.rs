@@ -174,7 +174,7 @@ impl NodeStore {
         // Use pipeline for efficient bulk hash retrieval
         let mut pipe = redis::pipe();
         for address in &addresses {
-            let key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, address);
+            let key = format!("{ORCHESTRATOR_BASE_KEY}:{address}");
             pipe.hgetall(&key);
         }
 
@@ -185,7 +185,7 @@ impl NodeStore {
                 match Self::hash_fields_to_node(fields) {
                     Ok(node) => nodes.push(node),
                     Err(e) => {
-                        info!("Failed to deserialize node: {}", e);
+                        info!("Failed to deserialize node: {e}");
                     }
                 }
             }
@@ -226,7 +226,7 @@ impl NodeStore {
 
     pub async fn get_node(&self, address: &Address) -> Result<Option<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, address);
+        let key = format!("{ORCHESTRATOR_BASE_KEY}:{address}");
 
         let fields: HashMap<String, String> = con.hgetall(&key).await?;
 
@@ -237,7 +237,7 @@ impl NodeStore {
         match Self::hash_fields_to_node(fields) {
             Ok(node) => Ok(Some(node)),
             Err(e) => {
-                info!("Failed to deserialize node {}: {}", address, e);
+                info!("Failed to deserialize node {address}: {e}");
                 Ok(None)
             }
         }
@@ -257,7 +257,7 @@ impl NodeStore {
         // Use pipeline for efficient bulk hash retrieval
         let mut pipe = redis::pipe();
         for address in &addresses {
-            let key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, address);
+            let key = format!("{ORCHESTRATOR_BASE_KEY}:{address}");
             pipe.hgetall(&key);
         }
 
@@ -271,7 +271,7 @@ impl NodeStore {
                     }
                     Ok(_) => {} // Node exists but not in Discovered status
                     Err(e) => {
-                        info!("Failed to deserialize node: {}", e);
+                        info!("Failed to deserialize node: {e}");
                     }
                 }
             }
@@ -286,7 +286,7 @@ impl NodeStore {
         status: NodeStatus,
     ) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
+        let node_key = format!("{ORCHESTRATOR_BASE_KEY}:{node_address}");
 
         // Update only the specific fields we need to change
         let status_json = serde_json::to_string(&status)?;
@@ -305,7 +305,7 @@ impl NodeStore {
 
     pub async fn update_node_version(&self, node_address: &Address, version: &str) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
+        let node_key = format!("{ORCHESTRATOR_BASE_KEY}:{node_address}");
 
         // Update only the version field
         let _: () = con.hset(&node_key, "version", version).await?;
@@ -318,7 +318,7 @@ impl NodeStore {
         location: &NodeLocation,
     ) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
+        let node_key = format!("{ORCHESTRATOR_BASE_KEY}:{node_address}");
 
         // Update only the location field
         let location_json = serde_json::to_string(location)?;
@@ -328,7 +328,7 @@ impl NodeStore {
 
     pub async fn update_node_p2p_id(&self, node_address: &Address, p2p_id: &str) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
+        let node_key = format!("{ORCHESTRATOR_BASE_KEY}:{node_address}");
 
         // Update only the p2p_id field
         let _: () = con.hset(&node_key, "p2p_id", p2p_id).await?;
@@ -343,7 +343,7 @@ impl NodeStore {
         task_details: Option<TaskDetails>,
     ) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let node_key = format!("{}:{}", ORCHESTRATOR_BASE_KEY, node_address);
+        let node_key = format!("{ORCHESTRATOR_BASE_KEY}:{node_address}");
 
         // Build the update pipeline based on what fields need to be updated
         let mut pipe = redis::pipe();

@@ -38,7 +38,7 @@ impl LocationEnrichmentService {
             interval.tick().await;
 
             if let Err(e) = self.enrich_nodes_without_location().await {
-                error!("Location enrichment cycle failed: {}", e);
+                error!("Location enrichment cycle failed: {e}");
             }
         }
     }
