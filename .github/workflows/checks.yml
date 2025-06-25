@@ -1,7 +1,6 @@
 name: Check Format & Lint
 env:
   RUSTFLAGS: "--cfg tokio_unstable"
-
 on:
   pull_request:
     branches: [ main, master, develop ]
@@ -20,7 +19,6 @@ env:
   RUSTFLAGS: "-C debuginfo=0"
   LANG: C.UTF-8 
   LC_ALL: C.UTF-8
-
 
 jobs:
   check:
