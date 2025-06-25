@@ -36,7 +36,7 @@ git submodule update --init --recursive
 # Install Foundry
 curl -L https://foundry.paradigm.xyz | bash
 
-# Reload .bashrc (or .bash_profile, depends on the system)
+# Reload your shell environment 
 source ~/.bashrc
 
 foundryup
@@ -46,6 +46,9 @@ foundryup
 ```bash
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Reload your shell environment
+source ~/.bashrc
 
 # Install cargo-watch
 cargo install cargo-watch
@@ -57,6 +60,7 @@ cargo install cargo-watch
 brew install redis
 
 # Install Redis (Ubuntu)
+sudo apt-get update
 sudo apt-get install redis-server
 ```
 
@@ -80,10 +84,9 @@ sudo apt-get install libssl-dev
   ```bash
   sudo usermod -aG docker $USER
   ```
-- Create `.env` files in base folder and discovery folder
 
 ### 4. Launch Core Services
-- Copy the `.env.example` file 
+- Copy the `.env.example` file to `.env` 
 ```bash
 make up
 ```
@@ -102,11 +105,14 @@ Once the core services are running, you can start a worker node in a new termina
 ```bash
 make watch-worker
 ```
+Your worker will show an error indicating it is not whitelisted yet. You'll need to run `make whitelist-provider` to resolve this.
 
-The worker will automatically connect to the discovery service and begin processing tasks.
-Your worker will show an error that it is not whitelisted yet. You'll have to run `make whitelist-provider` here.
-It takes a couple of seconds until the worker is whitelisted. This is done using a simple loop on the second page of tmux.
-You should see your worker eventually on the orchestrator. Checkout the orchestrator doc also: `http://localhost:8090/docs`
+You should see your worker appear on the orchestrator. You can also check the orchestrator documentation at: `http://localhost:8090/docs`
+
+Quick check in the api of the orchestrator:
+```bash
+curl -H "Authorization: Bearer admin" http://localhost:8090/nodes 
+```
 
 ## Remote GPU Development
 > ⚠️ **IMPORTANT**: The video shows the whitelist process happening automatically. Currently, this must be done manually using the command `make whitelist-provider`.
