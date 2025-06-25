@@ -62,15 +62,6 @@ sudo apt-get install redis-server
 
 #### Ruby and Tmux
 ```bash
-# Install Ruby (MacOS)
-brew install ruby
-
-# Install Ruby (Ubuntu)
-sudo apt-get install ruby
-
-# Install tmuxinator (do not use brew)
-gem install tmuxinator
-
 # Install Tmux (MacOS)
 brew install tmux
 
