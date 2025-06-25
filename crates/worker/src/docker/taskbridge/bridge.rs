@@ -32,6 +32,9 @@ pub struct TaskBridge {
 #[derive(Clone)]
 struct TaskBridgeConfig {
     metrics_store: Arc<MetricsStore>,
+
+    // TODO: the optional values are only used for testing; refactor
+    // the tests such that these aren't optional
     contracts: Option<Contracts<WalletProvider>>,
     node_config: Option<Node>,
     node_wallet: Option<Wallet>,
