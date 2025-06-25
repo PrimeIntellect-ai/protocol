@@ -214,7 +214,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "warn" => LevelFilter::Warn,
         "debug" => LevelFilter::Debug,
         "trace" => LevelFilter::Trace,
-        _ => LevelFilter::Info,
+        // Handle info and any other string values  
+        "info" | &_ => LevelFilter::Info,
     };
     env_logger::Builder::new()
         .filter_level(log_level)

@@ -31,7 +31,8 @@ impl From<&str> for TaskState {
             "FAILED" => TaskState::FAILED,
             "PAUSED" => TaskState::PAUSED,
             "RESTARTING" => TaskState::RESTARTING,
-            _ => TaskState::UNKNOWN, // Default case
+            // Handle UNKNOWN and any other string values
+            "UNKNOWN" | &_ => TaskState::UNKNOWN,
         }
     }
 }
