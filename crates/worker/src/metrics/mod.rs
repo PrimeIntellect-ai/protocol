@@ -1,1 +1,1 @@
-pub mod store;
+pub(crate) mod store;

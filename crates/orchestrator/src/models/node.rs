@@ -8,7 +8,7 @@ use std::fmt::{self, Display};
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
-pub struct OrchestratorNode {
+pub(crate) struct OrchestratorNode {
     #[serde(serialize_with = "serialize_address")]
     #[schema(value_type = String, example = "0x742d35Cc6634C0532925a3b8D6Ac6f29d1e6b8e0")]
     pub address: Address,
@@ -72,7 +72,7 @@ impl fmt::Display for OrchestratorNode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, ToSchema)]
-pub enum NodeStatus {
+pub(crate) enum NodeStatus {
     #[default]
     Discovered,
     WaitingForHeartbeat,

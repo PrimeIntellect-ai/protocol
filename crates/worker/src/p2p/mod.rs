@@ -1,4 +1,4 @@
-pub mod service;
+pub(crate) mod service;
 
-pub use service::P2PContext;
-pub use service::P2PService;
+pub(crate) use service::P2PContext;
+pub(crate) use service::P2PService;

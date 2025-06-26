@@ -172,7 +172,7 @@ async fn heartbeat(
     }
 }
 
-pub fn heartbeat_routes() -> Scope {
+pub(crate) fn heartbeat_routes() -> Scope {
     web::scope("/heartbeat").route("", post().to(heartbeat))
 }
 

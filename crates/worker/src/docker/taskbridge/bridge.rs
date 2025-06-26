@@ -16,11 +16,11 @@ use std::{fs, path::Path};
 use tokio::io::AsyncReadExt;
 use tokio::{io::BufReader, net::UnixListener};
 
-pub const SOCKET_NAME: &str = "metrics.sock";
+pub(crate) const SOCKET_NAME: &str = "metrics.sock";
 const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.worker/";
 const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.worker/";
 
-pub struct TaskBridge {
+pub(crate) struct TaskBridge {
     pub socket_path: String,
     pub metrics_store: Arc<MetricsStore>,
     pub contracts: Option<Contracts<WalletProvider>>,
@@ -39,7 +39,7 @@ struct MetricInput {
 
 impl TaskBridge {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         socket_path: Option<&str>,
         metrics_store: Arc<MetricsStore>,
         contracts: Option<Contracts<WalletProvider>>,
@@ -195,7 +195,7 @@ impl TaskBridge {
         Ok(())
     }
 
-    pub async fn run(self: Arc<Self>) -> Result<()> {
+    pub(crate) async fn run(self: Arc<Self>) -> Result<()> {
         let socket_path = Path::new(&self.socket_path);
         debug!("Setting up TaskBridge socket at: {}", socket_path.display());
 

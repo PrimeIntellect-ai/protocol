@@ -5,17 +5,17 @@ use shared::models::invite::InviteRequest;
 use shared::p2p::{client::P2PClient as SharedP2PClient, messages::P2PMessage};
 use shared::web3::wallet::Wallet;
 
-pub struct P2PClient {
+pub(crate) struct P2PClient {
     shared_client: SharedP2PClient,
 }
 
 impl P2PClient {
-    pub async fn new(wallet: Wallet) -> Result<Self> {
+    pub(crate) async fn new(wallet: Wallet) -> Result<Self> {
         let shared_client = SharedP2PClient::new(wallet).await?;
         Ok(Self { shared_client })
     }
 
-    pub async fn invite_worker(
+    pub(crate) async fn invite_worker(
         &self,
         worker_wallet_address: Address,
         worker_p2p_id: &str,
@@ -48,7 +48,7 @@ impl P2PClient {
         }
     }
 
-    pub async fn get_task_logs(
+    pub(crate) async fn get_task_logs(
         &self,
         worker_wallet_address: Address,
         worker_p2p_id: &str,
@@ -75,7 +75,7 @@ impl P2PClient {
         }
     }
 
-    pub async fn restart_task(
+    pub(crate) async fn restart_task(
         &self,
         worker_wallet_address: Address,
         worker_p2p_id: &str,

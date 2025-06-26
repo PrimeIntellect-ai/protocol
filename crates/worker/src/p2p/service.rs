@@ -30,7 +30,7 @@ lazy_static! {
 }
 
 #[derive(Clone)]
-pub struct P2PContext {
+pub(crate) struct P2PContext {
     pub docker_service: Arc<DockerService>,
     pub heartbeat_service: Arc<HeartbeatService>,
     pub system_state: Arc<SystemState>,
@@ -40,7 +40,7 @@ pub struct P2PContext {
 }
 
 #[derive(Clone)]
-pub struct P2PService {
+pub(crate) struct P2PService {
     endpoint: Endpoint,
     secret_key: SecretKey,
     node_id: String,
@@ -58,7 +58,7 @@ enum EndpointLoopResult {
 
 impl P2PService {
     /// Create a new P2P service with a unique worker identity
-    pub async fn new(
+    pub(crate) async fn new(
         worker_p2p_seed: Option<u64>,
         cancellation_token: CancellationToken,
         context: Option<P2PContext>,
@@ -111,12 +111,12 @@ impl P2PService {
     }
 
     /// Get the P2P node ID
-    pub fn node_id(&self) -> &str {
+    pub(crate) fn node_id(&self) -> &str {
         &self.node_id
     }
 
     /// Get the listening addresses
-    pub fn listening_addresses(&self) -> &[String] {
+    pub(crate) fn listening_addresses(&self) -> &[String] {
         &self.listening_addrs
     }
 
@@ -143,7 +143,7 @@ impl P2PService {
         Ok(endpoint)
     }
     /// Start accepting incoming connections with automatic recovery
-    pub fn start(&self) -> Result<()> {
+    pub(crate) fn start(&self) -> Result<()> {
         let service = Arc::new(self.clone());
         let cancellation_token = self.cancellation_token.clone();
 

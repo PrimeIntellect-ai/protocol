@@ -9,7 +9,7 @@ use shared::models::api::ApiResponse;
 use shared::models::node::{ComputeRequirements, Node};
 use std::str::FromStr;
 
-pub async fn register_node(
+pub(crate) async fn register_node(
     node: web::Json<Node>,
     data: Data<AppState>,
     req: actix_web::HttpRequest,
@@ -211,7 +211,7 @@ pub async fn register_node(
     }
 }
 
-pub fn node_routes() -> Scope {
+pub(crate) fn node_routes() -> Scope {
     web::scope("/api/nodes").route("", put().to(register_node))
 }
 

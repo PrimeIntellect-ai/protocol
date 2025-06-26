@@ -1,2 +1,2 @@
-pub use console_logger::*;
+pub(crate) use console_logger::*;
 mod console_logger;

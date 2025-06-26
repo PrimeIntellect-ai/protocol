@@ -20,7 +20,7 @@ impl NodeStore {
             .await
     }
 
-    pub async fn get_node(&self, address: String) -> Result<Option<DiscoveryNode>, Error> {
+    pub(crate) async fn get_node(&self, address: String) -> Result<Option<DiscoveryNode>, Error> {
         let key = format!("node:{address}");
         let mut con = self.get_connection().await?;
         let node: Option<String> = con.get(&key).await?;
@@ -31,7 +31,10 @@ impl NodeStore {
         Ok(node)
     }
 
-    pub async fn get_active_node_by_ip(&self, ip: String) -> Result<Option<DiscoveryNode>, Error> {
+    pub(crate) async fn get_active_node_by_ip(
+        &self,
+        ip: String,
+    ) -> Result<Option<DiscoveryNode>, Error> {
         let mut con = self.get_connection().await?;
         let node_ids: Vec<String> = con.smembers("node:ids").await?;
 
@@ -52,7 +55,7 @@ impl NodeStore {
         Ok(None)
     }
 
-    pub async fn count_active_nodes_by_ip(&self, ip: String) -> Result<u32, Error> {
+    pub(crate) async fn count_active_nodes_by_ip(&self, ip: String) -> Result<u32, Error> {
         let mut con = self.get_connection().await?;
         let node_ids: Vec<String> = con.smembers("node:ids").await?;
 
@@ -75,7 +78,7 @@ impl NodeStore {
         Ok(count)
     }
 
-    pub async fn register_node(&self, node: Node) -> Result<(), Error> {
+    pub(crate) async fn register_node(&self, node: Node) -> Result<(), Error> {
         let address = node.id.clone();
         let key = format!("node:{address}");
 
@@ -101,7 +104,7 @@ impl NodeStore {
         Ok(())
     }
 
-    pub async fn update_node(&self, node: DiscoveryNode) -> Result<(), Error> {
+    pub(crate) async fn update_node(&self, node: DiscoveryNode) -> Result<(), Error> {
         let mut con = self.get_connection().await?;
         let address = node.id.clone();
         let key = format!("node:{address}");
@@ -117,7 +120,7 @@ impl NodeStore {
         Ok(())
     }
 
-    pub async fn get_nodes(&self) -> Result<Vec<DiscoveryNode>, Error> {
+    pub(crate) async fn get_nodes(&self) -> Result<Vec<DiscoveryNode>, Error> {
         let mut con = self.get_connection().await?;
         let node_ids: Vec<String> = con.smembers("node:ids").await?;
 
@@ -157,7 +160,10 @@ impl NodeStore {
         Ok(nodes_vec)
     }
 
-    pub async fn get_node_by_id(&self, node_id: &str) -> Result<Option<DiscoveryNode>, Error> {
+    pub(crate) async fn get_node_by_id(
+        &self,
+        node_id: &str,
+    ) -> Result<Option<DiscoveryNode>, Error> {
         let mut con = self.get_connection().await?;
         let key = format!("node:{node_id}");
 

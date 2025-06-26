@@ -21,7 +21,7 @@ use tokio::time::{interval, Duration};
 // Timeout constants
 const DEFAULT_INVITE_CONCURRENT_COUNT: usize = 32; // Max concurrent count of nodes being invited
 
-pub struct NodeInviter<'a> {
+pub(crate) struct NodeInviter<'a> {
     wallet: Wallet,
     pool_id: u32,
     domain_id: u32,
@@ -35,7 +35,7 @@ pub struct NodeInviter<'a> {
 
 impl<'a> NodeInviter<'a> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         wallet: Wallet,
         pool_id: u32,
         domain_id: u32,
@@ -59,7 +59,7 @@ impl<'a> NodeInviter<'a> {
         }
     }
 
-    pub async fn run(&self) -> Result<()> {
+    pub(crate) async fn run(&self) -> Result<()> {
         let mut interval = interval(Duration::from_secs(10));
 
         loop {

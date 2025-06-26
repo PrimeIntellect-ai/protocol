@@ -1,8 +1,8 @@
 use prometheus::{CounterVec, GaugeVec, HistogramOpts, HistogramVec, Opts, Registry, TextEncoder};
-pub mod sync_service;
-pub mod webhook_sender;
+pub(crate) mod sync_service;
+pub(crate) mod webhook_sender;
 
-pub struct MetricsContext {
+pub(crate) struct MetricsContext {
     pub compute_task_gauges: GaugeVec,
     pub task_info: GaugeVec,
     pub pool_id: String,
@@ -18,7 +18,7 @@ pub struct MetricsContext {
 }
 
 impl MetricsContext {
-    pub fn new(pool_id: String) -> Self {
+    pub(crate) fn new(pool_id: String) -> Self {
         // For current state/rate metrics
         let compute_task_gauges = GaugeVec::new(
             Opts::new("compute_gauges", "Compute task gauge metrics"),
@@ -142,7 +142,7 @@ impl MetricsContext {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn record_compute_task_gauge(
+    pub(crate) fn record_compute_task_gauge(
         &self,
         node_address: &str,
         task_id: &str,
@@ -167,7 +167,7 @@ impl MetricsContext {
             .set(value);
     }
 
-    pub fn increment_file_upload_requests(
+    pub(crate) fn increment_file_upload_requests(
         &self,
         task_id: &str,
         task_name: &str,
@@ -178,69 +178,69 @@ impl MetricsContext {
             .inc();
     }
 
-    pub fn increment_heartbeat_requests(&self, node_address: &str) {
+    pub(crate) fn increment_heartbeat_requests(&self, node_address: &str) {
         self.heartbeat_requests_total
             .with_label_values(&[node_address, &self.pool_id])
             .inc();
     }
 
-    pub fn set_nodes_count(&self, status: &str, count: f64) {
+    pub(crate) fn set_nodes_count(&self, status: &str, count: f64) {
         self.nodes_total
             .with_label_values(&[status, &self.pool_id])
             .set(count);
     }
 
-    pub fn set_tasks_count(&self, count: f64) {
+    pub(crate) fn set_tasks_count(&self, count: f64) {
         self.tasks_total
             .with_label_values(&[&self.pool_id])
             .set(count);
     }
 
-    pub fn set_groups_count(&self, configuration_name: &str, count: f64) {
+    pub(crate) fn set_groups_count(&self, configuration_name: &str, count: f64) {
         self.groups_total
             .with_label_values(&[configuration_name, &self.pool_id])
             .set(count);
     }
 
-    pub fn set_nodes_per_task(&self, task_id: &str, task_name: &str, count: f64) {
+    pub(crate) fn set_nodes_per_task(&self, task_id: &str, task_name: &str, count: f64) {
         self.nodes_per_task
             .with_label_values(&[task_id, task_name, &self.pool_id])
             .set(count);
     }
 
-    pub fn set_task_info(&self, task_id: &str, task_name: &str, metadata: &str) {
+    pub(crate) fn set_task_info(&self, task_id: &str, task_name: &str, metadata: &str) {
         self.task_info
             .with_label_values(&[task_id, task_name, &self.pool_id, metadata])
             .set(1.0);
     }
 
-    pub fn set_task_state(&self, node_address: &str, task_id: &str, task_state: &str) {
+    pub(crate) fn set_task_state(&self, node_address: &str, task_id: &str, task_state: &str) {
         self.task_state
             .with_label_values(&[node_address, task_id, task_state, &self.pool_id])
             .set(1.0);
     }
 
-    pub fn export_metrics(&self) -> Result<String, prometheus::Error> {
+    pub(crate) fn export_metrics(&self) -> Result<String, prometheus::Error> {
         let encoder = TextEncoder::new();
         let metric_families = self.registry.gather();
         encoder.encode_to_string(&metric_families)
     }
 
     /// Clear all metrics from the registry
-    pub fn clear_compute_task_metrics(&self) {
+    pub(crate) fn clear_compute_task_metrics(&self) {
         // Clear all time series from the compute_task_gauges metric family
         // This removes all existing metrics so we can rebuild from Redis
         self.compute_task_gauges.reset();
     }
 
-    pub fn record_status_update_execution_time(&self, node_address: &str, duration: f64) {
+    pub(crate) fn record_status_update_execution_time(&self, node_address: &str, duration: f64) {
         self.status_update_execution_time
             .with_label_values(&[node_address, &self.pool_id])
             .observe(duration);
     }
 
     /// Clear all orchestrator statistics metrics
-    pub fn clear_orchestrator_statistics(&self) {
+    pub(crate) fn clear_orchestrator_statistics(&self) {
         self.nodes_total.reset();
         self.tasks_total.reset();
         self.groups_total.reset();

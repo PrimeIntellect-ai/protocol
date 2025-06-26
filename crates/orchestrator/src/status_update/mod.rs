@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::interval;
 
-pub struct NodeStatusUpdater {
+pub(crate) struct NodeStatusUpdater {
     store_context: Arc<StoreContext>,
     update_interval: u64,
     missing_heartbeat_threshold: u32,
@@ -25,7 +25,7 @@ pub struct NodeStatusUpdater {
 
 impl NodeStatusUpdater {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         store_context: Arc<StoreContext>,
         update_interval: u64,
         missing_heartbeat_threshold: Option<u32>,
@@ -49,7 +49,7 @@ impl NodeStatusUpdater {
         }
     }
 
-    pub async fn run(&self) -> Result<(), anyhow::Error> {
+    pub(crate) async fn run(&self) -> Result<(), anyhow::Error> {
         let mut interval = interval(Duration::from_secs(self.update_interval));
 
         loop {
@@ -114,7 +114,7 @@ impl NodeStatusUpdater {
         Ok(())
     }
 
-    pub async fn sync_chain_with_nodes(&self) -> Result<(), anyhow::Error> {
+    pub(crate) async fn sync_chain_with_nodes(&self) -> Result<(), anyhow::Error> {
         let nodes = self.store_context.node_store.get_nodes().await?;
         for node in nodes {
             if node.status == NodeStatus::Dead {
@@ -140,7 +140,7 @@ impl NodeStatusUpdater {
         Ok(())
     }
 
-    pub async fn process_nodes(&self) -> Result<(), anyhow::Error> {
+    pub(crate) async fn process_nodes(&self) -> Result<(), anyhow::Error> {
         let nodes = self.store_context.node_store.get_nodes().await?;
         for node in nodes {
             let start_time = Instant::now();

@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Handles a file upload request
-pub async fn handle_file_upload(
+pub(crate) async fn handle_file_upload(
     storage_path: &str,
     task_id: &str,
     file_name: &str,
@@ -312,7 +312,7 @@ pub async fn handle_file_upload(
 }
 
 /// Handles a file validation request
-pub async fn handle_file_validation(
+pub(crate) async fn handle_file_validation(
     file_sha: &str,
     contracts: &Contracts<WalletProvider>,
     node: &Node,

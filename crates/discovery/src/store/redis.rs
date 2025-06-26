@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::thread;
 #[cfg(test)]
 use std::time::Duration;
+
 #[derive(Clone)]
 pub struct RedisStore {
     pub client: Client,

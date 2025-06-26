@@ -10,7 +10,7 @@ use log::{error, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "event", content = "data")]
-pub enum WebhookEvent {
+pub(crate) enum WebhookEvent {
     #[serde(rename = "node.status_changed")]
     NodeStatusChanged {
         node_address: String,
@@ -40,14 +40,14 @@ pub enum WebhookEvent {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct WebhookPayload {
+pub(crate) struct WebhookPayload {
     #[serde(flatten)]
     pub event: WebhookEvent,
     pub timestamp: String,
 }
 
 impl WebhookPayload {
-    pub fn new(event: WebhookEvent) -> Self {
+    pub(crate) fn new(event: WebhookEvent) -> Self {
         #[cfg(test)]
         let timestamp = "2024-01-01T00:00:00Z".to_string();
         #[cfg(not(test))]
@@ -58,13 +58,13 @@ impl WebhookPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebhookConfig {
+pub(crate) struct WebhookConfig {
     pub url: String,
     pub bearer_token: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct WebhookPlugin {
+pub(crate) struct WebhookPlugin {
     webhook_url: String,
     client: Arc<reqwest::Client>,
 }
@@ -75,7 +75,7 @@ impl WebhookPlugin {
     const BASE_RETRY_DELAY_MS: u64 = 500;
     const MAX_RETRY_DELAY_MS: u64 = 10000;
 
-    pub fn new(webhook_config: WebhookConfig) -> Self {
+    pub(crate) fn new(webhook_config: WebhookConfig) -> Self {
         let client = Arc::new(
             reqwest::Client::builder()
                 .default_headers(Self::build_headers(&webhook_config.bearer_token))
@@ -223,7 +223,7 @@ impl WebhookPlugin {
         Ok(())
     }
 
-    pub fn send_node_status_changed(
+    pub(crate) fn send_node_status_changed(
         &self,
         node: &OrchestratorNode,
         old_status: &NodeStatus,
@@ -238,7 +238,7 @@ impl WebhookPlugin {
         self.send_event(event)
     }
 
-    pub fn send_group_created(
+    pub(crate) fn send_group_created(
         &self,
         group_id: String,
         configuration_name: String,
@@ -252,7 +252,7 @@ impl WebhookPlugin {
         self.send_event(event)
     }
 
-    pub fn send_group_destroyed(
+    pub(crate) fn send_group_destroyed(
         &self,
         group_id: String,
         configuration_name: String,
@@ -266,7 +266,7 @@ impl WebhookPlugin {
         self.send_event(event)
     }
 
-    pub fn send_metrics_updated(
+    pub(crate) fn send_metrics_updated(
         &self,
         pool_id: u32,
         metrics: std::collections::HashMap<String, f64>,

@@ -14,7 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 #[derive(Clone)]
-pub struct HeartbeatService {
+pub(crate) struct HeartbeatService {
     state: Arc<SystemState>,
     interval: Duration,
     client: Client,
@@ -26,7 +26,7 @@ pub struct HeartbeatService {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum HeartbeatError {
+pub(crate) enum HeartbeatError {
     #[error("HTTP request failed")]
     RequestFailed,
     #[error("Service initialization failed")]
@@ -34,7 +34,7 @@ pub enum HeartbeatError {
 }
 impl HeartbeatService {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         interval: Duration,
         cancellation_token: CancellationToken,
         task_handles: TaskHandles,
@@ -60,14 +60,14 @@ impl HeartbeatService {
         }))
     }
 
-    pub async fn activate_heartbeat_if_endpoint_exists(&self) {
+    pub(crate) async fn activate_heartbeat_if_endpoint_exists(&self) {
         if let Some(endpoint) = self.state.get_heartbeat_endpoint().await {
             info!("Starting heartbeat from recovered state");
             self.start(endpoint).await.unwrap();
         }
     }
 
-    pub async fn start(&self, endpoint: String) -> Result<(), HeartbeatError> {
+    pub(crate) async fn start(&self, endpoint: String) -> Result<(), HeartbeatError> {
         if self.state.is_running().await {
             return Ok(());
         }
@@ -130,7 +130,7 @@ impl HeartbeatService {
     }
 
     #[allow(dead_code)]
-    pub async fn stop(&self) {
+    pub(crate) async fn stop(&self) {
         if let Err(e) = self.state.set_running(false, None).await {
             log::error!("Failed to set running to false: {e:?}");
         }

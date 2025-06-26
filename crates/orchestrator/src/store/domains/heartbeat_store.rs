@@ -9,16 +9,16 @@ use std::sync::Arc;
 const ORCHESTRATOR_UNHEALTHY_COUNTER_KEY: &str = "orchestrator:unhealthy_counter";
 const ORCHESTRATOR_HEARTBEAT_KEY: &str = "orchestrator:heartbeat";
 
-pub struct HeartbeatStore {
+pub(crate) struct HeartbeatStore {
     redis: Arc<RedisStore>,
 }
 
 impl HeartbeatStore {
-    pub fn new(redis: Arc<RedisStore>) -> Self {
+    pub(crate) fn new(redis: Arc<RedisStore>) -> Self {
         Self { redis }
     }
 
-    pub async fn beat(&self, payload: &HeartbeatRequest) -> Result<()> {
+    pub(crate) async fn beat(&self, payload: &HeartbeatRequest) -> Result<()> {
         let address =
             Address::from_str(&payload.address).map_err(|_| anyhow!("Failed to parse address"))?;
         let key = format!("{ORCHESTRATOR_HEARTBEAT_KEY}:{address}");
@@ -37,7 +37,10 @@ impl HeartbeatStore {
         Ok(())
     }
 
-    pub async fn get_heartbeat(&self, address: &Address) -> Result<Option<HeartbeatRequest>> {
+    pub(crate) async fn get_heartbeat(
+        &self,
+        address: &Address,
+    ) -> Result<Option<HeartbeatRequest>> {
         let mut con = self
             .redis
             .client
@@ -52,7 +55,7 @@ impl HeartbeatStore {
         Ok(value.and_then(|v| serde_json::from_str(&v).ok()))
     }
 
-    pub async fn get_unhealthy_counter(&self, address: &Address) -> Result<u32> {
+    pub(crate) async fn get_unhealthy_counter(&self, address: &Address) -> Result<u32> {
         let mut con = self
             .redis
             .client
@@ -86,7 +89,7 @@ impl HeartbeatStore {
             .map_err(|_| anyhow!("Failed to set value"))
     }
 
-    pub async fn increment_unhealthy_counter(&self, address: &Address) -> Result<()> {
+    pub(crate) async fn increment_unhealthy_counter(&self, address: &Address) -> Result<()> {
         let mut con = self
             .redis
             .client
@@ -99,7 +102,7 @@ impl HeartbeatStore {
             .map_err(|_| anyhow!("Failed to increment value"))
     }
 
-    pub async fn clear_unhealthy_counter(&self, address: &Address) -> Result<()> {
+    pub(crate) async fn clear_unhealthy_counter(&self, address: &Address) -> Result<()> {
         let mut con = self
             .redis
             .client

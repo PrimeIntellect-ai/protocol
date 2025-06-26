@@ -5,7 +5,7 @@ use bollard::Docker;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub async fn check_docker_installed(
+pub(crate) async fn check_docker_installed(
     issues: &Arc<RwLock<IssueReport>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let issue_tracker = issues.read().await;

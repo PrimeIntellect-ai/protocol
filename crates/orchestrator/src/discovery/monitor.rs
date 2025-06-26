@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
 
-pub struct DiscoveryMonitor {
+pub(crate) struct DiscoveryMonitor {
     coordinator_wallet: Wallet,
     compute_pool_id: u32,
     interval_s: u64,
@@ -31,7 +31,7 @@ pub struct DiscoveryMonitor {
 
 impl DiscoveryMonitor {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         coordinator_wallet: Wallet,
         compute_pool_id: u32,
         interval_s: u64,
@@ -87,7 +87,7 @@ impl DiscoveryMonitor {
         Ok(())
     }
 
-    pub async fn run(&self) -> Result<(), Error> {
+    pub(crate) async fn run(&self) -> Result<(), Error> {
         let mut interval = interval(Duration::from_secs(self.interval_s));
 
         loop {
@@ -173,7 +173,7 @@ impl DiscoveryMonitor {
         Ok(nodes)
     }
 
-    pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<DiscoveryNode>, Error> {
+    pub(crate) async fn fetch_nodes_from_discovery(&self) -> Result<Vec<DiscoveryNode>, Error> {
         let mut all_nodes = Vec::new();
         let mut any_success = false;
 

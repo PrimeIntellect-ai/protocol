@@ -5,7 +5,7 @@ use crate::store::domains::node_store::NodeStore;
 use crate::store::domains::task_store::TaskStore;
 use std::sync::Arc;
 
-pub struct StoreContext {
+pub(crate) struct StoreContext {
     pub node_store: Arc<NodeStore>,
     pub heartbeat_store: Arc<HeartbeatStore>,
     pub task_store: Arc<TaskStore>,
@@ -13,7 +13,7 @@ pub struct StoreContext {
 }
 
 impl StoreContext {
-    pub fn new(store: Arc<RedisStore>) -> Self {
+    pub(crate) fn new(store: Arc<RedisStore>) -> Self {
         Self {
             node_store: Arc::new(NodeStore::new(store.clone())),
             heartbeat_store: Arc::new(HeartbeatStore::new(store.clone())),

@@ -41,7 +41,7 @@ impl LocationService {
         }
     }
 
-    pub async fn get_location(&self, ip_address: &str) -> Result<Option<NodeLocation>> {
+    pub(crate) async fn get_location(&self, ip_address: &str) -> Result<Option<NodeLocation>> {
         if !self.enabled {
             return Ok(None);
         }

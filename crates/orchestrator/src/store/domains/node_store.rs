@@ -15,12 +15,12 @@ use std::sync::Arc;
 const ORCHESTRATOR_BASE_KEY: &str = "orchestrator:node";
 const ORCHESTRATOR_NODE_INDEX: &str = "orchestrator:node_index";
 
-pub struct NodeStore {
+pub(crate) struct NodeStore {
     redis: Arc<RedisStore>,
 }
 
 impl NodeStore {
-    pub fn new(redis: Arc<RedisStore>) -> Self {
+    pub(crate) fn new(redis: Arc<RedisStore>) -> Self {
         Self { redis }
     }
     // convert orchestrator node to redis hash fields
@@ -161,7 +161,7 @@ impl NodeStore {
         })
     }
 
-    pub async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>> {
+    pub(crate) async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         let addresses: Vec<String> = con.smembers(ORCHESTRATOR_NODE_INDEX).await?;
@@ -208,7 +208,7 @@ impl NodeStore {
         Ok(nodes)
     }
 
-    pub async fn add_node(&self, node: OrchestratorNode) -> Result<()> {
+    pub(crate) async fn add_node(&self, node: OrchestratorNode) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         // Always use hash format for new nodes
@@ -225,7 +225,7 @@ impl NodeStore {
         Ok(())
     }
 
-    pub async fn get_node(&self, address: &Address) -> Result<Option<OrchestratorNode>> {
+    pub(crate) async fn get_node(&self, address: &Address) -> Result<Option<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let key = format!("{ORCHESTRATOR_BASE_KEY}:{address}");
 
@@ -244,7 +244,7 @@ impl NodeStore {
         }
     }
 
-    pub async fn get_uninvited_nodes(&self) -> Result<Vec<OrchestratorNode>> {
+    pub(crate) async fn get_uninvited_nodes(&self) -> Result<Vec<OrchestratorNode>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         let addresses: Vec<String> = con.smembers(ORCHESTRATOR_NODE_INDEX).await?;
@@ -281,7 +281,7 @@ impl NodeStore {
         Ok(nodes)
     }
 
-    pub async fn update_node_status(
+    pub(crate) async fn update_node_status(
         &self,
         node_address: &Address,
         status: NodeStatus,
@@ -304,7 +304,11 @@ impl NodeStore {
         Ok(())
     }
 
-    pub async fn update_node_version(&self, node_address: &Address, version: &str) -> Result<()> {
+    pub(crate) async fn update_node_version(
+        &self,
+        node_address: &Address,
+        version: &str,
+    ) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let node_key = format!("{ORCHESTRATOR_BASE_KEY}:{node_address}");
 
@@ -313,7 +317,7 @@ impl NodeStore {
         Ok(())
     }
 
-    pub async fn update_node_location(
+    pub(crate) async fn update_node_location(
         &self,
         node_address: &Address,
         location: &NodeLocation,
@@ -327,7 +331,11 @@ impl NodeStore {
         Ok(())
     }
 
-    pub async fn update_node_p2p_id(&self, node_address: &Address, p2p_id: &str) -> Result<()> {
+    pub(crate) async fn update_node_p2p_id(
+        &self,
+        node_address: &Address,
+        p2p_id: &str,
+    ) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let node_key = format!("{ORCHESTRATOR_BASE_KEY}:{node_address}");
 
@@ -336,7 +344,7 @@ impl NodeStore {
         Ok(())
     }
 
-    pub async fn update_node_task(
+    pub(crate) async fn update_node_task(
         &self,
         node_address: Address,
         current_task: Option<String>,

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
 
-pub struct MetricsWebhookSender {
+pub(crate) struct MetricsWebhookSender {
     store_context: Arc<StoreContext>,
     webhook_plugins: Vec<WebhookPlugin>,
     last_sent_metrics: HashMap<String, f64>,
@@ -15,7 +15,7 @@ pub struct MetricsWebhookSender {
 }
 
 impl MetricsWebhookSender {
-    pub fn new(
+    pub(crate) fn new(
         store_context: Arc<StoreContext>,
         webhook_plugins: Vec<WebhookPlugin>,
         pool_id: u32,
@@ -28,7 +28,7 @@ impl MetricsWebhookSender {
         }
     }
 
-    pub fn metrics_changed(
+    pub(crate) fn metrics_changed(
         metrics: &HashMap<String, f64>,
         last_sent_metrics: &HashMap<String, f64>,
     ) -> bool {
@@ -50,7 +50,7 @@ impl MetricsWebhookSender {
         false
     }
 
-    pub async fn run(&mut self) -> Result<()> {
+    pub(crate) async fn run(&mut self) -> Result<()> {
         let mut interval = interval(Duration::from_secs(15));
         loop {
             interval.tick().await;

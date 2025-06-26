@@ -12,25 +12,25 @@ const TASK_KEY_PREFIX: &str = "orchestrator:task:";
 const TASK_LIST_KEY: &str = "orchestrator:tasks";
 const TASK_NAME_INDEX_KEY: &str = "orchestrator:task_names";
 
-pub struct TaskStore {
+pub(crate) struct TaskStore {
     redis: Arc<RedisStore>,
     observers: Arc<Mutex<Vec<Arc<dyn TaskObserver>>>>,
 }
 
 impl TaskStore {
-    pub fn new(redis: Arc<RedisStore>) -> Self {
+    pub(crate) fn new(redis: Arc<RedisStore>) -> Self {
         Self {
             redis,
             observers: Arc::new(Mutex::new(vec![])),
         }
     }
 
-    pub async fn add_observer(&self, observer: Arc<dyn TaskObserver>) {
+    pub(crate) async fn add_observer(&self, observer: Arc<dyn TaskObserver>) {
         let mut observers = self.observers.lock().await;
         observers.push(observer);
     }
 
-    pub async fn add_task(&self, task: Task) -> Result<()> {
+    pub(crate) async fn add_task(&self, task: Task) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         // Store the task with its ID as key
@@ -54,7 +54,7 @@ impl TaskStore {
         Ok(())
     }
 
-    pub async fn get_all_tasks(&self) -> Result<Vec<Task>> {
+    pub(crate) async fn get_all_tasks(&self) -> Result<Vec<Task>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         // Get all task IDs
@@ -81,7 +81,7 @@ impl TaskStore {
         Ok(tasks)
     }
 
-    pub async fn delete_task(&self, id: String) -> Result<()> {
+    pub(crate) async fn delete_task(&self, id: String) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         let task = self.get_task(&id).await?;
@@ -109,7 +109,7 @@ impl TaskStore {
         Ok(())
     }
 
-    pub async fn delete_all_tasks(&self) -> Result<()> {
+    pub(crate) async fn delete_all_tasks(&self) -> Result<()> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
 
         // Get all tasks first for observer notifications
@@ -140,14 +140,14 @@ impl TaskStore {
         Ok(())
     }
 
-    pub async fn get_task(&self, id: &str) -> Result<Option<Task>> {
+    pub(crate) async fn get_task(&self, id: &str) -> Result<Option<Task>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let task_key = format!("{TASK_KEY_PREFIX}{id}");
         let task: Option<Task> = con.get(&task_key).await?;
         Ok(task)
     }
 
-    pub async fn task_name_exists(&self, name: &str) -> Result<bool> {
+    pub(crate) async fn task_name_exists(&self, name: &str) -> Result<bool> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let exists: bool = con.sismember(TASK_NAME_INDEX_KEY, name).await?;
         Ok(exists)

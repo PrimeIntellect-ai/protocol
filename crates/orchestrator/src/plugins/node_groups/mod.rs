@@ -19,8 +19,8 @@ use std::{
     str::FromStr,
 };
 
-pub mod scheduler_impl;
-pub mod status_update_impl;
+pub(crate) mod scheduler_impl;
+pub(crate) mod status_update_impl;
 #[cfg(test)]
 mod tests;
 
@@ -30,7 +30,7 @@ const GROUP_TASK_KEY_PREFIX: &str = "group_task:";
 const GROUPS_INDEX_KEY: &str = "orchestrator:groups_index";
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct NodeGroupConfiguration {
+pub(crate) struct NodeGroupConfiguration {
     pub name: String,
     pub min_group_size: usize,
     pub max_group_size: usize,
@@ -54,7 +54,7 @@ where
 }
 
 impl NodeGroupConfiguration {
-    pub fn is_valid(&self) -> bool {
+    pub(crate) fn is_valid(&self) -> bool {
         if self.max_group_size < self.min_group_size {
             return false;
         }
@@ -63,7 +63,7 @@ impl NodeGroupConfiguration {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
-pub struct NodeGroup {
+pub(crate) struct NodeGroup {
     pub id: String,
     pub nodes: BTreeSet<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -71,7 +71,7 @@ pub struct NodeGroup {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaskSwitchingPolicy {
+pub(crate) struct TaskSwitchingPolicy {
     /// Whether to enable task switching at all
     pub enabled: bool,
     /// Prefer forming larger groups even if it means switching tasks
@@ -79,7 +79,7 @@ pub struct TaskSwitchingPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProximityOptimizationPolicy {
+pub(crate) struct ProximityOptimizationPolicy {
     /// Optimize node groups based on proximity?
     pub enabled: bool,
 }
@@ -100,7 +100,7 @@ impl Default for TaskSwitchingPolicy {
 }
 
 #[derive(Clone)]
-pub struct NodeGroupsPlugin {
+pub(crate) struct NodeGroupsPlugin {
     configuration_templates: Vec<NodeGroupConfiguration>,
     store: Arc<RedisStore>,
     store_context: Arc<StoreContext>,
@@ -111,7 +111,7 @@ pub struct NodeGroupsPlugin {
 }
 
 impl NodeGroupsPlugin {
-    pub fn new(
+    pub(crate) fn new(
         configuration_templates: Vec<NodeGroupConfiguration>,
         store: Arc<RedisStore>,
         store_context: Arc<StoreContext>,
@@ -129,7 +129,7 @@ impl NodeGroupsPlugin {
         )
     }
 
-    pub fn new_with_policy(
+    pub(crate) fn new_with_policy(
         configuration_templates: Vec<NodeGroupConfiguration>,
         store: Arc<RedisStore>,
         store_context: Arc<StoreContext>,
@@ -178,7 +178,7 @@ impl NodeGroupsPlugin {
     }
 
     /// Register this plugin as a task observer (async)
-    pub async fn register_observer(self: Arc<Self>) -> Result<()> {
+    pub(crate) async fn register_observer(self: Arc<Self>) -> Result<()> {
         self.store_context
             .task_store
             .add_observer(self.clone())
@@ -315,7 +315,7 @@ impl NodeGroupsPlugin {
         format!("{GROUP_KEY_PREFIX}{group_id}")
     }
 
-    pub async fn get_node_group(&self, node_addr: &str) -> Result<Option<NodeGroup>, Error> {
+    pub(crate) async fn get_node_group(&self, node_addr: &str) -> Result<Option<NodeGroup>, Error> {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
         let group_id: Option<String> = conn.hget(NODE_GROUP_MAP_KEY, node_addr).await?;
@@ -330,7 +330,7 @@ impl NodeGroupsPlugin {
         Ok(None)
     }
 
-    pub async fn get_node_groups_batch(
+    pub(crate) async fn get_node_groups_batch(
         &self,
         node_addresses: &[String],
     ) -> Result<HashMap<String, Option<NodeGroup>>, Error> {
@@ -390,7 +390,7 @@ impl NodeGroupsPlugin {
         Ok(result)
     }
 
-    pub async fn get_available_configurations(&self) -> Vec<NodeGroupConfiguration> {
+    pub(crate) async fn get_available_configurations(&self) -> Vec<NodeGroupConfiguration> {
         let mut conn = match self.store.client.get_multiplexed_async_connection().await {
             Ok(conn) => conn,
             Err(_) => return vec![],
@@ -412,25 +412,28 @@ impl NodeGroupsPlugin {
         configs
     }
 
-    pub fn get_all_configuration_templates(&self) -> Vec<NodeGroupConfiguration> {
+    pub(crate) fn get_all_configuration_templates(&self) -> Vec<NodeGroupConfiguration> {
         self.configuration_templates.clone()
     }
 
-    pub async fn enable_configuration(&self, configuration_name: &str) -> Result<(), Error> {
+    pub(crate) async fn enable_configuration(&self, configuration_name: &str) -> Result<(), Error> {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
         conn.sadd::<_, _, ()>("available_node_group_configs", configuration_name)
             .await?;
         Ok(())
     }
 
-    pub async fn disable_configuration(&self, configuration_name: &str) -> Result<(), Error> {
+    pub(crate) async fn disable_configuration(
+        &self,
+        configuration_name: &str,
+    ) -> Result<(), Error> {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
         conn.srem::<_, _, ()>("available_node_group_configs", configuration_name)
             .await?;
         Ok(())
     }
 
-    pub fn get_idx_in_group(
+    pub(crate) fn get_idx_in_group(
         &self,
         node_group: &NodeGroup,
         node_addr: &str,
@@ -477,7 +480,11 @@ impl NodeGroupsPlugin {
         Ok(None)
     }
 
-    pub async fn assign_task_to_group(&self, group_id: &str, task_id: &str) -> Result<bool, Error> {
+    pub(crate) async fn assign_task_to_group(
+        &self,
+        group_id: &str,
+        task_id: &str,
+    ) -> Result<bool, Error> {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
         let task_key = format!("{GROUP_TASK_KEY_PREFIX}{group_id}");
         let result: bool = conn.set_nx::<_, _, bool>(&task_key, task_id).await?;
@@ -1008,7 +1015,7 @@ impl NodeGroupsPlugin {
         }
     }
 
-    pub async fn run_group_management_loop(&self, duration: u64) -> Result<(), Error> {
+    pub(crate) async fn run_group_management_loop(&self, duration: u64) -> Result<(), Error> {
         let mut interval = tokio::time::interval(Duration::from_secs(duration));
 
         loop {
@@ -1033,7 +1040,7 @@ impl NodeGroupsPlugin {
         }
     }
 
-    pub async fn dissolve_group(&self, group_id: &str) -> Result<(), Error> {
+    pub(crate) async fn dissolve_group(&self, group_id: &str) -> Result<(), Error> {
         debug!("Attempting to dissolve group: {group_id}");
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
@@ -1092,7 +1099,7 @@ impl NodeGroupsPlugin {
         Ok(())
     }
 
-    pub fn get_task_topologies(&self, task: &Task) -> Result<Vec<String>, Error> {
+    pub(crate) fn get_task_topologies(&self, task: &Task) -> Result<Vec<String>, Error> {
         debug!("Getting topologies for task: {task:?}");
         if let Some(config) = &task.scheduling_config {
             if let Some(plugins) = &config.plugins {
@@ -1108,7 +1115,10 @@ impl NodeGroupsPlugin {
         Ok(vec![])
     }
 
-    pub async fn get_all_tasks_for_topology(&self, topology: &str) -> Result<Vec<Task>, Error> {
+    pub(crate) async fn get_all_tasks_for_topology(
+        &self,
+        topology: &str,
+    ) -> Result<Vec<Task>, Error> {
         debug!("Getting all tasks for topology: {topology}");
         let all_tasks = self.store_context.task_store.get_all_tasks().await?;
         debug!("Found {} total tasks to check", all_tasks.len());
@@ -1124,7 +1134,7 @@ impl NodeGroupsPlugin {
         Ok(tasks)
     }
 
-    pub async fn get_all_groups(&self) -> Result<Vec<NodeGroup>, Error> {
+    pub(crate) async fn get_all_groups(&self) -> Result<Vec<NodeGroup>, Error> {
         debug!("Getting all groups");
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
@@ -1164,7 +1174,7 @@ impl NodeGroupsPlugin {
         Ok(groups)
     }
 
-    pub async fn get_group_by_id(&self, group_id: &str) -> Result<Option<NodeGroup>, Error> {
+    pub(crate) async fn get_group_by_id(&self, group_id: &str) -> Result<Option<NodeGroup>, Error> {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
         let group_key = Self::get_group_key(group_id);
 
@@ -1175,7 +1185,9 @@ impl NodeGroupsPlugin {
         }
     }
 
-    pub async fn get_all_node_group_mappings(&self) -> Result<HashMap<String, String>, Error> {
+    pub(crate) async fn get_all_node_group_mappings(
+        &self,
+    ) -> Result<HashMap<String, String>, Error> {
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
         let mappings: HashMap<String, String> = conn.hgetall(NODE_GROUP_MAP_KEY).await?;
@@ -1184,7 +1196,7 @@ impl NodeGroupsPlugin {
 
     /// Get all groups assigned to a specific task
     /// Returns a list of group IDs that are currently working on the given task
-    pub async fn get_groups_for_task(&self, task_id: &str) -> Result<Vec<String>, Error> {
+    pub(crate) async fn get_groups_for_task(&self, task_id: &str) -> Result<Vec<String>, Error> {
         debug!("Getting all groups for task: {task_id}");
         let mut conn = self.store.client.get_multiplexed_async_connection().await?;
 
@@ -1223,13 +1235,17 @@ impl NodeGroupsPlugin {
     }
 
     /// Validate that a group still exists before task assignment (for scheduler integration)
-    pub async fn validate_group_exists(&self, group_id: &str) -> Result<bool, Error> {
+    pub(crate) async fn validate_group_exists(&self, group_id: &str) -> Result<bool, Error> {
         let group = self.get_group_by_id(group_id).await?;
         Ok(group.is_some())
     }
 
     /// Handle the case where a group was dissolved while processing - for scheduler integration
-    pub async fn handle_group_not_found(&self, group_id: &str, task_id: &str) -> Result<(), Error> {
+    pub(crate) async fn handle_group_not_found(
+        &self,
+        group_id: &str,
+        task_id: &str,
+    ) -> Result<(), Error> {
         warn!(
             "Group {group_id} not found during task assignment for task {task_id}, attempting recovery"
         );

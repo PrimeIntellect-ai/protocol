@@ -9,12 +9,12 @@ use std::sync::Arc;
 
 const ORCHESTRATOR_NODE_METRICS_STORE: &str = "orchestrator:node_metrics";
 
-pub struct MetricsStore {
+pub(crate) struct MetricsStore {
     redis: Arc<RedisStore>,
 }
 
 impl MetricsStore {
-    pub fn new(redis: Arc<RedisStore>) -> Self {
+    pub(crate) fn new(redis: Arc<RedisStore>) -> Self {
         Self { redis }
     }
 
@@ -22,7 +22,7 @@ impl MetricsStore {
         label.replace(':', "")
     }
 
-    pub async fn store_metrics(
+    pub(crate) async fn store_metrics(
         &self,
         metrics: Option<Vec<MetricEntry>>,
         sender_address: Address,
@@ -74,7 +74,7 @@ impl MetricsStore {
         Ok(())
     }
 
-    pub async fn store_manual_metrics(&self, label: String, value: f64) -> Result<()> {
+    pub(crate) async fn store_manual_metrics(&self, label: String, value: f64) -> Result<()> {
         self.store_metrics(
             Some(vec![MetricEntry {
                 key: shared::models::metric::MetricKey {
@@ -88,7 +88,12 @@ impl MetricsStore {
         .await
     }
 
-    pub async fn delete_metric(&self, task_id: &str, label: &str, address: &str) -> Result<bool> {
+    pub(crate) async fn delete_metric(
+        &self,
+        task_id: &str,
+        label: &str,
+        address: &str,
+    ) -> Result<bool> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let cleaned_label = self.clean_label(label);
 
@@ -109,7 +114,7 @@ impl MetricsStore {
         }
     }
 
-    pub async fn get_metrics_for_node(
+    pub(crate) async fn get_metrics_for_node(
         &self,
         node_address: Address,
     ) -> Result<HashMap<String, HashMap<String, f64>>> {
@@ -131,7 +136,10 @@ impl MetricsStore {
         Ok(result)
     }
 
-    pub async fn get_metric_keys_for_node(&self, node_address: Address) -> Result<Vec<String>> {
+    pub(crate) async fn get_metric_keys_for_node(
+        &self,
+        node_address: Address,
+    ) -> Result<Vec<String>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let node_key = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:{node_address}");
 
@@ -174,7 +182,7 @@ impl MetricsStore {
         Ok(result)
     }
 
-    pub async fn get_aggregate_metrics_for_all_tasks(&self) -> Result<HashMap<String, f64>> {
+    pub(crate) async fn get_aggregate_metrics_for_all_tasks(&self) -> Result<HashMap<String, f64>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let pattern = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:*");
 
@@ -202,7 +210,7 @@ impl MetricsStore {
         Ok(result)
     }
 
-    pub async fn get_all_metrics(
+    pub(crate) async fn get_all_metrics(
         &self,
     ) -> Result<HashMap<String, HashMap<String, HashMap<String, f64>>>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;

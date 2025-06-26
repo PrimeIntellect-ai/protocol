@@ -1,5 +1,5 @@
-pub mod context;
-pub mod redis;
+pub(crate) mod context;
+pub(crate) mod redis;
 
-pub use context::StoreContext;
-pub use redis::RedisStore;
+pub(crate) use context::StoreContext;
+pub(crate) use redis::RedisStore;

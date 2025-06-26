@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
 
-pub struct MetricsSyncService {
+pub(crate) struct MetricsSyncService {
     store_context: Arc<StoreContext>,
     metrics_context: Arc<MetricsContext>,
     server_mode: ServerMode,
@@ -18,7 +18,7 @@ pub struct MetricsSyncService {
 }
 
 impl MetricsSyncService {
-    pub fn new(
+    pub(crate) fn new(
         store_context: Arc<StoreContext>,
         metrics_context: Arc<MetricsContext>,
         server_mode: ServerMode,
@@ -98,7 +98,7 @@ impl MetricsSyncService {
         }
     }
 
-    pub async fn run(&self) -> anyhow::Result<()> {
+    pub(crate) async fn run(&self) -> anyhow::Result<()> {
         // Only run the sync service on ProcessorOnly or Full mode instances
         if !matches!(
             self.server_mode,
@@ -124,7 +124,7 @@ impl MetricsSyncService {
         }
     }
 
-    pub async fn sync_metrics_from_redis(&self) -> anyhow::Result<()> {
+    pub(crate) async fn sync_metrics_from_redis(&self) -> anyhow::Result<()> {
         debug!("Syncing metrics from Redis to Prometheus");
 
         // Get all metrics from Redis
@@ -199,7 +199,7 @@ impl MetricsSyncService {
         Ok(())
     }
 
-    pub async fn sync_orchestrator_statistics(&self) -> anyhow::Result<()> {
+    pub(crate) async fn sync_orchestrator_statistics(&self) -> anyhow::Result<()> {
         debug!("Syncing orchestrator statistics to Prometheus");
 
         // Clear existing orchestrator statistics

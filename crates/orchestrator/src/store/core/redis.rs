@@ -11,7 +11,7 @@ use std::thread;
 #[cfg(test)]
 use std::time::Duration;
 #[derive(Clone)]
-pub struct RedisStore {
+pub(crate) struct RedisStore {
     pub client: Client,
     #[allow(dead_code)]
     #[cfg(test)]
@@ -19,7 +19,7 @@ pub struct RedisStore {
 }
 
 impl RedisStore {
-    pub fn new(redis_url: &str) -> Self {
+    pub(crate) fn new(redis_url: &str) -> Self {
         match Client::open(redis_url) {
             Ok(client) => {
                 info!("Successfully connected to Redis at {redis_url}");

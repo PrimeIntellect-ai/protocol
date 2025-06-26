@@ -7,7 +7,7 @@ use utoipa::ToSchema;
 use crate::ServerMode;
 
 #[derive(Serialize, ToSchema)]
-pub struct HealthStatus {
+pub(crate) struct HealthStatus {
     pub healthy: bool,
     pub inviter_last_run_seconds_ago: i64,
     pub monitor_last_run_seconds_ago: i64,
@@ -15,7 +15,7 @@ pub struct HealthStatus {
     pub node_groups_last_run_seconds_ago: i64,
 }
 
-pub struct LoopHeartbeats {
+pub(crate) struct LoopHeartbeats {
     last_inviter_iteration: Arc<AtomicI64>,
     last_monitor_iteration: Arc<AtomicI64>,
     last_status_updater_iteration: Arc<AtomicI64>,
@@ -24,7 +24,7 @@ pub struct LoopHeartbeats {
 }
 
 impl LoopHeartbeats {
-    pub fn new(server_mode: &ServerMode) -> Self {
+    pub(crate) fn new(server_mode: &ServerMode) -> Self {
         Self {
             last_inviter_iteration: Arc::new(AtomicI64::new(-1)),
             last_monitor_iteration: Arc::new(AtomicI64::new(-1)),
@@ -34,7 +34,7 @@ impl LoopHeartbeats {
         }
     }
 
-    pub fn update_inviter(&self) {
+    pub(crate) fn update_inviter(&self) {
         self.last_inviter_iteration.store(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -44,7 +44,7 @@ impl LoopHeartbeats {
         );
     }
 
-    pub fn update_monitor(&self) {
+    pub(crate) fn update_monitor(&self) {
         self.last_monitor_iteration.store(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -54,7 +54,7 @@ impl LoopHeartbeats {
         );
     }
 
-    pub fn update_status_updater(&self) {
+    pub(crate) fn update_status_updater(&self) {
         self.last_status_updater_iteration.store(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -64,7 +64,7 @@ impl LoopHeartbeats {
         );
     }
 
-    pub fn update_node_groups(&self) {
+    pub(crate) fn update_node_groups(&self) {
         self.last_node_groups_iteration.store(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -74,7 +74,7 @@ impl LoopHeartbeats {
         );
     }
 
-    pub fn health_status(&self, with_node_groups: bool) -> HealthStatus {
+    pub(crate) fn health_status(&self, with_node_groups: bool) -> HealthStatus {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()

@@ -2,10 +2,10 @@ use rand::RngCore;
 use reqwest::Client;
 use std::time::Instant;
 
-pub struct InterconnectCheck;
+pub(crate) struct InterconnectCheck;
 
 impl InterconnectCheck {
-    pub async fn check_speeds() -> Result<(f64, f64), Box<dyn std::error::Error>> {
+    pub(crate) async fn check_speeds() -> Result<(f64, f64), Box<dyn std::error::Error>> {
         let client = Client::new();
 
         // Download test: Request a 10 MB file using the query parameter.

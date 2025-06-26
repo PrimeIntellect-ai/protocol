@@ -115,7 +115,7 @@ async fn health_check(data: web::Data<AppState>) -> HttpResponse {
     }
 }
 
-pub struct AppState {
+pub(crate) struct AppState {
     pub store_context: Arc<StoreContext>,
     pub storage_provider: Option<Arc<dyn StorageProvider>>,
     pub heartbeats: Arc<LoopHeartbeats>,
@@ -130,7 +130,7 @@ pub struct AppState {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn start_server(
+pub(crate) async fn start_server(
     host: &str,
     port: u16,
     store_context: Arc<StoreContext>,

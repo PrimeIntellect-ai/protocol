@@ -392,7 +392,7 @@ async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> Http
     }
 }
 
-pub fn nodes_routes() -> Scope {
+pub(crate) fn nodes_routes() -> Scope {
     web::scope("/nodes")
         .route("", get().to(get_nodes))
         .route("/{node_id}/restart", post().to(restart_node_task))

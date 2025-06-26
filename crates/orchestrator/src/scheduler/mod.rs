@@ -6,12 +6,15 @@ use crate::plugins::{newest_task::NewestTaskPlugin, SchedulerPlugin};
 use crate::store::core::StoreContext;
 use anyhow::Result;
 
-pub struct Scheduler {
+pub(crate) struct Scheduler {
     store_context: Arc<StoreContext>,
     plugins: Vec<Box<dyn SchedulerPlugin>>,
 }
 impl Scheduler {
-    pub fn new(store_context: Arc<StoreContext>, plugins: Vec<Box<dyn SchedulerPlugin>>) -> Self {
+    pub(crate) fn new(
+        store_context: Arc<StoreContext>,
+        plugins: Vec<Box<dyn SchedulerPlugin>>,
+    ) -> Self {
         let mut plugins = plugins;
         if plugins.is_empty() {
             plugins.push(Box::new(NewestTaskPlugin));
@@ -23,7 +26,7 @@ impl Scheduler {
         }
     }
 
-    pub async fn get_task_for_node(&self, node_address: Address) -> Result<Option<Task>> {
+    pub(crate) async fn get_task_for_node(&self, node_address: Address) -> Result<Option<Task>> {
         let mut all_tasks = self.store_context.task_store.get_all_tasks().await?;
 
         for plugin in self.plugins.iter() {

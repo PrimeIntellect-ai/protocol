@@ -1,3 +1,3 @@
-pub mod routes;
-pub mod server;
-pub mod tests;
+pub(crate) mod routes;
+pub(crate) mod server;
+pub(crate) mod tests;

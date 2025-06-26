@@ -4,12 +4,12 @@ use rand_v8::{rngs::StdRng, SeedableRng};
 use std::error::Error;
 
 /// Generate a random seed
-pub fn generate_random_seed() -> u64 {
+pub(crate) fn generate_random_seed() -> u64 {
     rand_v8::thread_rng().gen()
 }
 
 // Generate an Iroh node ID from a seed
-pub fn generate_iroh_node_id_from_seed(seed: u64) -> Result<String, Box<dyn Error>> {
+pub(crate) fn generate_iroh_node_id_from_seed(seed: u64) -> Result<String, Box<dyn Error>> {
     // Create a deterministic RNG from the seed
     let mut rng = StdRng::seed_from_u64(seed);
 
