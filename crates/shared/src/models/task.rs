@@ -153,6 +153,8 @@ pub struct TaskRequest {
     pub storage_config: Option<StorageConfig>,
     pub metadata: Option<TaskMetadata>,
     pub volume_mounts: Option<Vec<VolumeMount>>,
+    #[serde(default)]
+    pub partition_by_gpu: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
@@ -182,6 +184,8 @@ pub struct Task {
     pub metadata: Option<TaskMetadata>,
     #[serde(default)]
     pub volume_mounts: Option<Vec<VolumeMount>>,
+    #[serde(default)]
+    pub partition_by_gpu: bool,
 }
 
 impl Task {
@@ -238,6 +242,7 @@ impl Default for Task {
             storage_config: None,
             metadata: None,
             volume_mounts: None,
+            partition_by_gpu: false,
         }
     }
 }
@@ -301,6 +306,7 @@ impl TryFrom<TaskRequest> for Task {
             storage_config: request.storage_config,
             metadata: request.metadata,
             volume_mounts: request.volume_mounts,
+            partition_by_gpu: request.partition_by_gpu,
         })
     }
 }

@@ -11,6 +11,7 @@ use shared::models::task::Task;
 use shared::models::task::TaskState;
 use std::collections::HashMap;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
@@ -53,6 +54,34 @@ impl DockerService {
             task_bridge_socket_path,
             node_address,
             p2p_seed,
+        }
+    }
+
+    /// Helper function to get expected container names for a task
+    /// Returns a vector of (container_name, gpu_index) tuples
+    fn get_container_names_for_task(&self, task: &Task) -> Vec<(String, Option<u32>)> {
+        let config_hash = task.generate_config_hash();
+        let base_name = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
+
+        if task.partition_by_gpu {
+            // For GPU partitioned tasks, create one container per GPU
+            if let Some(ref gpu_specs) = self.gpu {
+                let gpu_count = gpu_specs
+                    .indices
+                    .as_ref()
+                    .map(|indices| indices.len())
+                    .unwrap_or(gpu_specs.count.unwrap_or(1) as usize);
+
+                (0..gpu_count)
+                    .map(|i| (format!("{}-gpu{}", base_name, i), Some(i as u32)))
+                    .collect()
+            } else {
+                // No GPUs available, fall back to single container
+                vec![(base_name, None)]
+            }
+        } else {
+            // Non-partitioned task: single container with access to all GPUs
+            vec![(base_name, None)]
         }
     }
 
@@ -143,10 +172,29 @@ impl DockerService {
                         }
                     }
 
-                    if current_task.is_some() && task_id.is_some() {
-                        let container_task_id = task_id.as_ref().unwrap().clone();
-                        let container_match = all_containers.iter().find(|c| c.names.contains(&format!("/{container_task_id}")));
-                        if container_match.is_none() {
+                    if let Some(ref current_task_ref) = current_task {
+                        // Get expected container names for this task
+                        let expected_containers = self.get_container_names_for_task(current_task_ref);
+                        let task_containers: Vec<ContainerInfo> = all_containers
+                            .iter()
+                            .filter(|c| {
+                                expected_containers.iter().any(|(name, _)| {
+                                    c.names.contains(&format!("/{}", name))
+                                })
+                            })
+                            .cloned()
+                            .collect();
+
+                        let missing_containers: Vec<(String, Option<u32>)> = expected_containers
+                            .into_iter()
+                            .filter(|(name, _)| {
+                                !task_containers.iter().any(|c| {
+                                    c.names.contains(&format!("/{}", name))
+                                })
+                            })
+                            .collect();
+
+                        if !missing_containers.is_empty() {
                             let running_tasks = starting_container_tasks.lock().await;
                             let has_running_tasks = running_tasks.iter().any(|h| !h.is_finished());
                             drop(running_tasks);
@@ -171,143 +219,193 @@ impl DockerService {
                                     } else {
                                         Console::info("DockerService", "Starting new container...");
                                     }
-                                    let manager_clone = manager_clone.clone();
-                                    let state_clone = task_state_clone.clone();
-                                    let gpu = self.gpu.clone();
-                                    let system_memory_mb = self.system_memory_mb;
-                                    let task_bridge_socket_path = self.task_bridge_socket_path.clone();
-                                    let node_address = self.node_address.clone();
-                                    let p2p_seed = self.p2p_seed;
-                                    let handle = tokio::spawn(async move {
-                                        let payload = match state_clone.get_current_task().await {
-                                            Some(payload) => payload,
-                                            None => {
-                                                return;
-                                            }
-                                        };
-                                        let cmd = match payload.cmd {
-                                            Some(cmd_vec) => {
-                                                cmd_vec.into_iter().map(|arg| {
-                                                    let mut processed_arg = arg.replace("${SOCKET_PATH}", &task_bridge_socket_path);
-                                                    if let Some(seed) = p2p_seed {
-                                                        processed_arg = processed_arg.replace("${WORKER_P2P_SEED}", &seed.to_string());
-                                                    }
-                                                    processed_arg
-                                                }).collect()
-                                            }
-                                            None => vec!["sleep".to_string(), "infinity".to_string()],
-                                        };
 
-                                        let mut env_vars: HashMap<String, String> = HashMap::new();
-                                        if let Some(env) = &payload.env_vars {
-                                            // Clone env vars and replace ${SOCKET_PATH} in values
-                                            for (key, value) in env.iter() {
-                                                let mut processed_value = value.replace("${SOCKET_PATH}", &task_bridge_socket_path);
-                                                if let Some(seed) = p2p_seed {
-                                                    processed_value = processed_value.replace("${WORKER_P2P_SEED}", &seed.to_string());
+                                    // Start containers for all missing GPU indices
+                                    for (container_name, gpu_index) in missing_containers {
+                                        let manager_clone = manager_clone.clone();
+                                        let state_clone = task_state_clone.clone();
+                                        let gpu = self.gpu.clone();
+                                        let system_memory_mb = self.system_memory_mb;
+                                        let task_bridge_socket_path = self.task_bridge_socket_path.clone();
+                                        let node_address = self.node_address.clone();
+                                        let p2p_seed = self.p2p_seed;
+                                        let handle = tokio::spawn(async move {
+                                            let payload = match state_clone.get_current_task().await {
+                                                Some(payload) => payload,
+                                                None => {
+                                                    return;
                                                 }
-                                                env_vars.insert(key.clone(), processed_value);
+                                            };
+                                            let cmd = match payload.cmd {
+                                                Some(cmd_vec) => {
+                                                    cmd_vec.into_iter().map(|arg| {
+                                                        let mut processed_arg = arg.replace("${SOCKET_PATH}", &task_bridge_socket_path);
+                                                        if let Some(seed) = p2p_seed {
+                                                            processed_arg = processed_arg.replace("${WORKER_P2P_SEED}", &seed.to_string());
+                                                        }
+                                                        processed_arg
+                                                    }).collect()
+                                                }
+                                                None => vec!["sleep".to_string(), "infinity".to_string()],
+                                            };
+
+                                            let mut env_vars: HashMap<String, String> = HashMap::new();
+                                            if let Some(env) = &payload.env_vars {
+                                                // Clone env vars and replace ${SOCKET_PATH} in values
+                                                for (key, value) in env.iter() {
+                                                    let mut processed_value = value.replace("${SOCKET_PATH}", &task_bridge_socket_path);
+                                                    if let Some(seed) = p2p_seed {
+                                                        processed_value = processed_value.replace("${WORKER_P2P_SEED}", &seed.to_string());
+                                                    }
+                                                    env_vars.insert(key.clone(), processed_value);
+                                                }
                                             }
-                                        }
 
-                                        env_vars.insert("NODE_ADDRESS".to_string(), node_address);
-                                        env_vars.insert("PRIME_MONITOR__SOCKET__PATH".to_string(), task_bridge_socket_path.to_string());
-                                        env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
+                                            env_vars.insert("NODE_ADDRESS".to_string(), node_address);
+                                            env_vars.insert("PRIME_MONITOR__SOCKET__PATH".to_string(), task_bridge_socket_path.to_string());
+                                            env_vars.insert("PRIME_TASK_ID".to_string(), payload.id.to_string());
 
-                                        let mut volumes = vec![
-                                            (
-                                                Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
-                                                Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
-                                                false,
-                                                false,
-                                            )
-                                        ];
+                                            // Add GPU_INDEX environment variable for partitioned tasks
+                                            if let Some(idx) = gpu_index {
+                                                env_vars.insert("GPU_INDEX".to_string(), idx.to_string());
+                                            }
 
-                                        if let Some(volume_mounts) = &payload.volume_mounts {
-                                            for volume_mount in volume_mounts {
-                                                volumes.push((
-                                                    volume_mount.host_path.clone(),
-                                                    volume_mount.container_path.clone(),
+                                            let mut volumes = vec![
+                                                (
+                                                    Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
+                                                    Path::new(&task_bridge_socket_path).parent().unwrap().to_path_buf().to_string_lossy().to_string(),
                                                     false,
-                                                    true
-                                                ));
+                                                    false,
+                                                )
+                                            ];
+
+                                            if let Some(volume_mounts) = &payload.volume_mounts {
+                                                for volume_mount in volume_mounts {
+                                                    volumes.push((
+                                                        volume_mount.host_path.clone(),
+                                                        volume_mount.container_path.clone(),
+                                                        false,
+                                                        true
+                                                    ));
+                                                }
                                             }
-                                        }
-                                        let shm_size = match system_memory_mb {
-                                            Some(mem_mb) => (mem_mb as u64) * 1024 * 1024 / 2, // Convert MB to bytes and divide by 2
-                                            None => {
-                                                Console::warning("System memory not available, using default shm size");
-                                                67108864 // Default to 64MB in bytes
+                                            let shm_size = match system_memory_mb {
+                                                Some(mem_mb) => (mem_mb as u64) * 1024 * 1024 / 2, // Convert MB to bytes and divide by 2
+                                                None => {
+                                                    Console::warning("System memory not available, using default shm size");
+                                                    67108864 // Default to 64MB in bytes
+                                                }
+                                            };
+
+                                            // Prepare GPU specs for this specific container
+                                            let container_gpu = if payload.partition_by_gpu && gpu_index.is_some() {
+                                                // For partitioned tasks, assign specific GPU
+                                                gpu.map(|mut g| {
+                                                    let gpu_idx = gpu_index.unwrap();
+                                                    // If indices are specified, use the actual GPU index
+                                                    if let Some(indices) = &g.indices {
+                                                        if (gpu_idx as usize) < indices.len() {
+                                                            g.indices = Some(vec![indices[gpu_idx as usize]]);
+                                                        }
+                                                    } else {
+                                                        // Otherwise, use the sequential index
+                                                        g.indices = Some(vec![gpu_idx]);
+                                                    }
+                                                    g
+                                                })
+                                            } else {
+                                                // For non-partitioned tasks, use all GPUs
+                                                gpu
+                                            };
+
+                                            match manager_clone.start_container(&payload.image, &container_name, Some(env_vars), Some(cmd), container_gpu, Some(volumes), Some(shm_size), payload.entrypoint.clone(), None).await {
+                                                Ok(container_id) => {
+                                                    Console::info("DockerService", &format!("Container started with id: {container_id}"));
+                                                },
+                                                Err(e) => {
+                                                    log::error!("Error starting container: {e}");
+                                                    state_clone.update_task_state(payload.id, TaskState::FAILED).await;
+                                                }
                                             }
-                                        };
-                                        match manager_clone.start_container(&payload.image, &container_task_id, Some(env_vars), Some(cmd), gpu, Some(volumes), Some(shm_size), payload.entrypoint, None).await {
-                                            Ok(container_id) => {
-                                                Console::info("DockerService", &format!("Container started with id: {container_id}"));
-                                            },
-                                            Err(e) => {
-                                                log::error!("Error starting container: {e}");
-                                                state_clone.update_task_state(payload.id, TaskState::FAILED).await;
-                                            }
-                                        }
-                                        state_clone.set_last_started(Utc::now()).await;
-                                    });
-                                    starting_container_tasks.lock().await.push(handle);
-
-                                }
-
-                            }
-                        } else {
-                            let container_status = container_match.unwrap().clone();
-                            let status = match manager.get_container_details(&container_status.id).await {
-                                Ok(status) => status,
-                                Err(e) => {
-                                    log::error!("Error getting container details: {e}");
-                                    continue;
-                                }
-                            };
-
-                            let task_state_current = match task_state_clone.get_current_task().await {
-                                Some(task) => task.state,
-                                None => {
-                                    log::error!("No task found in state");
-                                    continue;
-                                }
-                            };
-                            // handle edge case where container instantly dies due to invalid command
-                            if status.status == Some(ContainerStateStatusEnum::CREATED) && task_state_current == TaskState::FAILED {
-                                Console::info("DockerService", "Task failed, waiting for new command from manager ...");
-                            } else {
-                                debug!("docker container status: {:?}, status_code: {:?}", status.status, status.status_code);
-                                let task_state_live = match (status.status, status.status_code) {
-                                    (Some(ContainerStateStatusEnum::RUNNING), _) => TaskState::RUNNING,
-                                    (Some(ContainerStateStatusEnum::CREATED), _) => TaskState::PENDING,
-                                    (Some(ContainerStateStatusEnum::EXITED), Some(0)) => TaskState::COMPLETED,
-                                    (Some(ContainerStateStatusEnum::EXITED), Some(code)) if code != 0 => TaskState::FAILED,
-                                    (Some(ContainerStateStatusEnum::DEAD), _) => TaskState::FAILED,
-                                    (Some(ContainerStateStatusEnum::PAUSED), _) => TaskState::PAUSED,
-                                    (Some(ContainerStateStatusEnum::RESTARTING), _) => TaskState::RESTARTING,
-                                    (Some(ContainerStateStatusEnum::REMOVING), _) => TaskState::UNKNOWN,
-                                    _ => TaskState::UNKNOWN,
-                                };
-
-                                // Only log if state changed
-                                if task_state_live != task_state_current {
-                                    Console::info("DockerService", &format!("Task state changed from {task_state_current:?} to {task_state_live:?}"));
-
-                                    if task_state_live == TaskState::FAILED {
-
-                                        consecutive_failures += 1;
-                                        Console::info("DockerService", &format!("Task failed (attempt {consecutive_failures}), waiting with exponential backoff before restart"));
-
-                                    } else if task_state_live == TaskState::RUNNING {
-                                        // Reset failure counter when container runs successfully
-                                        consecutive_failures = 0;
+                                            state_clone.set_last_started(Utc::now()).await;
+                                        });
+                                        starting_container_tasks.lock().await.push(handle);
                                     }
                                 }
+                            }
+                        } else {
+                            // All expected containers exist, now aggregate their states
+                            let mut any_failed = false;
+                            let mut all_completed = true;
+                            let mut any_running = false;
+                            let mut all_created = true;
 
-                                if let Some(task) = task_state_clone.get_current_task().await {
-                                    task_state_clone.update_task_state(task.id, task_state_live).await;
+                            for container in &task_containers {
+                                let status = match manager.get_container_details(&container.id).await {
+                                    Ok(status) => status,
+                                    Err(e) => {
+                                        log::error!("Error getting container details: {e}");
+                                        continue;
+                                    }
+                                };
+
+                                match (status.status, status.status_code) {
+                                    (Some(ContainerStateStatusEnum::RUNNING), _) => {
+                                        any_running = true;
+                                        all_completed = false;
+                                        all_created = false;
+                                    },
+                                    (Some(ContainerStateStatusEnum::CREATED), _) => {
+                                        all_completed = false;
+                                    },
+                                    (Some(ContainerStateStatusEnum::EXITED), Some(0)) => {
+                                        all_created = false;
+                                    },
+                                    (Some(ContainerStateStatusEnum::EXITED), Some(code)) if code != 0 => {
+                                        any_failed = true;
+                                        all_created = false;
+                                    },
+                                    (Some(ContainerStateStatusEnum::DEAD), _) => {
+                                        any_failed = true;
+                                        all_created = false;
+                                    },
+                                    _ => {
+                                        all_completed = false;
+                                        all_created = false;
+                                    }
                                 }
+                            }
+
+                            let task_state_current = current_task_ref.state.clone();
+
+                            // Determine aggregated task state
+                            let task_state_live = if any_failed {
+                                TaskState::FAILED
+                            } else if all_completed {
+                                TaskState::COMPLETED
+                            } else if any_running {
+                                TaskState::RUNNING
+                            } else if all_created {
+                                TaskState::PENDING
+                            } else {
+                                TaskState::UNKNOWN
+                            };
+
+                            // Only log if state changed
+                            if task_state_live != task_state_current {
+                                Console::info("DockerService", &format!("Task state changed from {task_state_current:?} to {task_state_live:?}"));
+
+                                if task_state_live == TaskState::FAILED {
+                                    consecutive_failures += 1;
+                                    Console::info("DockerService", &format!("Task failed (attempt {consecutive_failures}), waiting with exponential backoff before restart"));
+                                } else if task_state_live == TaskState::RUNNING {
+                                    // Reset failure counter when container runs successfully
+                                    consecutive_failures = 0;
+                                }
+                            }
+
+                            if let Some(task) = task_state_clone.get_current_task().await {
+                                task_state_clone.update_task_state(task.id, task_state_live).await;
                             }
                         }
                     }
@@ -322,17 +420,38 @@ impl DockerService {
         let current_task = self.state.get_current_task().await;
         match current_task {
             Some(task) => {
-                let config_hash = task.generate_config_hash();
-                let container_id = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
+                let container_names = self.get_container_names_for_task(&task);
+                let mut all_logs = Vec::new();
 
-                let logs = self
-                    .docker_manager
-                    .get_container_logs(&container_id, None)
-                    .await?;
-                if logs.is_empty() {
-                    Ok("No logs found in docker container".to_string())
+                for (container_name, gpu_index) in container_names {
+                    let logs = match self
+                        .docker_manager
+                        .get_container_logs(&container_name, None)
+                        .await
+                    {
+                        Ok(logs) if !logs.is_empty() => logs,
+                        Ok(_) => continue, // Empty logs, skip
+                        Err(e) => {
+                            log::debug!(
+                                "Failed to get logs for container {}: {}",
+                                container_name,
+                                e
+                            );
+                            continue;
+                        }
+                    };
+
+                    // Add header for partitioned tasks
+                    if task.partition_by_gpu && gpu_index.is_some() {
+                        all_logs.push(format!("=== GPU {} ===", gpu_index.unwrap()));
+                    }
+                    all_logs.push(logs);
+                }
+
+                if all_logs.is_empty() {
+                    Ok("No logs found in docker containers".to_string())
                 } else {
-                    Ok(logs)
+                    Ok(all_logs.join("\n\n"))
                 }
             }
             None => Ok("No task running".to_string()),
@@ -343,9 +462,24 @@ impl DockerService {
         let current_task = self.state.get_current_task().await;
         match current_task {
             Some(task) => {
-                let config_hash = task.generate_config_hash();
-                let container_id = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
-                self.docker_manager.restart_container(&container_id).await?;
+                let container_names = self.get_container_names_for_task(&task);
+                let mut restart_errors = Vec::new();
+
+                for (container_name, _) in container_names {
+                    if let Err(e) = self.docker_manager.restart_container(&container_name).await {
+                        log::error!("Failed to restart container {}: {}", container_name, e);
+                        restart_errors.push(format!("{}: {}", container_name, e));
+                    }
+                }
+
+                if !restart_errors.is_empty() {
+                    return Err(format!(
+                        "Failed to restart some containers: {}",
+                        restart_errors.join(", ")
+                    )
+                    .into());
+                }
+
                 Ok(())
             }
             None => Ok(()),
@@ -353,8 +487,10 @@ impl DockerService {
     }
 
     pub async fn get_task_details(&self, task: &Task) -> Option<TaskDetails> {
-        let config_hash = task.generate_config_hash();
-        let container_name = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
+        let container_names = self.get_container_names_for_task(task);
+
+        // For partitioned tasks, use the first container (gpu0) as representative
+        let (container_name, _) = container_names.first()?;
 
         match self.docker_manager.list_containers(true).await {
             Ok(containers) => {
@@ -539,5 +675,77 @@ mod tests {
         // Note: We can't easily test the actual replacement in container start
         // without mocking DockerManager, but we've verified the logic visually
         cancellation_token.cancel();
+    }
+
+    #[test]
+    fn test_get_container_names_for_task() {
+        let cancellation_token = CancellationToken::new();
+
+        // Test with GPU partitioning enabled and multiple GPUs
+        let gpu_specs = Some(GpuSpecs {
+            count: Some(4),
+            indices: Some(vec![0, 1, 2, 3]),
+            model: None,
+            memory_mb: None,
+        });
+
+        let docker_service = DockerService::new(
+            cancellation_token.clone(),
+            gpu_specs,
+            Some(1024),
+            "/tmp/test.sock".to_string(),
+            "/tmp/test-storage".to_string(),
+            Address::ZERO.to_string(),
+            None,
+            false,
+        );
+
+        // Test partitioned task
+        let partitioned_task = Task {
+            image: "test:latest".to_string(),
+            name: "partitioned".to_string(),
+            id: Uuid::from_str("123e4567-e89b-12d3-a456-426614174000").unwrap(),
+            partition_by_gpu: true,
+            ..Default::default()
+        };
+
+        let container_names = docker_service.get_container_names_for_task(&partitioned_task);
+        assert_eq!(container_names.len(), 4);
+        assert_eq!(container_names[0].1, Some(0));
+        assert_eq!(container_names[1].1, Some(1));
+        assert_eq!(container_names[2].1, Some(2));
+        assert_eq!(container_names[3].1, Some(3));
+        assert!(container_names[0].0.ends_with("-gpu0"));
+        assert!(container_names[1].0.ends_with("-gpu1"));
+
+        // Test non-partitioned task
+        let non_partitioned_task = Task {
+            image: "test:latest".to_string(),
+            name: "non-partitioned".to_string(),
+            id: Uuid::from_str("123e4567-e89b-12d3-a456-426614174000").unwrap(),
+            partition_by_gpu: false,
+            ..Default::default()
+        };
+
+        let container_names = docker_service.get_container_names_for_task(&non_partitioned_task);
+        assert_eq!(container_names.len(), 1);
+        assert_eq!(container_names[0].1, None);
+        assert!(!container_names[0].0.contains("-gpu"));
+
+        // Test partitioned task with no GPUs available
+        let docker_service_no_gpu = DockerService::new(
+            cancellation_token.clone(),
+            None,
+            Some(1024),
+            "/tmp/test.sock".to_string(),
+            "/tmp/test-storage".to_string(),
+            Address::ZERO.to_string(),
+            None,
+            false,
+        );
+
+        let container_names = docker_service_no_gpu.get_container_names_for_task(&partitioned_task);
+        assert_eq!(container_names.len(), 1);
+        assert_eq!(container_names[0].1, None);
     }
 }
