@@ -34,10 +34,18 @@ where
 
     let mut tries = 0;
     let retry_delay = retry_delay.unwrap_or(2);
+    let mut tx_hash = None;
 
     while tries < max_tries {
         if tries > 0 {
             tokio::time::sleep(Duration::from_secs(retry_delay)).await;
+
+            if let Some(tx_hash) = tx_hash {
+                let receipt = provider.get_transaction_receipt(tx_hash).await?;
+                if receipt.is_some() {
+                    return Ok(tx_hash);
+                }
+            }
 
             // On retry, always fetch fresh fee estimates from the provider.
             let priority_fee_res = provider.get_max_priority_fee_per_gas().await;
@@ -65,6 +73,8 @@ where
         match call.clone().send().await {
             Ok(result) => {
                 debug!("Transaction sent, waiting for confirmation...");
+                tx_hash = Some(result.tx_hash());
+
                 match result
                     .with_timeout(Some(PENDING_TRANSACTION_TIMEOUT))
                     .watch()
