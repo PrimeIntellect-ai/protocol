@@ -30,6 +30,8 @@ where
     N: Network,
     D: CallDecoder + Clone,
 {
+    const PENDING_TRANSACTION_TIMEOUT: Duration = Duration::from_secs(60);
+
     let mut tries = 0;
     let retry_delay = retry_delay.unwrap_or(2);
 
@@ -54,7 +56,7 @@ where
                 call = call
                     .clone()
                     .max_fee_per_gas(new_gas_price)
-                    .max_priority_fee_per_gas(new_priority_fee);
+                    .max_priority_fee_per_gas(new_priority_fee)
             } else {
                 warn!("Could not get new gas fees, retrying with old settings.");
             }
@@ -63,10 +65,13 @@ where
         match call.clone().send().await {
             Ok(result) => {
                 debug!("Transaction sent, waiting for confirmation...");
-                match timeout(Duration::from_secs(30), result.watch()).await {
-                    Ok(Ok(hash)) => return Ok(hash),
-                    Ok(Err(err)) => warn!("Transaction watch failed: {err:?}"),
-                    Err(_) => warn!("Watch timed out, retrying transaction..."),
+                match result
+                    .with_timeout(Some(PENDING_TRANSACTION_TIMEOUT))
+                    .watch()
+                    .await
+                {
+                    Ok(hash) => return Ok(hash),
+                    Err(err) => warn!("Transaction watch failed: {err:?}"),
                 }
             }
             Err(err) => {
