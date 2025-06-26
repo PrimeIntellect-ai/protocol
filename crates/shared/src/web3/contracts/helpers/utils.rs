@@ -9,7 +9,7 @@ use alloy::{
 };
 use anyhow::Result;
 use log::{debug, info, warn};
-use tokio::time::{timeout, Duration};
+use tokio::time::Duration;
 
 use crate::web3::wallet::WalletProvider;
 
@@ -73,7 +73,7 @@ where
         match call.clone().send().await {
             Ok(result) => {
                 debug!("Transaction sent, waiting for confirmation...");
-                tx_hash = Some(result.tx_hash());
+                tx_hash = Some(result.tx_hash().clone());
 
                 match result
                     .with_timeout(Some(PENDING_TRANSACTION_TIMEOUT))
