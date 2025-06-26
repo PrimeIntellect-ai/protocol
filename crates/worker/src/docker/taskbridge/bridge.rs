@@ -47,13 +47,10 @@ impl TaskBridge {
         state: Arc<SystemState>,
     ) -> Result<Arc<Self>> {
         let path = match socket_path {
-            Some(path) => {
-                let path = std::path::PathBuf::from(path);
-                path
-            }
+            Some(path) => std::path::PathBuf::from(path),
             None => {
                 let path =
-                    std::env::home_dir().ok_or(anyhow::anyhow!("failed to get home directory"))?;
+                    homedir::my_home()?.ok_or(anyhow::anyhow!("failed to get home directory"))?;
                 path.join(DEFAULT_SOCKET_FILE)
             }
         };
@@ -356,7 +353,8 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Run the bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -387,7 +385,8 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Run bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -420,7 +419,8 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        ).unwrap();
+        )
+        .unwrap();
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
@@ -467,7 +467,8 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        ).unwrap();
+        )
+        .unwrap();
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
@@ -514,7 +515,8 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        ).unwrap();
+        )
+        .unwrap();
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
