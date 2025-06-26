@@ -73,7 +73,7 @@ where
         match call.clone().send().await {
             Ok(result) => {
                 debug!("Transaction sent, waiting for confirmation...");
-                tx_hash = Some(result.tx_hash().clone());
+                tx_hash = Some(*result.tx_hash());
 
                 match result
                     .with_timeout(Some(PENDING_TRANSACTION_TIMEOUT))
