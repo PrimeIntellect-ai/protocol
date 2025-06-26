@@ -441,9 +441,12 @@ impl DockerService {
                         }
                     };
 
-                    // Add header for partitioned tasks
+                    // Add prominent header for partitioned tasks
                     if task.partition_by_gpu && gpu_index.is_some() {
-                        all_logs.push(format!("=== GPU {} ===", gpu_index.unwrap()));
+                        let gpu_num = gpu_index.unwrap();
+                        all_logs.push(format!("\n{}", "=".repeat(60)));
+                        all_logs.push(format!("                    GPU {} LOGS", gpu_num));
+                        all_logs.push(format!("{}", "=".repeat(60)));
                     }
                     all_logs.push(logs);
                 }
