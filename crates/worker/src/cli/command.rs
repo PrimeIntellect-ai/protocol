@@ -422,7 +422,7 @@ pub async fn execute_command(
                 .expect("Hardware check should have populated compute_specs")
                 .storage_path
                 .clone();
-            let task_bridge = TaskBridge::new(
+            let task_bridge = match TaskBridge::new(
                 None,
                 metrics_store,
                 Some(bridge_contracts),
@@ -430,7 +430,13 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
-            );
+            ) {
+                Ok(bridge) => bridge,
+                Err(e) => {
+                    error!("❌ Failed to create Task Bridge: {e}");
+                    std::process::exit(1);
+                }
+            };
 
             let system_memory = node_config
                 .compute_specs
@@ -445,7 +451,11 @@ pub async fn execute_command(
                 cancellation_token.clone(),
                 gpu,
                 system_memory,
-                task_bridge.socket_path.clone(),
+                task_bridge
+                    .socket_path
+                    .to_str()
+                    .expect("path is valid utf-8 string")
+                    .to_string(),
                 docker_storage_path,
                 node_wallet_instance
                     .wallet

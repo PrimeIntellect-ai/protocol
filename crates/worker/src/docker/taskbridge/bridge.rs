@@ -16,12 +16,10 @@ use std::{fs, path::Path};
 use tokio::io::AsyncReadExt;
 use tokio::{io::BufReader, net::UnixListener};
 
-pub const SOCKET_NAME: &str = "metrics.sock";
-const DEFAULT_MACOS_SOCKET: &str = "/tmp/com.prime.worker/";
-const DEFAULT_LINUX_SOCKET: &str = "/tmp/com.prime.worker/";
+const DEFAULT_SOCKET_FILE: &str = "prime-worker/com.prime.worker/metrics.sock";
 
 pub struct TaskBridge {
-    pub socket_path: String,
+    pub socket_path: std::path::PathBuf,
     pub metrics_store: Arc<MetricsStore>,
     pub contracts: Option<Contracts<WalletProvider>>,
     pub node_config: Option<Node>,
@@ -47,19 +45,20 @@ impl TaskBridge {
         node_wallet: Option<Wallet>,
         docker_storage_path: String,
         state: Arc<SystemState>,
-    ) -> Arc<Self> {
+    ) -> Result<Arc<Self>> {
         let path = match socket_path {
-            Some(path) => path.to_string(),
+            Some(path) => {
+                let path = std::path::PathBuf::from(path);
+                path
+            }
             None => {
-                if cfg!(target_os = "macos") {
-                    format!("{DEFAULT_MACOS_SOCKET}{SOCKET_NAME}")
-                } else {
-                    format!("{DEFAULT_LINUX_SOCKET}{SOCKET_NAME}")
-                }
+                let path =
+                    std::env::home_dir().ok_or(anyhow::anyhow!("failed to get home directory"))?;
+                path.join(DEFAULT_SOCKET_FILE)
             }
         };
 
-        Arc::new(Self {
+        Ok(Arc::new(Self {
             socket_path: path,
             metrics_store,
             contracts,
@@ -67,7 +66,7 @@ impl TaskBridge {
             node_wallet,
             docker_storage_path,
             state,
-        })
+        }))
     }
 
     async fn handle_metric(self: Arc<Self>, input: &MetricInput) -> Result<()> {
@@ -357,7 +356,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        );
+        ).unwrap();
 
         // Run the bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -388,7 +387,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        );
+        ).unwrap();
 
         // Run bridge in background
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -421,7 +420,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        );
+        ).unwrap();
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
@@ -468,7 +467,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        );
+        ).unwrap();
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
@@ -515,7 +514,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
-        );
+        ).unwrap();
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
 
