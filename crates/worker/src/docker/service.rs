@@ -11,7 +11,6 @@ use shared::models::task::Task;
 use shared::models::task::TaskState;
 use std::collections::HashMap;
 use std::path::Path;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
@@ -300,19 +299,22 @@ impl DockerService {
                                             // Prepare GPU specs for this specific container
                                             let container_gpu = if payload.partition_by_gpu && gpu_index.is_some() {
                                                 // For partitioned tasks, assign specific GPU
-                                                gpu.map(|mut g| {
-                                                    let gpu_idx = gpu_index.unwrap();
-                                                    // If indices are specified, use the actual GPU index
-                                                    if let Some(indices) = &g.indices {
-                                                        if (gpu_idx as usize) < indices.len() {
-                                                            g.indices = Some(vec![indices[gpu_idx as usize]]);
+                                                if let Some(idx) = gpu_index {
+                                                    gpu.map(|mut g| {
+                                                        // If indices are specified, use the actual GPU index
+                                                        if let Some(indices) = &g.indices {
+                                                            if (idx as usize) < indices.len() {
+                                                                g.indices = Some(vec![indices[idx as usize]]);
+                                                            }
+                                                        } else {
+                                                            // Otherwise, use the sequential index
+                                                            g.indices = Some(vec![idx]);
                                                         }
-                                                    } else {
-                                                        // Otherwise, use the sequential index
-                                                        g.indices = Some(vec![gpu_idx]);
-                                                    }
-                                                    g
-                                                })
+                                                        g
+                                                    })
+                                                } else {
+                                                    None
+                                                }
                                             } else {
                                                 // For non-partitioned tasks, use all GPUs
                                                 gpu
@@ -446,7 +448,7 @@ impl DockerService {
                         let gpu_num = gpu_index.unwrap();
                         all_logs.push(format!("\n{}", "=".repeat(60)));
                         all_logs.push(format!("                    GPU {} LOGS", gpu_num));
-                        all_logs.push(format!("{}", "=".repeat(60)));
+                        all_logs.push("=".repeat(60).to_string());
                     }
                     all_logs.push(logs);
                 }
@@ -557,6 +559,7 @@ mod tests {
     use alloy::primitives::Address;
     use shared::models::task::Task;
     use shared::models::task::TaskState;
+    use std::str::FromStr;
     use uuid::Uuid;
 
     #[tokio::test]
