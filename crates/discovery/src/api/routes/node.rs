@@ -361,6 +361,7 @@ mod tests {
             last_updated: None,
             created_at: None,
             location: None,
+            latest_balance: None,
         };
 
         match app_state.node_store.update_node(validated).await {

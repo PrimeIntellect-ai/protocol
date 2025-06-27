@@ -81,6 +81,7 @@ pub enum NodeStatus {
     Dead,
     Ejected,
     Banned,
+    LowBalance,
 }
 
 impl Display for NodeStatus {
