@@ -325,7 +325,6 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::plugins::StatusUpdatePlugin;
     use crate::{
         api::tests::helper::{create_test_app_state, create_test_app_state_with_nodegroups},
         models::node::{NodeStatus, OrchestratorNode},
@@ -575,11 +574,13 @@ mod tests {
             None,
             None,
         ));
-        let _ = plugin.clone().register_observer().await;
-
-        let _ = plugin
-            .handle_status_change(&node, &NodeStatus::Healthy)
+        let _ = app_state
+            .store_context
+            .task_store
+            .add_observer(plugin.clone())
             .await;
+
+        let _ = plugin.handle_status_change(&node).await;
 
         let task = Task {
             id: Uuid::new_v4(),

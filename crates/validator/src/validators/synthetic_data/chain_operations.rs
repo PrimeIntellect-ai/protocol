@@ -29,7 +29,7 @@ impl SyntheticDataValidator<WalletProvider> {
             .await?
             .ok_or_else(|| Error::msg("Work info not found for soft invalidation"))?;
         let work_key_bytes = hex::decode(work_key)
-            .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to decode hex work key: {e}")))?;
 
         // Create 64-byte payload: work_key (32 bytes) + work_units (32 bytes)
         let mut data = Vec::with_capacity(64);
@@ -46,8 +46,8 @@ impl SyntheticDataValidator<WalletProvider> {
         {
             Ok(_) => Ok(()),
             Err(e) => {
-                error!("Failed to soft invalidate work {}: {}", work_key, e);
-                Err(Error::msg(format!("Failed to soft invalidate work: {}", e)))
+                error!("Failed to soft invalidate work {work_key}: {e}");
+                Err(Error::msg(format!("Failed to soft invalidate work: {e}")))
             }
         }
     }
@@ -85,7 +85,7 @@ impl SyntheticDataValidator<WalletProvider> {
         }
 
         let data = hex::decode(work_key)
-            .map_err(|e| Error::msg(format!("Failed to decode hex work key: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to decode hex work key: {e}")))?;
         match self
             .prime_network
             .invalidate_work(self.pool_id, self.penalty, data)
@@ -93,8 +93,8 @@ impl SyntheticDataValidator<WalletProvider> {
         {
             Ok(_) => Ok(()),
             Err(e) => {
-                error!("Failed to invalidate work {}: {}", work_key, e);
-                Err(Error::msg(format!("Failed to invalidate work: {}", e)))
+                error!("Failed to invalidate work {work_key}: {e}");
+                Err(Error::msg(format!("Failed to invalidate work: {e}")))
             }
         }
     }
