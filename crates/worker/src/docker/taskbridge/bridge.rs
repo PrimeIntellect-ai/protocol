@@ -176,7 +176,7 @@ impl TaskBridge {
         debug!("Extracted JSON object: {json_str}");
         if json_str.contains("output/save_path") {
             if let Err(e) = self.handle_file_upload(json_str) {
-                error!("Failed to handle file upload: {}", e);
+                error!("Failed to handle file upload: {e}");
             }
         } else {
             debug!("Processing metric message");
