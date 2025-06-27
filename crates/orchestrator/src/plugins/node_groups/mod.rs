@@ -627,7 +627,7 @@ impl NodeGroupsPlugin {
                         group.configuration_name.clone(),
                         group.nodes.iter().cloned().collect(),
                     ) {
-                        error!("Failed to send group created webhook: {}", e);
+                        error!("Failed to send group created webhook: {e}");
                     }
                 }
             }
@@ -990,7 +990,7 @@ impl NodeGroupsPlugin {
                         group.configuration_name.clone(),
                         group.nodes.iter().cloned().collect(),
                     ) {
-                        error!("Failed to send group dissolved webhook: {}", e);
+                        error!("Failed to send group dissolved webhook: {e}");
                     }
                 }
             }
@@ -1002,7 +1002,7 @@ impl NodeGroupsPlugin {
                     merged_group.configuration_name.clone(),
                     merged_group.nodes.iter().cloned().collect(),
                 ) {
-                    error!("Failed to send group created webhook: {}", e);
+                    error!("Failed to send group created webhook: {e}");
                 }
             }
         }
@@ -1081,7 +1081,7 @@ impl NodeGroupsPlugin {
                         group.configuration_name.clone(),
                         group.nodes.iter().cloned().collect(),
                     ) {
-                        error!("Failed to send group dissolved webhook: {}", e);
+                        error!("Failed to send group dissolved webhook: {e}");
                     }
                 }
             }

@@ -133,7 +133,7 @@ async fn main() -> Result<()> {
         "info" => LevelFilter::Info,
         "debug" => LevelFilter::Debug,
         "trace" => LevelFilter::Trace,
-        _ => LevelFilter::Info, // Default to Info if the level is unrecognized
+        _ => anyhow::bail!("invalid log level: {}", args.log_level),
     };
     env_logger::Builder::new()
         .filter_level(log_level)
@@ -146,10 +146,10 @@ async fn main() -> Result<()> {
         .init();
 
     let server_mode = match args.mode.as_str() {
-        "full" => ServerMode::Full,
         "api" => ServerMode::ApiOnly,
         "processor" => ServerMode::ProcessorOnly,
-        _ => ServerMode::Full,
+        "full" => ServerMode::Full,
+        _ => anyhow::bail!("invalid server mode: {}", args.mode),
     };
 
     debug!("Log level: {log_level}");

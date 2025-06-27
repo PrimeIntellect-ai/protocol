@@ -278,16 +278,20 @@ impl DockerService {
                                 Console::info("DockerService", "Task failed, waiting for new command from manager ...");
                             } else {
                                 debug!("docker container status: {:?}, status_code: {:?}", status.status, status.status_code);
-                                let task_state_live = match (status.status, status.status_code) {
-                                    (Some(ContainerStateStatusEnum::RUNNING), _) => TaskState::RUNNING,
-                                    (Some(ContainerStateStatusEnum::CREATED), _) => TaskState::PENDING,
-                                    (Some(ContainerStateStatusEnum::EXITED), Some(0)) => TaskState::COMPLETED,
-                                    (Some(ContainerStateStatusEnum::EXITED), Some(code)) if code != 0 => TaskState::FAILED,
-                                    (Some(ContainerStateStatusEnum::DEAD), _) => TaskState::FAILED,
-                                    (Some(ContainerStateStatusEnum::PAUSED), _) => TaskState::PAUSED,
-                                    (Some(ContainerStateStatusEnum::RESTARTING), _) => TaskState::RESTARTING,
-                                    (Some(ContainerStateStatusEnum::REMOVING), _) => TaskState::UNKNOWN,
-                                    _ => TaskState::UNKNOWN,
+                                let task_state_live = match status.status {
+                                    Some(ContainerStateStatusEnum::RUNNING) => TaskState::RUNNING,
+                                    Some(ContainerStateStatusEnum::CREATED) => TaskState::PENDING,
+                                    Some(ContainerStateStatusEnum::EXITED) => {
+                                        match status.status_code {
+                                            Some(0) => TaskState::COMPLETED,
+                                            Some(_) => TaskState::FAILED, // Any non-zero exit code
+                                            None => TaskState::UNKNOWN,
+                                        }
+                                    },
+                                    Some(ContainerStateStatusEnum::DEAD) => TaskState::FAILED,
+                                    Some(ContainerStateStatusEnum::PAUSED) => TaskState::PAUSED,
+                                    Some(ContainerStateStatusEnum::RESTARTING) => TaskState::RESTARTING,
+                                    Some(ContainerStateStatusEnum::REMOVING) | Some(ContainerStateStatusEnum::EMPTY) | None => TaskState::UNKNOWN,
                                 };
 
                                 // Only log if state changed
