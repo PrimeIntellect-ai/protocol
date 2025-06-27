@@ -33,27 +33,24 @@ async fn health_check(app_state: web::Data<AppState>) -> HttpResponse {
     if app_state.chain_sync_enabled {
         let sync_status = {
             let last_sync_guard = app_state.last_chain_sync.lock().await;
-            match *last_sync_guard {
-                Some(last_sync) => {
-                    if let Ok(elapsed) = last_sync.elapsed() {
-                        if elapsed > Duration::from_secs(60) {
-                            warn!(
-                                "Health check: Chain sync is delayed. Last sync was {} seconds ago",
-                                elapsed.as_secs()
-                            );
-                            Some(elapsed)
-                        } else {
-                            None
-                        }
+            if let Some(last_sync) = *last_sync_guard {
+                if let Ok(elapsed) = last_sync.elapsed() {
+                    if elapsed > Duration::from_secs(60) {
+                        warn!(
+                            "Health check: Chain sync is delayed. Last sync was {} seconds ago",
+                            elapsed.as_secs()
+                        );
+                        Some(elapsed)
                     } else {
-                        warn!("Health check: Unable to determine elapsed time since last sync");
-                        Some(Duration::from_secs(u64::MAX))
+                        None
                     }
-                }
-                None => {
-                    warn!("Health check: Chain sync has not occurred yet");
+                } else {
+                    warn!("Health check: Unable to determine elapsed time since last sync");
                     Some(Duration::from_secs(u64::MAX))
                 }
+            } else {
+                warn!("Health check: Chain sync has not occurred yet");
+                Some(Duration::from_secs(u64::MAX))
             }
         };
 

@@ -18,7 +18,7 @@ impl StoreContext {
             node_store: Arc::new(NodeStore::new(store.clone())),
             heartbeat_store: Arc::new(HeartbeatStore::new(store.clone())),
             task_store: Arc::new(TaskStore::new(store.clone())),
-            metrics_store: Arc::new(MetricsStore::new(store.clone())),
+            metrics_store: Arc::new(MetricsStore::new(store)),
         }
     }
 }

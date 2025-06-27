@@ -46,3 +46,22 @@ edition = "2021"
 [workspace.features]
 default = []
 testnet = []
+
+[workspace.lints.clippy]
+# Performance
+redundant_clone = "warn"
+inefficient_to_string = "warn"
+unnecessary_to_owned = "warn"
+needless_pass_by_value = "warn"
+assigning_clones = "warn"
+
+# Patterns
+manual_let_else = "warn"
+map_unwrap_or = "warn"
+single_match_else = "warn"
+needless_borrow = "warn"
+unused_async = "warn"
+
+# Error handling
+unwrap_used = "warn"
+expect_used = "warn"

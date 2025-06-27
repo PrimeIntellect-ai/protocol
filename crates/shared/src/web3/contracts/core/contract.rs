@@ -53,8 +53,7 @@ impl<P: alloy_provider::Provider> Contract<P> {
                 eprintln!("Error parsing JSON, exiting.");
                 std::process::exit(1);
             });
-        let abi =
-            serde_json::from_value(abi_json.clone()).expect("Failed to parse ABI from artifact");
+        let abi = serde_json::from_value(abi_json).expect("Failed to parse ABI from artifact");
 
         ContractInstance::new(address, provider, Interface::new(abi))
     }
