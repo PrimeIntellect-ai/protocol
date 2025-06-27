@@ -4,10 +4,12 @@ import json
 import os
 import threading
 import platform
+from pathlib import Path
 
 def get_default_socket_path():
     """Returns the default socket path based on the operating system."""
-    return "/tmp/com.prime.worker/metrics.sock" if platform.system() == "Darwin" else "/var/run/com.prime.worker/metrics.sock"
+    home = Path.home()
+    return str(home) + "/prime-worker/com.prime.worker/metrics.sock"
 
 def send_message(metrics, task_id=None):
     """Sends a message to the socket."""
