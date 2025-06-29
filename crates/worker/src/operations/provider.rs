@@ -1,4 +1,5 @@
 use crate::console::Console;
+use alloy::primitives::utils::format_ether;
 use alloy::primitives::{Address, U256};
 use log::error;
 use shared::web3::contracts::core::builder::Contracts;
@@ -69,20 +70,20 @@ impl ProviderOperations {
                         match stake_manager.get_stake(provider_address).await {
                             Ok(stake) => {
                                 if first_check || stake != last_stake {
-                                    Console::info("🔄 Chain Sync - Provider stake", &format!("{}", stake / U256::from(10u128.pow(18))));
+                                    Console::info("🔄 Chain Sync - Provider stake", &format_ether(stake));
                                     if !first_check {
                                         if stake < last_stake {
                                             Console::warning(&format!("Stake decreased - possible slashing detected: From {} to {}",
-                                                last_stake / U256::from(10u128.pow(18)),
-                                                stake / U256::from(10u128.pow(18))
+                                                format_ether(last_stake),
+                                                format_ether(stake)
                                             ));
                                             if stake == U256::ZERO {
                                                 Console::warning("Stake is 0 - you might have to restart the node to increase your stake (if you still have balance left)");
                                             }
                                         } else {
                                             Console::info("🔄 Chain Sync - Stake changed", &format!("From {} to {}",
-                                                last_stake / U256::from(10u128.pow(18)),
-                                                stake / U256::from(10u128.pow(18))
+                                                format_ether(last_stake),
+                                                format_ether(stake)
                                             ));
                                         }
                                     }
@@ -100,11 +101,11 @@ impl ProviderOperations {
                         match contracts.ai_token.balance_of(provider_address).await {
                             Ok(balance) => {
                                 if first_check || balance != last_balance {
-                                    Console::info("🔄 Chain Sync - Balance", &format!("{}", balance / U256::from(10u128.pow(18))));
+                                    Console::info("🔄 Chain Sync - Balance", &format_ether(balance));
                                     if !first_check {
                                         Console::info("🔄 Chain Sync - Balance changed", &format!("From {} to {}",
-                                            last_balance / U256::from(10u128.pow(18)),
-                                            balance / U256::from(10u128.pow(18))
+                                            format_ether(last_balance),
+                                            format_ether(balance)
                                         ));
                                     }
                                     last_balance = balance;
@@ -222,24 +223,21 @@ impl ProviderOperations {
         let provider_exists = self.check_provider_exists().await?;
 
         if !provider_exists {
-            Console::info(
-                "Balance",
-                &format!("{}", balance / U256::from(10u128.pow(18))),
-            );
+            Console::info("Balance", &format_ether(balance));
             Console::info(
                 "ETH Balance",
-                &format!("{:.6} ETH", { f64::from(eth_balance) / 10f64.powf(18.0) }),
+                &format!("{} ETH", format_ether(U256::from(eth_balance))),
             );
             if balance < stake {
                 Console::user_error(&format!(
                     "Insufficient balance for stake: {}",
-                    stake / U256::from(10u128.pow(18))
+                    format_ether(stake)
                 ));
                 return Err(ProviderError::InsufficientBalance);
             }
             if !self.prompt_user_confirmation(&format!(
                 "Do you want to approve staking {}?",
-                stake.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0)
+                format_ether(stake)
             )) {
                 Console::info("Operation cancelled by user", "Staking approval declined");
                 return Err(ProviderError::UserCancelled);
@@ -273,24 +271,21 @@ impl ProviderOperations {
         let provider_exists = self.check_provider_exists().await?;
 
         if !provider_exists {
-            Console::info(
-                "Balance",
-                &format!("{}", balance / U256::from(10u128.pow(18))),
-            );
+            Console::info("Balance", &format_ether(balance));
             Console::info(
                 "ETH Balance",
-                &format!("{:.6} ETH", { f64::from(eth_balance) / 10f64.powf(18.0) }),
+                &format!("{} ETH", format_ether(U256::from(eth_balance))),
             );
             if balance < stake {
                 Console::user_error(&format!(
                     "Insufficient balance for stake: {}",
-                    stake / U256::from(10u128.pow(18))
+                    format_ether(stake)
                 ));
                 return Err(ProviderError::InsufficientBalance);
             }
             if !self.prompt_user_confirmation(&format!(
                 "Do you want to approve staking {}?",
-                stake.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0)
+                format_ether(stake)
             )) {
                 Console::info("Operation cancelled by user", "Staking approval declined");
                 return Err(ProviderError::UserCancelled);
@@ -347,14 +342,8 @@ impl ProviderOperations {
             .await
             .map_err(|_| ProviderError::Other)?;
 
-        Console::info(
-            "Current Balance",
-            &format!("{}", balance / U256::from(10u128.pow(18))),
-        );
-        Console::info(
-            "Additional stake amount",
-            &format!("{}", additional_stake / U256::from(10u128.pow(18))),
-        );
+        Console::info("Current Balance", &format_ether(balance));
+        Console::info("Additional stake amount", &format_ether(additional_stake));
 
         if balance < additional_stake {
             Console::user_error("Insufficient balance for stake increase");
@@ -363,7 +352,7 @@ impl ProviderOperations {
 
         if !self.prompt_user_confirmation(&format!(
             "Do you want to approve staking {} additional funds?",
-            additional_stake.to_string().parse::<f64>().unwrap_or(0.0) / 10f64.powf(18.0)
+            format_ether(additional_stake)
         )) {
             Console::info("Operation cancelled by user", "Staking approval declined");
             return Err(ProviderError::UserCancelled);
