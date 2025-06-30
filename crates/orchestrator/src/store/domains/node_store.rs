@@ -192,6 +192,7 @@ impl NodeStore {
             }
         }
 
+        #[allow(clippy::match_same_arms)]
         nodes.sort_by(|a, b| match (&a.status, &b.status) {
             (NodeStatus::Healthy, NodeStatus::Healthy) => std::cmp::Ordering::Equal,
             (NodeStatus::Healthy, _) => std::cmp::Ordering::Less,

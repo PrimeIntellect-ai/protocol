@@ -46,3 +46,8 @@ edition = "2021"
 [workspace.features]
 default = []
 testnet = []
+
+[workspace.lints.clippy]
+match_same_arms = "warn"
+unused_async = "warn"
+uninlined_format_args = "warn"
