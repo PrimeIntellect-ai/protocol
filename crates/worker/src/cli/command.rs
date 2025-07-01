@@ -443,14 +443,25 @@ pub async fn execute_command(
                     .listen_as_external_addr()
                     .with_upnp();
 
-                let ipfs = builder.start().await.expect("can start ipfs node");
-                ipfs.default_bootstrap()
-                    .await
-                    .expect("can add default bootstrap nodes");
-                ipfs.bootstrap().await.expect("can bootstrap IPFS node");
-                ipfs.dht_mode(rust_ipfs::DhtMode::Auto)
-                    .await
-                    .expect("can set dht mode to auto");
+                let ipfs = match builder.start().await {
+                    Ok(ipfs) => ipfs,
+                    Err(e) => {
+                        error!("❌ Failed to initialize IPFS node: {e}");
+                        std::process::exit(1);
+                    }
+                };
+
+                if let Err(e) = ipfs.default_bootstrap().await {
+                    error!("❌ Failed to add default bootstrap nodes to IPFS: {e}");
+                    std::process::exit(1);
+                }
+
+                if let Err(e) = ipfs.bootstrap().await {
+                    error!("❌ Failed to bootstrap IPFS node: {e}");
+                    std::process::exit(1);
+                }
+
+                Console::success("IPFS node initialized and bootstrapped successfully");
                 Some(ipfs)
             } else {
                 None
