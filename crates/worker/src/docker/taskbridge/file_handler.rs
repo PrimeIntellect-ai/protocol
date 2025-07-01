@@ -24,7 +24,7 @@ pub async fn handle_file_upload(
     file_name: String,
     wallet: Wallet,
     state: Arc<SystemState>,
-    ipfs: Ipfs,
+    ipfs: Option<Ipfs>,
 ) -> Result<()> {
     info!("📄 Received file upload request: {file_name}");
     info!("Task ID: {task_id}, Storage path: {storage_path}");
@@ -108,9 +108,11 @@ pub async fn handle_file_upload(
         }
     };
 
-    handle_file_upload_ipfs(file_contents.clone(), &ipfs)
-        .await
-        .context("failed to upload file to IPFS")?;
+    if let Some(ipfs) = ipfs {
+        handle_file_upload_ipfs(file_contents.clone(), &ipfs)
+            .await
+            .context("failed to upload file to IPFS")?;
+    }
 
     handle_file_upload_s3(file_contents, signed_url, &client)
         .await

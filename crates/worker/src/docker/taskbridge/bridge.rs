@@ -41,7 +41,7 @@ struct TaskBridgeConfig {
     node_wallet: Option<Wallet>,
     docker_storage_path: String,
     state: Arc<SystemState>,
-    ipfs: Ipfs,
+    ipfs: Option<Ipfs>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -61,7 +61,7 @@ impl TaskBridge {
         node_wallet: Option<Wallet>,
         docker_storage_path: String,
         state: Arc<SystemState>,
-        ipfs: Ipfs,
+        ipfs: Option<Ipfs>,
     ) -> Self {
         let path = match socket_path {
             Some(path) => path.to_string(),
@@ -480,6 +480,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
+            None,
         );
 
         // Run the bridge in background
@@ -511,6 +512,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
+            None,
         );
 
         // Run bridge in background
@@ -544,6 +546,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
+            None,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -591,6 +594,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
+            None,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });
@@ -638,6 +642,7 @@ mod tests {
             None,
             "test_storage_path".to_string(),
             state,
+            None,
         );
 
         let bridge_handle = tokio::spawn(async move { bridge.run().await });

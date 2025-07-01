@@ -118,6 +118,12 @@ pub enum Commands {
         /// Disable host network mode
         #[arg(long, default_value = "false")]
         disable_host_network_mode: bool,
+
+        #[arg(long, default_value = "false")]
+        with_ipfs_upload: bool,
+
+        #[arg(long, default_value = "4002")]
+        ipfs_port: u16,
     },
     Check {},
 
@@ -198,6 +204,8 @@ pub async fn execute_command(
             log_level: _,
             storage_path,
             disable_host_network_mode,
+            with_ipfs_upload,
+            ipfs_port,
         } => {
             if *disable_state_storing && !(*no_auto_recover) {
                 Console::user_error(
@@ -417,8 +425,7 @@ pub async fn execute_command(
             let bridge_contracts = contracts.clone();
             let bridge_wallet = node_wallet_instance.clone();
 
-            let ipfs = {
-                let port = 5001; // TODO add cli value
+            let ipfs = if *with_ipfs_upload {
                 let conn_limits =
                     rust_ipfs::ConnectionLimits::default().with_max_established(Some(100));
                 let builder = rust_ipfs::UninitializedIpfsDefault::new()
@@ -426,10 +433,10 @@ pub async fn execute_command(
                     .with_default()
                     .set_connection_limits(conn_limits)
                     .set_listening_addrs(vec![
-                        format!("/ip4/0.0.0.0/tcp/{port}")
+                        format!("/ip4/0.0.0.0/tcp/{ipfs_port}")
                             .parse()
                             .expect("valid multiaddr"),
-                        format!("/ip4/0.0.0.0/udp/{port}/quic-v1")
+                        format!("/ip4/0.0.0.0/udp/{ipfs_port}/quic-v1")
                             .parse()
                             .expect("valid multiaddr"),
                     ])
@@ -444,7 +451,9 @@ pub async fn execute_command(
                 ipfs.dht_mode(rust_ipfs::DhtMode::Auto)
                     .await
                     .expect("can set dht mode to auto");
-                ipfs
+                Some(ipfs)
+            } else {
+                None
             };
 
             let docker_storage_path = node_config
