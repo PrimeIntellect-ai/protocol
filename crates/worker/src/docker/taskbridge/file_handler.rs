@@ -1,9 +1,11 @@
 use crate::state::system_state::SystemState;
 use alloy::primitives::{Address, U256};
+use anyhow::Context as _;
 use anyhow::Result;
 use log::{debug, error, info, warn};
 use reqwest::header::HeaderValue;
 use reqwest::Client;
+use rust_ipfs::Ipfs;
 use shared::models::node::Node;
 use shared::models::storage::RequestUploadRequest;
 use shared::security::request_signer::sign_request_with_nonce;
@@ -22,6 +24,7 @@ pub async fn handle_file_upload(
     file_name: String,
     wallet: Wallet,
     state: Arc<SystemState>,
+    ipfs: Ipfs,
 ) -> Result<()> {
     info!("📄 Received file upload request: {file_name}");
     info!("Task ID: {task_id}, Storage path: {storage_path}");
@@ -90,6 +93,36 @@ pub async fn handle_file_upload(
         task_id: task_id.to_string(),
     };
 
+    let signed_url = get_signed_url_for_upload(request, wallet.clone(), &endpoint, &client)
+        .await
+        .context("failed to get signed URL for upload")?;
+
+    info!("Reading file contents for S3 upload: {file}");
+    let file_contents = match tokio::fs::read(&file).await {
+        Ok(contents) => {
+            info!("Successfully read file ({} bytes)", contents.len());
+            contents
+        }
+        Err(e) => {
+            anyhow::bail!("failed to read file: {}", e);
+        }
+    };
+
+    handle_file_upload_ipfs(file_contents.clone(), &ipfs)
+        .await
+        .context("failed to upload file to IPFS")?;
+
+    handle_file_upload_s3(file_contents, signed_url, &client)
+        .await
+        .context("failed to upload file to S3")
+}
+
+async fn get_signed_url_for_upload(
+    request: RequestUploadRequest,
+    wallet: Wallet,
+    endpoint: &str,
+    client: &Client,
+) -> Result<String> {
     // Retry configuration
     const MAX_RETRIES: usize = 5;
     const INITIAL_RETRY_DELAY_MS: u64 = 1000; // 1 second
@@ -230,23 +263,21 @@ pub async fn handle_file_upload(
             }));
         }
     };
+    Ok(signed_url)
+}
+
+async fn handle_file_upload_s3(
+    file_contents: Vec<u8>,
+    signed_url: String,
+    client: &Client,
+) -> Result<()> {
+    // Retry configuration
+    const MAX_RETRIES: usize = 5;
+    const INITIAL_RETRY_DELAY_MS: u64 = 1000; // 1 second
 
     // Retry loop for uploading file to S3
-    retry_count = 0;
-    last_error = None;
-
-    // Read file contents once outside the loop
-    info!("Reading file contents for S3 upload: {file}");
-    let file_contents = match tokio::fs::read(&file).await {
-        Ok(contents) => {
-            info!("Successfully read file ({} bytes)", contents.len());
-            contents
-        }
-        Err(e) => {
-            error!("Failed to read file: {e}");
-            return Err(anyhow::anyhow!("Failed to read file: {}", e));
-        }
-    };
+    let mut retry_count = 0;
+    let mut last_error = None;
 
     debug!("Starting S3 upload with max {MAX_RETRIES} retries");
     while retry_count < MAX_RETRIES {
@@ -311,8 +342,21 @@ pub async fn handle_file_upload(
     }))
 }
 
+async fn handle_file_upload_ipfs(file_contents: Vec<u8>, ipfs: &Ipfs) -> Result<cid::Cid> {
+    let put = ipfs
+        .put_dag(file_contents)
+        .codec(rust_ipfs::block::BlockCodec::Raw);
+    let cid = put.await.context("failed to put data into IPFS")?;
+    info!("successfully uploaded file to IPFS with CID: {cid}");
+
+    ipfs.provide(cid)
+        .await
+        .context("failed to provide CID on IPFS")?;
+    Ok(cid)
+}
+
 /// Handles a file validation request
-pub async fn handle_file_validation(
+pub(crate) async fn handle_file_validation(
     file_sha: String,
     contracts: Contracts<WalletProvider>,
     node: Node,

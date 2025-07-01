@@ -8,6 +8,7 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use futures::StreamExt as _;
 use log::{debug, error, info, warn};
+use rust_ipfs::Ipfs;
 use serde::{Deserialize, Serialize};
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::Contracts;
@@ -40,6 +41,7 @@ struct TaskBridgeConfig {
     node_wallet: Option<Wallet>,
     docker_storage_path: String,
     state: Arc<SystemState>,
+    ipfs: Ipfs,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -59,6 +61,7 @@ impl TaskBridge {
         node_wallet: Option<Wallet>,
         docker_storage_path: String,
         state: Arc<SystemState>,
+        ipfs: Ipfs,
     ) -> Self {
         let path = match socket_path {
             Some(path) => path.to_string(),
@@ -80,6 +83,7 @@ impl TaskBridge {
                 node_wallet,
                 docker_storage_path,
                 state,
+                ipfs,
             },
         }
     }
@@ -356,6 +360,7 @@ async fn handle_file_upload(
                     file_name.to_string(),
                     wallet.clone(),
                     config.state.clone(),
+                    config.ipfs.clone(),
                 )))
                 .await;
         }

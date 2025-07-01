@@ -417,6 +417,36 @@ pub async fn execute_command(
             let bridge_contracts = contracts.clone();
             let bridge_wallet = node_wallet_instance.clone();
 
+            let ipfs = {
+                let port = 5001; // TODO add cli value
+                let conn_limits =
+                    rust_ipfs::ConnectionLimits::default().with_max_established(Some(100));
+                let builder = rust_ipfs::UninitializedIpfsDefault::new()
+                    .set_default_listener()
+                    .with_default()
+                    .set_connection_limits(conn_limits)
+                    .set_listening_addrs(vec![
+                        format!("/ip4/0.0.0.0/tcp/{port}")
+                            .parse()
+                            .expect("valid multiaddr"),
+                        format!("/ip4/0.0.0.0/udp/{port}/quic-v1")
+                            .parse()
+                            .expect("valid multiaddr"),
+                    ])
+                    .listen_as_external_addr()
+                    .with_upnp();
+
+                let ipfs = builder.start().await.expect("can start ipfs node");
+                ipfs.default_bootstrap()
+                    .await
+                    .expect("can add default bootstrap nodes");
+                ipfs.bootstrap().await.expect("can bootstrap IPFS node");
+                ipfs.dht_mode(rust_ipfs::DhtMode::Auto)
+                    .await
+                    .expect("can set dht mode to auto");
+                ipfs
+            };
+
             let docker_storage_path = node_config
                 .compute_specs
                 .as_ref()
@@ -431,6 +461,7 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
+                ipfs,
             );
 
             let system_memory = node_config

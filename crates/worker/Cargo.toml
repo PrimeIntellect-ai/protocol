@@ -56,3 +56,5 @@ rand_v8 = { workspace = true }
 rand_core_v6 = { workspace = true }
 dashmap = "6.1.0"
 tokio-stream = { version = "0.1.17", features = ["net"] }
+rust-ipfs = { workspace = true }
+cid = { workspace = true }
