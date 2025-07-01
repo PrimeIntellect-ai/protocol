@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Handles a file upload request
-pub async fn handle_file_upload(
+pub(crate) async fn handle_file_upload(
     storage_path: String,
     task_id: String,
     file_name: String,
