@@ -24,11 +24,15 @@ pub enum IssueType {
 impl IssueType {
     pub const fn severity(&self) -> Severity {
         match self {
-            Self::NetworkConnectivityIssue => Severity::Warning,
-            Self::InsufficientCpu => Severity::Warning,
-            Self::InsufficientMemory => Severity::Warning,
-            Self::InsufficientStorage => Severity::Warning,
-            _ => Severity::Error,
+            Self::NetworkConnectivityIssue
+            | Self::InsufficientCpu
+            | Self::InsufficientMemory
+            | Self::InsufficientStorage => Severity::Warning,
+            Self::NoGpu
+            | Self::DockerNotInstalled
+            | Self::ContainerToolkitNotInstalled
+            | Self::NoStoragePath
+            | Self::PortUnavailable => Severity::Error,
         }
     }
 }

@@ -19,7 +19,6 @@ use crate::status_update::NodeStatusUpdater;
 use crate::store::core::RedisStore;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
-use alloy::primitives::U256;
 use anyhow::Result;
 use clap::Parser;
 use clap::ValueEnum;
@@ -38,7 +37,6 @@ use plugins::SchedulerPlugin;
 use plugins::StatusUpdatePlugin;
 use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
-use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -135,7 +133,7 @@ async fn main() -> Result<()> {
         "info" => LevelFilter::Info,
         "debug" => LevelFilter::Debug,
         "trace" => LevelFilter::Trace,
-        _ => LevelFilter::Info, // Default to Info if the level is unrecognized
+        _ => anyhow::bail!("invalid log level: {}", args.log_level),
     };
     env_logger::Builder::new()
         .filter_level(log_level)
@@ -148,10 +146,10 @@ async fn main() -> Result<()> {
         .init();
 
     let server_mode = match args.mode.as_str() {
-        "full" => ServerMode::Full,
         "api" => ServerMode::ApiOnly,
         "processor" => ServerMode::ProcessorOnly,
-        _ => ServerMode::Full,
+        "full" => ServerMode::Full,
+        _ => anyhow::bail!("invalid server mode: {}", args.mode),
     };
 
     debug!("Log level: {log_level}");
@@ -186,7 +184,7 @@ async fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    match contracts
+    /* match contracts
         .compute_pool
         .get_pool_info(U256::from(compute_pool_id))
         .await
@@ -200,7 +198,7 @@ async fn main() -> Result<()> {
             error!("Failed to get pool info: {e}");
             return Ok(());
         }
-    };
+    }; */
     let group_store_context = store_context.clone();
     let mut scheduler_plugins: Vec<Box<dyn SchedulerPlugin>> = Vec::new();
     let mut status_update_plugins: Vec<Box<dyn StatusUpdatePlugin>> = vec![];

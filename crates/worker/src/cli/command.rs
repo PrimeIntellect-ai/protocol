@@ -15,6 +15,7 @@ use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
+use alloy::primitives::utils::format_ether;
 use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
@@ -527,10 +528,7 @@ pub async fn execute_command(
                         std::process::exit(1);
                     }
                 };
-                Console::info(
-                    "Required stake",
-                    &format!("{}", required_stake / U256::from(10u128.pow(18))),
-                );
+                Console::info("Required stake", &format_ether(required_stake).to_string());
 
                 if let Err(e) = provider_ops
                     .retry_register_provider(
@@ -594,8 +592,8 @@ pub async fn execute_command(
                     "Provider stake is less than required stake",
                     &format!(
                         "Required: {} tokens, Current: {} tokens",
-                        required_stake / U256::from(10u128.pow(18)),
-                        provider_stake / U256::from(10u128.pow(18))
+                        format_ether(required_stake),
+                        format_ether(provider_stake)
                     ),
                 );
 
@@ -884,7 +882,7 @@ pub async fn execute_command(
                 .await
                 .unwrap();
 
-            let format_balance = format!("{}", provider_balance / U256::from(10u128.pow(18)));
+            let format_balance = format_ether(provider_balance).to_string();
 
             println!("Provider balance: {format_balance}");
             Ok(())
