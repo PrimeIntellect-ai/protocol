@@ -5,6 +5,7 @@ use crate::state::system_state::SystemState;
 use anyhow::bail;
 use anyhow::Result;
 use futures::future::BoxFuture;
+use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt as _;
 use log::{debug, error, info, warn};
@@ -13,6 +14,7 @@ use shared::models::node::Node;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 use shared::web3::wallet::WalletProvider;
+use std::collections::HashSet;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
@@ -143,14 +145,15 @@ impl TaskBridge {
         }
         info!("TaskBridge socket created at: {}", socket_path.display());
 
-        let mut handle_stream_futures = tokio::task::JoinSet::new();
+        let mut handle_stream_futures = FuturesUnordered::new();
         let mut listener_stream = tokio_stream::wrappers::UnixListenerStream::new(listener);
         let (file_validation_futures_tx, mut file_validation_futures_rx) =
             tokio::sync::mpsc::channel::<(String, BoxFuture<anyhow::Result<()>>)>(100);
-        let mut file_validation_futures_map = tokio_util::task::JoinMap::new();
+        let mut file_validation_futures_set = HashSet::new();
+        let mut file_validation_futures = FuturesUnordered::new();
         let (file_upload_futures_tx, mut file_upload_futures_rx) =
             tokio::sync::mpsc::channel::<BoxFuture<anyhow::Result<()>>>(100);
-        let mut file_upload_futures_set = tokio::task::JoinSet::new();
+        let mut file_upload_futures_set = FuturesUnordered::new();
 
         loop {
             tokio::select! {
@@ -158,35 +161,38 @@ impl TaskBridge {
                     match res {
                         Ok(stream) => {
                             let handle_future = handle_stream(config.clone(), stream, file_upload_futures_tx.clone(), file_validation_futures_tx.clone()).fuse();
-                            handle_stream_futures.spawn(handle_future);
+                            handle_stream_futures.push(tokio::task::spawn(handle_future));
                         }
                         Err(e) => {
                             error!("Accept failed on Unix socket: {e}");
                         }
                     }
                 }
-                Some(task) = handle_stream_futures.join_next() => {
-                    match task {
+                Some(res) = handle_stream_futures.next() => {
+                    match res {
                         Ok(Ok(())) => {
-                            debug!("Stream handled successfully");
+                            debug!("Stream handler completed successfully");
                         }
                         Ok(Err(e)) => {
-                            error!("Error handling stream: {e}");
+                            error!("Stream handler failed: {e}");
                         }
                         Err(e) => {
-                            error!("Task join error: {e}");
+                            error!("Error joining stream handler task: {e}");
                         }
                     }
                 }
                 Some((hash, fut)) = file_validation_futures_rx.recv() => {
-                    if file_validation_futures_map.contains_key(&hash) {
+                    if file_validation_futures_set.contains(&hash) {
                         debug!("duplicate file validation task for hash: {hash}, skipping");
                         continue;
                     }
-                    file_validation_futures_map.spawn(hash, fut);
+                    // we never remove hashes from this set, as we should never
+                    // submit the same file for validation twice.
+                    file_validation_futures_set.insert(hash.clone());
+                    file_validation_futures.push(async move {(hash, tokio::task::spawn(fut).await)});
                 }
-                Some((hash, task)) = file_validation_futures_map.join_next() => {
-                    match task {
+                Some((hash, res)) = file_validation_futures.next() => {
+                    match res {
                         Ok(Ok(())) => {
                             debug!("File validation task for hash {hash} completed successfully");
                         }
@@ -199,10 +205,10 @@ impl TaskBridge {
                     }
                 }
                 Some(fut) = file_upload_futures_rx.recv() => {
-                    file_upload_futures_set.spawn(fut);
+                    file_upload_futures_set.push(tokio::task::spawn(fut));
                 }
-                Some(task) = file_upload_futures_set.join_next() => {
-                    match task {
+                Some(res) = file_upload_futures_set.next() => {
+                    match res {
                         Ok(Ok(())) => {
                             debug!("File upload task completed successfully");
                         }
