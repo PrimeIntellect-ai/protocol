@@ -1,6 +1,6 @@
 use alloy::{
-    network::TransactionBuilder, primitives::Address, primitives::U256, providers::Provider,
-    rpc::types::TransactionRequest,
+    network::TransactionBuilder, primitives::utils::format_ether, primitives::Address,
+    primitives::U256, providers::Provider, rpc::types::TransactionRequest,
 };
 use clap::Parser;
 use eyre::Result;
@@ -49,13 +49,13 @@ async fn main() -> Result<()> {
 
     println!(
         "Sender's ETH balance before transaction: {} ETH",
-        balance_before / U256::from(10u64.pow(18))
+        format_ether(balance_before)
     );
 
     let balance_after = wallet.provider.get_balance(to).await?;
     println!(
         "Receiver's ETH balance after transaction: {} ETH",
-        alloy::primitives::utils::format_ether(balance_after)
+        format_ether(balance_after)
     );
 
     Ok(())

@@ -15,6 +15,7 @@ use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
+use alloy::primitives::utils::format_ether;
 use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
@@ -422,7 +423,7 @@ pub async fn execute_command(
                 .expect("Hardware check should have populated compute_specs")
                 .storage_path
                 .clone();
-            let task_bridge = TaskBridge::new(
+            let task_bridge = match TaskBridge::new(
                 None,
                 metrics_store,
                 Some(bridge_contracts),
@@ -430,7 +431,13 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
-            );
+            ) {
+                Ok(bridge) => bridge,
+                Err(e) => {
+                    error!("❌ Failed to create Task Bridge: {e}");
+                    std::process::exit(1);
+                }
+            };
 
             let system_memory = node_config
                 .compute_specs
@@ -445,7 +452,11 @@ pub async fn execute_command(
                 cancellation_token.clone(),
                 gpu,
                 system_memory,
-                task_bridge.socket_path.clone(),
+                task_bridge
+                    .socket_path
+                    .to_str()
+                    .expect("path is valid utf-8 string")
+                    .to_string(),
                 docker_storage_path,
                 node_wallet_instance
                     .wallet
@@ -528,10 +539,7 @@ pub async fn execute_command(
                         std::process::exit(1);
                     }
                 };
-                Console::info(
-                    "Required stake",
-                    &format!("{}", required_stake / U256::from(10u128.pow(18))),
-                );
+                Console::info("Required stake", &format_ether(required_stake).to_string());
 
                 if let Err(e) = provider_ops
                     .retry_register_provider(
@@ -595,8 +603,8 @@ pub async fn execute_command(
                     "Provider stake is less than required stake",
                     &format!(
                         "Required: {} tokens, Current: {} tokens",
-                        required_stake / U256::from(10u128.pow(18)),
-                        provider_stake / U256::from(10u128.pow(18))
+                        format_ether(required_stake),
+                        format_ether(provider_stake)
                     ),
                 );
 
@@ -885,7 +893,7 @@ pub async fn execute_command(
                 .await
                 .unwrap();
 
-            let format_balance = format!("{}", provider_balance / U256::from(10u128.pow(18)));
+            let format_balance = format_ether(provider_balance).to_string();
 
             println!("Provider balance: {format_balance}");
             Ok(())

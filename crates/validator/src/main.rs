@@ -204,7 +204,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let log_level = match args.log_level.as_str() {
         "error" => LevelFilter::Error,
@@ -212,7 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "info" => LevelFilter::Info,
         "debug" => LevelFilter::Debug,
         "trace" => LevelFilter::Trace,
-        _ => LevelFilter::Info,
+        _ => anyhow::bail!("invalid log level: {}", args.log_level),
     };
     env_logger::Builder::new()
         .filter_level(log_level)
