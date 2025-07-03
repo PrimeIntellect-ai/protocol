@@ -1,4 +1,5 @@
 use crate::api::server::AppState;
+use crate::plugins::node_groups::get_task_topologies;
 use actix_web::{
     web::{self, delete, get, post, Data},
     HttpResponse, Scope,
@@ -64,8 +65,8 @@ async fn create_task(task: web::Json<TaskRequest>, app_state: Data<AppState>) ->
         }
     };
 
-    if let Some(group_plugin) = &app_state.node_groups_plugin {
-        match group_plugin.get_task_topologies(&task) {
+    if app_state.node_groups_plugin.is_some() {
+        match get_task_topologies(&task) {
             Ok(topology) => {
                 if topology.is_empty() {
                     return HttpResponse::BadRequest().json(json!({"success": false, "error": "No topology found for task but grouping plugin is active."}));

@@ -8,13 +8,13 @@ use anyhow::Result;
 
 pub struct Scheduler {
     store_context: Arc<StoreContext>,
-    plugins: Vec<Box<dyn SchedulerPlugin>>,
+    plugins: Vec<SchedulerPlugin>,
 }
 impl Scheduler {
-    pub fn new(store_context: Arc<StoreContext>, plugins: Vec<Box<dyn SchedulerPlugin>>) -> Self {
+    pub fn new(store_context: Arc<StoreContext>, plugins: Vec<SchedulerPlugin>) -> Self {
         let mut plugins = plugins;
         if plugins.is_empty() {
-            plugins.push(Box::new(NewestTaskPlugin));
+            plugins.push(NewestTaskPlugin.into());
         }
 
         Self {
