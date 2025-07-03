@@ -24,7 +24,7 @@ use tokio::{io::BufReader, net::UnixListener};
 
 const DEFAULT_SOCKET_FILE: &str = "prime-worker/com.prime.worker/metrics.sock";
 
-pub struct TaskBridge {
+pub(crate) struct TaskBridge {
     socket_path: std::path::PathBuf,
     config: TaskBridgeConfig,
 }

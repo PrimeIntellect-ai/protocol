@@ -1,9 +1,9 @@
-pub mod docker_manager;
-pub mod service;
-pub mod state;
-pub mod task_container;
-pub mod taskbridge;
+pub(crate) mod docker_manager;
+pub(crate) mod service;
+pub(crate) mod state;
+pub(crate) mod task_container;
+pub(crate) mod taskbridge;
 
-pub use docker_manager::DockerManager;
-pub use service::DockerService;
-pub use state::DockerState;
+pub(crate) use docker_manager::DockerManager;
+pub(crate) use service::DockerService;
+pub(crate) use state::DockerState;

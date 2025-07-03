@@ -1,2 +1,2 @@
-pub mod discovery;
-pub mod discovery_updater;
+pub(crate) mod discovery;
+pub(crate) mod discovery_updater;

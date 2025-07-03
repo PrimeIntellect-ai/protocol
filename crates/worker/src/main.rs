@@ -1,23 +1,13 @@
-mod checks;
-mod cli;
-mod console;
-mod docker;
-mod metrics;
-mod operations;
-mod p2p;
-mod services;
-mod state;
-mod utils;
 use clap::Parser;
-use cli::{execute_command, Cli};
 use std::panic;
 use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use utils::logging::setup_logging;
-pub type TaskHandles = Arc<Mutex<Vec<JoinHandle<()>>>>;
+
+use worker::TaskHandles;
+use worker::{execute_command, setup_logging, Cli};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

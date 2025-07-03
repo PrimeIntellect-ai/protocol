@@ -2,7 +2,7 @@ use console::{style, Term};
 use std::cmp;
 use unicode_width::UnicodeWidthStr;
 
-pub struct Console;
+pub(crate) struct Console;
 
 impl Console {
     /// Maximum content width for the box.
@@ -35,7 +35,7 @@ impl Console {
     }
 
     /// Prints a section header as an aligned box.
-    pub fn section(title: &str) {
+    pub(crate) fn section(title: &str) {
         let content_width = Self::get_content_width();
         let top_border = format!("╔{}╗", "═".repeat(content_width));
         let centered_title = Self::center_text(title, content_width);
@@ -49,23 +49,23 @@ impl Console {
     }
 
     /// Prints a sub-title.
-    pub fn title(text: &str) {
+    pub(crate) fn title(text: &str) {
         println!();
         println!("{}", style(text).white().bold());
     }
 
     /// Prints an informational message.
-    pub fn info(label: &str, value: &str) {
+    pub(crate) fn info(label: &str, value: &str) {
         println!("{}: {}", style(label).dim().white(), style(value).white());
     }
 
     /// Prints a success message.
-    pub fn success(text: &str) {
+    pub(crate) fn success(text: &str) {
         println!("{} {}", style("✓").green().bold(), style(text).green());
     }
 
     /// Prints a warning message.
-    pub fn warning(text: &str) {
+    pub(crate) fn warning(text: &str) {
         println!("{} {}", style("⚠").yellow().bold(), style(text).yellow());
     }
 
@@ -74,12 +74,12 @@ impl Console {
     /// rather than a system error. These errors are not logged to central logging systems
     /// and are only displayed to the user to help them resolve the issue.
     /// For actual system errors that should be tracked, use proper error logging instead.
-    pub fn user_error(text: &str) {
+    pub(crate) fn user_error(text: &str) {
         println!("{} {}", style("✗").red().bold(), style(text).red());
     }
 
     /// Prints a progress message.
-    pub fn progress(text: &str) {
+    pub(crate) fn progress(text: &str) {
         println!("{} {}", style("→").cyan().bold(), style(text).cyan());
     }
 }

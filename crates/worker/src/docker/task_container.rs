@@ -1,11 +1,11 @@
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaskContainer {
+pub(crate) struct TaskContainer {
     pub task_id: String,
     pub config_hash: String,
 }
 
 impl TaskContainer {
-    pub fn data_dir_name(&self) -> String {
+    pub(crate) fn data_dir_name(&self) -> String {
         format!("prime-task-{}", self.task_id)
     }
 }

@@ -28,7 +28,7 @@ struct PersistedSystemState {
 }
 
 #[derive(Debug, Clone)]
-pub struct SystemState {
+pub(crate) struct SystemState {
     last_heartbeat: Arc<RwLock<Option<std::time::Instant>>>,
     is_running: Arc<RwLock<bool>>, // Keep is_running in the normal heartbeat state
     endpoint: Arc<RwLock<Option<String>>>,
@@ -42,7 +42,7 @@ pub struct SystemState {
 }
 
 impl SystemState {
-    pub fn new(
+    pub(crate) fn new(
         state_dir: Option<String>,
         disable_state_storing: bool,
         compute_pool_id: Option<String>,
@@ -160,24 +160,24 @@ impl SystemState {
         Ok(None)
     }
 
-    pub fn get_p2p_seed(&self) -> Option<u64> {
+    pub(crate) fn get_p2p_seed(&self) -> Option<u64> {
         self.p2p_seed
     }
 
-    pub fn get_p2p_id(&self) -> Option<String> {
+    pub(crate) fn get_p2p_id(&self) -> Option<String> {
         self.p2p_id.clone()
     }
 
-    pub async fn update_last_heartbeat(&self) {
+    pub(crate) async fn update_last_heartbeat(&self) {
         let mut heartbeat = self.last_heartbeat.write().await;
         *heartbeat = Some(std::time::Instant::now());
     }
 
-    pub async fn is_running(&self) -> bool {
+    pub(crate) async fn is_running(&self) -> bool {
         *self.is_running.read().await
     }
 
-    pub async fn set_running(
+    pub(crate) async fn set_running(
         &self,
         running: bool,
         heartbeat_endpoint: Option<String>,
@@ -209,7 +209,7 @@ impl SystemState {
         Ok(())
     }
 
-    pub async fn get_heartbeat_endpoint(&self) -> Option<String> {
+    pub(crate) async fn get_heartbeat_endpoint(&self) -> Option<String> {
         let endpoint = self.endpoint.read().await;
         endpoint.clone()
     }
