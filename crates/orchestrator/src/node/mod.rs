@@ -1,1 +1,1 @@
-pub mod invite;
+pub(crate) mod invite;

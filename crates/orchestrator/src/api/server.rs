@@ -115,7 +115,7 @@ async fn health_check(data: web::Data<AppState>) -> HttpResponse {
     }
 }
 
-pub struct AppState {
+pub(crate) struct AppState {
     pub store_context: Arc<StoreContext>,
     pub storage_provider: Option<Arc<dyn StorageProvider>>,
     pub heartbeats: Arc<LoopHeartbeats>,

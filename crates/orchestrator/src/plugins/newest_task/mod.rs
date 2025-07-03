@@ -5,7 +5,7 @@ use shared::models::task::Task;
 
 use super::{Plugin, SchedulerPlugin};
 
-pub struct NewestTaskPlugin;
+pub(crate) struct NewestTaskPlugin;
 
 impl Plugin for NewestTaskPlugin {}
 

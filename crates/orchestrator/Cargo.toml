@@ -3,6 +3,9 @@ name = "orchestrator"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 actix-web = { workspace = true }
 actix-web-prometheus = "0.1.2"

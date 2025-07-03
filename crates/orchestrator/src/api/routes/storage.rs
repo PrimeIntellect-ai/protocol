@@ -308,7 +308,7 @@ async fn request_upload(
     }
 }
 
-pub fn storage_routes() -> Scope {
+pub(crate) fn storage_routes() -> Scope {
     web::scope("/storage").route("/request-upload", post().to(request_upload))
 }
 

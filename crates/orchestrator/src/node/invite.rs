@@ -9,7 +9,6 @@ use alloy::signers::Signer;
 use anyhow::Result;
 use futures::stream;
 use futures::StreamExt;
-use hex;
 use log::{debug, error, info, warn};
 use shared::models::invite::InviteRequest;
 use shared::web3::wallet::Wallet;

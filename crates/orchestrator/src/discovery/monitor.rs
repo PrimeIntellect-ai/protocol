@@ -8,7 +8,6 @@ use anyhow::Error;
 use anyhow::Result;
 use chrono::Utc;
 use log::{error, info};
-use serde_json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 use shared::security::request_signer::sign_request_with_nonce;

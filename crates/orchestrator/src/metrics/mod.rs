@@ -1,6 +1,6 @@
 use prometheus::{CounterVec, GaugeVec, HistogramOpts, HistogramVec, Opts, Registry, TextEncoder};
-pub mod sync_service;
-pub mod webhook_sender;
+pub(crate) mod sync_service;
+pub(crate) mod webhook_sender;
 
 pub struct MetricsContext {
     pub compute_task_gauges: GaugeVec,
