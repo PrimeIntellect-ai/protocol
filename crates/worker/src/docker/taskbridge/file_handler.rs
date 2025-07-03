@@ -17,11 +17,11 @@ use std::time::Duration;
 
 /// Handles a file upload request
 pub(crate) async fn handle_file_upload(
-    storage_path: &str,
-    task_id: &str,
-    file_name: &str,
-    wallet: &Wallet,
-    state: &Arc<SystemState>,
+    storage_path: String,
+    task_id: String,
+    file_name: String,
+    wallet: Wallet,
+    state: Arc<SystemState>,
 ) -> Result<()> {
     info!("📄 Received file upload request: {file_name}");
     info!("Task ID: {task_id}, Storage path: {storage_path}");
@@ -44,7 +44,7 @@ pub(crate) async fn handle_file_upload(
     info!("Clean file name: {clean_file_name}");
 
     let task_dir = format!("prime-task-{task_id}");
-    let file_path = Path::new(storage_path)
+    let file_path = Path::new(&storage_path)
         .join(&task_dir)
         .join("data")
         .join(clean_file_name);
@@ -122,7 +122,7 @@ pub(crate) async fn handle_file_upload(
         };
 
         let signature =
-            match sign_request_with_nonce("/storage/request-upload", wallet, Some(&request_value))
+            match sign_request_with_nonce("/storage/request-upload", &wallet, Some(&request_value))
                 .await
             {
                 Ok(sig) => {
@@ -313,10 +313,10 @@ pub(crate) async fn handle_file_upload(
 
 /// Handles a file validation request
 pub(crate) async fn handle_file_validation(
-    file_sha: &str,
-    contracts: &Contracts<WalletProvider>,
-    node: &Node,
-    provider: &WalletProvider,
+    file_sha: String,
+    contracts: Contracts<WalletProvider>,
+    node: Node,
+    provider: WalletProvider,
     work_units: f64,
 ) -> Result<()> {
     info!("📄 Received file SHA for validation: {file_sha}");
