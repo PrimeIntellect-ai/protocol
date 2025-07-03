@@ -6,7 +6,7 @@ use std::fmt;
 use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub enum ValidationResult {
+pub(crate) enum ValidationResult {
     Accept,
     Reject,
     Crashed,
@@ -33,7 +33,7 @@ impl fmt::Display for ValidationResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct WorkValidationInfo {
+pub(crate) struct WorkValidationInfo {
     pub status: ValidationResult,
     pub reason: Option<String>,
 }
@@ -61,9 +61,8 @@ impl fmt::Display for InvalidationType {
 }
 
 #[derive(Debug)]
-pub enum ProcessWorkKeyError {
+pub(crate) enum ProcessWorkKeyError {
     FileNameResolutionError(String),
-    ValidationTriggerError(String),
     ValidationPollingError(String),
     InvalidatingWorkError(String),
     MaxAttemptsReached(String),
@@ -82,9 +81,6 @@ impl fmt::Display for ProcessWorkKeyError {
         match self {
             ProcessWorkKeyError::FileNameResolutionError(msg) => {
                 write!(f, "File name resolution error: {msg}")
-            }
-            ProcessWorkKeyError::ValidationTriggerError(msg) => {
-                write!(f, "Validation trigger error: {msg}")
             }
             ProcessWorkKeyError::ValidationPollingError(msg) => {
                 write!(f, "Validation polling error: {msg}")

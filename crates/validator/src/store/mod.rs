@@ -1,1 +1,1 @@
-pub mod redis;
+pub(crate) mod redis;
