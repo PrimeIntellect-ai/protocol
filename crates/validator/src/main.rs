@@ -320,12 +320,9 @@ async fn main() -> anyhow::Result<()> {
                     penalty, args.validator_penalty
                 );
 
-                let toploc_configs = match std::env::var("TOPLOC_CONFIGS") {
-                    Ok(configs) => configs,
-                    Err(_) => {
-                        error!("Toploc configs are required but not provided in environment");
-                        std::process::exit(1);
-                    }
+                let Ok(toploc_configs) = std::env::var("TOPLOC_CONFIGS") else {
+                    error!("Toploc configs are required but not provided in environment");
+                    std::process::exit(1);
                 };
                 info!("Toploc configs: {toploc_configs}");
 
@@ -552,12 +549,9 @@ async fn main() -> anyhow::Result<()> {
 
             // Ensure nodes have enough stake
             let mut nodes_with_enough_stake = Vec::new();
-            let stake_manager = match contracts.stake_manager.as_ref() {
-                Some(manager) => manager,
-                None => {
-                    error!("Stake manager contract not initialized");
-                    continue;
-                }
+            let Some(stake_manager) = contracts.stake_manager.as_ref() else {
+                error!("Stake manager contract not initialized");
+                continue;
             };
 
             let mut provider_stake_cache: std::collections::HashMap<String, (U256, U256)> =
