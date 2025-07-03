@@ -153,7 +153,7 @@ async fn delete_metric(
     }))
 }
 
-pub fn metrics_routes() -> Scope {
+pub(crate) fn metrics_routes() -> Scope {
     web::scope("/metrics")
         .route("", get().to(get_metrics))
         .route("/all", get().to(get_all_metrics))

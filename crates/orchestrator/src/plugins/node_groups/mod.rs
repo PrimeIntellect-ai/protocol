@@ -19,8 +19,8 @@ use std::{
     str::FromStr,
 };
 
-pub mod scheduler_impl;
-pub mod status_update_impl;
+pub(crate) mod scheduler_impl;
+pub(crate) mod status_update_impl;
 #[cfg(test)]
 mod tests;
 
