@@ -8,7 +8,7 @@ use alloy::primitives::U256;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 
-pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
+pub(crate) async fn get_nodes(data: Data<AppState>) -> HttpResponse {
     let nodes = data.node_store.get_nodes().await;
     match nodes {
         Ok(nodes) => {
@@ -43,7 +43,7 @@ fn filter_nodes_for_pool(nodes: Vec<DiscoveryNode>, pool_id: u32) -> Vec<Discove
     filtered
 }
 
-pub async fn get_nodes_for_pool(
+pub(crate) async fn get_nodes_for_pool(
     data: Data<AppState>,
     pool_id: web::Path<String>,
     req: actix_web::HttpRequest,
@@ -123,7 +123,7 @@ pub async fn get_nodes_for_pool(
     }
 }
 
-pub async fn get_node_by_subkey(node_id: web::Path<String>, data: Data<AppState>) -> HttpResponse {
+pub(crate) async fn get_node_by_subkey(node_id: web::Path<String>, data: Data<AppState>) -> HttpResponse {
     let node = data.node_store.get_node_by_id(&node_id.to_string()).await;
 
     match node {
