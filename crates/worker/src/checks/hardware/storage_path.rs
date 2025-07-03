@@ -8,16 +8,16 @@ use log::info;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub struct StoragePathDetector {
+pub(crate) struct StoragePathDetector {
     issues: Arc<RwLock<IssueReport>>,
 }
 
 impl StoragePathDetector {
-    pub fn new(issues: Arc<RwLock<IssueReport>>) -> Self {
+    pub(crate) fn new(issues: Arc<RwLock<IssueReport>>) -> Self {
         Self { issues }
     }
 
-    pub async fn detect_storage_path(
+    pub(crate) async fn detect_storage_path(
         &self,
         storage_path_override: Option<String>,
     ) -> Result<(String, Option<u64>), Box<dyn std::error::Error>> {

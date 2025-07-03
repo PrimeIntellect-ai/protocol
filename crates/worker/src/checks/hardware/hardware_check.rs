@@ -14,13 +14,13 @@ use std::sync::Arc;
 use sysinfo::{self, System};
 use tokio::sync::RwLock;
 
-pub struct HardwareChecker {
+pub(crate) struct HardwareChecker {
     sys: System,
     issues: Arc<RwLock<IssueReport>>,
 }
 
 impl HardwareChecker {
-    pub fn new(issues: Option<Arc<RwLock<IssueReport>>>) -> Self {
+    pub(crate) fn new(issues: Option<Arc<RwLock<IssueReport>>>) -> Self {
         let mut sys = System::new_all();
 
         sys.refresh_all();
@@ -30,7 +30,7 @@ impl HardwareChecker {
         }
     }
 
-    pub async fn check_hardware(
+    pub(crate) async fn check_hardware(
         &mut self,
         node_config: Node,
         storage_path_override: Option<String>,

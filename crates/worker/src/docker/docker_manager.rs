@@ -20,7 +20,7 @@ use std::time::Duration;
 use strip_ansi_escapes::strip;
 
 #[derive(Debug, Clone)]
-pub struct ContainerInfo {
+pub(crate) struct ContainerInfo {
     pub id: String,
     #[allow(unused)]
     pub image: String,
@@ -30,7 +30,7 @@ pub struct ContainerInfo {
 }
 
 #[derive(Debug, Clone)]
-pub struct ContainerDetails {
+pub(crate) struct ContainerDetails {
     #[allow(unused)]
     pub id: String,
     #[allow(unused)]
@@ -43,7 +43,7 @@ pub struct ContainerDetails {
     pub created: i64,
 }
 
-pub struct DockerManager {
+pub(crate) struct DockerManager {
     docker: Docker,
     storage_path: String,
     /// Controls whether to use host network mode for containers.
@@ -137,7 +137,7 @@ impl DockerManager {
     }
 
     /// Create a new DockerManager instance
-    pub fn new(storage_path: String, disable_host_network_mode: bool) -> Result<Self, DockerError> {
+    pub(crate) fn new(storage_path: String, disable_host_network_mode: bool) -> Result<Self, DockerError> {
         let docker = match Docker::connect_with_unix_defaults() {
             Ok(docker) => docker,
             Err(e) => {
@@ -170,7 +170,7 @@ impl DockerManager {
     }
 
     /// Pull a Docker image if it doesn't exist locally
-    pub async fn pull_image(&self, image: &str) -> Result<(), DockerError> {
+    pub(crate) async fn pull_image(&self, image: &str) -> Result<(), DockerError> {
         debug!("Checking if image needs to be pulled: {image}");
 
         // Check if the image uses :latest or :main tag
@@ -219,7 +219,7 @@ impl DockerManager {
 
     #[allow(clippy::too_many_arguments)]
     /// Start a new container with the given image and configuration
-    pub async fn start_container(
+    pub(crate) async fn start_container(
         &self,
         image: &str,
         name: &str,
@@ -482,7 +482,7 @@ impl DockerManager {
     }
 
     /// Remove container, volumes, and directories
-    pub async fn remove_container(&self, container_id: &str) -> Result<(), DockerError> {
+    pub(crate) async fn remove_container(&self, container_id: &str) -> Result<(), DockerError> {
         let container = (self.get_container_details(container_id).await).ok();
 
         if container.is_some() {
@@ -707,7 +707,7 @@ impl DockerManager {
         Ok(())
     }
 
-    pub async fn list_containers(&self, list_all: bool) -> Result<Vec<ContainerInfo>, DockerError> {
+    pub(crate) async fn list_containers(&self, list_all: bool) -> Result<Vec<ContainerInfo>, DockerError> {
         debug!("Listing running containers");
         let options = Some(ListContainersOptions::<String> {
             all: list_all, // If true, list all containers. If false, only list running containers
@@ -729,7 +729,7 @@ impl DockerManager {
     }
 
     /// Get details for a specific container by ID
-    pub async fn get_container_details(
+    pub(crate) async fn get_container_details(
         &self,
         container_id: &str,
     ) -> Result<ContainerDetails, DockerError> {
@@ -753,14 +753,14 @@ impl DockerManager {
         Ok(info)
     }
 
-    pub async fn restart_container(&self, container_id: &str) -> Result<(), DockerError> {
+    pub(crate) async fn restart_container(&self, container_id: &str) -> Result<(), DockerError> {
         debug!("Restarting container: {container_id}");
         self.docker.restart_container(container_id, None).await?;
         debug!("Container {container_id} restarted successfully");
         Ok(())
     }
 
-    pub async fn get_container_logs(
+    pub(crate) async fn get_container_logs(
         &self,
         container_id: &str,
         tail: Option<i64>,
@@ -833,7 +833,7 @@ impl DockerManager {
         Ok(logs)
     }
 
-    pub async fn inspect_container(
+    pub(crate) async fn inspect_container(
         &self,
         container_id: &str,
     ) -> Result<bollard::models::ContainerInspectResponse, DockerError> {

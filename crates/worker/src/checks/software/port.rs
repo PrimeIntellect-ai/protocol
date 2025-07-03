@@ -13,7 +13,7 @@ fn try_bind_port(port: u16) -> Result<()> {
     Ok(())
 }
 
-pub async fn check_port_available(issues: &Arc<RwLock<IssueReport>>, port: u16) -> Result<()> {
+pub(crate) async fn check_port_available(issues: &Arc<RwLock<IssueReport>>, port: u16) -> Result<()> {
     let issue_tracker = issues.read().await;
 
     match try_bind_port(port) {

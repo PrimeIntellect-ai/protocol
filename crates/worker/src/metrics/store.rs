@@ -4,18 +4,18 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 
 #[derive(Debug)]
-pub struct MetricsStore {
+pub(crate) struct MetricsStore {
     metrics: RwLock<HashMap<MetricKey, f64>>,
 }
 
 impl MetricsStore {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             metrics: RwLock::new(HashMap::new()),
         }
     }
 
-    pub async fn update_metric(&self, task_id: String, label: String, value: f64) -> Result<()> {
+    pub(crate) async fn update_metric(&self, task_id: String, label: String, value: f64) -> Result<()> {
         if !value.is_finite() {
             anyhow::bail!("Value must be a finite number");
         }
@@ -25,7 +25,7 @@ impl MetricsStore {
         Ok(())
     }
 
-    pub async fn get_metrics_for_task(&self, task_id: String) -> Vec<MetricEntry> {
+    pub(crate) async fn get_metrics_for_task(&self, task_id: String) -> Vec<MetricEntry> {
         self.metrics
             .read()
             .await
@@ -38,13 +38,13 @@ impl MetricsStore {
             .collect()
     }
 
-    pub async fn clear_metrics_for_task(&self, task_id: &str) {
+    pub(crate) async fn clear_metrics_for_task(&self, task_id: &str) {
         let mut metrics = self.metrics.write().await;
         metrics.retain(|key, _| key.task_id != task_id);
     }
 
     #[allow(dead_code)]
-    pub async fn get_all_metrics(&self) -> HashMap<MetricKey, f64> {
+    pub(crate) async fn get_all_metrics(&self) -> HashMap<MetricKey, f64> {
         let metrics = self.metrics.read().await;
         metrics.clone()
     }

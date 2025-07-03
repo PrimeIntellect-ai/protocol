@@ -5,18 +5,18 @@ use shared::models::node::Node;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub struct SoftwareChecker {
+pub(crate) struct SoftwareChecker {
     issues: Arc<RwLock<IssueReport>>,
 }
 
 impl SoftwareChecker {
-    pub fn new(issues: Option<Arc<RwLock<IssueReport>>>) -> Self {
+    pub(crate) fn new(issues: Option<Arc<RwLock<IssueReport>>>) -> Self {
         Self {
             issues: issues.unwrap_or_else(|| Arc::new(RwLock::new(IssueReport::new()))),
         }
     }
 
-    pub async fn check_software(
+    pub(crate) async fn check_software(
         &self,
         node_config: &Node,
     ) -> Result<(), Box<dyn std::error::Error>> {

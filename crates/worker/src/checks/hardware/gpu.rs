@@ -22,7 +22,7 @@ struct GpuDevice {
     indices: Vec<u32>,
 }
 
-pub fn detect_gpu() -> Vec<GpuSpecs> {
+pub(crate) fn detect_gpu() -> Vec<GpuSpecs> {
     Console::title("GPU Detection");
 
     let gpu_devices = get_gpu_status();

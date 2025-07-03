@@ -1,3 +1,3 @@
-pub mod compute_node;
-pub mod heartbeat;
-pub mod provider;
+pub(crate) mod compute_node;
+pub(crate) mod heartbeat;
+pub(crate) mod provider;

@@ -1,2 +1,2 @@
-pub mod logging;
-pub mod p2p;
+pub(crate) mod logging;
+pub(crate) mod p2p;

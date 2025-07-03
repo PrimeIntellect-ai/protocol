@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 
-pub struct ComputeNodeOperations<'c> {
+pub(crate) struct ComputeNodeOperations<'c> {
     provider_wallet: &'c Wallet,
     node_wallet: &'c Wallet,
     contracts: Contracts<WalletProvider>,
@@ -15,7 +15,7 @@ pub struct ComputeNodeOperations<'c> {
 }
 
 impl<'c> ComputeNodeOperations<'c> {
-    pub fn new(
+    pub(crate) fn new(
         provider_wallet: &'c Wallet,
         node_wallet: &'c Wallet,
         contracts: Contracts<WalletProvider>,
@@ -29,7 +29,7 @@ impl<'c> ComputeNodeOperations<'c> {
         }
     }
 
-    pub fn start_monitoring(
+    pub(crate) fn start_monitoring(
         &self,
         cancellation_token: CancellationToken,
         pool_id: String,
@@ -115,7 +115,7 @@ impl<'c> ComputeNodeOperations<'c> {
         Ok(())
     }
 
-    pub async fn check_compute_node_exists(&self) -> Result<bool, Box<dyn std::error::Error>> {
+    pub(crate) async fn check_compute_node_exists(&self) -> Result<bool, Box<dyn std::error::Error>> {
         let compute_node = self
             .contracts
             .compute_registry
@@ -132,7 +132,7 @@ impl<'c> ComputeNodeOperations<'c> {
     }
 
     // Returns true if the compute node was added, false if it already exists
-    pub async fn add_compute_node(
+    pub(crate) async fn add_compute_node(
         &self,
         compute_units: U256,
     ) -> Result<bool, Box<dyn std::error::Error>> {
@@ -164,7 +164,7 @@ impl<'c> ComputeNodeOperations<'c> {
         Ok(true)
     }
 
-    pub async fn remove_compute_node(&self) -> Result<bool, Box<dyn std::error::Error>> {
+    pub(crate) async fn remove_compute_node(&self) -> Result<bool, Box<dyn std::error::Error>> {
         Console::title("🔄 Removing compute node");
 
         if !self.check_compute_node_exists().await? {

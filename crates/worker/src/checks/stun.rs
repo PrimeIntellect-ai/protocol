@@ -11,13 +11,13 @@ use stun::xoraddr::*;
 
 use tracing::{debug, error, info};
 
-pub struct StunCheck {
+pub(crate) struct StunCheck {
     pub timeout: Duration,
     pub port: u16,
 }
 
 impl StunCheck {
-    pub fn new(timeout: Duration, port: u16) -> Self {
+    pub(crate) fn new(timeout: Duration, port: u16) -> Self {
         Self { timeout, port }
     }
 
@@ -101,7 +101,7 @@ impl StunCheck {
         Ok(public_ip.to_string())
     }
 
-    pub async fn get_public_ip(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    pub(crate) async fn get_public_ip(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let stun_servers = [
             "stun.l.google.com:19302",
             "stun.stunprotocol.org:3478",

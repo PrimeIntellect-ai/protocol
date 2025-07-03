@@ -18,7 +18,7 @@ use tokio::{io::BufReader, net::UnixListener};
 
 const DEFAULT_SOCKET_FILE: &str = "prime-worker/com.prime.worker/metrics.sock";
 
-pub struct TaskBridge {
+pub(crate) struct TaskBridge {
     pub socket_path: std::path::PathBuf,
     pub metrics_store: Arc<MetricsStore>,
     pub contracts: Option<Contracts<WalletProvider>>,
@@ -37,7 +37,7 @@ struct MetricInput {
 
 impl TaskBridge {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         socket_path: Option<&str>,
         metrics_store: Arc<MetricsStore>,
         contracts: Option<Contracts<WalletProvider>>,
@@ -191,7 +191,7 @@ impl TaskBridge {
         Ok(())
     }
 
-    pub async fn run(self: Arc<Self>) -> Result<()> {
+    pub(crate) async fn run(self: Arc<Self>) -> Result<()> {
         let socket_path = Path::new(&self.socket_path);
         debug!("Setting up TaskBridge socket at: {}", socket_path.display());
 
