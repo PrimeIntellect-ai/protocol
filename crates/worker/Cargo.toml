@@ -58,3 +58,4 @@ dashmap = "6.1.0"
 tokio-stream = { version = "0.1.17", features = ["net"] }
 rust-ipfs = { workspace = true }
 cid = { workspace = true }
+homedir = "0.3"
