@@ -27,8 +27,6 @@ pub(crate) async fn handle_file_upload(
     ipfs: Option<Ipfs>,
 ) -> Result<()> {
     info!("📄 Received file upload request: {file_name}");
-    info!("Task ID: {task_id}, Storage path: {storage_path}");
-
     // Get orchestrator endpoint
     let endpoint = match state.get_heartbeat_endpoint().await {
         Some(ep) => {
