@@ -123,7 +123,10 @@ pub(crate) async fn get_nodes_for_pool(
     }
 }
 
-pub(crate) async fn get_node_by_subkey(node_id: web::Path<String>, data: Data<AppState>) -> HttpResponse {
+pub(crate) async fn get_node_by_subkey(
+    node_id: web::Path<String>,
+    data: Data<AppState>,
+) -> HttpResponse {
     let node = data.node_store.get_node_by_id(&node_id.to_string()).await;
 
     match node {
