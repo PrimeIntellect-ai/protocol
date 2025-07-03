@@ -84,7 +84,6 @@ impl NodeStore {
                 .map_err(|e| anyhow::anyhow!("Failed to serialize location: {}", e))?;
             fields.push(("location".to_string(), location_json));
         }
-
         Ok(fields)
     }
 
