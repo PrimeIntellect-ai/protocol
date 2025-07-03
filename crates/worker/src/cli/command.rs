@@ -40,12 +40,13 @@ const APP_VERSION: &str = match option_env!("WORKER_VERSION") {
 
 #[derive(Parser)]
 #[command(author, version = APP_VERSION, about, long_about = None)]
-pub(crate) struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 }
+
 #[derive(Subcommand)]
-pub(crate) enum Commands {
+pub enum Commands {
     Run {
         /// RPC URL
         #[arg(long, default_value = option_env!("WORKER_RPC_URL").unwrap_or("http://localhost:8545"))]
@@ -173,7 +174,7 @@ pub(crate) enum Commands {
     },
 }
 
-pub(crate) async fn execute_command(
+pub async fn execute_command(
     command: &Commands,
     cancellation_token: CancellationToken,
     task_handles: TaskHandles,

@@ -33,9 +33,7 @@ impl FormatTime for SimpleTimeFormatter {
     }
 }
 
-pub(crate) fn setup_logging(
-    cli: Option<&Cli>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub fn setup_logging(cli: Option<&Cli>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Default log level
     let mut log_level = LevelFilter::Info;
     let mut loki_url: Option<String> = None;
