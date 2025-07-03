@@ -137,7 +137,10 @@ impl DockerManager {
     }
 
     /// Create a new DockerManager instance
-    pub(crate) fn new(storage_path: String, disable_host_network_mode: bool) -> Result<Self, DockerError> {
+    pub(crate) fn new(
+        storage_path: String,
+        disable_host_network_mode: bool,
+    ) -> Result<Self, DockerError> {
         let docker = match Docker::connect_with_unix_defaults() {
             Ok(docker) => docker,
             Err(e) => {
@@ -707,7 +710,10 @@ impl DockerManager {
         Ok(())
     }
 
-    pub(crate) async fn list_containers(&self, list_all: bool) -> Result<Vec<ContainerInfo>, DockerError> {
+    pub(crate) async fn list_containers(
+        &self,
+        list_all: bool,
+    ) -> Result<Vec<ContainerInfo>, DockerError> {
         debug!("Listing running containers");
         let options = Some(ListContainersOptions::<String> {
             all: list_all, // If true, list all containers. If false, only list running containers

@@ -115,7 +115,9 @@ impl<'c> ComputeNodeOperations<'c> {
         Ok(())
     }
 
-    pub(crate) async fn check_compute_node_exists(&self) -> Result<bool, Box<dyn std::error::Error>> {
+    pub(crate) async fn check_compute_node_exists(
+        &self,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         let compute_node = self
             .contracts
             .compute_registry

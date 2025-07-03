@@ -101,7 +101,9 @@ impl StunCheck {
         Ok(public_ip.to_string())
     }
 
-    pub(crate) async fn get_public_ip(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    pub(crate) async fn get_public_ip(
+        &self,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let stun_servers = [
             "stun.l.google.com:19302",
             "stun.stunprotocol.org:3478",

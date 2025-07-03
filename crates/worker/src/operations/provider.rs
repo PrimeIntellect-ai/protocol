@@ -16,7 +16,11 @@ pub(crate) struct ProviderOperations {
 }
 
 impl ProviderOperations {
-    pub(crate) fn new(wallet: Wallet, contracts: Contracts<WalletProvider>, auto_accept: bool) -> Self {
+    pub(crate) fn new(
+        wallet: Wallet,
+        contracts: Contracts<WalletProvider>,
+        auto_accept: bool,
+    ) -> Self {
         Self {
             wallet,
             contracts,

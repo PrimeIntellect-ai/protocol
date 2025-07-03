@@ -2,7 +2,6 @@ use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
-use log;
 use log::info;
 use reqwest::Client;
 use shared::models::api::ApiResponse;
@@ -13,6 +12,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
+
 #[derive(Clone)]
 pub(crate) struct HeartbeatService {
     state: Arc<SystemState>,

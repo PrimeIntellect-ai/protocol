@@ -15,7 +15,12 @@ impl MetricsStore {
         }
     }
 
-    pub(crate) async fn update_metric(&self, task_id: String, label: String, value: f64) -> Result<()> {
+    pub(crate) async fn update_metric(
+        &self,
+        task_id: String,
+        label: String,
+        value: f64,
+    ) -> Result<()> {
         if !value.is_finite() {
             anyhow::bail!("Value must be a finite number");
         }
