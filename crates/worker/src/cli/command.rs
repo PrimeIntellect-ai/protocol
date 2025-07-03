@@ -453,7 +453,7 @@ pub async fn execute_command(
                 gpu,
                 system_memory,
                 task_bridge
-                    .socket_path
+                    .get_socket_path()
                     .to_str()
                     .expect("path is valid utf-8 string")
                     .to_string(),
@@ -469,11 +469,10 @@ pub async fn execute_command(
 
             let bridge_cancellation_token = cancellation_token.clone();
             tokio::spawn(async move {
-                let bridge_clone = task_bridge.clone();
                 tokio::select! {
                     _ = bridge_cancellation_token.cancelled() => {
                     }
-                    _ = bridge_clone.run() => {
+                    _ = task_bridge.run() => {
                     }
                 }
             });
