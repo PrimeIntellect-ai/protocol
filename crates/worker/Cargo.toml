@@ -3,6 +3,9 @@ name = "worker"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 shared = { workspace = true }
 actix-web = { workspace = true }

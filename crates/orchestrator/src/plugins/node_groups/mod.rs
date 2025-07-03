@@ -391,9 +391,8 @@ impl NodeGroupsPlugin {
     }
 
     pub async fn get_available_configurations(&self) -> Vec<NodeGroupConfiguration> {
-        let mut conn = match self.store.client.get_multiplexed_async_connection().await {
-            Ok(conn) => conn,
-            Err(_) => return vec![],
+        let Ok(mut conn) = self.store.client.get_multiplexed_async_connection().await else {
+            return vec![];
         };
 
         let available_configs: HashSet<String> = conn

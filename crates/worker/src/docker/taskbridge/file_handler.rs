@@ -221,14 +221,11 @@ pub async fn handle_file_upload(
         }
     }
 
-    let signed_url = match signed_url {
-        Some(url) => url,
-        None => {
-            error!("Failed to get signed URL after {MAX_RETRIES} attempts");
-            return Err(last_error.unwrap_or_else(|| {
-                anyhow::anyhow!("Failed to get signed URL after {} attempts", MAX_RETRIES)
-            }));
-        }
+    let Some(signed_url) = signed_url else {
+        error!("Failed to get signed URL after {MAX_RETRIES} attempts");
+        return Err(last_error.unwrap_or_else(|| {
+            anyhow::anyhow!("Failed to get signed URL after {} attempts", MAX_RETRIES)
+        }));
     };
 
     // Retry loop for uploading file to S3

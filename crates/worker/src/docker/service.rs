@@ -179,12 +179,9 @@ impl DockerService {
                                     let node_address = self.node_address.clone();
                                     let p2p_seed = self.p2p_seed;
                                     let handle = tokio::spawn(async move {
-                                        let payload = match state_clone.get_current_task().await {
-                                            Some(payload) => payload,
-                                            None => {
+                                        let Some(payload) = state_clone.get_current_task().await else {
                                                 return;
-                                            }
-                                        };
+                                            };
                                         let cmd = match payload.cmd {
                                             Some(cmd_vec) => {
                                                 cmd_vec.into_iter().map(|arg| {

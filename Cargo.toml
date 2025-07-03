@@ -51,3 +51,4 @@ testnet = []
 match_same_arms = "warn"
 unused_async = "warn"
 uninlined_format_args = "warn"
+manual_let_else = "warn"
