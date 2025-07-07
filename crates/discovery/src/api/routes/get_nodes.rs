@@ -8,7 +8,7 @@ use alloy::primitives::U256;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
 
-pub async fn get_nodes(data: Data<AppState>) -> HttpResponse {
+pub(crate) async fn get_nodes(data: Data<AppState>) -> HttpResponse {
     let nodes = data.node_store.get_nodes().await;
     match nodes {
         Ok(nodes) => {
@@ -43,7 +43,7 @@ fn filter_nodes_for_pool(nodes: Vec<DiscoveryNode>, pool_id: u32) -> Vec<Discove
     filtered
 }
 
-pub async fn get_nodes_for_pool(
+pub(crate) async fn get_nodes_for_pool(
     data: Data<AppState>,
     pool_id: web::Path<String>,
     req: actix_web::HttpRequest,
@@ -69,14 +69,12 @@ pub async fn get_nodes_for_pool(
 
             match data.contracts.clone() {
                 Some(contracts) => {
-                    let pool_info =
-                        match contracts.compute_pool.get_pool_info(pool_contract_id).await {
-                            Ok(info) => info,
-                            Err(_) => {
-                                return HttpResponse::NotFound()
-                                    .json(ApiResponse::new(false, "Pool not found"));
-                            }
-                        };
+                    let Ok(pool_info) =
+                        contracts.compute_pool.get_pool_info(pool_contract_id).await
+                    else {
+                        return HttpResponse::NotFound()
+                            .json(ApiResponse::new(false, "Pool not found"));
+                    };
                     let owner = pool_info.creator;
                     let manager = pool_info.compute_manager_key;
                     let address_str = match req.headers().get("x-address") {
@@ -123,7 +121,10 @@ pub async fn get_nodes_for_pool(
     }
 }
 
-pub async fn get_node_by_subkey(node_id: web::Path<String>, data: Data<AppState>) -> HttpResponse {
+pub(crate) async fn get_node_by_subkey(
+    node_id: web::Path<String>,
+    data: Data<AppState>,
+) -> HttpResponse {
     let node = data.node_store.get_node_by_id(&node_id.to_string()).await;
 
     match node {

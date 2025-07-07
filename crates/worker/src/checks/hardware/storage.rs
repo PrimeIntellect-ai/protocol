@@ -102,9 +102,8 @@ pub(crate) fn find_largest_storage() -> Option<MountPoint> {
 
             // Check available space on this mount point
             let mut stats: statvfs_t = unsafe { std::mem::zeroed() };
-            let path_c = match CString::new(mount_path) {
-                Ok(c) => c,
-                Err(_) => continue,
+            let Ok(path_c) = CString::new(mount_path) else {
+                continue;
             };
 
             if unsafe { statvfs(path_c.as_ptr(), &mut stats) } != 0 {

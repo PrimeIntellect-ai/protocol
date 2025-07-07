@@ -3,12 +3,10 @@ use crate::store::redis::RedisStore;
 use crate::validators::synthetic_data::types::{InvalidationType, RejectionInfo};
 use alloy::primitives::U256;
 use anyhow::{Context as _, Error, Result};
-use chrono;
 use futures::future;
 use log::{debug, warn};
 use log::{error, info};
 use redis::AsyncCommands;
-use serde_json;
 use shared::utils::StorageProvider;
 use shared::web3::contracts::implementations::prime_network_contract::PrimeNetworkContract;
 use shared::web3::contracts::implementations::work_validators::synthetic_data_validator::{
@@ -19,11 +17,12 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
-pub mod chain_operations;
+
+pub(crate) mod chain_operations;
 #[cfg(test)]
 mod tests;
-pub mod toploc;
-pub mod types;
+pub(crate) mod toploc;
+pub(crate) mod types;
 
 use toploc::{GroupValidationResult, Toploc, ToplocConfig};
 use types::{

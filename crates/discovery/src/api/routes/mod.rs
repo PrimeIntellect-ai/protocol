@@ -1,2 +1,2 @@
-pub mod get_nodes;
-pub mod node;
+pub(crate) mod get_nodes;
+pub(crate) mod node;

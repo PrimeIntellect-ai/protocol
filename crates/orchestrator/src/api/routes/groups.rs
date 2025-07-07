@@ -371,7 +371,7 @@ async fn force_regroup(
     }
 }
 
-pub fn groups_routes() -> Scope {
+pub(crate) fn groups_routes() -> Scope {
     web::scope("/groups")
         .route("", get().to(get_groups))
         .route("/configs", get().to(get_configurations))

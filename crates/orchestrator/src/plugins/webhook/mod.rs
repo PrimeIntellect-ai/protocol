@@ -10,7 +10,7 @@ use log::{error, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "event", content = "data")]
-pub enum WebhookEvent {
+pub(crate) enum WebhookEvent {
     #[serde(rename = "node.status_changed")]
     NodeStatusChanged {
         node_address: String,
@@ -40,14 +40,14 @@ pub enum WebhookEvent {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct WebhookPayload {
+pub(crate) struct WebhookPayload {
     #[serde(flatten)]
     pub event: WebhookEvent,
     pub timestamp: String,
 }
 
 impl WebhookPayload {
-    pub fn new(event: WebhookEvent) -> Self {
+    pub(crate) fn new(event: WebhookEvent) -> Self {
         #[cfg(test)]
         let timestamp = "2024-01-01T00:00:00Z".to_string();
         #[cfg(not(test))]

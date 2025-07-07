@@ -9,16 +9,16 @@ use shared::models::{
 };
 use std::str::FromStr;
 
-pub struct HardwareChallenge<'a> {
+pub(crate) struct HardwareChallenge<'a> {
     p2p_client: &'a P2PClient,
 }
 
 impl<'a> HardwareChallenge<'a> {
-    pub fn new(p2p_client: &'a P2PClient) -> Self {
+    pub(crate) fn new(p2p_client: &'a P2PClient) -> Self {
         Self { p2p_client }
     }
 
-    pub async fn challenge_node(&self, node: &DiscoveryNode) -> Result<i32, Error> {
+    pub(crate) async fn challenge_node(&self, node: &DiscoveryNode) -> Result<i32, Error> {
         // Check if node has P2P ID and addresses
         let p2p_id = node
             .node

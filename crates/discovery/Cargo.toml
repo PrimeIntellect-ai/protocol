@@ -3,6 +3,9 @@ name = "discovery"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 actix-web = { workspace = true }
 alloy = { workspace = true }

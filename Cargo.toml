@@ -51,3 +51,4 @@ uninlined_format_args = "warn"
 
 [workspace.lints.rust]
 unreachable_pub = "warn"
+manual_let_else = "warn"

@@ -62,13 +62,10 @@ impl ProviderOperations {
                         break;
                     }
                     _ = async {
-                        let stake_manager = match contracts.stake_manager.as_ref() {
-                            Some(sm) => sm,
-                            None => {
+                        let Some(stake_manager) = contracts.stake_manager.as_ref() else {
                                 Console::user_error("Cannot start monitoring - stake manager not initialized");
                                 return;
-                            }
-                        };
+                            };
 
                         // Monitor stake
                         match stake_manager.get_stake(provider_address).await {
@@ -254,11 +251,9 @@ impl ProviderOperations {
                 .await
                 .map_err(|_| ProviderError::Other)?;
             Console::progress("Registering Provider");
-            let register_tx = match self.contracts.prime_network.register_provider(stake).await {
-                Ok(tx) => tx,
-                Err(_) => {
-                    return Err(ProviderError::Other);
-                }
+            let Ok(register_tx) = self.contracts.prime_network.register_provider(stake).await
+            else {
+                return Err(ProviderError::Other);
             };
             Console::info("Registration tx", &format!("{register_tx:?}"));
         }

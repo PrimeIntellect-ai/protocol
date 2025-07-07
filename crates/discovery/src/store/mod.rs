@@ -1,2 +1,2 @@
-pub mod node_store;
-pub mod redis;
+pub(crate) mod node_store;
+pub(crate) mod redis;

@@ -14,14 +14,14 @@ pub struct ToplocConfig {
 }
 
 #[derive(Clone, Debug)]
-pub struct Toploc {
+pub(crate) struct Toploc {
     config: ToplocConfig,
     client: reqwest::Client,
     metrics: Option<MetricsContext>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct GroupValidationResult {
+pub(crate) struct GroupValidationResult {
     pub status: ValidationResult,
     pub input_flops: f64,
     pub output_flops: f64,
@@ -31,7 +31,7 @@ pub struct GroupValidationResult {
 }
 
 impl Toploc {
-    pub fn new(config: ToplocConfig, metrics: Option<MetricsContext>) -> Self {
+    pub(crate) fn new(config: ToplocConfig, metrics: Option<MetricsContext>) -> Self {
         let client = reqwest::Client::builder()
             .default_headers({
                 let mut headers = reqwest::header::HeaderMap::new();
@@ -56,7 +56,7 @@ impl Toploc {
         }
     }
 
-    pub fn name(&self) -> String {
+    pub(crate) fn name(&self) -> String {
         let prefix = self
             .config
             .file_prefix_filter
@@ -80,7 +80,7 @@ impl Toploc {
         }
     }
 
-    pub fn matches_file_name(&self, file_name: &str) -> bool {
+    pub(crate) fn matches_file_name(&self, file_name: &str) -> bool {
         let normalized_name = self.normalize_path(file_name);
         match &self.config.file_prefix_filter {
             Some(prefix) => {
@@ -93,7 +93,7 @@ impl Toploc {
         }
     }
 
-    pub async fn trigger_single_file_validation(
+    pub(crate) async fn trigger_single_file_validation(
         &self,
         file_sha: &str,
         key_address: &str,
@@ -157,7 +157,7 @@ impl Toploc {
         }
     }
 
-    pub async fn trigger_group_file_validation(
+    pub(crate) async fn trigger_group_file_validation(
         &self,
         file_name: &str,
         file_shas: Vec<String>,
@@ -227,7 +227,7 @@ impl Toploc {
         }
     }
 
-    pub async fn get_group_file_validation_status(
+    pub(crate) async fn get_group_file_validation_status(
         &self,
         file_name: &str,
     ) -> Result<GroupValidationResult, Error> {
@@ -328,7 +328,7 @@ impl Toploc {
         }
     }
 
-    pub async fn get_single_file_validation_status(
+    pub(crate) async fn get_single_file_validation_status(
         &self,
         file_name: &str,
     ) -> Result<ValidationResult, Error> {
