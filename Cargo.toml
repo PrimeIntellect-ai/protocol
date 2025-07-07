@@ -5,6 +5,7 @@ members = [
     "crates/validator",
     "crates/shared",
     "crates/orchestrator",
+    "crates/p2p",
     "crates/dev-utils",
 ]
 resolver = "2"
@@ -48,7 +49,7 @@ edition = "2021"
 match_same_arms = "warn"
 unused_async = "warn"
 uninlined_format_args = "warn"
+manual_let_else = "warn"
 
 [workspace.lints.rust]
 unreachable_pub = "warn"
-manual_let_else = "warn"

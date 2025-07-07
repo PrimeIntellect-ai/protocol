@@ -1,0 +1,15 @@
+[package]
+name = "p2p"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+libp2p = { version = "0.54", features = ["request-response", "identify", "ping", "mdns", "noise", "tcp", "autonat", "kad", "tokio", "cbor", "macros", "yamux"] }
+void = "1.0"
+
+anyhow = {workspace = true}
+serde = {workspace = true}
+tokio = {workspace = true, features = ["sync"]}
+
+[lints]
+workspace = true
