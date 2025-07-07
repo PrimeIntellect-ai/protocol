@@ -1,8 +1,8 @@
 mod traits;
 pub use traits::*;
 
-pub mod node_groups;
+pub(crate) mod node_groups;
 
-pub mod newest_task;
+pub(crate) mod newest_task;
 
-pub mod webhook;
+pub(crate) mod webhook;
