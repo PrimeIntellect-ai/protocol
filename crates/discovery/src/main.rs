@@ -81,11 +81,8 @@ async fn main() -> Result<()> {
 
     let redis_store = Arc::new(RedisStore::new(&args.redis_url));
     let node_store = Arc::new(NodeStore::new(redis_store.as_ref().clone()));
-    let endpoint = match args.rpc_url.parse() {
-        Ok(url) => url,
-        Err(_) => {
-            return Err(anyhow::anyhow!("invalid RPC URL: {}", args.rpc_url));
-        }
+    let Ok(endpoint) = args.rpc_url.parse() else {
+        return Err(anyhow::anyhow!("invalid RPC URL: {}", args.rpc_url));
     };
 
     let provider = RootProvider::new_http(endpoint);
