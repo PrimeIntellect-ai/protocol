@@ -283,17 +283,15 @@ where
             };
 
             // Apply timeout to the entire body reading process as a fallback
-            let body_result =
-                match timeout(Duration::from_secs(BODY_TIMEOUT_SECS), body_read_future).await {
-                    Ok(result) => result,
-                    Err(_) => {
-                        return Err(ErrorBadRequest(json!({
-                            "error": "Request body read timeout",
-                            "code": "BODY_READ_TIMEOUT",
-                            "timeout_seconds": BODY_TIMEOUT_SECS
-                        })))
-                    }
-                };
+            let Ok(body_result) =
+                timeout(Duration::from_secs(BODY_TIMEOUT_SECS), body_read_future).await
+            else {
+                return Err(ErrorBadRequest(json!({
+                    "error": "Request body read timeout",
+                    "code": "BODY_READ_TIMEOUT",
+                    "timeout_seconds": BODY_TIMEOUT_SECS
+                })));
+            };
 
             // If there was an error reading the body, return it
             let body = body_result?;
@@ -378,34 +376,25 @@ where
             // Validate signature
             if let (Some(address), Some(signature)) = (x_address, x_signature) {
                 let signature = signature.trim_start_matches("0x");
-                let parsed_signature = match Signature::from_str(signature) {
-                    Ok(sig) => sig,
-                    Err(_) => {
-                        return Err(ErrorBadRequest(json!({
-                            "error": "Invalid signature format",
-                            "code": "INVALID_SIGNATURE_FORMAT"
-                        })))
-                    }
+                let Ok(parsed_signature) = Signature::from_str(signature) else {
+                    return Err(ErrorBadRequest(json!({
+                        "error": "Invalid signature format",
+                        "code": "INVALID_SIGNATURE_FORMAT"
+                    })));
                 };
 
-                let recovered_address = match parsed_signature.recover_address_from_msg(msg) {
-                    Ok(addr) => addr,
-                    Err(_) => {
-                        return Err(ErrorBadRequest(json!({
-                            "error": "Failed to recover address from message",
-                            "code": "ADDRESS_RECOVERY_FAILED"
-                        })))
-                    }
+                let Ok(recovered_address) = parsed_signature.recover_address_from_msg(msg) else {
+                    return Err(ErrorBadRequest(json!({
+                        "error": "Failed to recover address from message",
+                        "code": "ADDRESS_RECOVERY_FAILED"
+                    })));
                 };
 
-                let expected_address = match Address::from_str(&address) {
-                    Ok(addr) => addr,
-                    Err(_) => {
-                        return Err(ErrorBadRequest(json!({
-                            "error": "Invalid address format",
-                            "code": "INVALID_ADDRESS_FORMAT"
-                        })))
-                    }
+                let Ok(expected_address) = Address::from_str(&address) else {
+                    return Err(ErrorBadRequest(json!({
+                        "error": "Invalid address format",
+                        "code": "INVALID_ADDRESS_FORMAT"
+                    })));
                 };
 
                 if recovered_address != expected_address {

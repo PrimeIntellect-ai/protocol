@@ -1,14 +1,3 @@
-mod api;
-mod chainsync;
-mod location_enrichment;
-mod location_service;
-mod store;
-use crate::api::server::start_server;
-use crate::chainsync::ChainSync;
-use crate::location_enrichment::LocationEnrichmentService;
-use crate::location_service::LocationService;
-use crate::store::node_store::NodeStore;
-use crate::store::redis::RedisStore;
 use alloy::providers::RootProvider;
 use anyhow::Result;
 use clap::Parser;
@@ -19,6 +8,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
+
+use discovery::{
+    start_server, ChainSync, LocationEnrichmentService, LocationService, NodeStore, RedisStore,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ServiceMode {
@@ -88,11 +81,8 @@ async fn main() -> Result<()> {
 
     let redis_store = Arc::new(RedisStore::new(&args.redis_url));
     let node_store = Arc::new(NodeStore::new(redis_store.as_ref().clone()));
-    let endpoint = match args.rpc_url.parse() {
-        Ok(url) => url,
-        Err(_) => {
-            return Err(anyhow::anyhow!("invalid RPC URL: {}", args.rpc_url));
-        }
+    let Ok(endpoint) = args.rpc_url.parse() else {
+        return Err(anyhow::anyhow!("invalid RPC URL: {}", args.rpc_url));
     };
 
     let provider = RootProvider::new_http(endpoint);

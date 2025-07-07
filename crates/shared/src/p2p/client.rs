@@ -151,19 +151,15 @@ impl P2PClient {
                 message,
             } => {
                 // Parse the signature from the server
-                let parsed_signature =
-                    if let Ok(sig) = alloy::primitives::Signature::from_str(&signed_message) {
-                        sig
-                    } else {
-                        return Err(anyhow::anyhow!("Failed to parse signature from server"));
-                    };
+                let Ok(parsed_signature) = alloy::primitives::Signature::from_str(&signed_message)
+                else {
+                    return Err(anyhow::anyhow!("Failed to parse signature from server"));
+                };
 
                 // Recover address from the challenge message that the server signed
-                let recovered_address = if let Ok(addr) =
+                let Ok(recovered_address) =
                     parsed_signature.recover_address_from_msg(&challenge_message)
-                {
-                    addr
-                } else {
+                else {
                     return Err(anyhow::anyhow!(
                         "Failed to recover address from server signature"
                     ));

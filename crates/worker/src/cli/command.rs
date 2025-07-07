@@ -44,6 +44,7 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 }
+
 #[derive(Subcommand)]
 pub enum Commands {
     Run {
@@ -559,12 +560,9 @@ pub async fn execute_command(
                 }
             };
 
-            let stake_manager = match contracts.stake_manager.as_ref() {
-                Some(stake_manager) => stake_manager,
-                None => {
-                    error!("❌ Stake manager not initialized");
-                    std::process::exit(1);
-                }
+            let Some(stake_manager) = contracts.stake_manager.as_ref() else {
+                error!("❌ Stake manager not initialized");
+                std::process::exit(1);
             };
 
             Console::title("Provider Status");

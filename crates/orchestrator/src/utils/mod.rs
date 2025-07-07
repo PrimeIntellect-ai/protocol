@@ -1,1 +1,1 @@
-pub mod loop_heartbeats;
+pub(crate) mod loop_heartbeats;

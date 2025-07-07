@@ -30,7 +30,7 @@ lazy_static! {
 }
 
 #[derive(Clone)]
-pub struct P2PContext {
+pub(crate) struct P2PContext {
     pub docker_service: Arc<DockerService>,
     pub heartbeat_service: Arc<HeartbeatService>,
     pub system_state: Arc<SystemState>,
@@ -40,7 +40,7 @@ pub struct P2PContext {
 }
 
 #[derive(Clone)]
-pub struct P2PService {
+pub(crate) struct P2PService {
     endpoint: Endpoint,
     secret_key: SecretKey,
     node_id: String,
@@ -58,7 +58,7 @@ enum EndpointLoopResult {
 
 impl P2PService {
     /// Create a new P2P service with a unique worker identity
-    pub async fn new(
+    pub(crate) async fn new(
         worker_p2p_seed: Option<u64>,
         cancellation_token: CancellationToken,
         context: Option<P2PContext>,
@@ -111,12 +111,12 @@ impl P2PService {
     }
 
     /// Get the P2P node ID
-    pub fn node_id(&self) -> &str {
+    pub(crate) fn node_id(&self) -> &str {
         &self.node_id
     }
 
     /// Get the listening addresses
-    pub fn listening_addresses(&self) -> &[String] {
+    pub(crate) fn listening_addresses(&self) -> &[String] {
         &self.listening_addrs
     }
 
@@ -143,7 +143,7 @@ impl P2PService {
         Ok(endpoint)
     }
     /// Start accepting incoming connections with automatic recovery
-    pub fn start(&self) -> Result<()> {
+    pub(crate) fn start(&self) -> Result<()> {
         let service = Arc::new(self.clone());
         let cancellation_token = self.cancellation_token.clone();
 
@@ -324,9 +324,8 @@ impl P2PService {
         let mut current_challenge: Option<String> = None;
 
         loop {
-            let request = match Self::read_message(&mut recv).await {
-                Ok(req) => req,
-                Err(_) => break, // Stream closed or error
+            let Ok(request) = Self::read_message(&mut recv).await else {
+                break;
             };
 
             // Handle the request
@@ -372,15 +371,11 @@ impl P2PService {
                 P2PMessage::AuthSolution { signed_message } => {
                     // Get the challenge message for this connection
                     debug!("Received auth solution");
-                    let challenge_message = match &current_challenge {
-                        Some(challenge) => challenge,
-                        None => {
-                            warn!("No active challenge for auth solution");
-                            let response =
-                                P2PResponse::new(request.id, P2PMessage::AuthRejected {});
-                            Self::write_response(&mut send, response).await?;
-                            continue;
-                        }
+                    let Some(challenge_message) = &current_challenge else {
+                        warn!("No active challenge for auth solution");
+                        let response = P2PResponse::new(request.id, P2PMessage::AuthRejected {});
+                        Self::write_response(&mut send, response).await?;
+                        continue;
                     };
 
                     // Check if challenge message has been used before (replay attack prevention)
@@ -396,11 +391,9 @@ impl P2PService {
                     NONCE_CACHE.retain(|_, &mut timestamp| timestamp > cutoff_time);
 
                     // Parse the signature
-                    let parsed_signature = if let Ok(sig) =
+                    let Ok(parsed_signature) =
                         alloy::primitives::Signature::from_str(&signed_message)
-                    {
-                        sig
-                    } else {
+                    else {
                         // Handle signature parsing error
                         let response = P2PResponse::new(request.id, P2PMessage::AuthRejected {});
                         Self::write_response(&mut send, response).await?;
@@ -408,11 +401,9 @@ impl P2PService {
                     };
 
                     // Recover address from the challenge message that the client signed
-                    let recovered_address = if let Ok(addr) =
+                    let Ok(recovered_address) =
                         parsed_signature.recover_address_from_msg(challenge_message)
-                    {
-                        addr
-                    } else {
+                    else {
                         // Handle address recovery error
                         let response = P2PResponse::new(request.id, P2PMessage::AuthRejected {});
                         Self::write_response(&mut send, response).await?;

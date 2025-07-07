@@ -92,9 +92,8 @@ impl MetricsStore {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
         let cleaned_label = self.clean_label(label);
 
-        let node_address = match address.parse::<Address>() {
-            Ok(addr) => addr,
-            Err(_) => return Ok(false), // Invalid address format
+        let Ok(node_address) = address.parse::<Address>() else {
+            return Ok(false);
         };
 
         let node_key = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:{node_address}");

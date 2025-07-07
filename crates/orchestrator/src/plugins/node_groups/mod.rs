@@ -19,8 +19,8 @@ use std::{
     str::FromStr,
 };
 
-pub mod scheduler_impl;
-pub mod status_update_impl;
+pub(crate) mod scheduler_impl;
+pub(crate) mod status_update_impl;
 #[cfg(test)]
 mod tests;
 
@@ -391,9 +391,8 @@ impl NodeGroupsPlugin {
     }
 
     pub async fn get_available_configurations(&self) -> Vec<NodeGroupConfiguration> {
-        let mut conn = match self.store.client.get_multiplexed_async_connection().await {
-            Ok(conn) => conn,
-            Err(_) => return vec![],
+        let Ok(mut conn) = self.store.client.get_multiplexed_async_connection().await else {
+            return vec![];
         };
 
         let available_configs: HashSet<String> = conn

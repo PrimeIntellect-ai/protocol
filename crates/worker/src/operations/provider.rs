@@ -9,14 +9,18 @@ use std::{fmt, io};
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 
-pub struct ProviderOperations {
+pub(crate) struct ProviderOperations {
     wallet: Wallet,
     contracts: Contracts<WalletProvider>,
     auto_accept: bool,
 }
 
 impl ProviderOperations {
-    pub fn new(wallet: Wallet, contracts: Contracts<WalletProvider>, auto_accept: bool) -> Self {
+    pub(crate) fn new(
+        wallet: Wallet,
+        contracts: Contracts<WalletProvider>,
+        auto_accept: bool,
+    ) -> Self {
         Self {
             wallet,
             contracts,
@@ -40,7 +44,7 @@ impl ProviderOperations {
         }
     }
 
-    pub fn start_monitoring(&self, cancellation_token: CancellationToken) {
+    pub(crate) fn start_monitoring(&self, cancellation_token: CancellationToken) {
         let provider_address = self.wallet.wallet.default_signer().address();
         let contracts = self.contracts.clone();
 
@@ -58,13 +62,10 @@ impl ProviderOperations {
                         break;
                     }
                     _ = async {
-                        let stake_manager = match contracts.stake_manager.as_ref() {
-                            Some(sm) => sm,
-                            None => {
+                        let Some(stake_manager) = contracts.stake_manager.as_ref() else {
                                 Console::user_error("Cannot start monitoring - stake manager not initialized");
                                 return;
-                            }
-                        };
+                            };
 
                         // Monitor stake
                         match stake_manager.get_stake(provider_address).await {
@@ -145,7 +146,7 @@ impl ProviderOperations {
         });
     }
 
-    pub async fn check_provider_exists(&self) -> Result<bool, ProviderError> {
+    pub(crate) async fn check_provider_exists(&self) -> Result<bool, ProviderError> {
         let address = self.wallet.wallet.default_signer().address();
 
         let provider = self
@@ -158,7 +159,7 @@ impl ProviderOperations {
         Ok(provider.provider_address != Address::default())
     }
 
-    pub async fn check_provider_whitelisted(&self) -> Result<bool, ProviderError> {
+    pub(crate) async fn check_provider_whitelisted(&self) -> Result<bool, ProviderError> {
         let address = self.wallet.wallet.default_signer().address();
 
         let provider = self
@@ -171,7 +172,7 @@ impl ProviderOperations {
         Ok(provider.is_whitelisted)
     }
 
-    pub async fn retry_register_provider(
+    pub(crate) async fn retry_register_provider(
         &self,
         stake: U256,
         max_attempts: u32,
@@ -205,7 +206,7 @@ impl ProviderOperations {
         Err(ProviderError::Other)
     }
 
-    pub async fn register_provider(&self, stake: U256) -> Result<(), ProviderError> {
+    pub(crate) async fn register_provider(&self, stake: U256) -> Result<(), ProviderError> {
         let address = self.wallet.wallet.default_signer().address();
         let balance: U256 = self
             .contracts
@@ -250,11 +251,9 @@ impl ProviderOperations {
                 .await
                 .map_err(|_| ProviderError::Other)?;
             Console::progress("Registering Provider");
-            let register_tx = match self.contracts.prime_network.register_provider(stake).await {
-                Ok(tx) => tx,
-                Err(_) => {
-                    return Err(ProviderError::Other);
-                }
+            let Ok(register_tx) = self.contracts.prime_network.register_provider(stake).await
+            else {
+                return Err(ProviderError::Other);
             };
             Console::info("Registration tx", &format!("{register_tx:?}"));
         }
@@ -331,7 +330,7 @@ impl ProviderOperations {
         Ok(())
     }
 
-    pub async fn increase_stake(&self, additional_stake: U256) -> Result<(), ProviderError> {
+    pub(crate) async fn increase_stake(&self, additional_stake: U256) -> Result<(), ProviderError> {
         Console::title("💰 Increasing Provider Stake");
 
         let address = self.wallet.wallet.default_signer().address();
@@ -384,7 +383,7 @@ impl ProviderOperations {
         Ok(())
     }
 
-    pub async fn reclaim_stake(&self, amount: U256) -> Result<(), ProviderError> {
+    pub(crate) async fn reclaim_stake(&self, amount: U256) -> Result<(), ProviderError> {
         Console::progress("Reclaiming stake");
         let reclaim_tx = match self.contracts.prime_network.reclaim_stake(amount).await {
             Ok(tx) => tx,
@@ -403,7 +402,7 @@ impl ProviderOperations {
 }
 
 #[derive(Debug)]
-pub enum ProviderError {
+pub(crate) enum ProviderError {
     NotWhitelisted,
     UserCancelled,
     Other,

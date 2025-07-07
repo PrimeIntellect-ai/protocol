@@ -47,11 +47,11 @@ cid = "0.11"
 version = "0.3.10"
 edition = "2021"
 
-[workspace.features]
-default = []
-testnet = []
-
 [workspace.lints.clippy]
 match_same_arms = "warn"
 unused_async = "warn"
 uninlined_format_args = "warn"
+manual_let_else = "warn"
+
+[workspace.lints.rust]
+unreachable_pub = "warn"

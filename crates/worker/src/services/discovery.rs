@@ -3,14 +3,14 @@ use shared::models::node::Node;
 use shared::security::request_signer::sign_request_with_nonce;
 use shared::web3::wallet::Wallet;
 
-pub struct DiscoveryService {
+pub(crate) struct DiscoveryService {
     wallet: Wallet,
     base_urls: Vec<String>,
     endpoint: String,
 }
 
 impl DiscoveryService {
-    pub fn new(wallet: Wallet, base_urls: Vec<String>, endpoint: Option<String>) -> Self {
+    pub(crate) fn new(wallet: Wallet, base_urls: Vec<String>, endpoint: Option<String>) -> Self {
         let urls = if base_urls.is_empty() {
             vec!["http://localhost:8089".to_string()]
         } else {
@@ -73,7 +73,7 @@ impl DiscoveryService {
         Ok(())
     }
 
-    pub async fn upload_discovery_info(&self, node_config: &Node) -> Result<()> {
+    pub(crate) async fn upload_discovery_info(&self, node_config: &Node) -> Result<()> {
         let mut last_error: Option<String> = None;
 
         for base_url in &self.base_urls {
