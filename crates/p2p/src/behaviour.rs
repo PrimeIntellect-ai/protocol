@@ -151,6 +151,7 @@ impl BehaviourEvent {
             BehaviourEvent::Ping(_event) => {}
             BehaviourEvent::RequestResponse(event) => match event {
                 request_response::Event::Message { peer, message } => {
+                    println!("received message from peer {peer:?}: {message:?}");
                     let _ = message_tx
                         .send(IncomingMessage {
                             peer: peer.clone(),
@@ -158,7 +159,27 @@ impl BehaviourEvent {
                         })
                         .await;
                 }
-                _ => {}
+                request_response::Event::ResponseSent { peer, request_id } => {
+                    println!("response sent to peer {peer:?} for request ID {request_id:?}");
+                }
+                request_response::Event::InboundFailure {
+                    peer,
+                    request_id,
+                    error,
+                } => {
+                    println!(
+                        "inbound failure from peer {peer:?} for request ID {request_id:?}: {error}"
+                    );
+                }
+                request_response::Event::OutboundFailure {
+                    peer,
+                    request_id,
+                    error,
+                } => {
+                    println!(
+                        "outbound failure to peer {peer:?} for request ID {request_id:?}: {error}"
+                    );
+                }
             },
         }
     }

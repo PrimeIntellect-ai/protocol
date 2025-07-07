@@ -9,14 +9,8 @@ pub struct IncomingMessage {
 }
 
 #[derive(Debug)]
-pub struct OutgoingMessage {
-    pub peer: PeerId,
-    pub message: OutgoingMessageInner,
-}
-
-#[derive(Debug)]
-pub enum OutgoingMessageInner {
-    Request(Request),
+pub enum OutgoingMessage {
+    Request((PeerId, Request)),
     Response(
         (
             libp2p::request_response::ResponseChannel<Response>,
@@ -34,6 +28,12 @@ pub enum Request {
     Restart,
 }
 
+impl Request {
+    pub fn into_outgoing_message(self, peer: PeerId) -> OutgoingMessage {
+        OutgoingMessage::Request((peer, Request::from(self)))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Response {
     ValidatorAuthentication(ValidatorAuthenticationResponse),
@@ -41,6 +41,15 @@ pub enum Response {
     Invite(InviteResponse),
     GetTaskLogs(GetTaskLogsResponse),
     Restart(RestartResponse),
+}
+
+impl Response {
+    pub fn into_outgoing_message(
+        self,
+        channel: libp2p::request_response::ResponseChannel<Response>,
+    ) -> OutgoingMessage {
+        OutgoingMessage::Response((channel, Response::from(self)))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
