@@ -37,6 +37,7 @@ pub(crate) struct Behaviour {
     autonat: autonat::Behaviour,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub(crate) enum BehaviourEvent {
     Autonat(autonat::Event),

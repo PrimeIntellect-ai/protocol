@@ -8,6 +8,7 @@ pub struct IncomingMessage {
     pub message: libp2p::request_response::Message<Request, Response>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum OutgoingMessage {
     Request((PeerId, Request)),
