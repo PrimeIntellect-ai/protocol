@@ -1,39 +1,9 @@
-mod api;
-mod discovery;
-mod metrics;
-mod models;
-mod node;
-mod p2p;
-mod plugins;
-mod scheduler;
-mod status_update;
-mod store;
-mod utils;
-use crate::api::server::start_server;
-use crate::discovery::monitor::DiscoveryMonitor;
-use crate::node::invite::NodeInviter;
-use crate::p2p::client::P2PClient;
-use crate::scheduler::Scheduler;
-use crate::status_update::NodeStatusUpdater;
-use crate::store::core::RedisStore;
-use crate::store::core::StoreContext;
-use crate::utils::loop_heartbeats::LoopHeartbeats;
 use anyhow::Result;
 use clap::Parser;
-use clap::ValueEnum;
 use log::debug;
 use log::error;
 use log::info;
 use log::LevelFilter;
-use metrics::sync_service::MetricsSyncService;
-use metrics::webhook_sender::MetricsWebhookSender;
-use metrics::MetricsContext;
-use plugins::node_groups::NodeGroupConfiguration;
-use plugins::node_groups::NodeGroupsPlugin;
-use plugins::webhook::WebhookConfig;
-use plugins::webhook::WebhookPlugin;
-use plugins::SchedulerPlugin;
-use plugins::StatusUpdatePlugin;
 use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
@@ -41,12 +11,12 @@ use std::sync::Arc;
 use tokio::task::JoinSet;
 use url::Url;
 
-#[derive(Parser, Clone, Copy, ValueEnum, Debug, PartialEq)]
-pub enum ServerMode {
-    ApiOnly,
-    ProcessorOnly,
-    Full,
-}
+use orchestrator::{
+    start_server, DiscoveryMonitor, LoopHeartbeats, MetricsContext, MetricsSyncService,
+    MetricsWebhookSender, NodeGroupConfiguration, NodeGroupsPlugin, NodeInviter, NodeStatusUpdater,
+    P2PClient, RedisStore, Scheduler, SchedulerPlugin, ServerMode, StatusUpdatePlugin,
+    StoreContext, WebhookConfig, WebhookPlugin,
+};
 
 #[derive(Parser)]
 struct Args {
@@ -183,21 +153,6 @@ async fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    /* match contracts
-        .compute_pool
-        .get_pool_info(U256::from(compute_pool_id))
-        .await
-    {
-        Ok(pool) if pool.status == PoolStatus::ACTIVE => Arc::new(pool),
-        Ok(_) => {
-            info!("Pool is not active. Exiting.");
-            return Ok(());
-        }
-        Err(e) => {
-            error!("Failed to get pool info: {e}");
-            return Ok(());
-        }
-    }; */
     let group_store_context = store_context.clone();
     let mut scheduler_plugins: Vec<SchedulerPlugin> = Vec::new();
     let mut status_update_plugins: Vec<StatusUpdatePlugin> = vec![];

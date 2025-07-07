@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
-pub struct AppState {
+pub(crate) struct AppState {
     pub node_store: Arc<NodeStore>,
     pub contracts: Option<Contracts<RootProvider>>,
     pub last_chain_sync: Arc<Mutex<Option<SystemTime>>>,

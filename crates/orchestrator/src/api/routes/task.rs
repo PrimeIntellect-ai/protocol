@@ -125,7 +125,7 @@ async fn delete_all_tasks(app_state: Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(json!({"success": true}))
 }
 
-pub fn tasks_routes() -> Scope {
+pub(crate) fn tasks_routes() -> Scope {
     web::scope("/tasks")
         .route("", get().to(get_all_tasks))
         .route("", post().to(create_task))

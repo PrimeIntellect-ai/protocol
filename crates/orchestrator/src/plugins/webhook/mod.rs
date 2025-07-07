@@ -9,7 +9,7 @@ use log::{error, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "event", content = "data")]
-pub enum WebhookEvent {
+pub(crate) enum WebhookEvent {
     #[serde(rename = "node.status_changed")]
     NodeStatusChanged {
         node_address: String,
@@ -39,14 +39,14 @@ pub enum WebhookEvent {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct WebhookPayload {
+pub(crate) struct WebhookPayload {
     #[serde(flatten)]
     pub event: WebhookEvent,
     pub timestamp: String,
 }
 
 impl WebhookPayload {
-    pub fn new(event: WebhookEvent) -> Self {
+    pub(crate) fn new(event: WebhookEvent) -> Self {
         #[cfg(test)]
         let timestamp = "2024-01-01T00:00:00Z".to_string();
         #[cfg(not(test))]
@@ -274,7 +274,7 @@ impl WebhookPlugin {
         self.send_event(event)
     }
 
-    pub(crate) async fn handle_status_change(
+    pub(crate) fn handle_status_change(
         &self,
         node: &OrchestratorNode,
         old_status: &NodeStatus,
@@ -344,7 +344,7 @@ mod tests {
             bearer_token: None,
         });
         let node = create_test_node(NodeStatus::Healthy);
-        let result = plugin.handle_status_change(&node, &NodeStatus::Dead).await;
+        let result = plugin.handle_status_change(&node, &NodeStatus::Dead);
         assert!(result.is_ok());
     }
 

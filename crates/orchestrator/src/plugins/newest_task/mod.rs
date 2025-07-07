@@ -2,10 +2,10 @@ use anyhow::Result;
 use shared::models::task::Task;
 
 #[derive(Clone)]
-pub(crate) struct NewestTaskPlugin;
+pub struct NewestTaskPlugin;
 
 impl NewestTaskPlugin {
-    pub(crate) async fn filter_tasks(&self, tasks: &[Task]) -> Result<Vec<Task>> {
+    pub(crate) fn filter_tasks(&self, tasks: &[Task]) -> Result<Vec<Task>> {
         if tasks.is_empty() {
             return Ok(vec![]);
         }
@@ -26,8 +26,8 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_filter_tasks() {
+    #[test]
+    fn test_filter_tasks() {
         let plugin = NewestTaskPlugin;
         let tasks = vec![
             Task {
@@ -48,7 +48,7 @@ mod tests {
             },
         ];
 
-        let filtered_tasks = plugin.filter_tasks(&tasks).await.unwrap();
+        let filtered_tasks = plugin.filter_tasks(&tasks).unwrap();
         assert_eq!(filtered_tasks.len(), 1);
         assert_eq!(filtered_tasks[0].id, tasks[1].id);
     }

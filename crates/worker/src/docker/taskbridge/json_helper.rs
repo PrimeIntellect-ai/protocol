@@ -1,5 +1,5 @@
 // Helper function to extract the next complete JSON object from a string
-pub fn extract_next_json(input: &[u8]) -> Option<(&str, usize)> {
+pub(super) fn extract_next_json(input: &[u8]) -> Option<(&str, usize)> {
     // Skip any leading whitespace (including newlines)
     let mut start_pos = 0;
     while start_pos < input.len() && (input[start_pos] <= 32) {

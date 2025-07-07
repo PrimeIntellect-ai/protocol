@@ -18,14 +18,11 @@ async fn heartbeat(
     app_state: Data<AppState>,
 ) -> HttpResponse {
     let task_info = heartbeat.clone();
-    let node_address = match Address::from_str(&heartbeat.address) {
-        Ok(address) => address,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": "Invalid node address format"
-            }));
-        }
+    let Ok(node_address) = Address::from_str(&heartbeat.address) else {
+        return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "Invalid node address format"
+        }));
     };
 
     // Track heartbeat request in metrics
@@ -172,7 +169,7 @@ async fn heartbeat(
     }
 }
 
-pub fn heartbeat_routes() -> Scope {
+pub(crate) fn heartbeat_routes() -> Scope {
     web::scope("/heartbeat").route("", post().to(heartbeat))
 }
 

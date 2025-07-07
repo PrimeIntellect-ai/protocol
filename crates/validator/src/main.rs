@@ -1,7 +1,3 @@
-pub mod metrics;
-pub mod p2p;
-pub mod store;
-pub mod validators;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use alloy::primitives::utils::Unit;
 use alloy::primitives::{Address, U256};
@@ -9,8 +5,6 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, LevelFilter};
 use log::{error, info};
-use metrics::MetricsContext;
-use p2p::P2PClient;
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
@@ -24,14 +18,15 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use store::redis::RedisStore;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio_util::sync::CancellationToken;
 use url::Url;
-use validators::hardware::HardwareValidator;
-use validators::synthetic_data::SyntheticDataValidator;
 
-use crate::validators::synthetic_data::types::InvalidationType;
+use validator::{
+    export_metrics, HardwareValidator, InvalidationType, MetricsContext, P2PClient, RedisStore,
+    SyntheticDataValidator,
+};
+
 // Track the last time the validation loop ran
 static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 // Maximum allowed time between validation loops (2 minutes)
@@ -325,12 +320,9 @@ async fn main() -> anyhow::Result<()> {
                     penalty, args.validator_penalty
                 );
 
-                let toploc_configs = match std::env::var("TOPLOC_CONFIGS") {
-                    Ok(configs) => configs,
-                    Err(_) => {
-                        error!("Toploc configs are required but not provided in environment");
-                        std::process::exit(1);
-                    }
+                let Ok(toploc_configs) = std::env::var("TOPLOC_CONFIGS") else {
+                    error!("Toploc configs are required but not provided in environment");
+                    std::process::exit(1);
                 };
                 info!("Toploc configs: {toploc_configs}");
 
@@ -407,7 +399,7 @@ async fn main() -> anyhow::Result<()> {
                 .route(
                     "/metrics",
                     web::get().to(|| async {
-                        match metrics::export_metrics() {
+                        match export_metrics() {
                             Ok(metrics) => {
                                 HttpResponse::Ok().content_type("text/plain").body(metrics)
                             }
@@ -557,12 +549,9 @@ async fn main() -> anyhow::Result<()> {
 
             // Ensure nodes have enough stake
             let mut nodes_with_enough_stake = Vec::new();
-            let stake_manager = match contracts.stake_manager.as_ref() {
-                Some(manager) => manager,
-                None => {
-                    error!("Stake manager contract not initialized");
-                    continue;
-                }
+            let Some(stake_manager) = contracts.stake_manager.as_ref() else {
+                error!("Stake manager contract not initialized");
+                continue;
             };
 
             let mut provider_stake_cache: std::collections::HashMap<String, (U256, U256)> =
@@ -634,7 +623,6 @@ async fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-
     use actix_web::{test, App};
     use actix_web::{
         web::{self, post},
@@ -642,12 +630,12 @@ mod tests {
     };
     use shared::models::challenge::{calc_matrix, ChallengeRequest, ChallengeResponse, FixedF64};
 
-    pub async fn handle_challenge(challenge: web::Json<ChallengeRequest>) -> HttpResponse {
+    async fn handle_challenge(challenge: web::Json<ChallengeRequest>) -> HttpResponse {
         let result = calc_matrix(&challenge);
         HttpResponse::Ok().json(result)
     }
 
-    pub fn challenge_routes() -> Scope {
+    fn challenge_routes() -> Scope {
         web::scope("/challenge")
             .route("", post().to(handle_challenge))
             .route("/", post().to(handle_challenge))

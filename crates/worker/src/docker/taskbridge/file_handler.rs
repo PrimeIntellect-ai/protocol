@@ -16,12 +16,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Handles a file upload request
-pub async fn handle_file_upload(
-    storage_path: &str,
-    task_id: &str,
-    file_name: &str,
-    wallet: &Wallet,
-    state: &Arc<SystemState>,
+pub(crate) async fn handle_file_upload(
+    storage_path: String,
+    task_id: String,
+    file_name: String,
+    wallet: Wallet,
+    state: Arc<SystemState>,
 ) -> Result<()> {
     info!("📄 Received file upload request: {file_name}");
     info!("Task ID: {task_id}, Storage path: {storage_path}");
@@ -44,7 +44,7 @@ pub async fn handle_file_upload(
     info!("Clean file name: {clean_file_name}");
 
     let task_dir = format!("prime-task-{task_id}");
-    let file_path = Path::new(storage_path)
+    let file_path = Path::new(&storage_path)
         .join(&task_dir)
         .join("data")
         .join(clean_file_name);
@@ -122,7 +122,7 @@ pub async fn handle_file_upload(
         };
 
         let signature =
-            match sign_request_with_nonce("/storage/request-upload", wallet, Some(&request_value))
+            match sign_request_with_nonce("/storage/request-upload", &wallet, Some(&request_value))
                 .await
             {
                 Ok(sig) => {
@@ -221,14 +221,11 @@ pub async fn handle_file_upload(
         }
     }
 
-    let signed_url = match signed_url {
-        Some(url) => url,
-        None => {
-            error!("Failed to get signed URL after {MAX_RETRIES} attempts");
-            return Err(last_error.unwrap_or_else(|| {
-                anyhow::anyhow!("Failed to get signed URL after {} attempts", MAX_RETRIES)
-            }));
-        }
+    let Some(signed_url) = signed_url else {
+        error!("Failed to get signed URL after {MAX_RETRIES} attempts");
+        return Err(last_error.unwrap_or_else(|| {
+            anyhow::anyhow!("Failed to get signed URL after {} attempts", MAX_RETRIES)
+        }));
     };
 
     // Retry loop for uploading file to S3
@@ -312,11 +309,11 @@ pub async fn handle_file_upload(
 }
 
 /// Handles a file validation request
-pub async fn handle_file_validation(
-    file_sha: &str,
-    contracts: &Contracts<WalletProvider>,
-    node: &Node,
-    provider: &WalletProvider,
+pub(crate) async fn handle_file_validation(
+    file_sha: String,
+    contracts: Contracts<WalletProvider>,
+    node: Node,
+    provider: WalletProvider,
     work_units: f64,
 ) -> Result<()> {
     info!("📄 Received file SHA for validation: {file_sha}");

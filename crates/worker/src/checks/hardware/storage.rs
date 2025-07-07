@@ -6,17 +6,17 @@ use std::env;
 use std::ffi::CString;
 #[cfg(target_os = "linux")]
 use std::fs;
-pub const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
-pub const APP_DIR_NAME: &str = "prime-worker";
+pub(crate) const BYTES_TO_GB: f64 = 1024.0 * 1024.0 * 1024.0;
+pub(crate) const APP_DIR_NAME: &str = "prime-worker";
 
 #[derive(Clone)]
-pub struct MountPoint {
+pub(crate) struct MountPoint {
     pub path: String,
     pub available_space: u64,
 }
 
 #[cfg(unix)]
-pub fn get_storage_info() -> Result<(f64, f64), std::io::Error> {
+pub(crate) fn get_storage_info() -> Result<(f64, f64), std::io::Error> {
     let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
 
     // Use current directory instead of hardcoded "."
@@ -68,7 +68,7 @@ pub fn get_storage_info() -> Result<(f64, f64), std::io::Error> {
     ))
 }
 #[cfg(target_os = "linux")]
-pub fn find_largest_storage() -> Option<MountPoint> {
+pub(crate) fn find_largest_storage() -> Option<MountPoint> {
     const VALID_FS: [&str; 4] = ["ext4", "xfs", "btrfs", "zfs"];
     const MIN_SPACE: u64 = 1_000_000_000; // 1GB minimum
 
@@ -102,9 +102,8 @@ pub fn find_largest_storage() -> Option<MountPoint> {
 
             // Check available space on this mount point
             let mut stats: statvfs_t = unsafe { std::mem::zeroed() };
-            let path_c = match CString::new(mount_path) {
-                Ok(c) => c,
-                Err(_) => continue,
+            let Ok(path_c) = CString::new(mount_path) else {
+                continue;
             };
 
             if unsafe { statvfs(path_c.as_ptr(), &mut stats) } != 0 {
@@ -222,7 +221,7 @@ pub fn find_largest_storage() -> Option<MountPoint> {
 }
 
 #[cfg(target_os = "linux")]
-pub fn get_available_space(path: &str) -> Option<u64> {
+pub(crate) fn get_available_space(path: &str) -> Option<u64> {
     let mut stats: statvfs_t = unsafe { std::mem::zeroed() };
     if let Ok(path_c) = CString::new(path) {
         if unsafe { statvfs(path_c.as_ptr(), &mut stats) } == 0 {
@@ -239,7 +238,7 @@ pub fn get_available_space(_path: &str) -> Option<u64> {
 }
 
 #[allow(dead_code)]
-pub fn print_storage_info() {
+pub(crate) fn print_storage_info() {
     match get_storage_info() {
         Ok((total, free)) => {
             Console::title("Storage Information:");

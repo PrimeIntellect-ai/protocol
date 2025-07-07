@@ -1,5 +1,5 @@
-pub mod bridge;
-pub mod file_handler;
+pub(crate) mod bridge;
+pub(crate) mod file_handler;
 mod json_helper;
 
-pub use bridge::TaskBridge;
+pub(crate) use bridge::TaskBridge;

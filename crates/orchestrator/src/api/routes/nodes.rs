@@ -119,14 +119,11 @@ async fn get_nodes(query: Query<NodeQuery>, app_state: Data<AppState>) -> HttpRe
     tag = "nodes"
 )]
 async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    let node_address = match Address::from_str(&node_id) {
-        Ok(address) => address,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": format!("Invalid node address: {}", node_id)
-            }));
-        }
+    let Ok(node_address) = Address::from_str(&node_id) else {
+        return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": format!("Invalid node address: {}", node_id)
+        }));
     };
 
     let node = match app_state
@@ -197,14 +194,11 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
     tag = "nodes"
 )]
 async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    let node_address = match Address::from_str(&node_id) {
-        Ok(address) => address,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": format!("Invalid node address: {}", node_id)
-            }));
-        }
+    let Ok(node_address) = Address::from_str(&node_id) else {
+        return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": format!("Invalid node address: {}", node_id)
+        }));
     };
 
     let node = match app_state
@@ -233,23 +227,17 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
         }));
     }
 
-    let p2p_id = match node.worker_p2p_id.as_ref() {
-        Some(id) => id,
-        None => {
-            return HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": "Node does not have worker p2p id"
-            }));
-        }
+    let Some(p2p_id) = node.worker_p2p_id.as_ref() else {
+        return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "Node does not have worker p2p id"
+        }));
     };
-    let p2p_addresses = match node.worker_p2p_addresses.as_ref() {
-        Some(addresses) => addresses,
-        None => {
-            return HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": "Node does not have worker p2p addresses"
-            }));
-        }
+    let Some(p2p_addresses) = node.worker_p2p_addresses.as_ref() else {
+        return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "Node does not have worker p2p addresses"
+        }));
     };
 
     match app_state
@@ -282,14 +270,11 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
     tag = "nodes"
 )]
 async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
-    let node_address = match Address::from_str(&node_id) {
-        Ok(address) => address,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": format!("Invalid node address: {}", node_id)
-            }));
-        }
+    let Ok(node_address) = Address::from_str(&node_id) else {
+        return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": format!("Invalid node address: {}", node_id)
+        }));
     };
 
     let metrics = match app_state
@@ -323,14 +308,11 @@ async fn get_node_metrics(node_id: web::Path<String>, app_state: Data<AppState>)
 )]
 async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> HttpResponse {
     info!("banning node: {node_id}");
-    let node_address = match Address::from_str(&node_id) {
-        Ok(address) => address,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": format!("Invalid node address: {}", node_id)
-            }));
-        }
+    let Ok(node_address) = Address::from_str(&node_id) else {
+        return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": format!("Invalid node address: {}", node_id)
+        }));
     };
 
     let node = match app_state
@@ -392,7 +374,7 @@ async fn ban_node(node_id: web::Path<String>, app_state: Data<AppState>) -> Http
     }
 }
 
-pub fn nodes_routes() -> Scope {
+pub(crate) fn nodes_routes() -> Scope {
     web::scope("/nodes")
         .route("", get().to(get_nodes))
         .route("/{node_id}/restart", post().to(restart_node_task))

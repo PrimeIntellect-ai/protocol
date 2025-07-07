@@ -15,7 +15,7 @@ pub(crate) mod node_groups;
 pub(crate) mod webhook;
 
 #[derive(Clone)]
-pub(crate) enum StatusUpdatePlugin {
+pub enum StatusUpdatePlugin {
     NodeGroupsPlugin(Arc<NodeGroupsPlugin>),
     WebhookPlugin(WebhookPlugin),
 }
@@ -28,9 +28,7 @@ impl StatusUpdatePlugin {
     ) -> Result<()> {
         match self {
             StatusUpdatePlugin::NodeGroupsPlugin(plugin) => plugin.handle_status_change(node).await,
-            StatusUpdatePlugin::WebhookPlugin(plugin) => {
-                plugin.handle_status_change(node, status).await
-            }
+            StatusUpdatePlugin::WebhookPlugin(plugin) => plugin.handle_status_change(node, status),
         }
     }
 }
@@ -60,7 +58,7 @@ impl From<&WebhookPlugin> for StatusUpdatePlugin {
 }
 
 #[derive(Clone)]
-pub(crate) enum SchedulerPlugin {
+pub enum SchedulerPlugin {
     NodeGroupsPlugin(Arc<NodeGroupsPlugin>),
     NewestTaskPlugin(NewestTaskPlugin),
 }
@@ -75,7 +73,7 @@ impl SchedulerPlugin {
             SchedulerPlugin::NodeGroupsPlugin(plugin) => {
                 plugin.filter_tasks(tasks, node_address).await
             }
-            SchedulerPlugin::NewestTaskPlugin(plugin) => plugin.filter_tasks(tasks).await,
+            SchedulerPlugin::NewestTaskPlugin(plugin) => plugin.filter_tasks(tasks),
         }
     }
 }

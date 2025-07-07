@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 const INITIAL_UPDATE_DELAY: Duration = Duration::from_secs(120);
 const UPDATE_INTERVAL: Duration = Duration::from_secs(120);
 
-pub struct DiscoveryUpdater {
+pub(crate) struct DiscoveryUpdater {
     discovery_service: Arc<DiscoveryService>,
     is_running: Arc<AtomicBool>,
     system_state: Arc<SystemState>,
@@ -18,7 +18,7 @@ pub struct DiscoveryUpdater {
 }
 
 impl DiscoveryUpdater {
-    pub fn new(discovery_service: DiscoveryService, system_state: Arc<SystemState>) -> Self {
+    pub(crate) fn new(discovery_service: DiscoveryService, system_state: Arc<SystemState>) -> Self {
         Self {
             discovery_service: Arc::new(discovery_service),
             is_running: Arc::new(AtomicBool::new(false)),
@@ -27,7 +27,7 @@ impl DiscoveryUpdater {
         }
     }
 
-    pub fn start_auto_update(&self, node_config: Node) {
+    pub(crate) fn start_auto_update(&self, node_config: Node) {
         if self.is_running.load(Ordering::SeqCst) {
             debug!("Auto update already running, skipping start");
             return;

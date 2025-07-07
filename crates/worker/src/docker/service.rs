@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 
-pub struct DockerService {
+pub(crate) struct DockerService {
     docker_manager: Arc<DockerManager>,
     cancellation_token: CancellationToken,
     pub state: Arc<DockerState>,
@@ -32,7 +32,7 @@ const RESTART_INTERVAL_SECONDS: i64 = 10;
 
 impl DockerService {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         cancellation_token: CancellationToken,
         gpu: Option<GpuSpecs>,
         system_memory_mb: Option<u32>,
@@ -56,7 +56,7 @@ impl DockerService {
         }
     }
 
-    pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut interval = interval(Duration::from_secs(5));
         let manager = self.docker_manager.clone();
         let cancellation_token = self.cancellation_token.clone();
@@ -179,12 +179,9 @@ impl DockerService {
                                     let node_address = self.node_address.clone();
                                     let p2p_seed = self.p2p_seed;
                                     let handle = tokio::spawn(async move {
-                                        let payload = match state_clone.get_current_task().await {
-                                            Some(payload) => payload,
-                                            None => {
+                                        let Some(payload) = state_clone.get_current_task().await else {
                                                 return;
-                                            }
-                                        };
+                                            };
                                         let cmd = match payload.cmd {
                                             Some(cmd_vec) => {
                                                 cmd_vec.into_iter().map(|arg| {
@@ -322,7 +319,7 @@ impl DockerService {
         Ok(())
     }
 
-    pub async fn get_logs(&self) -> Result<String, Box<dyn std::error::Error>> {
+    pub(crate) async fn get_logs(&self) -> Result<String, Box<dyn std::error::Error>> {
         let current_task = self.state.get_current_task().await;
         match current_task {
             Some(task) => {
@@ -343,7 +340,7 @@ impl DockerService {
         }
     }
 
-    pub async fn restart_task(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) async fn restart_task(&self) -> Result<(), Box<dyn std::error::Error>> {
         let current_task = self.state.get_current_task().await;
         match current_task {
             Some(task) => {
@@ -356,7 +353,7 @@ impl DockerService {
         }
     }
 
-    pub async fn get_task_details(&self, task: &Task) -> Option<TaskDetails> {
+    pub(crate) async fn get_task_details(&self, task: &Task) -> Option<TaskDetails> {
         let config_hash = task.generate_config_hash();
         let container_name = format!("{}-{}-{:x}", TASK_PREFIX, task.id, config_hash);
 
