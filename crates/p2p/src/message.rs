@@ -30,7 +30,7 @@ pub enum Request {
 
 impl Request {
     pub fn into_outgoing_message(self, peer: PeerId) -> OutgoingMessage {
-        OutgoingMessage::Request((peer, Request::from(self)))
+        OutgoingMessage::Request((peer, self))
     }
 }
 
@@ -48,40 +48,40 @@ impl Response {
         self,
         channel: libp2p::request_response::ResponseChannel<Response>,
     ) -> OutgoingMessage {
-        OutgoingMessage::Response((channel, Response::from(self)))
+        OutgoingMessage::Response((channel, self))
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ValidatorAuthenticationRequest {
-    Initiation(ValidationAuthenticationInitiationRequest),
-    Solution(ValidationAuthenticationSolutionRequest),
+    Initiation(ValidatorAuthenticationInitiationRequest),
+    Solution(ValidatorAuthenticationSolutionRequest),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ValidatorAuthenticationResponse {
-    Initiation(ValidationAuthenticationInitiationResponse),
-    Solution(ValidationAuthenticationSolutionResponse),
+    Initiation(ValidatorAuthenticationInitiationResponse),
+    Solution(ValidatorAuthenticationSolutionResponse),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationAuthenticationInitiationRequest {
+pub struct ValidatorAuthenticationInitiationRequest {
     pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationAuthenticationInitiationResponse {
+pub struct ValidatorAuthenticationInitiationResponse {
     pub signed_message: String,
     pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationAuthenticationSolutionRequest {
+pub struct ValidatorAuthenticationSolutionRequest {
     pub signed_message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ValidationAuthenticationSolutionResponse {
+pub enum ValidatorAuthenticationSolutionResponse {
     Granted,
     Rejected,
 }

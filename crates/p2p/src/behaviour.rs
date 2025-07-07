@@ -152,12 +152,8 @@ impl BehaviourEvent {
             BehaviourEvent::RequestResponse(event) => match event {
                 request_response::Event::Message { peer, message } => {
                     println!("received message from peer {peer:?}: {message:?}");
-                    let _ = message_tx
-                        .send(IncomingMessage {
-                            peer: peer.clone(),
-                            message,
-                        })
-                        .await;
+                    // if this errors, user dropped their incoming message channel
+                    let _ = message_tx.send(IncomingMessage { peer, message }).await;
                 }
                 request_response::Event::ResponseSent { peer, request_id } => {
                     println!("response sent to peer {peer:?} for request ID {request_id:?}");

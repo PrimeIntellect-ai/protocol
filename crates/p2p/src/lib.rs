@@ -145,6 +145,12 @@ pub struct NodeBuilder {
     bootnodes: Vec<Multiaddr>,
 }
 
+impl Default for NodeBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NodeBuilder {
     pub fn new() -> Self {
         Self {
