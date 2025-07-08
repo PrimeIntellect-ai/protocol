@@ -119,6 +119,12 @@ pub enum Commands {
         /// Disable host network mode
         #[arg(long, default_value = "false")]
         disable_host_network_mode: bool,
+
+        #[arg(long, default_value = "false")]
+        with_ipfs_upload: bool,
+
+        #[arg(long, default_value = "4002")]
+        ipfs_port: u16,
     },
     Check {},
 
@@ -199,6 +205,8 @@ pub async fn execute_command(
             log_level: _,
             storage_path,
             disable_host_network_mode,
+            with_ipfs_upload,
+            ipfs_port,
         } => {
             if *disable_state_storing && !(*no_auto_recover) {
                 Console::user_error(
@@ -418,6 +426,48 @@ pub async fn execute_command(
             let bridge_contracts = contracts.clone();
             let bridge_wallet = node_wallet_instance.clone();
 
+            let ipfs = if *with_ipfs_upload {
+                let conn_limits =
+                    rust_ipfs::ConnectionLimits::default().with_max_established(Some(100));
+                let builder = rust_ipfs::UninitializedIpfsDefault::new()
+                    .set_default_listener()
+                    .with_default()
+                    .set_connection_limits(conn_limits)
+                    .set_listening_addrs(vec![
+                        format!("/ip4/0.0.0.0/tcp/{ipfs_port}")
+                            .parse()
+                            .expect("valid multiaddr"),
+                        format!("/ip4/0.0.0.0/udp/{ipfs_port}/quic-v1")
+                            .parse()
+                            .expect("valid multiaddr"),
+                    ])
+                    .listen_as_external_addr()
+                    .with_upnp();
+
+                let ipfs = match builder.start().await {
+                    Ok(ipfs) => ipfs,
+                    Err(e) => {
+                        error!("❌ Failed to initialize IPFS node: {e}");
+                        std::process::exit(1);
+                    }
+                };
+
+                if let Err(e) = ipfs.default_bootstrap().await {
+                    error!("❌ Failed to add default bootstrap nodes to IPFS: {e}");
+                    std::process::exit(1);
+                }
+
+                if let Err(e) = ipfs.bootstrap().await {
+                    error!("❌ Failed to bootstrap IPFS node: {e}");
+                    std::process::exit(1);
+                }
+
+                Console::success("IPFS node initialized and bootstrapped successfully");
+                Some(ipfs)
+            } else {
+                None
+            };
+
             let docker_storage_path = node_config
                 .compute_specs
                 .as_ref()
@@ -432,6 +482,7 @@ pub async fn execute_command(
                 Some(bridge_wallet),
                 docker_storage_path.clone(),
                 state.clone(),
+                ipfs,
             ) {
                 Ok(bridge) => bridge,
                 Err(e) => {

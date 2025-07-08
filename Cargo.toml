@@ -39,6 +39,9 @@ mockito = "1.7.0"
 iroh = "0.34.1"
 rand_v8 = { package = "rand", version = "0.8.5", features = ["std"] }
 rand_core_v6 = { package = "rand_core", version = "0.6.4", features = ["std"] }
+ipld-core = "0.4"
+rust-ipfs = "0.14"
+cid = "0.11"
 
 [workspace.package]
 version = "0.3.10"
@@ -48,7 +51,7 @@ edition = "2021"
 match_same_arms = "warn"
 unused_async = "warn"
 uninlined_format_args = "warn"
+manual_let_else = "warn"
 
 [workspace.lints.rust]
 unreachable_pub = "warn"
-manual_let_else = "warn"
