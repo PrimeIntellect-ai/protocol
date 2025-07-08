@@ -44,7 +44,7 @@ rust-ipfs = "0.14"
 cid = "0.11"
 
 [workspace.package]
-version = "0.3.10"
+version = "0.3.11"
 edition = "2021"
 
 [workspace.lints.clippy]
