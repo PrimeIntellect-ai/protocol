@@ -111,6 +111,12 @@ pub struct HardwareChallengeResponse {
     pub timestamp: SystemTime,
 }
 
+impl From<HardwareChallengeResponse> for Response {
+    fn from(response: HardwareChallengeResponse) -> Self {
+        Response::HardwareChallenge(response)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InviteRequestUrl {
     MasterUrl(String),
@@ -133,12 +139,32 @@ pub enum InviteResponse {
     Error(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GetTaskLogsResponse {
-    pub logs: Result<Vec<String>, String>,
+impl From<InviteResponse> for Response {
+    fn from(response: InviteResponse) -> Self {
+        Response::Invite(response)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RestartResponse {
-    pub result: Result<(), String>,
+pub enum GetTaskLogsResponse {
+    Ok(String),
+    Error(String),
+}
+
+impl From<GetTaskLogsResponse> for Response {
+    fn from(response: GetTaskLogsResponse) -> Self {
+        Response::GetTaskLogs(response)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RestartResponse {
+    Ok,
+    Error(String),
+}
+
+impl From<RestartResponse> for Response {
+    fn from(response: RestartResponse) -> Self {
+        Response::Restart(response)
+    }
 }
