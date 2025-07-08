@@ -1,6 +1,5 @@
 mod api;
 mod discovery;
-mod events;
 mod metrics;
 mod models;
 mod node;

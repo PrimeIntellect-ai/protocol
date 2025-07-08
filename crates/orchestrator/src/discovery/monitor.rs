@@ -26,7 +26,7 @@ pub struct DiscoveryMonitor {
     heartbeats: Arc<LoopHeartbeats>,
     http_client: reqwest::Client,
     max_healthy_nodes_with_same_endpoint: u32,
-    status_change_handlers: Vec<Box<dyn StatusUpdatePlugin>>,
+    status_change_handlers: Vec<StatusUpdatePlugin>,
 }
 
 impl DiscoveryMonitor {
@@ -39,7 +39,7 @@ impl DiscoveryMonitor {
         store_context: Arc<StoreContext>,
         heartbeats: Arc<LoopHeartbeats>,
         max_healthy_nodes_with_same_endpoint: u32,
-        status_change_handlers: Vec<Box<dyn StatusUpdatePlugin>>,
+        status_change_handlers: Vec<StatusUpdatePlugin>,
     ) -> Self {
         Self {
             coordinator_wallet,
