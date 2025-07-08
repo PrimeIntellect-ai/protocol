@@ -9,8 +9,6 @@ use crate::metrics::store::MetricsStore;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderOperations;
-use crate::p2p::P2PContext;
-use crate::p2p::P2PService;
 use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
@@ -701,14 +699,14 @@ pub async fn execute_command(
                 }
             };
 
-            let p2p_context = P2PContext {
-                docker_service: docker_service.clone(),
-                heartbeat_service: heartbeat.clone(),
-                system_state: state.clone(),
-                contracts: contracts.clone(),
-                node_wallet: node_wallet_instance.clone(),
-                provider_wallet: provider_wallet_instance.clone(),
-            };
+            // let p2p_context = P2PContext {
+            //     docker_service: docker_service.clone(),
+            //     heartbeat_service: heartbeat.clone(),
+            //     system_state: state.clone(),
+            //     contracts: contracts.clone(),
+            //     node_wallet: node_wallet_instance.clone(),
+            //     provider_wallet: provider_wallet_instance.clone(),
+            // };
 
             let validators = match contracts.prime_network.get_validator_role().await {
                 Ok(validators) => validators,
@@ -728,15 +726,31 @@ pub async fn execute_command(
             let mut allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
             allowed_addresses.extend(validators);
 
-            let p2p_service = match P2PService::new(
-                state.worker_p2p_seed,
-                cancellation_token.clone(),
-                Some(p2p_context),
+            // let p2p_service = match P2PService::new(
+            //     state.worker_p2p_seed,
+            //     cancellation_token.clone(),
+            //     Some(p2p_context),
+            //     node_wallet_instance.clone(),
+            //     allowed_addresses,
+            // )
+            // .await
+            // {
+            //     Ok(service) => service,
+            //     Err(e) => {
+            //         error!("❌ Failed to start P2P service: {e}");
+            //         std::process::exit(1);
+            //     }
+            // };
+
+            let port = 0; // TODO: cli option
+            let validator_addresses = std::collections::HashSet::from_iter(allowed_addresses);
+            let p2p_service = match crate::p2p::Service::new(
+                port,
                 node_wallet_instance.clone(),
-                allowed_addresses,
-            )
-            .await
-            {
+                validator_addresses,
+                docker_service.clone(),
+                cancellation_token.clone(),
+            ) {
                 Ok(service) => service,
                 Err(e) => {
                     error!("❌ Failed to start P2P service: {e}");
@@ -744,23 +758,18 @@ pub async fn execute_command(
                 }
             };
 
-            if let Err(e) = p2p_service.start() {
-                error!("❌ Failed to start P2P listener: {e}");
-                std::process::exit(1);
-            }
-
-            node_config.worker_p2p_id = Some(p2p_service.node_id().to_string());
+            let peer_id = p2p_service.peer_id();
+            node_config.worker_p2p_id = Some(peer_id.to_string());
             node_config.worker_p2p_addresses = Some(
                 p2p_service
-                    .listening_addresses()
+                    .listen_addrs()
                     .iter()
                     .map(|addr| addr.to_string())
                     .collect(),
             );
-            Console::success(&format!(
-                "P2P service started with ID: {}",
-                p2p_service.node_id()
-            ));
+            tokio::task::spawn(p2p_service.run());
+
+            Console::success(&format!("P2P service started with ID: {peer_id}",));
 
             let mut attempts = 0;
             let max_attempts = 100;

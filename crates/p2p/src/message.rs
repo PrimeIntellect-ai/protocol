@@ -2,6 +2,9 @@ use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
+use crate::ChallengeRequest;
+use crate::ChallengeResponse;
+
 #[derive(Debug)]
 pub struct IncomingMessage {
     pub peer: PeerId,
@@ -101,13 +104,13 @@ impl From<ValidatorAuthenticationSolutionResponse> for Response {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareChallengeRequest {
-    pub challenge: String, // TODO
+    pub challenge: ChallengeRequest,
     pub timestamp: SystemTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareChallengeResponse {
-    pub response: String, // TODO
+    pub response: ChallengeResponse,
     pub timestamp: SystemTime,
 }
 

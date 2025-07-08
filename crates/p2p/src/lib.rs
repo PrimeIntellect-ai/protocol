@@ -5,23 +5,27 @@ use libp2p::noise;
 use libp2p::swarm::SwarmEvent;
 use libp2p::tcp;
 use libp2p::yamux;
-use libp2p::Multiaddr;
 use libp2p::Swarm;
 use libp2p::SwarmBuilder;
 use libp2p::{identity, Transport};
 use std::time::Duration;
 
 mod behaviour;
+mod challenge_message;
 mod message;
 mod protocol;
 
 use behaviour::Behaviour;
 use protocol::Protocols;
 
+// TODO: put these in a mod
+pub use challenge_message::*;
 pub use message::*;
+
 pub type Libp2pIncomingMessage = libp2p::request_response::Message<Request, Response>;
 pub type ResponseChannel = libp2p::request_response::ResponseChannel<Response>;
 pub type PeerId = libp2p::PeerId;
+pub type Multiaddr = libp2p::Multiaddr;
 
 pub const PRIME_STREAM_PROTOCOL: libp2p::StreamProtocol =
     libp2p::StreamProtocol::new("/prime/1.0.0");
@@ -365,9 +369,8 @@ mod test {
         println!("received request from node1");
 
         // send response from node2->node1
-        let response = message::Response::GetTaskLogs(message::GetTaskLogsResponse {
-            logs: Ok(vec!["log1".to_string(), "log2".to_string()]),
-        });
+        let response =
+            message::Response::GetTaskLogs(message::GetTaskLogsResponse::Ok("logs".to_string()));
         outgoing_message_tx2
             .send(response.into_outgoing_message(channel))
             .await
@@ -381,9 +384,9 @@ mod test {
         else {
             panic!("expected a GetTaskLogs response message");
         };
-        assert_eq!(
-            response.logs,
-            Ok(vec!["log1".to_string(), "log2".to_string()])
-        );
+        let message::GetTaskLogsResponse::Ok(logs) = response else {
+            panic!("expected a successful GetTaskLogs response");
+        };
+        assert_eq!(logs, "logs");
     }
 }
