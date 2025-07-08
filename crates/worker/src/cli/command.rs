@@ -60,7 +60,7 @@ pub enum Commands {
 
         /// Compute pool ID
         #[arg(long)]
-        compute_pool_id: u64,
+        compute_pool_id: u32,
 
         /// Dry run the command without starting the worker
         #[arg(long, default_value = "false")]
@@ -174,7 +174,7 @@ pub enum Commands {
 
         /// Compute pool ID
         #[arg(long)]
-        compute_pool_id: u64,
+        compute_pool_id: u32,
     },
 }
 
@@ -215,7 +215,7 @@ pub async fn execute_command(
             let state = Arc::new(SystemState::new(
                 state_dir_overwrite.clone(),
                 *disable_state_storing,
-                Some(compute_pool_id.to_string()),
+                Some(*compute_pool_id),
             ));
 
             let private_key_provider = if let Some(key) = private_key_provider {
@@ -294,7 +294,7 @@ pub async fn execute_command(
             let discovery_state = state.clone();
             let discovery_updater =
                 DiscoveryUpdater::new(discovery_service.clone(), discovery_state.clone());
-            let pool_id = U256::from(*compute_pool_id as u32);
+            let pool_id = U256::from(*compute_pool_id);
 
             let pool_info = loop {
                 match contracts.compute_pool.get_pool_info(pool_id).await {
@@ -336,7 +336,7 @@ pub async fn execute_command(
                     .address()
                     .to_string(),
                 compute_specs: None,
-                compute_pool_id: *compute_pool_id as u32,
+                compute_pool_id: *compute_pool_id,
                 worker_p2p_id: None,
                 worker_p2p_addresses: None,
             };
@@ -699,15 +699,6 @@ pub async fn execute_command(
                 }
             };
 
-            // let p2p_context = P2PContext {
-            //     docker_service: docker_service.clone(),
-            //     heartbeat_service: heartbeat.clone(),
-            //     system_state: state.clone(),
-            //     contracts: contracts.clone(),
-            //     node_wallet: node_wallet_instance.clone(),
-            //     provider_wallet: provider_wallet_instance.clone(),
-            // };
-
             let validators = match contracts.prime_network.get_validator_role().await {
                 Ok(validators) => validators,
                 Err(e) => {
@@ -726,22 +717,6 @@ pub async fn execute_command(
             let mut allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
             allowed_addresses.extend(validators);
 
-            // let p2p_service = match P2PService::new(
-            //     state.worker_p2p_seed,
-            //     cancellation_token.clone(),
-            //     Some(p2p_context),
-            //     node_wallet_instance.clone(),
-            //     allowed_addresses,
-            // )
-            // .await
-            // {
-            //     Ok(service) => service,
-            //     Err(e) => {
-            //         error!("❌ Failed to start P2P service: {e}");
-            //         std::process::exit(1);
-            //     }
-            // };
-
             let port = 0; // TODO: cli option
             let validator_addresses = std::collections::HashSet::from_iter(allowed_addresses);
             let p2p_service = match crate::p2p::Service::new(
@@ -749,6 +724,10 @@ pub async fn execute_command(
                 node_wallet_instance.clone(),
                 validator_addresses,
                 docker_service.clone(),
+                heartbeat.clone(),
+                state.clone(),
+                contracts.clone(),
+                provider_wallet_instance.clone(),
                 cancellation_token.clone(),
             ) {
                 Ok(service) => service,
@@ -823,7 +802,7 @@ pub async fn execute_command(
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
 
-            let pool_id = state.compute_pool_id.clone().unwrap_or("0".to_string());
+            let pool_id = state.compute_pool_id.unwrap_or(0);
             if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone(), pool_id)
             {
                 error!("❌ Failed to start node monitoring: {err}");
@@ -1062,7 +1041,7 @@ pub async fn execute_command(
                 }
             };
 
-            let pool_id = U256::from(*compute_pool_id as u32);
+            let pool_id = U256::from(*compute_pool_id);
 
             if compute_node_exists {
                 match contracts

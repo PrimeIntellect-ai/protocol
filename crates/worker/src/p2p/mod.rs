@@ -1,10 +1,12 @@
 use anyhow::Context as _;
 use anyhow::Result;
+use p2p::InviteRequestUrl;
 use p2p::Node;
 use p2p::NodeBuilder;
 use p2p::PeerId;
 use p2p::Response;
 use p2p::{IncomingMessage, Libp2pIncomingMessage, OutgoingMessage};
+use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -15,6 +17,9 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use crate::docker::DockerService;
+use crate::operations::heartbeat::service::HeartbeatService;
+use crate::state::system_state::SystemState;
+use shared::web3::wallet::WalletProvider;
 
 pub(crate) struct Service {
     node: Node,
@@ -24,11 +29,16 @@ pub(crate) struct Service {
 }
 
 impl Service {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         port: u16,
         wallet: Wallet,
         validator_addresses: HashSet<alloy::primitives::Address>,
         docker_service: Arc<DockerService>,
+        heartbeat_service: Arc<HeartbeatService>,
+        system_state: Arc<SystemState>,
+        contracts: Contracts<WalletProvider>,
+        provider_wallet: Wallet,
         cancellation_token: CancellationToken,
     ) -> Result<Self> {
         let (node, incoming_messages, outgoing_messages) =
@@ -42,6 +52,10 @@ impl Service {
                 outgoing_messages,
                 validator_addresses,
                 docker_service,
+                heartbeat_service,
+                system_state,
+                contracts,
+                provider_wallet,
             ),
         })
     }
@@ -97,20 +111,35 @@ fn build_p2p_node(
 #[derive(Clone)]
 struct Context {
     authorized_peers: Arc<RwLock<HashSet<PeerId>>>,
+    wallet: Wallet,
+    validator_addresses: Arc<HashSet<alloy::primitives::Address>>,
+
+    // for validator authentication requests
     ongoing_auth_challenges: Arc<RwLock<HashMap<PeerId, String>>>, // use request_id?
     nonce_cache: Arc<RwLock<HashMap<String, SystemTime>>>,
-    wallet: Wallet,
     outgoing_messages: Sender<OutgoingMessage>,
-    validator_addresses: Arc<HashSet<alloy::primitives::Address>>,
+
+    // for get_task_logs and restart requests
     docker_service: Arc<DockerService>,
+
+    // for invite requests
+    heartbeat_service: Arc<HeartbeatService>,
+    system_state: Arc<SystemState>,
+    contracts: Contracts<WalletProvider>,
+    provider_wallet: Wallet,
 }
 
 impl Context {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         wallet: Wallet,
         outgoing_messages: Sender<OutgoingMessage>,
         validator_addresses: HashSet<alloy::primitives::Address>,
         docker_service: Arc<DockerService>,
+        heartbeat_service: Arc<HeartbeatService>,
+        system_state: Arc<SystemState>,
+        contracts: Contracts<WalletProvider>,
+        provider_wallet: Wallet,
     ) -> Self {
         Self {
             authorized_peers: Arc::new(RwLock::new(HashSet::new())),
@@ -120,6 +149,10 @@ impl Context {
             outgoing_messages,
             validator_addresses: Arc::new(validator_addresses),
             docker_service,
+            heartbeat_service,
+            system_state,
+            contracts,
+            provider_wallet,
         }
     }
 }
@@ -181,9 +214,12 @@ async fn handle_incoming_request(
                 .await
                 .context("failed to handle HardwareChallenge request")?
         }
-        p2p::Request::Invite(_) => {
+        p2p::Request::Invite(req) => {
             tracing::debug!("handling Invite request");
-            handle_invite_request(from, request, &context).await
+            match handle_invite_request(from, req, &context).await {
+                Ok(()) => p2p::InviteResponse::Ok.into(),
+                Err(e) => p2p::InviteResponse::Error(e.to_string()).into(),
+            }
         }
         p2p::Request::GetTaskLogs => {
             tracing::debug!("handling GetTaskLogs request");
@@ -286,19 +322,6 @@ async fn handle_hardware_challenge_request(
     Ok(response.into())
 }
 
-async fn handle_invite_request(
-    from: PeerId,
-    _request: p2p::Request,
-    context: &Context,
-) -> Response {
-    let authorized_peers = context.authorized_peers.read().await;
-    if !authorized_peers.contains(&from) {
-        return p2p::InviteResponse::Error("unauthorized".to_string()).into();
-    }
-
-    p2p::InviteResponse::Ok.into()
-}
-
 async fn handle_get_task_logs_request(from: PeerId, context: &Context) -> Response {
     let authorized_peers = context.authorized_peers.read().await;
     if !authorized_peers.contains(&from) {
@@ -342,4 +365,109 @@ fn handle_incoming_response(response: p2p::Response) {
             tracing::error!("worker should never receive Restart responses");
         }
     }
+}
+
+async fn handle_invite_request(
+    from: PeerId,
+    req: p2p::InviteRequest,
+    context: &Context,
+) -> Result<()> {
+    use crate::console::Console;
+    use shared::web3::contracts::helpers::utils::retry_call;
+    use shared::web3::contracts::structs::compute_pool::PoolStatus;
+
+    let authorized_peers = context.authorized_peers.read().await;
+    if !authorized_peers.contains(&from) {
+        return Err(anyhow::anyhow!(
+            "unauthorized peer {from} attempted to send invite"
+        ));
+    }
+
+    if context.system_state.is_running().await {
+        anyhow::bail!("heartbeat is currently running and in a compute pool");
+    }
+
+    if let Some(pool_id) = context.system_state.compute_pool_id {
+        if req.pool_id != pool_id {
+            anyhow::bail!(
+                "pool ID mismatch: expected {}, got {}",
+                pool_id,
+                req.pool_id
+            );
+        }
+    }
+
+    let invite_bytes = hex::decode(&req.invite).context("failed to decode invite hex")?;
+
+    if invite_bytes.len() < 65 {
+        anyhow::bail!("invite data is too short, expected at least 65 bytes");
+    }
+
+    let contracts = &context.contracts;
+    let pool_id = alloy::primitives::U256::from(req.pool_id);
+
+    let bytes_array: [u8; 65] = match invite_bytes[..65].try_into() {
+        Ok(array) => array,
+        Err(_) => {
+            anyhow::bail!("failed to convert invite bytes to 65 byte array");
+        }
+    };
+
+    let provider_address = context.provider_wallet.wallet.default_signer().address();
+
+    let pool_info = match contracts.compute_pool.get_pool_info(pool_id).await {
+        Ok(info) => info,
+        Err(err) => {
+            anyhow::bail!("failed to get pool info: {err:?}");
+        }
+    };
+
+    if let PoolStatus::PENDING = pool_info.status {
+        anyhow::bail!("invalid invite; pool is pending");
+    }
+
+    let node_address = vec![context.wallet.wallet.default_signer().address()];
+    let signatures = vec![alloy::primitives::FixedBytes::from(&bytes_array)];
+    let call = contracts
+        .compute_pool
+        .build_join_compute_pool_call(
+            pool_id,
+            provider_address,
+            node_address,
+            vec![req.nonce],
+            vec![req.expiration],
+            signatures,
+        )
+        .map_err(|e| anyhow::anyhow!("failed to build join compute pool call: {e:?}"))?;
+
+    let provider = &context.provider_wallet.provider;
+    match retry_call(call, 3, provider.clone(), None).await {
+        Ok(result) => {
+            Console::section("WORKER JOINED COMPUTE POOL");
+            Console::success(&format!(
+                "Successfully registered on chain with tx: {result}"
+            ));
+            Console::info(
+                "Status",
+                "Worker is now part of the compute pool and ready to receive tasks",
+            );
+        }
+        Err(err) => {
+            anyhow::bail!("failed to join compute pool: {err:?}");
+        }
+    }
+
+    let heartbeat_endpoint = match req.url {
+        InviteRequestUrl::MasterIpPort(ip, port) => {
+            format!("http://{ip}:{port}/heartbeat")
+        }
+        InviteRequestUrl::MasterUrl(url) => format!("{url}/heartbeat"),
+    };
+
+    context
+        .heartbeat_service
+        .start(heartbeat_endpoint)
+        .await
+        .context("failed to start heartbeat service")?;
+    Ok(())
 }

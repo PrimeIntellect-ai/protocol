@@ -34,7 +34,7 @@ pub(crate) struct SystemState {
     endpoint: Arc<RwLock<Option<String>>>,
     state_dir_overwrite: Option<PathBuf>,
     disable_state_storing: bool,
-    pub compute_pool_id: Option<String>,
+    pub compute_pool_id: Option<u32>,
 
     pub worker_p2p_seed: Option<u64>,
     pub p2p_id: Option<String>,
@@ -45,7 +45,7 @@ impl SystemState {
     pub(crate) fn new(
         state_dir: Option<String>,
         disable_state_storing: bool,
-        compute_pool_id: Option<String>,
+        compute_pool_id: Option<u32>,
     ) -> Self {
         let default_state_dir = get_default_state_dir();
         debug!("Default state dir: {default_state_dir:?}");
