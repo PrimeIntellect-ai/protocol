@@ -2,10 +2,8 @@ name: Production Release
 
 on:
   push:
-    branches:
-      - main
-    tags-ignore:
-      - '*'
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -22,32 +20,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get version from Cargo.toml
+      - name: Get version from tag
         id: get_version
         run: |
-          VERSION=$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2)
+          # Get the tag that triggered this workflow
+          TAG_NAME="${{ github.ref_name }}"
+          VERSION="${TAG_NAME#v}"  # Remove 'v' prefix
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "tag_name=v${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Check if tag exists
-        id: check_tag
-        run: |
-          if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create and push tag
-        if: steps.check_tag.outputs.exists == 'false'
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git tag -a "v${{ steps.get_version.outputs.version }}" -m "Release v${{ steps.get_version.outputs.version }}"
-          git push origin "v${{ steps.get_version.outputs.version }}"
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
 
       - name: Install Rust toolchain
-        if: steps.check_tag.outputs.exists == 'false'
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -56,13 +38,11 @@ jobs:
       - name: Build all workspace members
         env:
           WORKER_RPC_URL: https://sepolia.base.org
-        if: steps.check_tag.outputs.exists == 'false'
         run: |
           export CARGO_BUILD_JOBS=$(nproc)
           cargo build --release --workspace --features testnet
 
       - name: Prepare binaries
-        if: steps.check_tag.outputs.exists == 'false'
         run: |
           mkdir -p release-artifacts
           for binary in worker validator orchestrator discovery; do
@@ -72,7 +52,6 @@ jobs:
           done
 
       - name: Generate checksums
-        if: steps.check_tag.outputs.exists == 'false'
         run: |
           cd release-artifacts
           for file in *-linux-x86_64; do
@@ -83,13 +62,12 @@ jobs:
           cd ..
 
       - name: Create Release
-        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.get_version.outputs.version }}
-          name: Release v${{ steps.get_version.outputs.version }}
+          tag_name: ${{ steps.get_version.outputs.tag_name }}
+          name: Release ${{ steps.get_version.outputs.tag_name }}
           body: |
-            🚀 Production Release v${{ steps.get_version.outputs.version }}
+            🚀 Production Release ${{ steps.get_version.outputs.tag_name }}
             
             ⚠️ Currently using testnet configuration
             
@@ -97,7 +75,7 @@ jobs:
             - Linux x86_64
             
             Components:
-            - worker
+            - Worker
             - Validator
             - Orchestrator
             - Discovery service
@@ -121,26 +99,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Authenticate to Google Cloud
-        if: steps.check_tag.outputs.exists == 'false'
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       
       - name: Set up Google Cloud SDK
-        if: steps.check_tag.outputs.exists == 'false'
         uses: google-github-actions/setup-gcloud@v1
       
       - name: Configure Docker for Artifact Registry
-        if: steps.check_tag.outputs.exists == 'false'
         run: |
           gcloud auth configure-docker us-east1-docker.pkg.dev
 
       - name: Set up Docker Buildx
-        if: steps.check_tag.outputs.exists == 'false'
         uses: docker/setup-buildx-action@v2
 
       - name: Login to GitHub Container Registry
-        if: steps.check_tag.outputs.exists == 'false'
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
@@ -148,14 +121,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Docker metadata
-        if: steps.check_tag.outputs.exists == 'false'
         id: meta
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "repo_lower=${REPO_LOWER}" >> $GITHUB_OUTPUT
 
       - name: Build and push Discovery image
-        if: steps.check_tag.outputs.exists == 'false'
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -163,12 +134,11 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:latest
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:v${{ steps.get_version.outputs.version }}
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.get_version.outputs.tag_name }}
             us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:latest
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:v${{ steps.get_version.outputs.version }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:${{ steps.get_version.outputs.tag_name }}
 
       - name: Build and push Validator image
-        if: steps.check_tag.outputs.exists == 'false'
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -176,12 +146,11 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:latest
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:v${{ steps.get_version.outputs.version }}
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/validator:${{ steps.get_version.outputs.tag_name }}
             us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:latest
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:v${{ steps.get_version.outputs.version }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/validator:${{ steps.get_version.outputs.tag_name }}
 
       - name: Build and push Orchestrator image
-        if: steps.check_tag.outputs.exists == 'false'
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -189,6 +158,6 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:latest
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:v${{ steps.get_version.outputs.version }}
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/orchestrator:${{ steps.get_version.outputs.tag_name }}
             us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:latest
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:v${{ steps.get_version.outputs.version }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/orchestrator:${{ steps.get_version.outputs.tag_name }}
