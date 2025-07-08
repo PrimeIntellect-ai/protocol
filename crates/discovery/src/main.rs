@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
     };
 
     let provider = RootProvider::new_http(endpoint);
-    let contracts = ContractBuilder::new(provider)
+    let contracts = ContractBuilder::new(provider.clone())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
@@ -106,6 +106,7 @@ async fn main() -> Result<()> {
                 node_store.clone(),
                 cancellation_token.clone(),
                 Duration::from_secs(10),
+                provider,
                 contracts.clone(),
                 last_chain_sync.clone(),
             );

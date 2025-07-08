@@ -1,17 +1,11 @@
 use crate::models::node::{NodeStatus, OrchestratorNode};
 use crate::plugins::node_groups::NodeGroupsPlugin;
-use crate::plugins::StatusUpdatePlugin;
 use anyhow::Error;
 use anyhow::Result;
 use log::info;
 
-#[async_trait::async_trait]
-impl StatusUpdatePlugin for NodeGroupsPlugin {
-    async fn handle_status_change(
-        &self,
-        node: &OrchestratorNode,
-        _old_status: &NodeStatus,
-    ) -> Result<(), Error> {
+impl NodeGroupsPlugin {
+    pub(crate) async fn handle_status_change(&self, node: &OrchestratorNode) -> Result<(), Error> {
         let node_addr = node.address.to_string();
 
         info!(
@@ -20,7 +14,7 @@ impl StatusUpdatePlugin for NodeGroupsPlugin {
         );
 
         match node.status {
-            NodeStatus::Dead => {
+            NodeStatus::Dead | NodeStatus::LowBalance => {
                 // Dissolve entire group if node becomes unhealthy
                 if let Some(group) = self.get_node_group(&node_addr).await? {
                     info!(

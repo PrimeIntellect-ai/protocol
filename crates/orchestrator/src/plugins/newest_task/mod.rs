@@ -1,17 +1,11 @@
-use alloy::primitives::Address;
 use anyhow::Result;
-use async_trait::async_trait;
 use shared::models::task::Task;
 
-use super::{Plugin, SchedulerPlugin};
+#[derive(Clone)]
+pub struct NewestTaskPlugin;
 
-pub(crate) struct NewestTaskPlugin;
-
-impl Plugin for NewestTaskPlugin {}
-
-#[async_trait]
-impl SchedulerPlugin for NewestTaskPlugin {
-    async fn filter_tasks(&self, tasks: &[Task], _node_address: &Address) -> Result<Vec<Task>> {
+impl NewestTaskPlugin {
+    pub(crate) fn filter_tasks(&self, tasks: &[Task]) -> Result<Vec<Task>> {
         if tasks.is_empty() {
             return Ok(vec![]);
         }
@@ -32,8 +26,8 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_filter_tasks() {
+    #[test]
+    fn test_filter_tasks() {
         let plugin = NewestTaskPlugin;
         let tasks = vec![
             Task {
@@ -54,7 +48,7 @@ mod tests {
             },
         ];
 
-        let filtered_tasks = plugin.filter_tasks(&tasks, &Address::ZERO).await.unwrap();
+        let filtered_tasks = plugin.filter_tasks(&tasks).unwrap();
         assert_eq!(filtered_tasks.len(), 1);
         assert_eq!(filtered_tasks[0].id, tasks[1].id);
     }

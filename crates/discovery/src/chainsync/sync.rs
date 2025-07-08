@@ -1,5 +1,6 @@
 use crate::store::node_store::NodeStore;
 use alloy::primitives::Address;
+use alloy::providers::Provider as _;
 use alloy::providers::RootProvider;
 use anyhow::Error;
 use futures::stream::{self, StreamExt};
@@ -18,6 +19,7 @@ pub struct ChainSync {
     pub node_store: Arc<NodeStore>,
     cancel_token: CancellationToken,
     chain_sync_interval: Duration,
+    provider: RootProvider,
     contracts: Contracts<RootProvider>,
     last_chain_sync: Arc<Mutex<Option<std::time::SystemTime>>>,
 }
@@ -27,6 +29,7 @@ impl ChainSync {
         node_store: Arc<NodeStore>,
         cancellation_token: CancellationToken,
         chain_sync_interval: Duration,
+        provider: RootProvider,
         contracts: Contracts<RootProvider>,
         last_chain_sync: Arc<Mutex<Option<std::time::SystemTime>>>,
     ) -> Self {
@@ -34,90 +37,9 @@ impl ChainSync {
             node_store,
             cancel_token: cancellation_token,
             chain_sync_interval,
+            provider,
             contracts,
             last_chain_sync,
-        }
-    }
-
-    async fn sync_single_node(
-        node_store: Arc<NodeStore>,
-        contracts: Contracts<RootProvider>,
-        node: DiscoveryNode,
-    ) -> Result<(), Error> {
-        let mut n = node.clone();
-
-        // Safely parse provider_address and node_address
-        let provider_address = Address::from_str(&node.provider_address).map_err(|e| {
-            error!(
-                "Failed to parse provider address '{}': {}",
-                node.provider_address, e
-            );
-            anyhow::anyhow!("Invalid provider address")
-        })?;
-
-        let node_address = Address::from_str(&node.id).map_err(|e| {
-            error!("Failed to parse node address '{}': {}", node.id, e);
-            anyhow::anyhow!("Invalid node address")
-        })?;
-
-        let node_info = contracts
-            .compute_registry
-            .get_node(provider_address, node_address)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Error retrieving node info for provider {provider_address} and node {node_address}: {e}"
-                );
-                anyhow::anyhow!("Failed to retrieve node info")
-            })?;
-
-        let provider_info = contracts
-            .compute_registry
-            .get_provider(provider_address)
-            .await
-            .map_err(|e| {
-                error!("Error retrieving provider info for {provider_address}: {e}");
-                anyhow::anyhow!("Failed to retrieve provider info")
-            })?;
-
-        let (is_active, is_validated) = node_info;
-        n.is_active = is_active;
-        n.is_validated = is_validated;
-        n.is_provider_whitelisted = provider_info.is_whitelisted;
-
-        // Handle potential errors from async calls
-        let is_blacklisted = contracts
-            .compute_pool
-            .is_node_blacklisted(node.node.compute_pool_id, node_address)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Error checking if node {} is blacklisted in pool {}: {}",
-                    node_address, node.node.compute_pool_id, e
-                );
-                anyhow::anyhow!("Failed to check blacklist status")
-            })?;
-        n.is_blacklisted = is_blacklisted;
-
-        // Only update if the node has changed
-        if n.is_active != node.is_active
-            || n.is_validated != node.is_validated
-            || n.is_provider_whitelisted != node.is_provider_whitelisted
-            || n.is_blacklisted != node.is_blacklisted
-        {
-            match node_store.update_node(n).await {
-                Ok(_) => {
-                    debug!("Successfully updated node {}", node.id);
-                    Ok(())
-                }
-                Err(e) => {
-                    error!("Error updating node {}: {}", node.id, e);
-                    Err(anyhow::anyhow!("Failed to update node: {}", e))
-                }
-            }
-        } else {
-            debug!("Node {} unchanged, skipping update", node.id);
-            Ok(())
         }
     }
 
@@ -127,6 +49,7 @@ impl ChainSync {
             cancel_token,
             chain_sync_interval,
             last_chain_sync,
+            provider,
             contracts,
         } = self;
 
@@ -153,9 +76,10 @@ impl ChainSync {
                                 let results: Vec<Result<(), Error>> = stream::iter(nodes)
                                     .map(|node| {
                                         let node_store = node_store.clone();
+                                        let provider = provider.clone();
                                         let contracts = contracts.clone();
                                         async move {
-                                            ChainSync::sync_single_node(node_store, contracts, node).await
+                                            sync_single_node(node_store, provider, contracts, node).await
                                         }
                                     })
                                     .buffer_unordered(MAX_CONCURRENT_SYNCS)
@@ -204,6 +128,99 @@ impl ChainSync {
             }
             info!("Chain sync task ended");
         });
+        Ok(())
+    }
+}
+
+async fn sync_single_node(
+    node_store: Arc<NodeStore>,
+    provider: RootProvider,
+    contracts: Contracts<RootProvider>,
+    node: DiscoveryNode,
+) -> Result<(), Error> {
+    let mut n = node.clone();
+
+    // Safely parse provider_address and node_address
+    let provider_address = Address::from_str(&node.provider_address).map_err(|e| {
+        error!(
+            "Failed to parse provider address '{}': {}",
+            node.provider_address, e
+        );
+        anyhow::anyhow!("Invalid provider address")
+    })?;
+
+    let node_address = Address::from_str(&node.id).map_err(|e| {
+        error!("Failed to parse node address '{}': {}", node.id, e);
+        anyhow::anyhow!("Invalid node address")
+    })?;
+
+    let balance = provider.get_balance(node_address).await.map_err(|e| {
+        error!("Error retrieving balance for node {}: {}", node_address, e);
+        anyhow::anyhow!("Failed to retrieve node balance")
+    })?;
+    n.latest_balance = Some(balance);
+
+    let node_info = contracts
+        .compute_registry
+        .get_node(provider_address, node_address)
+        .await
+        .map_err(|e| {
+            error!(
+                "Error retrieving node info for provider {} and node {}: {}",
+                provider_address, node_address, e
+            );
+            anyhow::anyhow!("Failed to retrieve node info")
+        })?;
+
+    let provider_info = contracts
+        .compute_registry
+        .get_provider(provider_address)
+        .await
+        .map_err(|e| {
+            error!(
+                "Error retrieving provider info for {}: {}",
+                provider_address, e
+            );
+            anyhow::anyhow!("Failed to retrieve provider info")
+        })?;
+
+    let (is_active, is_validated) = node_info;
+    n.is_active = is_active;
+    n.is_validated = is_validated;
+    n.is_provider_whitelisted = provider_info.is_whitelisted;
+
+    // Handle potential errors from async calls
+    let is_blacklisted = contracts
+        .compute_pool
+        .is_node_blacklisted(node.node.compute_pool_id, node_address)
+        .await
+        .map_err(|e| {
+            error!(
+                "Error checking if node {} is blacklisted in pool {}: {}",
+                node_address, node.node.compute_pool_id, e
+            );
+            anyhow::anyhow!("Failed to check blacklist status")
+        })?;
+    n.is_blacklisted = is_blacklisted;
+
+    // Only update if the node has changed
+    if n.is_active != node.is_active
+        || n.is_validated != node.is_validated
+        || n.is_provider_whitelisted != node.is_provider_whitelisted
+        || n.is_blacklisted != node.is_blacklisted
+    {
+        match node_store.update_node(n).await {
+            Ok(_) => {
+                debug!("Successfully updated node {}", node.id);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Error updating node {}: {}", node.id, e);
+                Err(anyhow::anyhow!("Failed to update node: {}", e))
+            }
+        }
+    } else {
+        debug!("Node {} unchanged, skipping update", node.id);
         Ok(())
     }
 }
