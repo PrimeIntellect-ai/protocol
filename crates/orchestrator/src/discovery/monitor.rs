@@ -4,6 +4,7 @@ use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::Address;
+use alloy::primitives::U256;
 use anyhow::Error;
 use anyhow::Result;
 use chrono::Utc;
@@ -377,6 +378,21 @@ impl DiscoveryMonitor {
                             {
                                 error!("Error updating node status: {e}");
                             }
+                        }
+                    }
+                }
+
+                if let Some(balance) = discovery_node.latest_balance {
+                    if balance == U256::ZERO {
+                        info!(
+                            "Node {} has zero balance, marking as low balance",
+                            node_address
+                        );
+                        if let Err(e) = self
+                            .update_node_status(&node_address, NodeStatus::LowBalance)
+                            .await
+                        {
+                            error!("Error updating node status: {}", e);
                         }
                     }
                 }
