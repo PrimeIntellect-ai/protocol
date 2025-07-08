@@ -72,19 +72,31 @@ pub struct ValidatorAuthenticationInitiationRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidatorAuthenticationInitiationResponse {
-    pub signed_message: String,
+    pub signature: String,
     pub message: String,
+}
+
+impl From<ValidatorAuthenticationInitiationResponse> for Response {
+    fn from(response: ValidatorAuthenticationInitiationResponse) -> Self {
+        Response::ValidatorAuthentication(ValidatorAuthenticationResponse::Initiation(response))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidatorAuthenticationSolutionRequest {
-    pub signed_message: String,
+    pub signature: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ValidatorAuthenticationSolutionResponse {
     Granted,
     Rejected,
+}
+
+impl From<ValidatorAuthenticationSolutionResponse> for Response {
+    fn from(response: ValidatorAuthenticationSolutionResponse) -> Self {
+        Response::ValidatorAuthentication(ValidatorAuthenticationResponse::Solution(response))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

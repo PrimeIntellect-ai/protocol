@@ -10,6 +10,7 @@ void = "1.0"
 anyhow = {workspace = true}
 serde = {workspace = true}
 tokio = {workspace = true, features = ["sync"]}
+tokio-util = { workspace = true, features = ["rt"] }
 
 [lints]
 workspace = true

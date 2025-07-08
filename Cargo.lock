@@ -6265,6 +6265,7 @@ dependencies = [
  "libp2p",
  "serde",
  "tokio",
+ "tokio-util",
  "void",
 ]
 
@@ -10344,6 +10345,7 @@ dependencies = [
  "log",
  "nalgebra",
  "nvml-wrapper",
+ "p2p",
  "rand 0.8.5",
  "rand 0.9.1",
  "rand_core 0.6.4",
