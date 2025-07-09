@@ -2,6 +2,9 @@ use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
+use crate::ChallengeRequest;
+use crate::ChallengeResponse;
+
 #[derive(Debug)]
 pub struct IncomingMessage {
     pub peer: PeerId,
@@ -72,13 +75,19 @@ pub struct ValidatorAuthenticationInitiationRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidatorAuthenticationInitiationResponse {
-    pub signed_message: String,
+    pub signature: String,
     pub message: String,
+}
+
+impl From<ValidatorAuthenticationInitiationResponse> for Response {
+    fn from(response: ValidatorAuthenticationInitiationResponse) -> Self {
+        Response::ValidatorAuthentication(ValidatorAuthenticationResponse::Initiation(response))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidatorAuthenticationSolutionRequest {
-    pub signed_message: String,
+    pub signature: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,16 +96,28 @@ pub enum ValidatorAuthenticationSolutionResponse {
     Rejected,
 }
 
+impl From<ValidatorAuthenticationSolutionResponse> for Response {
+    fn from(response: ValidatorAuthenticationSolutionResponse) -> Self {
+        Response::ValidatorAuthentication(ValidatorAuthenticationResponse::Solution(response))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareChallengeRequest {
-    pub challenge: String, // TODO
+    pub challenge: ChallengeRequest,
     pub timestamp: SystemTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareChallengeResponse {
-    pub response: String, // TODO
+    pub response: ChallengeResponse,
     pub timestamp: SystemTime,
+}
+
+impl From<HardwareChallengeResponse> for Response {
+    fn from(response: HardwareChallengeResponse) -> Self {
+        Response::HardwareChallenge(response)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,12 +142,32 @@ pub enum InviteResponse {
     Error(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GetTaskLogsResponse {
-    pub logs: Result<Vec<String>, String>,
+impl From<InviteResponse> for Response {
+    fn from(response: InviteResponse) -> Self {
+        Response::Invite(response)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RestartResponse {
-    pub result: Result<(), String>,
+pub enum GetTaskLogsResponse {
+    Ok(String),
+    Error(String),
+}
+
+impl From<GetTaskLogsResponse> for Response {
+    fn from(response: GetTaskLogsResponse) -> Self {
+        Response::GetTaskLogs(response)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RestartResponse {
+    Ok,
+    Error(String),
+}
+
+impl From<RestartResponse> for Response {
+    fn from(response: RestartResponse) -> Self {
+        Response::Restart(response)
+    }
 }

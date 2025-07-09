@@ -5,19 +5,27 @@ use libp2p::noise;
 use libp2p::swarm::SwarmEvent;
 use libp2p::tcp;
 use libp2p::yamux;
-use libp2p::Multiaddr;
 use libp2p::Swarm;
 use libp2p::SwarmBuilder;
-use libp2p::{identity, PeerId, Transport};
+use libp2p::{identity, Transport};
 use std::time::Duration;
 
 mod behaviour;
+mod challenge_message;
 mod message;
 mod protocol;
 
 use behaviour::Behaviour;
-use message::{IncomingMessage, OutgoingMessage};
 use protocol::Protocols;
+
+// TODO: put these in a mod
+pub use challenge_message::*;
+pub use message::*;
+
+pub type Libp2pIncomingMessage = libp2p::request_response::Message<Request, Response>;
+pub type ResponseChannel = libp2p::request_response::ResponseChannel<Response>;
+pub type PeerId = libp2p::PeerId;
+pub type Multiaddr = libp2p::Multiaddr;
 
 pub const PRIME_STREAM_PROTOCOL: libp2p::StreamProtocol =
     libp2p::StreamProtocol::new("/prime/1.0.0");
@@ -29,6 +37,7 @@ pub struct Node {
     listen_addrs: Vec<libp2p::Multiaddr>,
     swarm: Swarm<Behaviour>,
     bootnodes: Vec<Multiaddr>,
+    cancellation_token: tokio_util::sync::CancellationToken,
 
     // channel for sending incoming messages to the consumer of this library
     incoming_message_tx: tokio::sync::mpsc::Sender<IncomingMessage>,
@@ -66,6 +75,7 @@ impl Node {
             listen_addrs,
             mut swarm,
             bootnodes,
+            cancellation_token,
             incoming_message_tx,
             mut outgoing_message_rx,
         } = self;
@@ -93,6 +103,10 @@ impl Node {
 
         loop {
             tokio::select! {
+                _ = cancellation_token.cancelled() => {
+                    println!("cancellation token triggered, shutting down node");
+                    break Ok(());
+                }
                 Some(message) = outgoing_message_rx.recv() => {
                     match message {
                         OutgoingMessage::Request((peer, request)) => {
@@ -143,6 +157,7 @@ pub struct NodeBuilder {
     agent_version: Option<String>,
     protocols: Protocols,
     bootnodes: Vec<Multiaddr>,
+    cancellation_token: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl Default for NodeBuilder {
@@ -160,6 +175,7 @@ impl NodeBuilder {
             agent_version: None,
             protocols: Protocols::new(),
             bootnodes: Vec::new(),
+            cancellation_token: None,
         }
     }
 
@@ -224,6 +240,14 @@ impl NodeBuilder {
         self
     }
 
+    pub fn with_cancellation_token(
+        mut self,
+        cancellation_token: tokio_util::sync::CancellationToken,
+    ) -> Self {
+        self.cancellation_token = Some(cancellation_token);
+        self
+    }
+
     pub fn try_build(
         self,
     ) -> Result<(
@@ -238,6 +262,7 @@ impl NodeBuilder {
             agent_version,
             protocols,
             bootnodes,
+            cancellation_token,
         } = self;
 
         let keypair = keypair.unwrap_or(identity::Keypair::generate_ed25519());
@@ -279,6 +304,7 @@ impl NodeBuilder {
                 bootnodes,
                 incoming_message_tx,
                 outgoing_message_rx,
+                cancellation_token: cancellation_token.unwrap_or_default(),
             },
             incoming_message_rx,
             outgoing_message_tx,
@@ -343,9 +369,8 @@ mod test {
         println!("received request from node1");
 
         // send response from node2->node1
-        let response = message::Response::GetTaskLogs(message::GetTaskLogsResponse {
-            logs: Ok(vec!["log1".to_string(), "log2".to_string()]),
-        });
+        let response =
+            message::Response::GetTaskLogs(message::GetTaskLogsResponse::Ok("logs".to_string()));
         outgoing_message_tx2
             .send(response.into_outgoing_message(channel))
             .await
@@ -359,9 +384,9 @@ mod test {
         else {
             panic!("expected a GetTaskLogs response message");
         };
-        assert_eq!(
-            response.logs,
-            Ok(vec!["log1".to_string(), "log2".to_string()])
-        );
+        let message::GetTaskLogsResponse::Ok(logs) = response else {
+            panic!("expected a successful GetTaskLogs response");
+        };
+        assert_eq!(logs, "logs");
     }
 }

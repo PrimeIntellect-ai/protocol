@@ -8,8 +8,10 @@ libp2p = { version = "0.54", features = ["request-response", "identify", "ping",
 void = "1.0"
 
 anyhow = {workspace = true}
+nalgebra = {workspace = true}
 serde = {workspace = true}
 tokio = {workspace = true, features = ["sync"]}
+tokio-util = { workspace = true, features = ["rt"] }
 
 [lints]
 workspace = true
