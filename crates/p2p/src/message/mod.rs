@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 mod hardware_challenge;
 
-pub use hardware_challenge::*; 
+pub use hardware_challenge::*;
 
 #[derive(Debug)]
 pub struct IncomingMessage {
@@ -31,6 +31,7 @@ pub enum Request {
     Invite(InviteRequest),
     GetTaskLogs,
     Restart,
+    General(GeneralRequest),
 }
 
 impl Request {
@@ -46,6 +47,7 @@ pub enum Response {
     Invite(InviteResponse),
     GetTaskLogs(GetTaskLogsResponse),
     Restart(RestartResponse),
+    General(GeneralResponse),
 }
 
 impl Response {
@@ -63,15 +65,33 @@ pub enum ValidatorAuthenticationRequest {
     Solution(ValidatorAuthenticationSolutionRequest),
 }
 
+impl From<ValidatorAuthenticationRequest> for Request {
+    fn from(request: ValidatorAuthenticationRequest) -> Self {
+        Request::ValidatorAuthentication(request)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ValidatorAuthenticationResponse {
     Initiation(ValidatorAuthenticationInitiationResponse),
     Solution(ValidatorAuthenticationSolutionResponse),
 }
 
+impl From<ValidatorAuthenticationResponse> for Response {
+    fn from(response: ValidatorAuthenticationResponse) -> Self {
+        Response::ValidatorAuthentication(response)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidatorAuthenticationInitiationRequest {
     pub message: String,
+}
+
+impl From<ValidatorAuthenticationInitiationRequest> for Request {
+    fn from(request: ValidatorAuthenticationInitiationRequest) -> Self {
+        Request::ValidatorAuthentication(ValidatorAuthenticationRequest::Initiation(request))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,6 +111,12 @@ pub struct ValidatorAuthenticationSolutionRequest {
     pub signature: String,
 }
 
+impl From<ValidatorAuthenticationSolutionRequest> for Request {
+    fn from(request: ValidatorAuthenticationSolutionRequest) -> Self {
+        Request::ValidatorAuthentication(ValidatorAuthenticationRequest::Solution(request))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ValidatorAuthenticationSolutionResponse {
     Granted,
@@ -107,6 +133,12 @@ impl From<ValidatorAuthenticationSolutionResponse> for Response {
 pub struct HardwareChallengeRequest {
     pub challenge: ChallengeRequest,
     pub timestamp: SystemTime,
+}
+
+impl From<HardwareChallengeRequest> for Request {
+    fn from(request: HardwareChallengeRequest) -> Self {
+        Request::HardwareChallenge(request)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,6 +167,12 @@ pub struct InviteRequest {
     pub timestamp: u64,
     pub expiration: [u8; 32],
     pub nonce: [u8; 32],
+}
+
+impl From<InviteRequest> for Request {
+    fn from(request: InviteRequest) -> Self {
+        Request::Invite(request)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,5 +208,27 @@ pub enum RestartResponse {
 impl From<RestartResponse> for Response {
     fn from(response: RestartResponse) -> Self {
         Response::Restart(response)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneralRequest {
+    data: Vec<u8>,
+}
+
+impl From<GeneralRequest> for Request {
+    fn from(request: GeneralRequest) -> Self {
+        Request::General(request)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneralResponse {
+    data: Vec<u8>,
+}
+
+impl From<GeneralResponse> for Response {
+    fn from(response: GeneralResponse) -> Self {
+        Response::General(response)
     }
 }

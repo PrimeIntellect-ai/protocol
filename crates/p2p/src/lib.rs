@@ -221,6 +221,11 @@ impl NodeBuilder {
         self
     }
 
+    pub fn with_general(mut self) -> Self {
+        self.protocols = self.protocols.with_general();
+        self
+    }
+
     pub fn with_bootnode(mut self, bootnode: Multiaddr) -> Self {
         self.bootnodes.push(bootnode);
         self
