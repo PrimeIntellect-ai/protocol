@@ -1,5 +1,6 @@
 use anyhow::Context as _;
 use anyhow::Result;
+use futures::stream::FuturesUnordered;
 use p2p::InviteRequestUrl;
 use p2p::Node;
 use p2p::NodeBuilder;
@@ -71,6 +72,8 @@ impl Service {
     }
 
     pub(crate) async fn run(self) {
+        use futures::StreamExt as _;
+
         let Self {
             node: _,
             mut incoming_messages,
@@ -78,17 +81,24 @@ impl Service {
             context,
         } = self;
 
+        let mut message_handlers = FuturesUnordered::new();
+
         loop {
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
                     break;
                 }
                 Some(message) = incoming_messages.recv() => {
-                    // TODO: spawn and store handles
-                    if let Err(e) = handle_incoming_message(message, context.clone())
-                        .await {
+                    let context = context.clone();
+                    let handle = tokio::task::spawn(
+                            handle_incoming_message(message, context)
+                    );
+                    message_handlers.push(handle);
+                }
+                Some(res) = message_handlers.next() => {
+                    if let Err(e) = res {
                         tracing::error!("failed to handle incoming message: {e}");
-                        }
+                    }
                 }
             }
         }
