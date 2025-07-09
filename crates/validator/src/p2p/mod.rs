@@ -1,7 +1,3 @@
-pub(crate) mod client;
-
-pub use client::P2PClient;
-
 use anyhow::{bail, Context as _, Result};
 use futures::stream::FuturesUnordered;
 use p2p::{
@@ -16,8 +12,8 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
-pub(crate) struct Service {
-    node: Node,
+pub struct Service {
+    _node: Node,
     dial_tx: p2p::DialSender,
     incoming_messages: Receiver<IncomingMessage>,
     hardware_challenge_rx: Receiver<HardwareChallengeRequest>,
@@ -27,7 +23,7 @@ pub(crate) struct Service {
 
 impl Service {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         keypair: p2p::Keypair,
         port: u16,
         cancellation_token: CancellationToken,
@@ -40,7 +36,7 @@ impl Service {
 
         Ok((
             Self {
-                node,
+                _node: node,
                 dial_tx,
                 incoming_messages,
                 hardware_challenge_rx,
@@ -51,19 +47,11 @@ impl Service {
         ))
     }
 
-    pub(crate) fn peer_id(&self) -> PeerId {
-        self.node.peer_id()
-    }
-
-    pub(crate) fn listen_addrs(&self) -> &[p2p::Multiaddr] {
-        self.node.listen_addrs()
-    }
-
-    pub(crate) async fn run(self) {
+    pub async fn run(self) {
         use futures::StreamExt as _;
 
         let Self {
-            node: _,
+            _node,
             dial_tx,
             mut incoming_messages,
             mut hardware_challenge_rx,
@@ -120,12 +108,12 @@ fn build_p2p_node(
         .try_build()
 }
 
-pub(crate) struct HardwareChallengeRequest {
-    worker_wallet_address: alloy::primitives::Address,
-    worker_p2p_id: String,
-    worker_addresses: Vec<String>,
-    challenge: p2p::ChallengeRequest,
-    response_tx: tokio::sync::oneshot::Sender<p2p::ChallengeResponse>,
+pub struct HardwareChallengeRequest {
+    pub(crate) worker_wallet_address: alloy::primitives::Address,
+    pub(crate) worker_p2p_id: String,
+    pub(crate) worker_addresses: Vec<String>,
+    pub(crate) challenge: p2p::ChallengeRequest,
+    pub(crate) response_tx: tokio::sync::oneshot::Sender<p2p::ChallengeResponse>,
 }
 
 #[derive(Clone)]
@@ -174,9 +162,7 @@ async fn handle_outgoing_hardware_challenge(
     } = request;
 
     log::debug!(
-        "sending hardware challenge to {} with addresses {:?}",
-        worker_p2p_id,
-        worker_addresses
+        "sending hardware challenge to {worker_p2p_id} with addresses {worker_addresses:?}"
     );
 
     // first, dial the worker
@@ -196,12 +182,10 @@ async fn handle_outgoing_hardware_challenge(
     let multiaddrs = worker_addresses
         .iter()
         .filter_map(|addr| {
-            Some(
-                p2p::Multiaddr::from_str(addr)
+            p2p::Multiaddr::from_str(addr)
                     .ok()?
-                    .with_p2p(worker_p2p_id.clone())
-                    .ok()?,
-            )
+                    .with_p2p(worker_p2p_id)
+                    .ok()
         })
         .collect::<Vec<_>>();
     if multiaddrs.is_empty() {
@@ -227,10 +211,9 @@ async fn handle_outgoing_hardware_challenge(
         message: auth_challenge_message.clone(),
     }
     .into();
-    let outgoing_message = req.into_outgoing_message(worker_p2p_id.clone());
+    let outgoing_message = req.into_outgoing_message(worker_p2p_id);
     log::debug!(
-        "sending ValidatorAuthenticationInitiationRequest to {}",
-        worker_p2p_id
+        "sending ValidatorAuthenticationInitiationRequest to {worker_p2p_id}"
     );
     context
         .outgoing_messages
@@ -246,7 +229,7 @@ async fn handle_outgoing_hardware_challenge(
         hardware_challenge_response_tx: response_tx,
     };
 
-    ongoing_auth_requests.insert(worker_p2p_id.clone(), ongoing_challenge);
+    ongoing_auth_requests.insert(worker_p2p_id, ongoing_challenge);
     Ok(())
 }
 
