@@ -208,7 +208,7 @@ async fn handle_incoming_request(
                         .context("failed to handle ValidatorAuthenticationInitiationRequest")?
                 }
                 p2p::ValidatorAuthenticationRequest::Solution(req) => {
-                    match handle_validator_authentication_initiation_solution(from, req, &context)
+                    match handle_validator_authentication_solution_request(from, req, &context)
                         .await
                     {
                         Ok(()) => p2p::ValidatorAuthenticationSolutionResponse::Granted.into(),
@@ -288,7 +288,7 @@ async fn handle_validator_authentication_initiation_request(
     .into())
 }
 
-async fn handle_validator_authentication_initiation_solution(
+async fn handle_validator_authentication_solution_request(
     from: PeerId,
     req: p2p::ValidatorAuthenticationSolutionRequest,
     context: &Context,
@@ -317,6 +317,8 @@ async fn handle_validator_authentication_initiation_solution(
         anyhow::bail!("recovered address {recovered_address} is not in the list of authorized validator addresses");
     }
 
+    let mut authorized_peers = context.authorized_peers.write().await;
+    authorized_peers.insert(from);
     Ok(())
 }
 
