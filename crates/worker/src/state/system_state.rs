@@ -16,31 +16,32 @@ fn get_default_state_dir() -> Option<String> {
         .map(|proj_dirs| proj_dirs.data_local_dir().to_string_lossy().into_owned())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct PersistedSystemState {
     endpoint: Option<String>,
+    #[serde(
+        serialize_with = "serialize_keypair",
+        deserialize_with = "deserialize_keypair"
+    )]
     p2p_keypair: p2p::Keypair,
 }
 
-impl Serialize for PersistedSystemState {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serde_json::to_string(self)
-            .map_err(serde::ser::Error::custom)
-            .and_then(|s| serializer.serialize_str(&s))
-    }
+fn serialize_keypair<S>(keypair: &p2p::Keypair, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let serialized = keypair
+        .to_protobuf_encoding()
+        .map_err(serde::ser::Error::custom)?;
+    serializer.serialize_bytes(&serialized)
 }
 
-impl<'de> Deserialize<'de> for PersistedSystemState {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s: String = Deserialize::deserialize(deserializer)?;
-        serde_json::from_str(&s).map_err(serde::de::Error::custom)
-    }
+fn deserialize_keypair<'de, D>(deserializer: D) -> Result<p2p::Keypair, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let serialized: Vec<u8> = Deserialize::deserialize(deserializer)?;
+    p2p::Keypair::from_protobuf_encoding(&serialized).map_err(serde::de::Error::custom)
 }
 
 #[derive(Debug, Clone)]
