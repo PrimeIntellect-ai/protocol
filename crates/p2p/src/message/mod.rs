@@ -2,8 +2,9 @@ use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
-use crate::ChallengeRequest;
-use crate::ChallengeResponse;
+mod hardware_challenge;
+
+pub use hardware_challenge::*; 
 
 #[derive(Debug)]
 pub struct IncomingMessage {

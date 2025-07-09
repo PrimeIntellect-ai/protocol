@@ -11,15 +11,12 @@ use libp2p::{identity, Transport};
 use std::time::Duration;
 
 mod behaviour;
-mod challenge_message;
 mod message;
 mod protocol;
 
 use behaviour::Behaviour;
 use protocol::Protocols;
 
-// TODO: put these in a mod
-pub use challenge_message::*;
 pub use message::*;
 
 pub type Libp2pIncomingMessage = libp2p::request_response::Message<Request, Response>;
