@@ -25,13 +25,6 @@ pub(crate) struct Service {
     context: Context,
 }
 
-pub(crate) struct HardwareChallengeRequest {
-    worker_wallet_address: alloy::primitives::Address,
-    worker_p2p_id: String,
-    worker_addresses: Vec<String>,
-    challenge: p2p::ChallengeRequest,
-}
-
 impl Service {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
@@ -127,18 +120,29 @@ fn build_p2p_node(
         .try_build()
 }
 
+pub(crate) struct HardwareChallengeRequest {
+    worker_wallet_address: alloy::primitives::Address,
+    worker_p2p_id: String,
+    worker_addresses: Vec<String>,
+    challenge: p2p::ChallengeRequest,
+    response_tx: tokio::sync::oneshot::Sender<p2p::ChallengeResponse>,
+}
+
 #[derive(Clone)]
 struct Context {
     outgoing_messages: Sender<OutgoingMessage>,
-    ongoing_auth_requests: Arc<RwLock<HashMap<PeerId, OngoingHardwareChallenge>>>,
+    ongoing_auth_requests: Arc<RwLock<HashMap<PeerId, OngoingAuthChallenge>>>,
+    ongoing_hardware_challenges:
+        Arc<RwLock<HashMap<PeerId, tokio::sync::oneshot::Sender<p2p::ChallengeResponse>>>>,
     wallet: Wallet,
 }
 
-#[derive(Debug, Clone)]
-struct OngoingHardwareChallenge {
+#[derive(Debug)]
+struct OngoingAuthChallenge {
     worker_wallet_address: alloy::primitives::Address,
     auth_challenge_request_message: String,
     hardware_challenge: p2p::ChallengeRequest,
+    hardware_challenge_response_tx: tokio::sync::oneshot::Sender<p2p::ChallengeResponse>,
 }
 
 impl Context {
@@ -146,6 +150,7 @@ impl Context {
         Self {
             outgoing_messages,
             ongoing_auth_requests: Arc::new(RwLock::new(HashMap::new())),
+            ongoing_hardware_challenges: Arc::new(RwLock::new(HashMap::new())),
             wallet,
         }
     }
@@ -165,6 +170,7 @@ async fn handle_outgoing_hardware_challenge(
         worker_p2p_id,
         worker_addresses,
         challenge,
+        response_tx,
     } = request;
 
     log::debug!(
@@ -233,10 +239,11 @@ async fn handle_outgoing_hardware_challenge(
         .context("failed to send outgoing message")?;
 
     // store the ongoing hardware challenge
-    let ongoing_challenge = OngoingHardwareChallenge {
+    let ongoing_challenge = OngoingAuthChallenge {
         worker_wallet_address,
         auth_challenge_request_message: auth_challenge_message.clone(),
         hardware_challenge: challenge,
+        hardware_challenge_response_tx: response_tx,
     };
 
     ongoing_auth_requests.insert(worker_p2p_id.clone(), ongoing_challenge);
@@ -282,7 +289,13 @@ async fn handle_incoming_response(
         }
         p2p::Response::HardwareChallenge(resp) => {
             log::debug!("received HardwareChallengeResponse from {from}: {resp:?}");
-            // TODO
+            let mut ongoing_hardware_challenges = context.ongoing_hardware_challenges.write().await;
+            let Some(response_tx) = ongoing_hardware_challenges.remove(&from) else {
+                bail!(
+                    "no ongoing hardware challenge for peer {from}, cannot handle HardwareChallengeResponse"
+                );
+            };
+            let _ = response_tx.send(resp.response); // timestamp is silently dropped, is it actually used anywhere?
         }
         p2p::Response::Invite(_) => {
             log::error!("validator should not receive `Invite` responses: from {from}");
@@ -377,6 +390,10 @@ async fn handle_validation_authentication_response(
                 .send(req)
                 .await
                 .context("failed to send outgoing message")?;
+
+            let mut ongoing_hardware_challenges = context.ongoing_hardware_challenges.write().await;
+            ongoing_hardware_challenges
+                .insert(from, ongoing_challenge.hardware_challenge_response_tx);
         }
     }
     Ok(())
