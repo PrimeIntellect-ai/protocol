@@ -14,6 +14,7 @@ use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::utils::format_ether;
+use alloy::primitives::Address;
 use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
@@ -22,8 +23,10 @@ use log::{error, info};
 use shared::models::node::ComputeRequirements;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
+use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
+use shared::web3::wallet::WalletProvider;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -53,6 +56,10 @@ pub enum Commands {
         /// Port number for the worker to listen on - DEPRECATED
         #[arg(long, default_value = "8080")]
         port: u16,
+
+        /// Port for libp2p service
+        #[arg(long, default_value = "4002")]
+        libp2p_port: u16,
 
         /// External IP address for the worker to advertise
         #[arg(long)]
@@ -186,6 +193,7 @@ pub async fn execute_command(
     match command {
         Commands::Run {
             port: _,
+            libp2p_port,
             external_ip,
             compute_pool_id,
             dry_run: _,
@@ -716,11 +724,10 @@ pub async fn execute_command(
             let mut allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
             allowed_addresses.extend(validators);
 
-            let port = 0; // TODO: cli option
             let validator_addresses = std::collections::HashSet::from_iter(allowed_addresses);
             let p2p_service = match crate::p2p::Service::new(
                 state.get_p2p_keypair().clone(),
-                port,
+                *libp2p_port,
                 node_wallet_instance.clone(),
                 validator_addresses,
                 docker_service.clone(),
@@ -1087,10 +1094,6 @@ pub async fn execute_command(
         }
     }
 }
-
-use alloy::primitives::Address;
-use shared::web3::contracts::core::builder::Contracts;
-use shared::web3::wallet::WalletProvider;
 
 async fn remove_compute_node(
     contracts: Contracts<WalletProvider>,
