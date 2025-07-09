@@ -229,6 +229,9 @@ async fn handle_incoming_request(
             tracing::debug!("handling Restart request");
             handle_restart_request(from, &context).await
         }
+        p2p::Request::General(_) => {
+            todo!()
+        }
     };
 
     let outgoing_message = resp.into_outgoing_message(channel);
@@ -363,6 +366,9 @@ fn handle_incoming_response(response: p2p::Response) {
         }
         p2p::Response::Restart(_) => {
             tracing::error!("worker should never receive Restart responses");
+        }
+        p2p::Response::General(_) => {
+            todo!()
         }
     }
 }

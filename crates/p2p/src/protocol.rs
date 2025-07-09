@@ -13,6 +13,8 @@ pub(crate) enum Protocol {
     GetTaskLogs,
     // any -> worker
     Restart,
+    // any -> any
+    General,
 }
 
 impl Protocol {
@@ -25,6 +27,7 @@ impl Protocol {
             Protocol::Invite => StreamProtocol::new("/prime/invite/1.0.0"),
             Protocol::GetTaskLogs => StreamProtocol::new("/prime/get_task_logs/1.0.0"),
             Protocol::Restart => StreamProtocol::new("/prime/restart/1.0.0"),
+            Protocol::General => StreamProtocol::new("/prime/general/1.0.0"),
         }
     }
 }
@@ -59,6 +62,11 @@ impl Protocols {
 
     pub(crate) fn with_restart(mut self) -> Self {
         self.0.insert(Protocol::Restart);
+        self
+    }
+
+    pub(crate) fn with_general(mut self) -> Self {
+        self.0.insert(Protocol::General);
         self
     }
 }
