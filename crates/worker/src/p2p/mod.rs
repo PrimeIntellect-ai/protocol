@@ -31,6 +31,7 @@ pub(crate) struct Service {
 impl Service {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
+        keypair: p2p::Keypair,
         port: u16,
         wallet: Wallet,
         validator_addresses: HashSet<alloy::primitives::Address>,
@@ -42,7 +43,8 @@ impl Service {
         cancellation_token: CancellationToken,
     ) -> Result<Self> {
         let (node, incoming_messages, outgoing_messages) =
-            build_p2p_node(port, cancellation_token.clone()).context("failed to build p2p node")?;
+            build_p2p_node(keypair, port, cancellation_token.clone())
+                .context("failed to build p2p node")?;
         Ok(Self {
             node,
             incoming_messages,
@@ -94,10 +96,12 @@ impl Service {
 }
 
 fn build_p2p_node(
+    keypair: p2p::Keypair,
     port: u16,
     cancellation_token: CancellationToken,
 ) -> Result<(Node, Receiver<IncomingMessage>, Sender<OutgoingMessage>)> {
     NodeBuilder::new()
+        .with_keypair(keypair)
         .with_port(port)
         .with_validator_authentication()
         .with_hardware_challenge()
@@ -393,14 +397,12 @@ async fn handle_invite_request(
         anyhow::bail!("heartbeat is currently running and in a compute pool");
     }
 
-    if let Some(pool_id) = context.system_state.compute_pool_id {
-        if req.pool_id != pool_id {
-            anyhow::bail!(
-                "pool ID mismatch: expected {}, got {}",
-                pool_id,
-                req.pool_id
-            );
-        }
+    if req.pool_id != context.system_state.get_compute_pool_id() {
+        anyhow::bail!(
+            "pool ID mismatch: expected {}, got {}",
+            context.system_state.get_compute_pool_id(),
+            req.pool_id
+        );
     }
 
     let invite_bytes = hex::decode(&req.invite).context("failed to decode invite hex")?;

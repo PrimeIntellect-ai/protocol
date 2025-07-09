@@ -10340,7 +10340,6 @@ dependencies = [
  "hex",
  "homedir",
  "indicatif",
- "iroh",
  "lazy_static",
  "libc",
  "log",

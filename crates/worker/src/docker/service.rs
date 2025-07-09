@@ -24,7 +24,6 @@ pub(crate) struct DockerService {
     system_memory_mb: Option<u32>,
     task_bridge_socket_path: String,
     node_address: String,
-    p2p_seed: Option<u64>,
 }
 
 const TASK_PREFIX: &str = "prime-task";
@@ -39,7 +38,6 @@ impl DockerService {
         task_bridge_socket_path: String,
         storage_path: String,
         node_address: String,
-        p2p_seed: Option<u64>,
         disable_host_network_mode: bool,
     ) -> Self {
         let docker_manager =
@@ -52,7 +50,6 @@ impl DockerService {
             system_memory_mb,
             task_bridge_socket_path,
             node_address,
-            p2p_seed,
         }
     }
 
@@ -177,7 +174,6 @@ impl DockerService {
                                     let system_memory_mb = self.system_memory_mb;
                                     let task_bridge_socket_path = self.task_bridge_socket_path.clone();
                                     let node_address = self.node_address.clone();
-                                    let p2p_seed = self.p2p_seed;
                                     let handle = tokio::spawn(async move {
                                         let Some(payload) = state_clone.get_current_task().await else {
                                                 return;
@@ -185,11 +181,7 @@ impl DockerService {
                                         let cmd = match payload.cmd {
                                             Some(cmd_vec) => {
                                                 cmd_vec.into_iter().map(|arg| {
-                                                    let mut processed_arg = arg.replace("${SOCKET_PATH}", &task_bridge_socket_path);
-                                                    if let Some(seed) = p2p_seed {
-                                                        processed_arg = processed_arg.replace("${WORKER_P2P_SEED}", &seed.to_string());
-                                                    }
-                                                    processed_arg
+                                                    arg.replace("${SOCKET_PATH}", &task_bridge_socket_path)
                                                 }).collect()
                                             }
                                             None => vec!["sleep".to_string(), "infinity".to_string()],
@@ -199,10 +191,7 @@ impl DockerService {
                                         if let Some(env) = &payload.env_vars {
                                             // Clone env vars and replace ${SOCKET_PATH} in values
                                             for (key, value) in env.iter() {
-                                                let mut processed_value = value.replace("${SOCKET_PATH}", &task_bridge_socket_path);
-                                                if let Some(seed) = p2p_seed {
-                                                    processed_value = processed_value.replace("${WORKER_P2P_SEED}", &seed.to_string());
-                                                }
+                                                let processed_value = value.replace("${SOCKET_PATH}", &task_bridge_socket_path);
                                                 env_vars.insert(key.clone(), processed_value);
                                             }
                                         }
@@ -432,7 +421,6 @@ mod tests {
             "/tmp/com.prime.miner/metrics.sock".to_string(),
             "/tmp/test-storage".to_string(),
             Address::ZERO.to_string(),
-            None,
             false,
         );
         let task = Task {
@@ -481,7 +469,6 @@ mod tests {
             test_socket_path.to_string(),
             "/tmp/test-storage".to_string(),
             Address::ZERO.to_string(),
-            Some(12345), // p2p_seed for testing
             false,
         );
 

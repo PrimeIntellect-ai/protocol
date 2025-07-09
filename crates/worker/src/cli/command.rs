@@ -215,7 +215,7 @@ pub async fn execute_command(
             let state = Arc::new(SystemState::new(
                 state_dir_overwrite.clone(),
                 *disable_state_storing,
-                Some(*compute_pool_id),
+                *compute_pool_id,
             ));
 
             let private_key_provider = if let Some(key) = private_key_provider {
@@ -513,7 +513,6 @@ pub async fn execute_command(
                     .default_signer()
                     .address()
                     .to_string(),
-                state.get_p2p_seed(),
                 *disable_host_network_mode,
             ));
 
@@ -720,6 +719,7 @@ pub async fn execute_command(
             let port = 0; // TODO: cli option
             let validator_addresses = std::collections::HashSet::from_iter(allowed_addresses);
             let p2p_service = match crate::p2p::Service::new(
+                state.get_p2p_keypair().clone(),
                 port,
                 node_wallet_instance.clone(),
                 validator_addresses,
@@ -802,7 +802,7 @@ pub async fn execute_command(
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
 
-            let pool_id = state.compute_pool_id.unwrap_or(0);
+            let pool_id = state.get_compute_pool_id();
             if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone(), pool_id)
             {
                 error!("❌ Failed to start node monitoring: {err}");
@@ -1009,7 +1009,7 @@ pub async fn execute_command(
                         std::process::exit(1);
                     }
                 };
-            let state = Arc::new(SystemState::new(None, true, None));
+
             /*
              Initialize dependencies - services, contracts, operations
             */
@@ -1023,18 +1023,18 @@ pub async fn execute_command(
                 .build()
                 .unwrap();
 
-            let compute_node_ops = ComputeNodeOperations::new(
-                &provider_wallet_instance,
-                &node_wallet_instance,
-                contracts.clone(),
-                state.clone(),
-            );
+            let provider_address = provider_wallet_instance.wallet.default_signer().address();
+            let node_address = node_wallet_instance.wallet.default_signer().address();
 
             let provider_ops =
                 ProviderOperations::new(provider_wallet_instance.clone(), contracts.clone(), false);
 
-            let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
-                Ok(exists) => exists,
+            let compute_node_exists = match contracts
+                .compute_registry
+                .get_node(provider_address, node_address)
+                .await
+            {
+                Ok(_) => true,
                 Err(e) => {
                     Console::user_error(&format!("❌ Failed to check if compute node exists: {e}"));
                     std::process::exit(1);
@@ -1061,7 +1061,7 @@ pub async fn execute_command(
                         std::process::exit(1);
                     }
                 }
-                match compute_node_ops.remove_compute_node().await {
+                match remove_compute_node(contracts, provider_address, node_address).await {
                     Ok(_removed_node) => {
                         Console::success("Compute node removed");
                         match provider_ops.reclaim_stake(U256::from(0)).await {
@@ -1086,4 +1086,22 @@ pub async fn execute_command(
             Ok(())
         }
     }
+}
+
+use alloy::primitives::Address;
+use shared::web3::contracts::core::builder::Contracts;
+use shared::web3::wallet::WalletProvider;
+
+async fn remove_compute_node(
+    contracts: Contracts<WalletProvider>,
+    provider_address: Address,
+    node_address: Address,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    Console::title("🔄 Removing compute node");
+    let remove_node_tx = contracts
+        .prime_network
+        .remove_compute_node(provider_address, node_address)
+        .await?;
+    Console::success(&format!("Remove node tx: {remove_node_tx:?}"));
+    Ok(true)
 }

@@ -23,6 +23,7 @@ pub type Libp2pIncomingMessage = libp2p::request_response::Message<Request, Resp
 pub type ResponseChannel = libp2p::request_response::ResponseChannel<Response>;
 pub type PeerId = libp2p::PeerId;
 pub type Multiaddr = libp2p::Multiaddr;
+pub type Keypair = libp2p::identity::Keypair;
 
 pub const PRIME_STREAM_PROTOCOL: libp2p::StreamProtocol =
     libp2p::StreamProtocol::new("/prime/1.0.0");
