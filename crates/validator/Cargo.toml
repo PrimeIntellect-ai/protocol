@@ -19,9 +19,7 @@ directories = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
-rand_v8 = { workspace = true }
 log = { workspace = true }
-nalgebra = { workspace = true }
 redis = { workspace = true, features = ["tokio-comp"] }
 reqwest = { workspace = true }
 serde = { workspace = true }
