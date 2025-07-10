@@ -12,6 +12,7 @@ use libp2p::ping;
 use libp2p::request_response;
 use libp2p::swarm::NetworkBehaviour;
 use std::time::Duration;
+use tracing::debug;
 
 use crate::message::IncomingMessage;
 use crate::message::{Request, Response};
@@ -152,19 +153,19 @@ impl BehaviourEvent {
             BehaviourEvent::Ping(_event) => {}
             BehaviourEvent::RequestResponse(event) => match event {
                 request_response::Event::Message { peer, message } => {
-                    println!("received message from peer {peer:?}: {message:?}");
+                    debug!("received message from peer {peer:?}: {message:?}");
                     // if this errors, user dropped their incoming message channel
                     let _ = message_tx.send(IncomingMessage { peer, message }).await;
                 }
                 request_response::Event::ResponseSent { peer, request_id } => {
-                    println!("response sent to peer {peer:?} for request ID {request_id:?}");
+                    debug!("response sent to peer {peer:?} for request ID {request_id:?}");
                 }
                 request_response::Event::InboundFailure {
                     peer,
                     request_id,
                     error,
                 } => {
-                    println!(
+                    debug!(
                         "inbound failure from peer {peer:?} for request ID {request_id:?}: {error}"
                     );
                 }
@@ -173,7 +174,7 @@ impl BehaviourEvent {
                     request_id,
                     error,
                 } => {
-                    println!(
+                    debug!(
                         "outbound failure to peer {peer:?} for request ID {request_id:?}: {error}"
                     );
                 }
