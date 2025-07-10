@@ -53,7 +53,7 @@ impl HardwareChallenge {
             challenge: challenge_with_timestamp,
             response_tx,
         };
-        
+
         // Send challenge via P2P
         self.challenge_tx
             .send(hardware_challenge)

@@ -7,6 +7,9 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
+p2p = { workspace = true}
+shared = { workspace = true }
+
 actix-web = { workspace = true }
 actix-web-prometheus = "0.1.2"
 alloy = { workspace = true }
@@ -28,8 +31,8 @@ redis-test = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-shared = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 url = { workspace = true }
 utoipa = { version = "5.3.0", features = ["actix_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web", "debug-embed", "reqwest", "vendored"] }

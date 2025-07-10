@@ -32,7 +32,7 @@ impl Service {
                 .with_hardware_challenge()
                 .with_validator_authentication(),
         )
-        .context("failed to create P2P service")?;
+        .context("failed to create p2p service")?;
         Ok((
             Self {
                 inner,
@@ -65,7 +65,7 @@ impl Service {
                             p2p::Response::HardwareChallenge(resp) => resp.response,
                             _ => bail!("unexpected response type for hardware challenge request"),
                         };
-                        let _ = request.response_tx.send(resp);
+                        request.response_tx.send(resp).map_err(|_|anyhow::anyhow!("caller dropped response channel"))?;
                         Ok(())
                     };
                     futures.push(fut);
@@ -85,7 +85,7 @@ impl Service {
                 }
                 Some(res) = futures.next() => {
                     if let Err(e) = res {
-                        log::error!("failed to handle hardware challenge request: {e}");
+                        log::error!("failed to handle response conversion: {e}");
                     }
                 }
             }
