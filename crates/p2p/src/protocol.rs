@@ -2,7 +2,7 @@ use libp2p::StreamProtocol;
 use std::{collections::HashSet, hash::Hash};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum Protocol {
+pub enum Protocol {
     // validator -> worker
     ValidatorAuthentication,
     // validator -> worker
@@ -33,41 +33,69 @@ impl Protocol {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Protocols(HashSet<Protocol>);
+pub struct Protocols(HashSet<Protocol>);
 
 impl Protocols {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self(HashSet::new())
     }
 
-    pub(crate) fn with_validator_authentication(mut self) -> Self {
+    pub fn has_validator_authentication(&self) -> bool {
+        self.0.contains(&Protocol::ValidatorAuthentication)
+    }
+
+    pub fn has_hardware_challenge(&self) -> bool {
+        self.0.contains(&Protocol::HardwareChallenge)
+    }
+
+    pub fn has_invite(&self) -> bool {
+        self.0.contains(&Protocol::Invite)
+    }
+
+    pub fn has_get_task_logs(&self) -> bool {
+        self.0.contains(&Protocol::GetTaskLogs)
+    }
+
+    pub fn has_restart(&self) -> bool {
+        self.0.contains(&Protocol::Restart)
+    }
+
+    pub fn has_general(&self) -> bool {
+        self.0.contains(&Protocol::General)
+    }
+
+    pub fn with_validator_authentication(mut self) -> Self {
         self.0.insert(Protocol::ValidatorAuthentication);
         self
     }
 
-    pub(crate) fn with_hardware_challenge(mut self) -> Self {
+    pub fn with_hardware_challenge(mut self) -> Self {
         self.0.insert(Protocol::HardwareChallenge);
         self
     }
 
-    pub(crate) fn with_invite(mut self) -> Self {
+    pub fn with_invite(mut self) -> Self {
         self.0.insert(Protocol::Invite);
         self
     }
 
-    pub(crate) fn with_get_task_logs(mut self) -> Self {
+    pub fn with_get_task_logs(mut self) -> Self {
         self.0.insert(Protocol::GetTaskLogs);
         self
     }
 
-    pub(crate) fn with_restart(mut self) -> Self {
+    pub fn with_restart(mut self) -> Self {
         self.0.insert(Protocol::Restart);
         self
     }
 
-    pub(crate) fn with_general(mut self) -> Self {
+    pub fn with_general(mut self) -> Self {
         self.0.insert(Protocol::General);
         self
+    }
+
+    pub(crate) fn join(&mut self, other: Protocols) {
+        self.0.extend(other.0);
     }
 }
 

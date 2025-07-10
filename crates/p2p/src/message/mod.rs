@@ -1,3 +1,4 @@
+use crate::Protocol;
 use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -15,7 +16,7 @@ pub struct IncomingMessage {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum OutgoingMessage {
-    Request((PeerId, Request)),
+    Request((PeerId, Vec<libp2p::Multiaddr>, Request)),
     Response(
         (
             libp2p::request_response::ResponseChannel<Response>,
@@ -35,8 +36,23 @@ pub enum Request {
 }
 
 impl Request {
-    pub fn into_outgoing_message(self, peer: PeerId) -> OutgoingMessage {
-        OutgoingMessage::Request((peer, self))
+    pub fn into_outgoing_message(
+        self,
+        peer: PeerId,
+        multiaddrs: Vec<libp2p::Multiaddr>,
+    ) -> OutgoingMessage {
+        OutgoingMessage::Request((peer, multiaddrs, self))
+    }
+
+    pub fn protocol(&self) -> Protocol {
+        match self {
+            Request::ValidatorAuthentication(_) => Protocol::ValidatorAuthentication,
+            Request::HardwareChallenge(_) => Protocol::HardwareChallenge,
+            Request::Invite(_) => Protocol::Invite,
+            Request::GetTaskLogs => Protocol::GetTaskLogs,
+            Request::Restart => Protocol::Restart,
+            Request::General(_) => Protocol::General,
+        }
     }
 }
 
