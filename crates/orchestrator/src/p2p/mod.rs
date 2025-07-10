@@ -1,5 +1,3 @@
-pub(crate) mod client;
-
 use anyhow::{bail, Context as _, Result};
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
@@ -19,6 +17,7 @@ pub struct Service {
 }
 
 impl Service {
+    #[allow(clippy::type_complexity)]
     pub fn new(
         keypair: Keypair,
         port: u16,
@@ -79,9 +78,8 @@ impl Service {
                 Some(request) = invite_rx.recv() => {
                     let (incoming_resp_tx, incoming_resp_rx) = tokio::sync::oneshot::channel();
                     let fut = async move {
-                        let resp = match incoming_resp_rx.await.context("outgoing request tx channel was dropped")? {
-                            p2p::Response::Invite(resp) => resp,
-                            _ => bail!("unexpected response type for invite request"),
+                        let p2p::Response::Invite(resp) = incoming_resp_rx.await.context("outgoing request tx channel was dropped")? else {
+                           bail!("unexpected response type for invite request");
                         };
                         request.response_tx.send(resp).map_err(|_|anyhow::anyhow!("caller dropped response channel"))?;
                         Ok(())
@@ -101,9 +99,8 @@ impl Service {
                 Some(request) = get_task_logs_rx.recv() => {
                     let (incoming_resp_tx, incoming_resp_rx) = tokio::sync::oneshot::channel();
                     let fut = async move {
-                        let resp = match incoming_resp_rx.await.context("outgoing request tx channel was dropped")? {
-                            p2p::Response::GetTaskLogs(resp) => resp,
-                            _ => bail!("unexpected response type for get task logs request"),
+                        let p2p::Response::GetTaskLogs(resp) = incoming_resp_rx.await.context("outgoing request tx channel was dropped")? else {
+                            bail!("unexpected response type for get task logs request");
                         };
                         request.response_tx.send(resp).map_err(|_|anyhow::anyhow!("caller dropped response channel"))?;
                         Ok(())
@@ -114,7 +111,7 @@ impl Service {
                         peer_wallet_address: request.worker_wallet_address,
                         peer_id: request.worker_p2p_id,
                         multiaddrs: request.worker_addresses,
-                        request: p2p::Request::GetTaskLogs.into(),
+                        request: p2p::Request::GetTaskLogs,
                         response_tx: incoming_resp_tx,
                     };
                     outgoing_message_tx.send(outgoing_request).await
@@ -123,9 +120,8 @@ impl Service {
                 Some(request) = restart_task_rx.recv() => {
                     let (incoming_resp_tx, incoming_resp_rx) = tokio::sync::oneshot::channel();
                     let fut = async move {
-                        let resp = match incoming_resp_rx.await.context("outgoing request tx channel was dropped")? {
-                            p2p::Response::Restart(resp) => resp,
-                            _ => bail!("unexpected response type for restart task request"),
+                        let p2p::Response::Restart(resp) = incoming_resp_rx.await.context("outgoing request tx channel was dropped")? else {
+                            bail!("unexpected response type for restart task request");
                         };
                         request.response_tx.send(resp).map_err(|_|anyhow::anyhow!("caller dropped response channel"))?;
                         Ok(())
@@ -136,7 +132,7 @@ impl Service {
                         peer_wallet_address: request.worker_wallet_address,
                         peer_id: request.worker_p2p_id,
                         multiaddrs: request.worker_addresses,
-                        request: p2p::Request::Restart.into(),
+                        request: p2p::Request::Restart,
                         response_tx: incoming_resp_tx,
                     };
                     outgoing_message_tx.send(outgoing_request).await

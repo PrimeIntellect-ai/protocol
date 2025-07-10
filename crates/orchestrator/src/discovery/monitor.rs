@@ -384,15 +384,12 @@ impl DiscoveryMonitor {
 
                 if let Some(balance) = discovery_node.latest_balance {
                     if balance == U256::ZERO {
-                        info!(
-                            "Node {} has zero balance, marking as low balance",
-                            node_address
-                        );
+                        info!("Node {node_address} has zero balance, marking as low balance");
                         if let Err(e) = self
                             .update_node_status(&node_address, NodeStatus::LowBalance)
                             .await
                         {
-                            error!("Error updating node status: {}", e);
+                            error!("Error updating node status: {e}");
                         }
                     }
                 }
