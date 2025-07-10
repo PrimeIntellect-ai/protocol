@@ -8,6 +8,7 @@ use libp2p::Swarm;
 use libp2p::SwarmBuilder;
 use libp2p::{identity, Transport};
 use std::time::Duration;
+use tracing::debug;
 
 mod behaviour;
 mod message;
@@ -93,8 +94,7 @@ impl Node {
             match swarm.dial(bootnode.clone()) {
                 Ok(_) => {}
                 Err(e) => {
-                    // log error
-                    println!("failed to dial bootnode {bootnode}: {e:?}");
+                    debug!("failed to dial bootnode {bootnode}: {e:?}");
                 }
             }
         }
@@ -102,7 +102,7 @@ impl Node {
         loop {
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
-                    println!("cancellation token triggered, shutting down node");
+                    debug!("cancellation token triggered, shutting down node");
                     break Ok(());
                 }
                 Some((addrs, res_tx)) = dial_rx.recv() => {
@@ -124,10 +124,8 @@ impl Node {
                             swarm.behaviour_mut().request_response().send_request(&peer, request);
                         }
                         OutgoingMessage::Response((channel, response)) => {
-                            println!("sending response on channel");
                             if let Err(e) = swarm.behaviour_mut().request_response().send_response(channel, response) {
-                                // log error
-                                println!("failed to send response: {e:?}");
+                                debug!("failed to send response: {e:?}");
                             }
                         }
                     }
@@ -138,10 +136,10 @@ impl Node {
                             listener_id: _,
                             address,
                         } => {
-                            println!("new listen address: {address}");
+                            debug!("new listen address: {address}");
                         }
                         SwarmEvent::ExternalAddrConfirmed { address } => {
-                            println!("external address confirmed: {address}");
+                            debug!("external address confirmed: {address}");
                         }
                         SwarmEvent::ConnectionClosed {
                             peer_id,
@@ -150,7 +148,7 @@ impl Node {
                             connection_id: _,
                             num_established: _,
                         } => {
-                            println!("connection closed with peer {peer_id}: {cause:?}");
+                            debug!("connection closed with peer {peer_id}: {cause:?}");
                         }
                         SwarmEvent::Behaviour(event) => event.handle(incoming_message_tx.clone()).await,
                         _ => continue,
@@ -385,8 +383,6 @@ mod test {
         else {
             panic!("expected a GetTaskLogs request message");
         };
-
-        println!("received request from node1");
 
         // send response from node2->node1
         let response =
