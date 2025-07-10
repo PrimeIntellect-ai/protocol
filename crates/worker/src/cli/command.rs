@@ -128,7 +128,7 @@ pub enum Commands {
         #[arg(long, default_value = "false")]
         with_ipfs_upload: bool,
 
-        #[arg(long, default_value = "4002")]
+        #[arg(long, default_value = "5001")]
         ipfs_port: u16,
     },
     Check {},
