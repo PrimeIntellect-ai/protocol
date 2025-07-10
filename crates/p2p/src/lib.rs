@@ -14,9 +14,9 @@ mod message;
 mod protocol;
 
 use behaviour::Behaviour;
-use protocol::Protocols;
 
 pub use message::*;
+pub use protocol::*;
 
 pub type Libp2pIncomingMessage = libp2p::request_response::Message<Request, Response>;
 pub type ResponseChannel = libp2p::request_response::ResponseChannel<Response>;
@@ -120,7 +120,8 @@ impl Node {
                 }
                 Some(message) = outgoing_message_rx.recv() => {
                     match message {
-                        OutgoingMessage::Request((peer, request)) => {
+                        OutgoingMessage::Request((peer, _addrs, request)) => {
+                            // TODO: if we're not connected to the peer, we should dial it
                             swarm.behaviour_mut().request_response().send_request(&peer, request);
                         }
                         OutgoingMessage::Response((channel, response)) => {
@@ -237,6 +238,11 @@ impl NodeBuilder {
 
     pub fn with_general(mut self) -> Self {
         self.protocols = self.protocols.with_general();
+        self
+    }
+
+    pub fn with_protocols(mut self, protocols: Protocols) -> Self {
+        self.protocols.join(protocols);
         self
     }
 
@@ -372,7 +378,7 @@ mod test {
         // send request from node1->node2
         let request = message::Request::GetTaskLogs;
         outgoing_message_tx1
-            .send(request.into_outgoing_message(node2_peer_id))
+            .send(request.into_outgoing_message(node2_peer_id, vec![]))
             .await
             .unwrap();
         let message = incoming_message_rx2.recv().await.unwrap();
