@@ -110,7 +110,7 @@ fn build_p2p_node(
     port: u16,
     cancellation_token: CancellationToken,
 ) -> Result<(Node, Receiver<IncomingMessage>, Sender<OutgoingMessage>)> {
-    NodeBuilder::new()
+    let (node, _, incoming_message_rx, outgoing_message_tx) = NodeBuilder::new()
         .with_keypair(keypair)
         .with_port(port)
         .with_validator_authentication()
@@ -120,6 +120,8 @@ fn build_p2p_node(
         .with_restart()
         .with_cancellation_token(cancellation_token)
         .try_build()
+        .context("failed to build p2p node")?;
+    Ok((node, incoming_message_rx, outgoing_message_tx))
 }
 
 #[derive(Clone)]

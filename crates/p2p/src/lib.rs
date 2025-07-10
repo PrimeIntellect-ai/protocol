@@ -1,6 +1,5 @@
 use anyhow::Context;
 use anyhow::Result;
-use libp2p::futures::stream::FuturesUnordered;
 use libp2p::noise;
 use libp2p::swarm::SwarmEvent;
 use libp2p::tcp;
@@ -24,6 +23,8 @@ pub type ResponseChannel = libp2p::request_response::ResponseChannel<Response>;
 pub type PeerId = libp2p::PeerId;
 pub type Multiaddr = libp2p::Multiaddr;
 pub type Keypair = libp2p::identity::Keypair;
+pub type DialSender =
+    tokio::sync::mpsc::Sender<(Vec<Multiaddr>, tokio::sync::oneshot::Sender<Result<()>>)>;
 
 pub const PRIME_STREAM_PROTOCOL: libp2p::StreamProtocol =
     libp2p::StreamProtocol::new("/prime/1.0.0");
@@ -36,6 +37,9 @@ pub struct Node {
     swarm: Swarm<Behaviour>,
     bootnodes: Vec<Multiaddr>,
     cancellation_token: tokio_util::sync::CancellationToken,
+
+    dial_rx:
+        tokio::sync::mpsc::Receiver<(Vec<Multiaddr>, tokio::sync::oneshot::Sender<Result<()>>)>,
 
     // channel for sending incoming messages to the consumer of this library
     incoming_message_tx: tokio::sync::mpsc::Sender<IncomingMessage>,
@@ -74,6 +78,7 @@ impl Node {
             mut swarm,
             bootnodes,
             cancellation_token,
+            mut dial_rx,
             incoming_message_tx,
             mut outgoing_message_rx,
         } = self;
@@ -84,17 +89,12 @@ impl Node {
                 .context("swarm failed to listen on multiaddr")?;
         }
 
-        let futures = FuturesUnordered::new();
         for bootnode in bootnodes {
-            futures.push(swarm.dial(bootnode))
-        }
-        let results: Vec<_> = futures.into_iter().collect();
-        for result in results {
-            match result {
+            match swarm.dial(bootnode.clone()) {
                 Ok(_) => {}
                 Err(e) => {
-                    // TODO: log this error
-                    println!("failed to dial bootnode: {e:?}");
+                    // log error
+                    println!("failed to dial bootnode {bootnode}: {e:?}");
                 }
             }
         }
@@ -104,6 +104,19 @@ impl Node {
                 _ = cancellation_token.cancelled() => {
                     println!("cancellation token triggered, shutting down node");
                     break Ok(());
+                }
+                Some((addrs, res_tx)) = dial_rx.recv() => {
+                    let mut res = Ok(());
+                    for addr in addrs {
+                        match swarm.dial(addr.clone()) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                res = Err(anyhow::anyhow!("failed to dial {addr}: {e:?}"));
+                                break;
+                            }
+                        }
+                    }
+                    let _ = res_tx.send(res);
                 }
                 Some(message) = outgoing_message_rx.recv() => {
                     match message {
@@ -255,6 +268,7 @@ impl NodeBuilder {
         self,
     ) -> Result<(
         Node,
+        DialSender,
         tokio::sync::mpsc::Receiver<IncomingMessage>,
         tokio::sync::mpsc::Sender<OutgoingMessage>,
     )> {
@@ -296,6 +310,7 @@ impl NodeBuilder {
             listen_addrs.push(listen_addr);
         }
 
+        let (dial_tx, dial_rx) = tokio::sync::mpsc::channel(100);
         let (incoming_message_tx, incoming_message_rx) = tokio::sync::mpsc::channel(100);
         let (outgoing_message_tx, outgoing_message_rx) = tokio::sync::mpsc::channel(100);
 
@@ -305,10 +320,12 @@ impl NodeBuilder {
                 swarm,
                 listen_addrs,
                 bootnodes,
+                dial_rx,
                 incoming_message_tx,
                 outgoing_message_rx,
                 cancellation_token: cancellation_token.unwrap_or_default(),
             },
+            dial_tx,
             incoming_message_rx,
             outgoing_message_tx,
         ))
@@ -335,11 +352,11 @@ mod test {
 
     #[tokio::test]
     async fn two_nodes_can_connect_and_do_request_response() {
-        let (node1, mut incoming_message_rx1, outgoing_message_tx1) =
+        let (node1, _, mut incoming_message_rx1, outgoing_message_tx1) =
             NodeBuilder::new().with_get_task_logs().try_build().unwrap();
         let node1_peer_id = node1.peer_id();
 
-        let (node2, mut incoming_message_rx2, outgoing_message_tx2) = NodeBuilder::new()
+        let (node2, _, mut incoming_message_rx2, outgoing_message_tx2) = NodeBuilder::new()
             .with_get_task_logs()
             .with_bootnodes(node1.multiaddrs())
             .try_build()
