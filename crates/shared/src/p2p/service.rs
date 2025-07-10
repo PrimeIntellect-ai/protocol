@@ -133,6 +133,7 @@ struct Context {
     // this assumes that there is only one outbound request per protocol per peer at a time,
     // is this a correct assumption?
     // response channel is for sending the response back to the caller who initiated the request
+    #[allow(clippy::type_complexity)]
     ongoing_outbound_requests:
         Arc<RwLock<HashMap<(PeerId, Protocol), tokio::sync::oneshot::Sender<Response>>>>,
 

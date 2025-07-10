@@ -35,6 +35,12 @@ impl Protocol {
 #[derive(Debug, Clone)]
 pub struct Protocols(HashSet<Protocol>);
 
+impl Default for Protocols {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Protocols {
     pub fn new() -> Self {
         Self(HashSet::new())

@@ -639,7 +639,7 @@ mod tests {
         web::{self, post},
         HttpResponse, Scope,
     };
-    use shared::models::challenge::{calc_matrix, ChallengeRequest, ChallengeResponse, FixedF64};
+    use p2p::{calc_matrix, ChallengeRequest, ChallengeResponse, FixedF64};
 
     async fn handle_challenge(challenge: web::Json<ChallengeRequest>) -> HttpResponse {
         let result = calc_matrix(&challenge);

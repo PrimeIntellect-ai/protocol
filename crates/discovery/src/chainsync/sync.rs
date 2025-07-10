@@ -155,7 +155,7 @@ async fn sync_single_node(
     })?;
 
     let balance = provider.get_balance(node_address).await.map_err(|e| {
-        error!("Error retrieving balance for node {}: {}", node_address, e);
+        error!("Error retrieving balance for node {node_address}: {e}");
         anyhow::anyhow!("Failed to retrieve node balance")
     })?;
     n.latest_balance = Some(balance);
@@ -166,8 +166,7 @@ async fn sync_single_node(
         .await
         .map_err(|e| {
             error!(
-                "Error retrieving node info for provider {} and node {}: {}",
-                provider_address, node_address, e
+                "Error retrieving node info for provider {provider_address} and node {node_address}: {e}"
             );
             anyhow::anyhow!("Failed to retrieve node info")
         })?;
@@ -177,10 +176,7 @@ async fn sync_single_node(
         .get_provider(provider_address)
         .await
         .map_err(|e| {
-            error!(
-                "Error retrieving provider info for {}: {}",
-                provider_address, e
-            );
+            error!("Error retrieving provider info for {provider_address}: {e}");
             anyhow::anyhow!("Failed to retrieve provider info")
         })?;
 
