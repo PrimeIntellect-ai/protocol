@@ -18,7 +18,7 @@ use std::sync::Arc;
 use url::Url;
 
 #[cfg(test)]
-pub async fn create_test_app_state() -> Data<AppState> {
+pub(crate) async fn create_test_app_state() -> Data<AppState> {
     use shared::utils::MockStorageProvider;
 
     use crate::{
@@ -69,7 +69,7 @@ pub async fn create_test_app_state() -> Data<AppState> {
 }
 
 #[cfg(test)]
-pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
+pub(crate) async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
     use shared::utils::MockStorageProvider;
 
     use crate::{
@@ -139,7 +139,7 @@ pub async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
 }
 
 #[cfg(test)]
-pub fn setup_contract() -> Contracts<WalletProvider> {
+pub(crate) fn setup_contract() -> Contracts<WalletProvider> {
     let coordinator_key = "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97";
     let rpc_url: Url = Url::parse("http://localhost:8545").unwrap();
     let wallet = Wallet::new(coordinator_key, rpc_url).unwrap();
@@ -154,7 +154,7 @@ pub fn setup_contract() -> Contracts<WalletProvider> {
 }
 
 #[cfg(test)]
-pub async fn create_test_app_state_with_metrics() -> Data<AppState> {
+pub(crate) async fn create_test_app_state_with_metrics() -> Data<AppState> {
     use shared::utils::MockStorageProvider;
 
     use crate::{

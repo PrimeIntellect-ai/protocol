@@ -700,10 +700,10 @@ mod tests {
             .await
             .unwrap();
 
-        let response_nonce = match response {
-            P2PMessage::Pong { nonce, .. } => nonce,
-            _ => panic!("Expected Pong message"),
+        let P2PMessage::Pong { nonce, .. } = response else {
+            panic!("Expected Pong message");
         };
+        let response_nonce = nonce;
         assert_eq!(response_nonce, random_nonce);
     }
     #[tokio::test]

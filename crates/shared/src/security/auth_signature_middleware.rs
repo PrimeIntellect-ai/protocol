@@ -634,10 +634,10 @@ mod tests {
         .await;
 
         log::info!("Address: {}", wallet.wallet.default_signer().address());
-        log::info!("Signature: {}", signature);
-        log::info!("Nonce: {}", nonce);
+        log::info!("Signature: {signature}");
+        log::info!("Nonce: {nonce}");
         let req = test::TestRequest::get()
-            .uri(&format!("/test?nonce={}", nonce))
+            .uri(&format!("/test?nonce={nonce}"))
             .insert_header((
                 "x-address",
                 wallet.wallet.default_signer().address().to_string(),
@@ -801,8 +801,7 @@ mod tests {
         // Create multiple addresses
         let addresses: Vec<Address> = (0..5)
             .map(|i| {
-                Address::from_str(&format!("0x{}000000000000000000000000000000000000000", i))
-                    .unwrap()
+                Address::from_str(&format!("0x{i}000000000000000000000000000000000000000")).unwrap()
             })
             .collect();
 

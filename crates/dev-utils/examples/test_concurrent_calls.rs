@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     let wallet = Arc::new(Wallet::new(&args.key, Url::parse(&args.rpc_url)?).unwrap());
 
     let price = wallet.provider.get_gas_price().await?;
-    println!("Gas price: {:?}", price);
+    println!("Gas price: {price:?}");
 
     let current_nonce = wallet
         .provider
@@ -50,8 +50,8 @@ async fn main() -> Result<()> {
         .block_id(BlockId::Number(BlockNumberOrTag::Pending))
         .await?;
 
-    println!("Pending nonce: {:?}", pending_nonce);
-    println!("Current nonce: {:?}", current_nonce);
+    println!("Pending nonce: {pending_nonce:?}");
+    println!("Current nonce: {current_nonce:?}");
 
     // Unfortunately have to build all contracts atm
     let contracts = Arc::new(
@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
     let address = Address::from_str(&args.address).unwrap();
     let amount = U256::from(args.amount) * Unit::ETHER.wei();
     let random = (rand::random::<u8>() % 10) + 1;
-    println!("Random: {:?}", random);
+    println!("Random: {random:?}");
 
     let contracts_one = contracts.clone();
     let wallet_one = wallet.clone();
@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
         let tx = retry_call(mint_call, 5, wallet_one.provider(), None)
             .await
             .unwrap();
-        println!("Transaction hash I: {:?}", tx);
+        println!("Transaction hash I: {tx:?}");
     });
 
     let contracts_two = contracts.clone();
@@ -93,11 +93,11 @@ async fn main() -> Result<()> {
         let tx = retry_call(mint_call_two, 5, wallet_two.provider(), None)
             .await
             .unwrap();
-        println!("Transaction hash II: {:?}", tx);
+        println!("Transaction hash II: {tx:?}");
     });
 
     let balance = contracts.ai_token.balance_of(address).await.unwrap();
-    println!("Balance: {:?}", balance);
+    println!("Balance: {balance:?}");
     tokio::time::sleep(tokio::time::Duration::from_secs(40)).await;
     Ok(())
 }

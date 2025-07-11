@@ -24,7 +24,6 @@ pub(crate) struct HeartbeatService {
     docker_service: Arc<DockerService>,
     metrics_store: Arc<MetricsStore>,
 }
-
 #[derive(Debug, Clone, thiserror::Error)]
 pub(crate) enum HeartbeatError {
     #[error("HTTP request failed")]
@@ -32,6 +31,7 @@ pub(crate) enum HeartbeatError {
     #[error("Service initialization failed")]
     InitFailed,
 }
+
 impl HeartbeatService {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(

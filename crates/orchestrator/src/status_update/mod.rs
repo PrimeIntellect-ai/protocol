@@ -372,6 +372,7 @@ async fn process_node(
 }
 
 #[cfg(test)]
+#[allow(clippy::unused_async)]
 async fn is_node_in_pool(_: Contracts<WalletProvider>, _: u32, _: &OrchestratorNode) -> bool {
     true
 }
@@ -433,7 +434,7 @@ mod tests {
             .add_node(node.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
         let heartbeat = HeartbeatRequest {
             address: node.address.to_string(),
@@ -451,7 +452,7 @@ mod tests {
             .beat(&heartbeat)
             .await
         {
-            error!("Heartbeat Error: {}", e);
+            error!("Heartbeat Error: {e}");
         }
 
         let _ = updater.process_nodes().await;
@@ -510,7 +511,7 @@ mod tests {
             .add_node(node.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
         let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
@@ -563,7 +564,7 @@ mod tests {
             .add_node(node.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
         let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
@@ -623,7 +624,7 @@ mod tests {
             .add_node(node.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
         if let Err(e) = app_state
             .store_context
@@ -631,7 +632,7 @@ mod tests {
             .set_unhealthy_counter(&node.address, 2)
             .await
         {
-            error!("Error setting unhealthy counter: {}", e);
+            error!("Error setting unhealthy counter: {e}");
         }
 
         let mode = ServerMode::Full;
@@ -687,7 +688,7 @@ mod tests {
             .set_unhealthy_counter(&node.address, 2)
             .await
         {
-            error!("Error setting unhealthy counter: {}", e);
+            error!("Error setting unhealthy counter: {e}");
         };
 
         let heartbeat = HeartbeatRequest {
@@ -702,7 +703,7 @@ mod tests {
             .beat(&heartbeat)
             .await
         {
-            error!("Heartbeat Error: {}", e);
+            error!("Heartbeat Error: {e}");
         }
         if let Err(e) = app_state
             .store_context
@@ -710,7 +711,7 @@ mod tests {
             .add_node(node.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
 
         let mode = ServerMode::Full;
@@ -772,7 +773,7 @@ mod tests {
             .set_unhealthy_counter(&node1.address, 1)
             .await
         {
-            error!("Error setting unhealthy counter: {}", e);
+            error!("Error setting unhealthy counter: {e}");
         };
         if let Err(e) = app_state
             .store_context
@@ -780,7 +781,7 @@ mod tests {
             .add_node(node1.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
 
         let node2 = OrchestratorNode {
@@ -797,7 +798,7 @@ mod tests {
             .add_node(node2.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
 
         let mode = ServerMode::Full;
@@ -873,7 +874,7 @@ mod tests {
             .add_node(node.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
         if let Err(e) = app_state
             .store_context
@@ -881,7 +882,7 @@ mod tests {
             .set_unhealthy_counter(&node.address, 2)
             .await
         {
-            error!("Error setting unhealthy counter: {}", e);
+            error!("Error setting unhealthy counter: {e}");
         }
 
         let mode = ServerMode::Full;
@@ -926,7 +927,7 @@ mod tests {
             .beat(&heartbeat)
             .await
         {
-            error!("Heartbeat Error: {}", e);
+            error!("Heartbeat Error: {e}");
         }
 
         sleep(Duration::from_secs(5)).await;
@@ -960,7 +961,7 @@ mod tests {
             .add_node(node.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
         let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(
@@ -1029,7 +1030,7 @@ mod tests {
             .add_node(node.clone())
             .await
         {
-            error!("Error adding node: {}", e);
+            error!("Error adding node: {e}");
         }
         let mode = ServerMode::Full;
         let updater = NodeStatusUpdater::new(

@@ -29,6 +29,7 @@ impl<P: alloy_provider::Provider> ComputePool<P> {
             .function("getComputePool", &[pool_id.into()])?
             .call()
             .await?;
+
         let pool_info_tuple: &[DynSolValue] =
             pool_info_response.first().unwrap().as_tuple().unwrap();
 
@@ -59,6 +60,9 @@ impl<P: alloy_provider::Provider> ComputePool<P> {
             2 => PoolStatus::COMPLETED,
             _ => panic!("Unknown status value: {status}"),
         };
+
+        println!("Mapped status: {mapped_status:?}");
+        println!("Returning pool info");
 
         let pool_info = PoolInfo {
             pool_id,

@@ -1,0 +1,32 @@
+[package]
+name = "prime-protocol-py"
+version = "0.1.0"
+authors = ["Prime Protocol"]
+edition = "2021"
+rust-version = "1.70"
+
+[lib]
+name = "primeprotocol"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.25.1", features = ["extension-module"] }
+thiserror = "1.0"
+shared = { workspace = true }
+prime-core = { workspace = true }
+alloy = { workspace = true }
+alloy-provider = { workspace = true }
+tokio = { version = "1.35", features = ["rt"] }
+url = "2.5"
+log = { workspace = true }
+pyo3-log = "0.12.4"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true 
+

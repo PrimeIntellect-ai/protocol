@@ -185,7 +185,7 @@ mod tests {
         let result = validator.validate_nodes(nodes).await;
         let elapsed = start_time.elapsed();
         assert!(elapsed < std::time::Duration::from_secs(11));
-        println!("Validation took: {:?}", elapsed);
+        println!("Validation took: {elapsed:?}");
 
         assert!(result.is_ok());
     }

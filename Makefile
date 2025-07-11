@@ -268,3 +268,12 @@ deregister-worker:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run --bin worker -- deregister --compute-pool-id $${WORKER_COMPUTE_POOL_ID} --private-key-provider $${PRIVATE_KEY_PROVIDER} --private-key-node $${PRIVATE_KEY_NODE} --rpc-url $${RPC_URL}
 
+# Python Package
+.PHONY: python-install
+python-install:
+	@cd crates/prime-protocol-py && make install
+
+.PHONY: python-test
+python-test:
+	@cd crates/prime-protocol-py && make test
+
