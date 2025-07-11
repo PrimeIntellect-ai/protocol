@@ -5,6 +5,7 @@ members = [
     "crates/validator",
     "crates/shared",
     "crates/orchestrator",
+    "crates/p2p",
     "crates/dev-utils",
     "crates/prime-protocol-py",
     "crates/prime-core",
@@ -14,6 +15,8 @@ resolver = "2"
 [workspace.dependencies]
 shared = { path = "crates/shared" }
 prime-core = { path = "crates/prime-core" }
+p2p = { path = "crates/p2p" }
+
 actix-web = "4.9.0"
 clap = { version = "4.5.27", features = ["derive"] }
 serde = { version = "1.0.219", features = ["derive"] }
@@ -44,6 +47,7 @@ rand_v8 = { package = "rand", version = "0.8.5", features = ["std"] }
 rand_core_v6 = { package = "rand_core", version = "0.6.4", features = ["std"] }
 rust-ipfs = "0.14"
 cid = "0.11"
+tracing = "0.1.41"
 
 [workspace.package]
 version = "0.3.11"

@@ -143,7 +143,7 @@ async fn send_heartbeat(
     wallet: Wallet,
     docker_service: Arc<DockerService>,
     metrics_store: Arc<MetricsStore>,
-    p2p_id: Option<String>,
+    p2p_id: p2p::PeerId,
 ) -> Result<HeartbeatResponse, HeartbeatError> {
     if endpoint.is_none() {
         return Err(HeartbeatError::RequestFailed);
@@ -176,7 +176,7 @@ async fn send_heartbeat(
                     .to_string(),
             ),
             timestamp: Some(ts),
-            p2p_id,
+            p2p_id: Some(p2p_id.to_string()), // TODO: this should always be `Some`
             task_details,
         }
     } else {
@@ -188,7 +188,7 @@ async fn send_heartbeat(
                     .to_string(),
             ),
             timestamp: Some(ts),
-            p2p_id,
+            p2p_id: Some(p2p_id.to_string()), // TODO: this should always be `Some`
             ..Default::default()
         }
     };

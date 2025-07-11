@@ -8,13 +8,12 @@ use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::node_monitor::NodeMonitor;
-use crate::p2p::P2PContext;
-use crate::p2p::P2PService;
 use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::utils::format_ether;
+use alloy::primitives::Address;
 use alloy::primitives::U256;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
@@ -25,8 +24,10 @@ use prime_core::operations::provider::ProviderOperations;
 use shared::models::node::ComputeRequirements;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
+use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::Wallet;
+use shared::web3::wallet::WalletProvider;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -57,13 +58,17 @@ pub enum Commands {
         #[arg(long, default_value = "8080")]
         port: u16,
 
+        /// Port for libp2p service
+        #[arg(long, default_value = "4002")]
+        libp2p_port: u16,
+
         /// External IP address for the worker to advertise
         #[arg(long)]
         external_ip: Option<String>,
 
         /// Compute pool ID
         #[arg(long)]
-        compute_pool_id: u64,
+        compute_pool_id: u32,
 
         /// Dry run the command without starting the worker
         #[arg(long, default_value = "false")]
@@ -124,7 +129,7 @@ pub enum Commands {
         #[arg(long, default_value = "false")]
         with_ipfs_upload: bool,
 
-        #[arg(long, default_value = "4002")]
+        #[arg(long, default_value = "5001")]
         ipfs_port: u16,
     },
     Check {},
@@ -177,7 +182,7 @@ pub enum Commands {
 
         /// Compute pool ID
         #[arg(long)]
-        compute_pool_id: u64,
+        compute_pool_id: u32,
     },
 }
 
@@ -189,6 +194,7 @@ pub async fn execute_command(
     match command {
         Commands::Run {
             port: _,
+            libp2p_port,
             external_ip,
             compute_pool_id,
             dry_run: _,
@@ -218,7 +224,7 @@ pub async fn execute_command(
             let state = Arc::new(SystemState::new(
                 state_dir_overwrite.clone(),
                 *disable_state_storing,
-                Some(compute_pool_id.to_string()),
+                *compute_pool_id,
             ));
 
             let private_key_provider = if let Some(key) = private_key_provider {
@@ -295,7 +301,7 @@ pub async fn execute_command(
             let discovery_state = state.clone();
             let discovery_updater =
                 DiscoveryUpdater::new(discovery_service.clone(), discovery_state.clone());
-            let pool_id = U256::from(*compute_pool_id as u32);
+            let pool_id = U256::from(*compute_pool_id);
 
             let pool_info = loop {
                 match contracts.compute_pool.get_pool_info(pool_id).await {
@@ -337,7 +343,7 @@ pub async fn execute_command(
                     .address()
                     .to_string(),
                 compute_specs: None,
-                compute_pool_id: *compute_pool_id as u32,
+                compute_pool_id: *compute_pool_id,
                 worker_p2p_id: None,
                 worker_p2p_addresses: None,
             };
@@ -514,7 +520,6 @@ pub async fn execute_command(
                     .default_signer()
                     .address()
                     .to_string(),
-                state.get_p2p_seed(),
                 *disable_host_network_mode,
             ));
 
@@ -700,15 +705,6 @@ pub async fn execute_command(
                 }
             };
 
-            let p2p_context = P2PContext {
-                docker_service: docker_service.clone(),
-                heartbeat_service: heartbeat.clone(),
-                system_state: state.clone(),
-                contracts: contracts.clone(),
-                node_wallet: node_wallet_instance.clone(),
-                provider_wallet: provider_wallet_instance.clone(),
-            };
-
             let validators = match contracts.prime_network.get_validator_role().await {
                 Ok(validators) => validators,
                 Err(e) => {
@@ -727,15 +723,19 @@ pub async fn execute_command(
             let mut allowed_addresses = vec![pool_info.creator, pool_info.compute_manager_key];
             allowed_addresses.extend(validators);
 
-            let p2p_service = match P2PService::new(
-                state.worker_p2p_seed,
-                cancellation_token.clone(),
-                Some(p2p_context),
+            let validator_addresses = std::collections::HashSet::from_iter(allowed_addresses);
+            let p2p_service = match crate::p2p::Service::new(
+                state.get_p2p_keypair().clone(),
+                *libp2p_port,
                 node_wallet_instance.clone(),
-                allowed_addresses,
-            )
-            .await
-            {
+                validator_addresses,
+                docker_service.clone(),
+                heartbeat.clone(),
+                state.clone(),
+                contracts.clone(),
+                provider_wallet_instance.clone(),
+                cancellation_token.clone(),
+            ) {
                 Ok(service) => service,
                 Err(e) => {
                     error!("❌ Failed to start P2P service: {e}");
@@ -743,23 +743,21 @@ pub async fn execute_command(
                 }
             };
 
-            if let Err(e) = p2p_service.start() {
-                error!("❌ Failed to start P2P listener: {e}");
-                std::process::exit(1);
-            }
-
-            node_config.worker_p2p_id = Some(p2p_service.node_id().to_string());
+            let peer_id = p2p_service.peer_id();
+            node_config.worker_p2p_id = Some(peer_id.to_string());
+            let external_p2p_address =
+                format!("/ip4/{}/tcp/{}", node_config.ip_address, *libp2p_port);
             node_config.worker_p2p_addresses = Some(
                 p2p_service
-                    .listening_addresses()
+                    .listen_addrs()
                     .iter()
                     .map(|addr| addr.to_string())
+                    .chain(vec![external_p2p_address])
                     .collect(),
             );
-            Console::success(&format!(
-                "P2P service started with ID: {}",
-                p2p_service.node_id()
-            ));
+            tokio::task::spawn(p2p_service.run());
+
+            Console::success(&format!("P2P service started with ID: {peer_id}",));
 
             let mut attempts = 0;
             let max_attempts = 100;
@@ -813,13 +811,14 @@ pub async fn execute_command(
             // Start monitoring compute node status on chain
             provider_ops.start_monitoring(provider_ops_cancellation);
 
-            let pool_id = state.compute_pool_id.clone().unwrap_or("0".to_string());
             let node_monitor = NodeMonitor::new(
                 provider_wallet_instance.clone(),
                 node_wallet_instance.clone(),
                 contracts.clone(),
                 state.clone(),
             );
+
+            let pool_id = state.get_compute_pool_id();
             if let Err(err) = node_monitor.start_monitoring(cancellation_token.clone(), pool_id) {
                 error!("❌ Failed to start node monitoring: {err}");
                 std::process::exit(1);
@@ -1038,24 +1037,25 @@ pub async fn execute_command(
                 .build()
                 .unwrap();
 
-            let compute_node_ops = ComputeNodeOperations::new(
-                &provider_wallet_instance,
-                &node_wallet_instance,
-                contracts.clone(),
-            );
+            let provider_address = provider_wallet_instance.wallet.default_signer().address();
+            let node_address = node_wallet_instance.wallet.default_signer().address();
 
             let provider_ops =
                 ProviderOperations::new(provider_wallet_instance.clone(), contracts.clone(), false);
 
-            let compute_node_exists = match compute_node_ops.check_compute_node_exists().await {
-                Ok(exists) => exists,
+            let compute_node_exists = match contracts
+                .compute_registry
+                .get_node(provider_address, node_address)
+                .await
+            {
+                Ok(_) => true,
                 Err(e) => {
                     Console::user_error(&format!("❌ Failed to check if compute node exists: {e}"));
                     std::process::exit(1);
                 }
             };
 
-            let pool_id = U256::from(*compute_pool_id as u32);
+            let pool_id = U256::from(*compute_pool_id);
 
             if compute_node_exists {
                 match contracts
@@ -1075,7 +1075,7 @@ pub async fn execute_command(
                         std::process::exit(1);
                     }
                 }
-                match compute_node_ops.remove_compute_node().await {
+                match remove_compute_node(contracts, provider_address, node_address).await {
                     Ok(_removed_node) => {
                         Console::success("Compute node removed");
                         match provider_ops.reclaim_stake(U256::from(0)).await {
@@ -1100,4 +1100,18 @@ pub async fn execute_command(
             Ok(())
         }
     }
+}
+
+async fn remove_compute_node(
+    contracts: Contracts<WalletProvider>,
+    provider_address: Address,
+    node_address: Address,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    Console::title("🔄 Removing compute node");
+    let remove_node_tx = contracts
+        .prime_network
+        .remove_compute_node(provider_address, node_address)
+        .await?;
+    Console::success(&format!("Remove node tx: {remove_node_tx:?}"));
+    Ok(true)
 }

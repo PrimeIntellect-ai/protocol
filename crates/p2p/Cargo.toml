@@ -1,0 +1,19 @@
+[package]
+name = "p2p"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+libp2p = { version = "0.54", features = ["request-response", "identify", "ping", "mdns", "noise", "tcp", "autonat", "kad", "tokio", "cbor", "macros", "yamux"] }
+void = "1.0"
+
+anyhow = {workspace = true}
+nalgebra = {workspace = true}
+serde = {workspace = true}
+tokio = {workspace = true, features = ["sync"]}
+tokio-util = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
+log = { workspace = true }
+
+[lints]
+workspace = true

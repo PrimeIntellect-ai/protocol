@@ -16,7 +16,7 @@ pub use metrics::sync_service::MetricsSyncService;
 pub use metrics::webhook_sender::MetricsWebhookSender;
 pub use metrics::MetricsContext;
 pub use node::invite::NodeInviter;
-pub use p2p::client::P2PClient;
+pub use p2p::Service as P2PService;
 pub use plugins::node_groups::NodeGroupConfiguration;
 pub use plugins::node_groups::NodeGroupsPlugin;
 pub use plugins::webhook::WebhookConfig;

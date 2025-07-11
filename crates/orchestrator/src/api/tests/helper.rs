@@ -22,8 +22,8 @@ pub(crate) async fn create_test_app_state() -> Data<AppState> {
     use shared::utils::MockStorageProvider;
 
     use crate::{
-        metrics::MetricsContext, p2p::client::P2PClient, scheduler::Scheduler,
-        utils::loop_heartbeats::LoopHeartbeats, ServerMode,
+        metrics::MetricsContext, scheduler::Scheduler, utils::loop_heartbeats::LoopHeartbeats,
+        ServerMode,
     };
 
     let store = Arc::new(RedisStore::new_test());
@@ -46,12 +46,8 @@ pub(crate) async fn create_test_app_state() -> Data<AppState> {
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
     let metrics = Arc::new(MetricsContext::new(1.to_string()));
-    let wallet = Wallet::new(
-        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-        Url::parse("http://localhost:8545").unwrap(),
-    )
-    .unwrap();
-    let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
+    let (get_task_logs_tx, _) = tokio::sync::mpsc::channel(0);
+    let (restart_task_tx, _) = tokio::sync::mpsc::channel(0);
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -64,7 +60,8 @@ pub(crate) async fn create_test_app_state() -> Data<AppState> {
         scheduler,
         node_groups_plugin: None,
         metrics,
-        p2p_client: p2p_client.clone(),
+        get_task_logs_tx,
+        restart_task_tx,
     })
 }
 
@@ -74,7 +71,6 @@ pub(crate) async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
 
     use crate::{
         metrics::MetricsContext,
-        p2p::client::P2PClient,
         plugins::node_groups::{NodeGroupConfiguration, NodeGroupsPlugin},
         scheduler::Scheduler,
         utils::loop_heartbeats::LoopHeartbeats,
@@ -116,12 +112,8 @@ pub(crate) async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
     let metrics = Arc::new(MetricsContext::new(1.to_string()));
-    let wallet = Wallet::new(
-        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-        Url::parse("http://localhost:8545").unwrap(),
-    )
-    .unwrap();
-    let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
+    let (get_task_logs_tx, _) = tokio::sync::mpsc::channel(0);
+    let (restart_task_tx, _) = tokio::sync::mpsc::channel(0);
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -134,7 +126,8 @@ pub(crate) async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
         scheduler,
         node_groups_plugin,
         metrics,
-        p2p_client: p2p_client.clone(),
+        get_task_logs_tx,
+        restart_task_tx,
     })
 }
 
@@ -158,8 +151,8 @@ pub(crate) async fn create_test_app_state_with_metrics() -> Data<AppState> {
     use shared::utils::MockStorageProvider;
 
     use crate::{
-        metrics::MetricsContext, p2p::client::P2PClient, scheduler::Scheduler,
-        utils::loop_heartbeats::LoopHeartbeats, ServerMode,
+        metrics::MetricsContext, scheduler::Scheduler, utils::loop_heartbeats::LoopHeartbeats,
+        ServerMode,
     };
 
     let store = Arc::new(RedisStore::new_test());
@@ -182,12 +175,8 @@ pub(crate) async fn create_test_app_state_with_metrics() -> Data<AppState> {
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
     let metrics = Arc::new(MetricsContext::new("0".to_string()));
-    let wallet = Wallet::new(
-        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-        Url::parse("http://localhost:8545").unwrap(),
-    )
-    .unwrap();
-    let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
+    let (get_task_logs_tx, _) = tokio::sync::mpsc::channel(0);
+    let (restart_task_tx, _) = tokio::sync::mpsc::channel(0);
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -200,6 +189,7 @@ pub(crate) async fn create_test_app_state_with_metrics() -> Data<AppState> {
         scheduler,
         node_groups_plugin: None,
         metrics,
-        p2p_client: p2p_client.clone(),
+        get_task_logs_tx,
+        restart_task_tx,
     })
 }

@@ -7,6 +7,9 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
+shared = { workspace = true }
+p2p = { workspace = true}
+
 actix-web = { workspace = true }
 alloy = { workspace = true }
 anyhow = { workspace = true }
@@ -16,25 +19,21 @@ directories = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
-iroh = { workspace = true }
-rand_v8 = { workspace = true }
-lazy_static = "1.5.0"
 log = { workspace = true }
-nalgebra = { workspace = true }
-prometheus = "0.14.0"
-rand = "0.9.0"
 redis = { workspace = true, features = ["tokio-comp"] }
-redis-test = { workspace = true }
-regex = "1.11.1"
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-shared = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
-toml = { workspace = true }
 url = { workspace = true }
+
+lazy_static = "1.5.0"
+prometheus = "0.14.0"
+rand = "0.9.0"
+regex = "1.11.1"
 
 [dev-dependencies]
 mockito = { workspace = true }
+redis-test = { workspace = true }
 tempfile = "=3.14.0"

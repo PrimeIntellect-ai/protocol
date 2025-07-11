@@ -2,16 +2,12 @@ use anyhow::Result;
 use directories::ProjectDirs;
 use log::debug;
 use log::error;
-use log::warn;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
-use crate::utils::p2p::generate_iroh_node_id_from_seed;
-use crate::utils::p2p::generate_random_seed;
 
 const STATE_FILENAME: &str = "heartbeat_state.toml";
 
@@ -23,8 +19,29 @@ fn get_default_state_dir() -> Option<String> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PersistedSystemState {
     endpoint: Option<String>,
-    p2p_seed: Option<u64>,
-    worker_p2p_seed: Option<u64>,
+    #[serde(
+        serialize_with = "serialize_keypair",
+        deserialize_with = "deserialize_keypair"
+    )]
+    p2p_keypair: p2p::Keypair,
+}
+
+fn serialize_keypair<S>(keypair: &p2p::Keypair, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let serialized = keypair
+        .to_protobuf_encoding()
+        .map_err(serde::ser::Error::custom)?;
+    serializer.serialize_bytes(&serialized)
+}
+
+fn deserialize_keypair<'de, D>(deserializer: D) -> Result<p2p::Keypair, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let serialized: Vec<u8> = Deserialize::deserialize(deserializer)?;
+    p2p::Keypair::from_protobuf_encoding(&serialized).map_err(serde::de::Error::custom)
 }
 
 #[derive(Debug, Clone)]
@@ -34,18 +51,15 @@ pub(crate) struct SystemState {
     endpoint: Arc<RwLock<Option<String>>>,
     state_dir_overwrite: Option<PathBuf>,
     disable_state_storing: bool,
-    pub compute_pool_id: Option<String>,
-
-    pub worker_p2p_seed: Option<u64>,
-    pub p2p_id: Option<String>,
-    pub p2p_seed: Option<u64>,
+    compute_pool_id: u32,
+    p2p_keypair: p2p::Keypair,
 }
 
 impl SystemState {
     pub(crate) fn new(
         state_dir: Option<String>,
         disable_state_storing: bool,
-        compute_pool_id: Option<String>,
+        compute_pool_id: u32,
     ) -> Self {
         let default_state_dir = get_default_state_dir();
         debug!("Default state dir: {default_state_dir:?}");
@@ -53,9 +67,10 @@ impl SystemState {
             .map(PathBuf::from)
             .or_else(|| default_state_dir.map(PathBuf::from));
         debug!("State path: {state_path:?}");
+
         let mut endpoint = None;
-        let mut p2p_seed: Option<u64> = None;
-        let mut worker_p2p_seed: Option<u64> = None;
+        let mut p2p_keypair = None;
+
         // Try to load state, log info if creating new file
         if !disable_state_storing {
             if let Some(path) = &state_path {
@@ -67,31 +82,15 @@ impl SystemState {
                 } else if let Ok(Some(loaded_state)) = SystemState::load_state(path) {
                     debug!("Loaded previous state from {state_file:?}");
                     endpoint = loaded_state.endpoint;
-                    p2p_seed = loaded_state.p2p_seed;
-                    worker_p2p_seed = loaded_state.worker_p2p_seed;
+                    p2p_keypair = Some(loaded_state.p2p_keypair);
                 } else {
                     debug!("Failed to load state from {state_file:?}");
                 }
             }
         }
-        if p2p_seed.is_none() {
-            let seed = generate_random_seed();
-            p2p_seed = Some(seed);
-        }
-        // Generate p2p_id from seed if available
 
-        let p2p_id: Option<String> =
-            p2p_seed.and_then(|seed| match generate_iroh_node_id_from_seed(seed) {
-                Ok(id) => Some(id),
-                Err(_) => {
-                    warn!("Failed to generate p2p_id from seed");
-                    None
-                }
-            });
-
-        if worker_p2p_seed.is_none() {
-            let seed = generate_random_seed();
-            worker_p2p_seed = Some(seed);
+        if p2p_keypair.is_none() {
+            p2p_keypair = Some(p2p::Keypair::generate_ed25519());
         }
 
         Self {
@@ -101,44 +100,34 @@ impl SystemState {
             state_dir_overwrite: state_path.clone(),
             disable_state_storing,
             compute_pool_id,
-            p2p_seed,
-            p2p_id,
-            worker_p2p_seed,
+            p2p_keypair: p2p_keypair.expect("p2p keypair must be Some at this point"),
         }
     }
+
     fn save_state(&self, heartbeat_endpoint: Option<String>) -> Result<()> {
         if !self.disable_state_storing {
             debug!("Saving state");
             if let Some(state_dir) = &self.state_dir_overwrite {
-                // Get values without block_on
-                debug!("Saving p2p_seed: {:?}", self.p2p_seed);
+                let state = PersistedSystemState {
+                    endpoint: heartbeat_endpoint,
+                    p2p_keypair: self.p2p_keypair.clone(),
+                };
 
-                // Ensure p2p_seed is valid before creating state
-                if let Some(seed) = self.p2p_seed {
-                    let state = PersistedSystemState {
-                        endpoint: heartbeat_endpoint,
-                        p2p_seed: Some(seed),
-                        worker_p2p_seed: self.worker_p2p_seed,
-                    };
+                debug!("state: {state:?}");
 
-                    debug!("state: {state:?}");
+                fs::create_dir_all(state_dir)?;
+                let state_path = state_dir.join(STATE_FILENAME);
 
-                    fs::create_dir_all(state_dir)?;
-                    let state_path = state_dir.join(STATE_FILENAME);
-
-                    // Use JSON serialization instead of TOML
-                    match serde_json::to_string_pretty(&state) {
-                        Ok(json_string) => {
-                            fs::write(&state_path, json_string)?;
-                            debug!("Saved state to {state_path:?}");
-                        }
-                        Err(e) => {
-                            error!("Failed to serialize state: {e}");
-                            return Err(anyhow::anyhow!("Failed to serialize state: {}", e));
-                        }
+                // Use JSON serialization instead of TOML
+                match serde_json::to_string_pretty(&state) {
+                    Ok(json_string) => {
+                        fs::write(&state_path, json_string)?;
+                        debug!("Saved state to {state_path:?}");
                     }
-                } else {
-                    warn!("Cannot save state: p2p_seed is None");
+                    Err(e) => {
+                        error!("Failed to serialize state: {e}");
+                        return Err(anyhow::anyhow!("Failed to serialize state: {}", e));
+                    }
                 }
             }
         }
@@ -160,12 +149,16 @@ impl SystemState {
         Ok(None)
     }
 
-    pub(crate) fn get_p2p_seed(&self) -> Option<u64> {
-        self.p2p_seed
+    pub(crate) fn get_compute_pool_id(&self) -> u32 {
+        self.compute_pool_id
     }
 
-    pub(crate) fn get_p2p_id(&self) -> Option<String> {
-        self.p2p_id.clone()
+    pub(crate) fn get_p2p_keypair(&self) -> &p2p::Keypair {
+        &self.p2p_keypair
+    }
+
+    pub(crate) fn get_p2p_id(&self) -> p2p::PeerId {
+        self.p2p_keypair.public().to_peer_id()
     }
 
     pub(crate) async fn update_last_heartbeat(&self) {
@@ -238,9 +231,8 @@ mod tests {
         let state = SystemState::new(
             Some(temp_dir.path().to_string_lossy().to_string()),
             false,
-            None,
+            0,
         );
-        assert!(state.p2p_id.is_some());
         let _ = state
             .set_running(true, Some("http://localhost:8080/heartbeat".to_string()))
             .await;
@@ -266,7 +258,7 @@ mod tests {
         let state = SystemState::new(
             Some(temp_dir.path().to_string_lossy().to_string()),
             false,
-            None,
+            0,
         );
         assert!(!(state.is_running().await));
         assert_eq!(state.get_heartbeat_endpoint().await, None);
@@ -285,7 +277,7 @@ mod tests {
         let state = SystemState::new(
             Some(temp_dir.path().to_string_lossy().to_string()),
             false,
-            None,
+            0,
         );
         assert_eq!(
             state.get_heartbeat_endpoint().await,

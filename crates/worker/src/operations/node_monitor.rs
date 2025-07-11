@@ -32,7 +32,7 @@ impl NodeMonitor {
     pub(crate) fn start_monitoring(
         &self,
         cancellation_token: CancellationToken,
-        pool_id: String,
+        pool_id: u32,
     ) -> Result<()> {
         let provider_address = self.provider_wallet.wallet.default_signer().address();
         let node_address = self.node_wallet.wallet.default_signer().address();
@@ -80,9 +80,8 @@ impl NodeMonitor {
                                 }
 
                                 // Check rewards for the current compute pool
-                                if let Ok(pool_id_u32) = pool_id.parse::<u32>() {
                                     match contracts.compute_pool.calculate_node_rewards(
-                                        U256::from(pool_id_u32),
+                                        U256::from(pool_id),
                                         node_address,
                                     ).await {
                                         Ok((claimable, locked)) => {
@@ -95,9 +94,9 @@ impl NodeMonitor {
                                             }
                                         }
                                         Err(e) => {
-                                            log::debug!("Failed to check rewards for pool {pool_id_u32}: {e}");
+                                            log::debug!("Failed to check rewards for pool {pool_id}: {e}");
                                         }
-                                    }
+
                                 }
 
                                 first_check = false;

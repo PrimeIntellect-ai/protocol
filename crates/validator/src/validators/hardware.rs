@@ -1,15 +1,13 @@
 use alloy::primitives::Address;
+use anyhow::bail;
 use anyhow::Result;
 use log::{debug, error, info};
 use shared::{
     models::node::DiscoveryNode,
-    web3::{
-        contracts::core::builder::Contracts,
-        wallet::{Wallet, WalletProvider},
-    },
+    web3::{contracts::core::builder::Contracts, wallet::WalletProvider},
 };
 
-use crate::p2p::client::P2PClient;
+use crate::p2p::HardwareChallengeRequest;
 use crate::validators::hardware_challenge::HardwareChallenge;
 
 /// Hardware validator implementation
@@ -17,35 +15,27 @@ use crate::validators::hardware_challenge::HardwareChallenge;
 /// NOTE: This is a temporary implementation that will be replaced with a proper
 /// hardware validator in the near future. The current implementation only performs
 /// basic matrix multiplication challenges and does not verify actual hardware specs.
-pub struct HardwareValidator<'a> {
-    wallet: &'a Wallet,
+pub struct HardwareValidator {
     contracts: Contracts<WalletProvider>,
-    p2p_client: Option<&'a P2PClient>,
+    challenge_tx: tokio::sync::mpsc::Sender<HardwareChallengeRequest>,
 }
 
-impl<'a> HardwareValidator<'a> {
+impl HardwareValidator {
     pub fn new(
-        wallet: &'a Wallet,
         contracts: Contracts<WalletProvider>,
-        p2p_client: Option<&'a P2PClient>,
+        challenge_tx: tokio::sync::mpsc::Sender<HardwareChallengeRequest>,
     ) -> Self {
         Self {
-            wallet,
             contracts,
-            p2p_client,
+            challenge_tx,
         }
     }
 
-    async fn validate_node(
-        _wallet: &'a Wallet,
-        contracts: Contracts<WalletProvider>,
-        p2p_client: Option<&'a P2PClient>,
-        node: DiscoveryNode,
-    ) -> Result<()> {
+    async fn validate_node(&self, node: DiscoveryNode) -> Result<()> {
         let node_address = match node.id.trim_start_matches("0x").parse::<Address>() {
             Ok(addr) => addr,
             Err(e) => {
-                return Err(anyhow::anyhow!("Failed to parse node address: {}", e));
+                bail!("failed to parse node address: {e:?}");
             }
         };
 
@@ -56,30 +46,22 @@ impl<'a> HardwareValidator<'a> {
         {
             Ok(addr) => addr,
             Err(e) => {
-                return Err(anyhow::anyhow!("Failed to parse provider address: {}", e));
+                bail!("failed to parse provider address: {e:?}");
             }
         };
 
         // Perform hardware challenge
-        if let Some(p2p_client) = p2p_client {
-            let hardware_challenge = HardwareChallenge::new(p2p_client);
-            let challenge_result = hardware_challenge.challenge_node(&node).await;
+        let hardware_challenge = HardwareChallenge::new(self.challenge_tx.clone());
+        let challenge_result = hardware_challenge.challenge_node(&node).await;
 
-            if let Err(e) = challenge_result {
-                println!("Challenge failed for node: {}, error: {}", node.id, e);
-                error!("Challenge failed for node: {}, error: {}", node.id, e);
-                return Err(anyhow::anyhow!("Failed to challenge node: {}", e));
-            }
-        } else {
-            debug!(
-                "P2P client not available, skipping hardware challenge for node {}",
-                node.id
-            );
+        if let Err(e) = challenge_result {
+            bail!("failed to challenge node: {e:?}");
         }
 
         debug!("Sending validation transaction for node {}", node.id);
 
-        if let Err(e) = contracts
+        if let Err(e) = self
+            .contracts
             .prime_network
             .validate_node(provider_address, node_address)
             .await
@@ -100,17 +82,11 @@ impl<'a> HardwareValidator<'a> {
         debug!("Non validated nodes: {non_validated:?}");
         info!("Starting validation for {} nodes", non_validated.len());
 
-        let contracts = self.contracts.clone();
-        let wallet = self.wallet;
-        let p2p_client = self.p2p_client;
-
         // Process non validated nodes sequentially as simple fix
         // to avoid nonce conflicts for now. Will sophisticate this in the future
         for node in non_validated {
             let node_id = node.id.clone();
-            match HardwareValidator::validate_node(wallet, contracts.clone(), p2p_client, node)
-                .await
-            {
+            match self.validate_node(node).await {
                 Ok(_) => (),
                 Err(e) => {
                     error!("Failed to validate node {node_id}: {e}");
@@ -134,7 +110,6 @@ mod tests {
     async fn test_challenge_node() {
         let coordinator_key = "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97";
         let rpc_url: Url = Url::parse("http://localhost:8545").unwrap();
-
         let coordinator_wallet = Arc::new(Wallet::new(coordinator_key, rpc_url).unwrap());
 
         let contracts = ContractBuilder::new(coordinator_wallet.provider())
@@ -145,7 +120,8 @@ mod tests {
             .build()
             .unwrap();
 
-        let validator = HardwareValidator::new(&coordinator_wallet, contracts, None);
+        let (tx, _rx) = tokio::sync::mpsc::channel(100);
+        let validator = HardwareValidator::new(contracts, tx);
 
         let fake_discovery_node1 = DiscoveryNode {
             is_validated: false,

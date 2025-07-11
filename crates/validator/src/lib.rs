@@ -5,7 +5,7 @@ mod validators;
 
 pub use metrics::export_metrics;
 pub use metrics::MetricsContext;
-pub use p2p::P2PClient;
+pub use p2p::Service as P2PService;
 pub use store::redis::RedisStore;
 pub use validators::hardware::HardwareValidator;
 pub use validators::synthetic_data::types::InvalidationType;
