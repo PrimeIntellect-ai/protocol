@@ -36,15 +36,15 @@ impl WorkerClient {
         })
     }
 
-    pub fn start(&mut self) -> PyResult<()> {
+    pub fn start(&mut self, py: Python) -> PyResult<()> {
         // Create a new runtime for this call
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
-        // Run the async function
-        let result = rt.block_on(self.inner.start_async());
+        // Run the async function with GIL released
+        let result = py.allow_threads(|| rt.block_on(self.inner.start_async()));
 
         // Store the runtime for future use
         self.runtime = Some(rt);
@@ -52,9 +52,11 @@ impl WorkerClient {
         result.map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }
 
-    pub fn get_pool_owner_message(&self) -> PyResult<Option<PyObject>> {
+    pub fn get_pool_owner_message(&self, py: Python) -> PyResult<Option<PyObject>> {
         if let Some(rt) = self.runtime.as_ref() {
-            Ok(rt.block_on(self.inner.get_message_queue().get_pool_owner_message()))
+            Ok(py.allow_threads(|| {
+                rt.block_on(self.inner.get_message_queue().get_pool_owner_message())
+            }))
         } else {
             Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
                 "Client not started. Call start() first.".to_string(),
@@ -62,9 +64,11 @@ impl WorkerClient {
         }
     }
 
-    pub fn get_validator_message(&self) -> PyResult<Option<PyObject>> {
+    pub fn get_validator_message(&self, py: Python) -> PyResult<Option<PyObject>> {
         if let Some(rt) = self.runtime.as_ref() {
-            Ok(rt.block_on(self.inner.get_message_queue().get_validator_message()))
+            Ok(py.allow_threads(|| {
+                rt.block_on(self.inner.get_message_queue().get_validator_message())
+            }))
         } else {
             Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
                 "Client not started. Call start() first.".to_string(),
@@ -72,9 +76,9 @@ impl WorkerClient {
         }
     }
 
-    pub fn stop(&mut self) -> PyResult<()> {
+    pub fn stop(&mut self, py: Python) -> PyResult<()> {
         if let Some(rt) = self.runtime.as_ref() {
-            rt.block_on(self.inner.stop_async())
+            py.allow_threads(|| rt.block_on(self.inner.stop_async()))
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
         }
 

@@ -197,12 +197,23 @@ impl WorkerClientCore {
 
         log::info!("Required stake: {}", format_ether(required_stake));
 
-        provider_ops
-            .retry_register_provider(required_stake, self.funding_retry_count, None)
-            .await
-            .map_err(|e| {
-                PrimeProtocolError::BlockchainError(format!("Failed to register provider: {}", e))
-            })?;
+        // Add timeout to prevent hanging on blockchain operations
+        let register_future =
+            provider_ops.retry_register_provider(required_stake, self.funding_retry_count, None);
+
+        tokio::time::timeout(
+            tokio::time::Duration::from_secs(300), // 5 minute timeout
+            register_future,
+        )
+        .await
+        .map_err(|_| {
+            PrimeProtocolError::BlockchainError(
+                "Provider registration timed out after 5 minutes".to_string(),
+            )
+        })?
+        .map_err(|e| {
+            PrimeProtocolError::BlockchainError(format!("Failed to register provider: {}", e))
+        })?;
 
         log::info!("Provider registered successfully");
         Ok(())
@@ -287,12 +298,22 @@ impl WorkerClientCore {
             format_ether(current_stake)
         );
 
-        provider_ops
-            .increase_stake(required_stake - current_stake)
-            .await
-            .map_err(|e| {
-                PrimeProtocolError::BlockchainError(format!("Failed to increase stake: {}", e))
-            })?;
+        // Add timeout to prevent hanging on stake increase operations
+        let stake_future = provider_ops.increase_stake(required_stake - current_stake);
+
+        tokio::time::timeout(
+            tokio::time::Duration::from_secs(300), // 5 minute timeout
+            stake_future,
+        )
+        .await
+        .map_err(|_| {
+            PrimeProtocolError::BlockchainError(
+                "Stake increase timed out after 5 minutes".to_string(),
+            )
+        })?
+        .map_err(|e| {
+            PrimeProtocolError::BlockchainError(format!("Failed to increase stake: {}", e))
+        })?;
 
         log::info!("Successfully increased stake");
         Ok(())
@@ -339,15 +360,22 @@ impl WorkerClientCore {
     ) -> Result<()> {
         let compute_units = U256::from(1); // TODO: Make configurable
 
-        compute_node_ops
-            .add_compute_node(compute_units)
-            .await
-            .map_err(|e| {
-                PrimeProtocolError::BlockchainError(format!(
-                    "Failed to register compute node: {}",
-                    e
-                ))
-            })?;
+        // Add timeout to prevent hanging on compute node registration
+        let register_future = compute_node_ops.add_compute_node(compute_units);
+
+        tokio::time::timeout(
+            tokio::time::Duration::from_secs(300), // 5 minute timeout
+            register_future,
+        )
+        .await
+        .map_err(|_| {
+            PrimeProtocolError::BlockchainError(
+                "Compute node registration timed out after 5 minutes".to_string(),
+            )
+        })?
+        .map_err(|e| {
+            PrimeProtocolError::BlockchainError(format!("Failed to register compute node: {}", e))
+        })?;
 
         log::info!("Compute node registered successfully");
         Ok(())

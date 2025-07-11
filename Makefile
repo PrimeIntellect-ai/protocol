@@ -97,6 +97,18 @@ up:
 	@# Attach to session
 	@tmux attach-session -t prime-dev
 
+# Start Docker services and deploy contracts only
+.PHONY: bootstrap
+bootstrap:
+	@echo "Starting Docker services and deploying contracts..."
+	@# Start Docker services
+	@docker compose up -d reth redis --wait --wait-timeout 180
+	@# Deploy contracts
+	@cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd ..
+	@# Run setup
+	@$(MAKE) setup
+	@echo "Bootstrap complete - Docker services running and contracts deployed"
+
 # Stop development environment
 .PHONY: down
 down:
