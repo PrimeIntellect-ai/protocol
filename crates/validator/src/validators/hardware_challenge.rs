@@ -65,13 +65,13 @@ impl HardwareChallenge {
             .await
             .context("failed to send hardware challenge request to p2p service")?;
 
-        println!("hardware challenge sent to node {}", node.id);
+        info!("hardware challenge sent to node {}", node.id);
 
         let resp = response_rx
             .await
             .context("failed to receive response from node")?;
 
-        println!("response received from node {}: {:?}", node.id, resp);
+        info!("response received from node {}: {:?}", node.id, resp);
 
         if challenge_expected.result == resp.result {
             info!("Challenge for node {} successful", node.id);
