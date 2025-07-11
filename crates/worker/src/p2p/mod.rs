@@ -112,7 +112,7 @@ fn build_p2p_node(
     port: u16,
     cancellation_token: CancellationToken,
 ) -> Result<(Node, Receiver<IncomingMessage>, Sender<OutgoingMessage>)> {
-    let (node, _, incoming_message_rx, outgoing_message_tx) = NodeBuilder::new()
+    let (node, incoming_message_rx, outgoing_message_tx) = NodeBuilder::new()
         .with_keypair(keypair)
         .with_port(port)
         .with_authentication()

@@ -26,7 +26,6 @@ pub struct OutgoingRequest {
 /// requests to the worker.
 pub struct Service {
     node: Node,
-    dial_tx: p2p::DialSender,
     incoming_messages_rx: Receiver<IncomingMessage>,
     outgoing_messages_rx: Receiver<OutgoingRequest>,
     cancellation_token: CancellationToken,
@@ -41,7 +40,7 @@ impl Service {
         wallet: Wallet,
         protocols: Protocols,
     ) -> Result<(Self, Sender<OutgoingRequest>)> {
-        let (node, dial_tx, incoming_messages_rx, outgoing_messages) =
+        let (node, incoming_messages_rx, outgoing_messages) =
             build_p2p_node(keypair, port, cancellation_token.clone(), protocols.clone())
                 .context("failed to build p2p node")?;
         let (outgoing_messages_tx, outgoing_messages_rx) = tokio::sync::mpsc::channel(100);
@@ -49,7 +48,6 @@ impl Service {
         Ok((
             Self {
                 node,
-                dial_tx,
                 incoming_messages_rx,
                 outgoing_messages_rx,
                 cancellation_token,
@@ -64,7 +62,6 @@ impl Service {
 
         let Self {
             node,
-            dial_tx,
             mut incoming_messages_rx,
             mut outgoing_messages_rx,
             cancellation_token,
@@ -81,7 +78,7 @@ impl Service {
                     break;
                 }
                 Some(message) = outgoing_messages_rx.recv() => {
-                    let handle = tokio::task::spawn(handle_outgoing_message(message, dial_tx.clone(), context.clone()));
+                    let handle = tokio::task::spawn(handle_outgoing_message(message, context.clone()));
                     outgoing_message_handlers.push(handle);
                 }
                 Some(message) = incoming_messages_rx.recv() => {
@@ -111,12 +108,7 @@ fn build_p2p_node(
     port: u16,
     cancellation_token: CancellationToken,
     protocols: Protocols,
-) -> Result<(
-    Node,
-    p2p::DialSender,
-    Receiver<IncomingMessage>,
-    Sender<OutgoingMessage>,
-)> {
+) -> Result<(Node, Receiver<IncomingMessage>, Sender<OutgoingMessage>)> {
     NodeBuilder::new()
         .with_keypair(keypair)
         .with_port(port)
@@ -171,11 +163,7 @@ impl Context {
     }
 }
 
-async fn handle_outgoing_message(
-    message: OutgoingRequest,
-    dial_tx: p2p::DialSender,
-    context: Context,
-) -> Result<()> {
+async fn handle_outgoing_message(message: OutgoingRequest, context: Context) -> Result<()> {
     use rand_v8::rngs::OsRng;
     use rand_v8::Rng as _;
     use std::str::FromStr as _;
@@ -205,9 +193,6 @@ async fn handle_outgoing_message(
         return Ok(());
     }
 
-    log::info!("sending validation authentication request to {peer_id}");
-
-    // first, dial the worker
     // ensure there's no ongoing challenge
     // use write-lock to make this atomic until we finish sending the auth request and writing to the map
     let mut ongoing_auth_requests = context.ongoing_auth_requests.write().await;
@@ -217,24 +202,13 @@ async fn handle_outgoing_message(
 
     let multiaddrs = multiaddrs
         .iter()
-        .filter_map(|addr| p2p::Multiaddr::from_str(addr).ok()?.with_p2p(peer_id).ok())
+        .filter_map(
+            |addr| p2p::Multiaddr::from_str(addr).ok(), /* ?.with_p2p(peer_id).ok()*/
+        )
         .collect::<Vec<_>>();
     if multiaddrs.is_empty() {
         bail!("no valid multiaddrs for peer id {peer_id}");
     }
-
-    // TODO: we can improve this by checking if we're already connected to the peer before dialing
-    let (res_tx, res_rx) = tokio::sync::oneshot::channel();
-    dial_tx
-        .send((multiaddrs.clone(), res_tx))
-        .await
-        .context("failed to send dial request")?;
-    log::info!("dialing worker {peer_id} with multiaddrs: {multiaddrs:?}");
-    res_rx
-        .await
-        .context("failed to receive dial response")?
-        .context("failed to dial worker")?;
-    log::info!("dialed worker {peer_id} with multiaddrs: {multiaddrs:?}");
 
     // create the authentication challenge request message
     let challenge_bytes: [u8; 32] = OsRng.gen();

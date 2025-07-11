@@ -30,11 +30,6 @@ impl HardwareChallenge {
             .clone()
             .ok_or_else(|| anyhow::anyhow!("Node {} does not have P2P addresses", node.id))?;
 
-        println!(
-            "Challenging node {} with P2P ID: {} and addresses: {:?}",
-            node.id, p2p_id, p2p_addresses
-        );
-
         // create random challenge matrix
         let challenge_matrix = self.random_challenge(3, 3, 3, 3);
         let challenge_expected = p2p::calc_matrix(&challenge_matrix);
@@ -65,13 +60,9 @@ impl HardwareChallenge {
             .await
             .context("failed to send hardware challenge request to p2p service")?;
 
-        println!("hardware challenge sent to node {}", node.id);
-
         let resp = response_rx
             .await
             .context("failed to receive response from node")?;
-
-        println!("response received from node {}: {:?}", node.id, resp);
 
         if challenge_expected.result == resp.result {
             info!("Challenge for node {} successful", node.id);

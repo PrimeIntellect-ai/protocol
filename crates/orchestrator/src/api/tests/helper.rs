@@ -46,8 +46,8 @@ pub(crate) async fn create_test_app_state() -> Data<AppState> {
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
     let metrics = Arc::new(MetricsContext::new(1.to_string()));
-    let (get_task_logs_tx, _) = tokio::sync::mpsc::channel(0);
-    let (restart_task_tx, _) = tokio::sync::mpsc::channel(0);
+    let (get_task_logs_tx, _) = tokio::sync::mpsc::channel(1);
+    let (restart_task_tx, _) = tokio::sync::mpsc::channel(1);
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -112,8 +112,8 @@ pub(crate) async fn create_test_app_state_with_nodegroups() -> Data<AppState> {
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
     let metrics = Arc::new(MetricsContext::new(1.to_string()));
-    let (get_task_logs_tx, _) = tokio::sync::mpsc::channel(0);
-    let (restart_task_tx, _) = tokio::sync::mpsc::channel(0);
+    let (get_task_logs_tx, _) = tokio::sync::mpsc::channel(1);
+    let (restart_task_tx, _) = tokio::sync::mpsc::channel(1);
 
     Data::new(AppState {
         store_context: store_context.clone(),
@@ -175,8 +175,8 @@ pub(crate) async fn create_test_app_state_with_metrics() -> Data<AppState> {
     let mock_storage = MockStorageProvider::new();
     let storage_provider = Arc::new(mock_storage);
     let metrics = Arc::new(MetricsContext::new("0".to_string()));
-    let (get_task_logs_tx, _) = tokio::sync::mpsc::channel(0);
-    let (restart_task_tx, _) = tokio::sync::mpsc::channel(0);
+    let (get_task_logs_tx, _) = tokio::sync::mpsc::channel(1);
+    let (restart_task_tx, _) = tokio::sync::mpsc::channel(1);
 
     Data::new(AppState {
         store_context: store_context.clone(),

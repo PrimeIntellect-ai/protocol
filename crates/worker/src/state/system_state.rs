@@ -1,3 +1,4 @@
+use anyhow::bail;
 use anyhow::Result;
 use directories::ProjectDirs;
 use log::debug;
@@ -60,7 +61,7 @@ impl SystemState {
         state_dir: Option<String>,
         disable_state_storing: bool,
         compute_pool_id: u32,
-    ) -> Self {
+    ) -> Result<Self> {
         let default_state_dir = get_default_state_dir();
         debug!("Default state dir: {default_state_dir:?}");
         let state_path = state_dir
@@ -84,7 +85,7 @@ impl SystemState {
                     endpoint = loaded_state.endpoint;
                     p2p_keypair = Some(loaded_state.p2p_keypair);
                 } else {
-                    debug!("Failed to load state from {state_file:?}");
+                    bail!("failed to load state from {state_file:?}");
                 }
             }
         }
@@ -93,7 +94,7 @@ impl SystemState {
             p2p_keypair = Some(p2p::Keypair::generate_ed25519());
         }
 
-        Self {
+        Ok(Self {
             last_heartbeat: Arc::new(RwLock::new(None)),
             is_running: Arc::new(RwLock::new(false)),
             endpoint: Arc::new(RwLock::new(endpoint)),
@@ -101,7 +102,7 @@ impl SystemState {
             disable_state_storing,
             compute_pool_id,
             p2p_keypair: p2p_keypair.expect("p2p keypair must be Some at this point"),
-        }
+        })
     }
 
     fn save_state(&self, heartbeat_endpoint: Option<String>) -> Result<()> {
@@ -141,8 +142,7 @@ impl SystemState {
             match serde_json::from_str(&contents) {
                 Ok(state) => return Ok(Some(state)),
                 Err(e) => {
-                    debug!("Error parsing state file: {e}");
-                    return Ok(None);
+                    bail!("failed to parse state file: {e}");
                 }
             }
         }
@@ -232,7 +232,8 @@ mod tests {
             Some(temp_dir.path().to_string_lossy().to_string()),
             false,
             0,
-        );
+        )
+        .unwrap();
         let _ = state
             .set_running(true, Some("http://localhost:8080/heartbeat".to_string()))
             .await;
@@ -255,30 +256,33 @@ mod tests {
         let state_file = temp_dir.path().join(STATE_FILENAME);
         fs::write(&state_file, "invalid_toml_content").expect("Failed to write to state file");
 
-        let state = SystemState::new(
+        assert!(SystemState::new(
             Some(temp_dir.path().to_string_lossy().to_string()),
             false,
             0,
-        );
-        assert!(!(state.is_running().await));
-        assert_eq!(state.get_heartbeat_endpoint().await, None);
+        )
+        .is_err());
     }
 
     #[tokio::test]
     async fn test_load_state() {
+        let keypair = p2p::Keypair::generate_ed25519();
+        let state = PersistedSystemState {
+            endpoint: Some("http://localhost:8080/heartbeat".to_string()),
+            p2p_keypair: keypair,
+        };
+        let serialized = serde_json::to_string_pretty(&state).unwrap();
+
         let temp_dir = setup_test_dir();
         let state_file = temp_dir.path().join(STATE_FILENAME);
-        fs::write(
-            &state_file,
-            r#"{"endpoint": "http://localhost:8080/heartbeat"}"#,
-        )
-        .expect("Failed to write to state file");
+        fs::write(&state_file, serialized).unwrap();
 
         let state = SystemState::new(
             Some(temp_dir.path().to_string_lossy().to_string()),
             false,
             0,
-        );
+        )
+        .unwrap();
         assert_eq!(
             state.get_heartbeat_endpoint().await,
             Some("http://localhost:8080/heartbeat".to_string())
