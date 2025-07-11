@@ -2,7 +2,6 @@ use pyo3::prelude::*;
 mod client;
 pub(crate) mod message_queue;
 pub(crate) use client::WorkerClientCore;
-
 /// Prime Protocol Worker Client - for compute nodes that execute tasks
 #[pyclass]
 pub(crate) struct WorkerClient {

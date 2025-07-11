@@ -1,160 +1,80 @@
+use crate::utils::message_queue::{Message, MessageQueue as GenericMessageQueue};
 use pyo3::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
-use std::sync::Arc;
-use tokio::sync::mpsc;
-use tokio::sync::Mutex;
-use tokio::time::{interval, Duration};
 
-use crate::utils::json_parser::json_to_pyobject;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
-    pub message_type: MessageType,
-    pub content: serde_json::Value,
-    pub timestamp: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum MessageType {
+/// Queue types for the worker message queue
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueueType {
     PoolOwner,
     Validator,
 }
 
+/// Worker-specific message queue with predefined queue types
 #[derive(Clone)]
 pub struct MessageQueue {
-    pool_owner_queue: Arc<Mutex<VecDeque<Message>>>,
-    validator_queue: Arc<Mutex<VecDeque<Message>>>,
-    shutdown_tx: Arc<Mutex<Option<mpsc::Sender<()>>>>,
+    pool_owner_queue: GenericMessageQueue,
+    validator_queue: GenericMessageQueue,
 }
 
 impl MessageQueue {
+    /// Create a new worker message queue with pool_owner and validator queues
     pub fn new() -> Self {
         Self {
-            pool_owner_queue: Arc::new(Mutex::new(VecDeque::new())),
-            validator_queue: Arc::new(Mutex::new(VecDeque::new())),
-            shutdown_tx: Arc::new(Mutex::new(None)),
+            pool_owner_queue: GenericMessageQueue::new(None),
+            validator_queue: GenericMessageQueue::new(None),
         }
     }
 
-    /// Start the background message listener
+    /// Start the background message listener for worker
     pub(crate) async fn start_listener(&self) -> Result<(), String> {
-        let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
-
-        // Store the shutdown sender
-        {
-            let mut tx_guard = self.shutdown_tx.lock().await;
-            *tx_guard = Some(shutdown_tx);
-        }
-
-        let pool_owner_queue = self.pool_owner_queue.clone();
-        let validator_queue = self.validator_queue.clone();
-
-        // Spawn background task to simulate incoming p2p messages
-        tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_secs(5));
-            let mut counter = 0u64;
-
-            loop {
-                tokio::select! {
-                    _ = ticker.tick() => {
-                        // Mock pool owner messages
-                        if counter % 2 == 0 {
-                            let message = Message {
-                                message_type: MessageType::PoolOwner,
-                                content: serde_json::json!({
-                                    "type": "inference_request",
-                                    "task_id": format!("task_{}", counter),
-                                    "prompt": format!("Test prompt {}", counter),
-                                }),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs(),
-                            };
-
-                            let mut queue = pool_owner_queue.lock().await;
-                            queue.push_back(message);
-                            log::debug!("Added mock pool owner message to queue");
-                        }
-
-                        // Mock validator messages
-                        if counter % 3 == 0 {
-                            let message = Message {
-                                message_type: MessageType::Validator,
-                                content: serde_json::json!({
-                                    "type": "validation_request",
-                                    "task_id": format!("validation_{}", counter),
-                                }),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs(),
-                            };
-
-                            let mut queue = validator_queue.lock().await;
-                            queue.push_back(message);
-                            log::debug!("Added mock validator message to queue");
-                        }
-
-                        counter += 1;
-                    }
-                    _ = shutdown_rx.recv() => {
-                        log::info!("Message listener shutting down");
-                        break;
-                    }
-                }
-            }
-        });
-
+        // Start mock listeners with different frequencies
+        // pool_owner messages every 2 seconds, validator messages every 3 seconds
+        self.pool_owner_queue.start_mock_listener(2).await?;
+        self.validator_queue.start_mock_listener(3).await?;
         Ok(())
     }
 
     /// Stop the background listener
-    #[allow(unused)]
     pub(crate) async fn stop_listener(&self) -> Result<(), String> {
-        if let Some(tx) = self.shutdown_tx.lock().await.take() {
-            let _ = tx.send(()).await;
-        }
+        self.pool_owner_queue.stop_listener().await?;
+        self.validator_queue.stop_listener().await?;
         Ok(())
     }
+
     /// Get the next message from the pool owner queue
     pub(crate) async fn get_pool_owner_message(&self) -> Option<PyObject> {
-        let mut queue = self.pool_owner_queue.lock().await;
-        queue
-            .pop_front()
-            .map(|msg| Python::with_gil(|py| json_to_pyobject(py, &msg.content)))
+        self.pool_owner_queue.get_message().await
     }
 
     /// Get the next message from the validator queue
     pub(crate) async fn get_validator_message(&self) -> Option<PyObject> {
-        let mut queue = self.validator_queue.lock().await;
-        queue
-            .pop_front()
-            .map(|msg| Python::with_gil(|py| json_to_pyobject(py, &msg.content)))
+        self.validator_queue.get_message().await
     }
 
     /// Push a message to the appropriate queue (for testing or internal use)
-    #[allow(unused)]
-    pub(crate) async fn push_message(&self, message: Message) -> Result<(), String> {
-        match message.message_type {
-            MessageType::PoolOwner => {
-                let mut queue = self.pool_owner_queue.lock().await;
-                queue.push_back(message);
-            }
-            MessageType::Validator => {
-                let mut queue = self.validator_queue.lock().await;
-                queue.push_back(message);
-            }
+    pub(crate) async fn push_message(
+        &self,
+        queue_type: QueueType,
+        content: serde_json::Value,
+    ) -> Result<(), String> {
+        let message = Message {
+            content,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            sender: Some("worker".to_string()),
+        };
+
+        match queue_type {
+            QueueType::PoolOwner => self.pool_owner_queue.push_message(message).await,
+            QueueType::Validator => self.validator_queue.push_message(message).await,
         }
-        Ok(())
     }
 
     /// Get queue sizes for monitoring
-    #[allow(unused)]
     pub(crate) async fn get_queue_sizes(&self) -> (usize, usize) {
-        let pool_owner_size = self.pool_owner_queue.lock().await.len();
-        let validator_size = self.validator_queue.lock().await.len();
+        let pool_owner_size = self.pool_owner_queue.get_queue_size().await;
+        let validator_size = self.validator_queue.get_queue_size().await;
         (pool_owner_size, validator_size)
     }
 }
