@@ -7,9 +7,8 @@ use libp2p::yamux;
 use libp2p::Swarm;
 use libp2p::SwarmBuilder;
 use libp2p::{identity, Transport};
+use log::debug;
 use std::time::Duration;
-use tracing::debug;
-use tracing::info;
 
 mod behaviour;
 mod message;
@@ -25,8 +24,6 @@ pub type ResponseChannel = libp2p::request_response::ResponseChannel<Response>;
 pub type PeerId = libp2p::PeerId;
 pub type Multiaddr = libp2p::Multiaddr;
 pub type Keypair = libp2p::identity::Keypair;
-pub type DialSender =
-    tokio::sync::mpsc::Sender<(Vec<Multiaddr>, tokio::sync::oneshot::Sender<Result<()>>)>;
 
 pub const PRIME_STREAM_PROTOCOL: libp2p::StreamProtocol =
     libp2p::StreamProtocol::new("/prime/1.0.0");
@@ -39,9 +36,6 @@ pub struct Node {
     swarm: Swarm<Behaviour>,
     bootnodes: Vec<Multiaddr>,
     cancellation_token: tokio_util::sync::CancellationToken,
-
-    dial_rx:
-        tokio::sync::mpsc::Receiver<(Vec<Multiaddr>, tokio::sync::oneshot::Sender<Result<()>>)>,
 
     // channel for sending incoming messages to the consumer of this library
     incoming_message_tx: tokio::sync::mpsc::Sender<IncomingMessage>,
@@ -80,7 +74,6 @@ impl Node {
             mut swarm,
             bootnodes,
             cancellation_token,
-            mut dial_rx,
             incoming_message_tx,
             mut outgoing_message_rx,
         } = self;
@@ -107,30 +100,16 @@ impl Node {
                     debug!("cancellation token triggered, shutting down node");
                     break Ok(());
                 }
-                Some((addrs, res_tx)) = dial_rx.recv() => {
-                    log::info!("dialing addresses: {addrs:?}");
-                    let mut res = Ok(());
-                    for addr in &addrs {
-                        match swarm.dial(addr.clone()) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                res = Err(anyhow::anyhow!("failed to dial {addr}: {e:?}"));
-                                break;
-                            }
-                        }
-                    }
-                    log::info!("finished dialing addresses: {addrs:?}");
-                    let _ = res_tx.send(res);
-                }
                 Some(message) = outgoing_message_rx.recv() => {
                     match message {
-                        OutgoingMessage::Request((peer, _addrs, request)) => {
+                        OutgoingMessage::Request((peer, addrs, request)) => {
                             // TODO: if we're not connected to the peer, we should dial it
-                            log::info!("sending request to peer {peer}: {request:?}");
+                            for addr in addrs {
+                                swarm.add_peer_address(peer, addr);
+                            }
                             swarm.behaviour_mut().request_response().send_request(&peer, request);
                         }
                         OutgoingMessage::Response((channel, response)) => {
-                            log::info!("sending response: {response:?}");
                             if let Err(e) = swarm.behaviour_mut().request_response().send_response(channel, response) {
                                 debug!("failed to send response: {e:?}");
                             }
@@ -152,7 +131,7 @@ impl Node {
                             peer_id,
                             ..
                         } => {
-                            info!("connection established with peer {peer_id}");
+                            debug!("connection established with peer {peer_id}");
                         }
                         SwarmEvent::ConnectionClosed {
                             peer_id,
@@ -282,7 +261,6 @@ impl NodeBuilder {
         self,
     ) -> Result<(
         Node,
-        DialSender,
         tokio::sync::mpsc::Receiver<IncomingMessage>,
         tokio::sync::mpsc::Sender<OutgoingMessage>,
     )> {
@@ -324,7 +302,6 @@ impl NodeBuilder {
             listen_addrs.push(listen_addr);
         }
 
-        let (dial_tx, dial_rx) = tokio::sync::mpsc::channel(100);
         let (incoming_message_tx, incoming_message_rx) = tokio::sync::mpsc::channel(100);
         let (outgoing_message_tx, outgoing_message_rx) = tokio::sync::mpsc::channel(100);
 
@@ -334,12 +311,10 @@ impl NodeBuilder {
                 swarm,
                 listen_addrs,
                 bootnodes,
-                dial_rx,
                 incoming_message_tx,
                 outgoing_message_rx,
                 cancellation_token: cancellation_token.unwrap_or_default(),
             },
-            dial_tx,
             incoming_message_rx,
             outgoing_message_tx,
         ))
@@ -365,33 +340,12 @@ mod test {
     use crate::message;
 
     #[tokio::test]
-    async fn can_dial() {
-        let (node1, _, _, _) = NodeBuilder::new().with_port(4002).try_build().unwrap();
-        let node1_peer_id = node1.peer_id();
-        let local_p2p_address: crate::Multiaddr =
-            format!("/ip4/127.0.0.1/tcp/4002/p2p/{}", node1_peer_id)
-                .parse()
-                .expect("can parse valid multiaddr");
-        let (node2, dial_tx2, _, _) = NodeBuilder::new().try_build().unwrap();
-        tokio::spawn(async move { node1.run().await });
-        tokio::spawn(async move { node2.run().await });
-
-        let (res_tx, res_rx) = tokio::sync::oneshot::channel();
-        dial_tx2
-            .send((vec![local_p2p_address], res_tx))
-            .await
-            .expect("can send dial request");
-        let res = res_rx.await.expect("can receive dial response");
-        assert!(res.is_ok(), "dialing node1 should succeed: {res:?}");
-    }
-
-    #[tokio::test]
     async fn two_nodes_can_connect_and_do_request_response() {
-        let (node1, _, mut incoming_message_rx1, outgoing_message_tx1) =
+        let (node1, mut incoming_message_rx1, outgoing_message_tx1) =
             NodeBuilder::new().with_get_task_logs().try_build().unwrap();
         let node1_peer_id = node1.peer_id();
 
-        let (node2, _, mut incoming_message_rx2, outgoing_message_tx2) = NodeBuilder::new()
+        let (node2, mut incoming_message_rx2, outgoing_message_tx2) = NodeBuilder::new()
             .with_get_task_logs()
             .with_bootnodes(node1.multiaddrs())
             .try_build()

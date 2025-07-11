@@ -11,8 +11,8 @@ use libp2p::mdns;
 use libp2p::ping;
 use libp2p::request_response;
 use libp2p::swarm::NetworkBehaviour;
+use log::debug;
 use std::time::Duration;
-use tracing::debug;
 
 use crate::message::IncomingMessage;
 use crate::message::{Request, Response};
@@ -155,6 +155,7 @@ impl BehaviourEvent {
             BehaviourEvent::RequestResponse(event) => match event {
                 request_response::Event::Message { peer, message } => {
                     debug!("received message from peer {peer:?}: {message:?}");
+
                     // if this errors, user dropped their incoming message channel
                     let _ = message_tx.send(IncomingMessage { peer, message }).await;
                 }
