@@ -1,5 +1,5 @@
 use crate::error::{PrimeProtocolError, Result};
-use crate::message_queue::MessageQueue;
+use crate::worker::message_queue::MessageQueue;
 use alloy::primitives::utils::format_ether;
 use alloy::primitives::{Address, U256};
 use prime_core::operations::compute_node::ComputeNodeOperations;
