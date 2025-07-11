@@ -34,7 +34,7 @@ fn setup_test_env() -> Result<(RedisStore, Contracts<WalletProvider>), Error> {
         "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
         url,
     )
-    .map_err(|e| Error::msg(format!("Failed to create demo wallet: {}", e)))?;
+    .map_err(|e| Error::msg(format!("Failed to create demo wallet: {e}")))?;
 
     let contracts = ContractBuilder::new(demo_wallet.provider())
         .with_compute_registry()
@@ -45,7 +45,7 @@ fn setup_test_env() -> Result<(RedisStore, Contracts<WalletProvider>), Error> {
         .with_stake_manager()
         .with_synthetic_data_validator(Some(Address::ZERO))
         .build()
-        .map_err(|e| Error::msg(format!("Failed to build contracts: {}", e)))?;
+        .map_err(|e| Error::msg(format!("Failed to build contracts: {e}")))?;
 
     Ok((store, contracts))
 }
@@ -197,8 +197,8 @@ async fn test_status_update() -> Result<(), Error> {
         )
         .await
         .map_err(|e| {
-            error!("Failed to update work validation status: {}", e);
-            Error::msg(format!("Failed to update work validation status: {}", e))
+            error!("Failed to update work validation status: {e}");
+            Error::msg(format!("Failed to update work validation status: {e}"))
         })?;
 
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -206,8 +206,8 @@ async fn test_status_update() -> Result<(), Error> {
         .get_work_validation_status_from_redis("0x0000000000000000000000000000000000000000")
         .await
         .map_err(|e| {
-            error!("Failed to get work validation status: {}", e);
-            Error::msg(format!("Failed to get work validation status: {}", e))
+            error!("Failed to get work validation status: {e}");
+            Error::msg(format!("Failed to get work validation status: {e}"))
         })?;
     assert_eq!(status, Some(ValidationResult::Accept));
     Ok(())
@@ -344,20 +344,20 @@ async fn test_group_e2e_accept() -> Result<(), Error> {
     let mock_storage = MockStorageProvider::new();
     mock_storage
         .add_file(
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", GROUP_ID),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{GROUP_ID}-1-0-0.parquet"),
             "file1",
         )
         .await;
     mock_storage
         .add_mapping_file(
             FILE_SHA,
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-1-0-0.parquet", GROUP_ID),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{GROUP_ID}-1-0-0.parquet"),
         )
         .await;
     server
         .mock(
             "POST",
-            format!("/validategroup/dataset/samplingn-{}-1-0.parquet", GROUP_ID).as_str(),
+            format!("/validategroup/dataset/samplingn-{GROUP_ID}-1-0.parquet").as_str(),
         )
         .match_body(mockito::Matcher::Json(serde_json::json!({
             "file_shas": [FILE_SHA],
@@ -371,7 +371,7 @@ async fn test_group_e2e_accept() -> Result<(), Error> {
     server
         .mock(
             "GET",
-            format!("/statusgroup/dataset/samplingn-{}-1-0.parquet", GROUP_ID).as_str(),
+            format!("/statusgroup/dataset/samplingn-{GROUP_ID}-1-0.parquet").as_str(),
         )
         .with_status(200)
         .with_body(r#"{"status": "accept", "input_flops": 1, "output_flops": 1000}"#)
@@ -463,7 +463,7 @@ async fn test_group_e2e_accept() -> Result<(), Error> {
         metrics_2.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0")
     );
     assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
-    assert!(metrics_2.contains(&format!("validator_group_work_units_check_total{{group_id=\"{}\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"}} 1", GROUP_ID)));
+    assert!(metrics_2.contains(&format!("validator_group_work_units_check_total{{group_id=\"{GROUP_ID}\",pool_id=\"0\",result=\"match\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"}} 1")));
 
     Ok(())
 }
@@ -490,32 +490,32 @@ async fn test_group_e2e_work_unit_mismatch() -> Result<(), Error> {
     let mock_storage = MockStorageProvider::new();
     mock_storage
         .add_file(
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", GROUP_ID),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{GROUP_ID}-2-0-0.parquet"),
             "file1",
         )
         .await;
     mock_storage
         .add_file(
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", GROUP_ID),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{GROUP_ID}-2-0-1.parquet"),
             "file2",
         )
         .await;
     mock_storage
         .add_mapping_file(
             HONEST_FILE_SHA,
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-0.parquet", GROUP_ID),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{GROUP_ID}-2-0-0.parquet"),
         )
         .await;
     mock_storage
         .add_mapping_file(
             EXCESSIVE_FILE_SHA,
-            &format!("Qwen/Qwen0.6/dataset/samplingn-{}-2-0-1.parquet", GROUP_ID),
+            &format!("Qwen/Qwen0.6/dataset/samplingn-{GROUP_ID}-2-0-1.parquet"),
         )
         .await;
     server
         .mock(
             "POST",
-            format!("/validategroup/dataset/samplingn-{}-2-0.parquet", GROUP_ID).as_str(),
+            format!("/validategroup/dataset/samplingn-{GROUP_ID}-2-0.parquet").as_str(),
         )
         .match_body(mockito::Matcher::Json(serde_json::json!({
             "file_shas": [HONEST_FILE_SHA, EXCESSIVE_FILE_SHA],
@@ -529,7 +529,7 @@ async fn test_group_e2e_work_unit_mismatch() -> Result<(), Error> {
     server
         .mock(
             "GET",
-            format!("/statusgroup/dataset/samplingn-{}-2-0.parquet", GROUP_ID).as_str(),
+            format!("/statusgroup/dataset/samplingn-{GROUP_ID}-2-0.parquet").as_str(),
         )
         .with_status(200)
         .with_body(r#"{"status": "accept", "input_flops": 1, "output_flops": 2000}"#)
@@ -636,12 +636,12 @@ async fn test_group_e2e_work_unit_mismatch() -> Result<(), Error> {
     assert_eq!(plan_3.group_trigger_tasks.len(), 0);
     assert_eq!(plan_3.group_status_check_tasks.len(), 0);
     let metrics_2 = export_metrics().unwrap();
-    assert!(metrics_2.contains(&format!("validator_group_validations_total{{group_id=\"{}\",pool_id=\"0\",result=\"accept\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"}} 1", GROUP_ID)));
+    assert!(metrics_2.contains(&format!("validator_group_validations_total{{group_id=\"{GROUP_ID}\",pool_id=\"0\",result=\"accept\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"}} 1")));
     assert!(
         metrics_2.contains("validator_work_keys_to_process{pool_id=\"0\",validator_id=\"0\"} 0")
     );
     assert!(metrics_2.contains("toploc_config_name=\"Qwen/Qwen0.6\""));
-    assert!(metrics_2.contains(&format!("validator_group_work_units_check_total{{group_id=\"{}\",pool_id=\"0\",result=\"mismatch\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"}} 1", GROUP_ID)));
+    assert!(metrics_2.contains(&format!("validator_group_work_units_check_total{{group_id=\"{GROUP_ID}\",pool_id=\"0\",result=\"mismatch\",toploc_config_name=\"Qwen/Qwen0.6\",validator_id=\"0\"}} 1")));
 
     Ok(())
 }
@@ -734,26 +734,26 @@ async fn test_incomplete_group_recovery() -> Result<(), Error> {
 
     mock_storage
         .add_file(
-            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+            &format!("TestModel/dataset/test-{GROUP_ID}-2-0-0.parquet"),
             "file1",
         )
         .await;
     mock_storage
         .add_file(
-            &format!("TestModel/dataset/test-{}-2-0-1.parquet", GROUP_ID),
+            &format!("TestModel/dataset/test-{GROUP_ID}-2-0-1.parquet"),
             "file2",
         )
         .await;
     mock_storage
         .add_mapping_file(
             FILE_SHA_1,
-            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+            &format!("TestModel/dataset/test-{GROUP_ID}-2-0-0.parquet"),
         )
         .await;
     mock_storage
         .add_mapping_file(
             FILE_SHA_2,
-            &format!("TestModel/dataset/test-{}-2-0-1.parquet", GROUP_ID),
+            &format!("TestModel/dataset/test-{GROUP_ID}-2-0-1.parquet"),
         )
         .await;
 
@@ -800,7 +800,7 @@ async fn test_incomplete_group_recovery() -> Result<(), Error> {
     assert!(group.is_none(), "Group should be incomplete");
 
     // Check that the incomplete group is being tracked
-    let group_key = format!("group:{}:2:0", GROUP_ID);
+    let group_key = format!("group:{GROUP_ID}:2:0");
     let is_tracked = validator
         .is_group_being_tracked_as_incomplete(&group_key)
         .await?;
@@ -847,14 +847,14 @@ async fn test_expired_incomplete_group_soft_invalidation() -> Result<(), Error> 
 
     mock_storage
         .add_file(
-            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+            &format!("TestModel/dataset/test-{GROUP_ID}-2-0-0.parquet"),
             "file1",
         )
         .await;
     mock_storage
         .add_mapping_file(
             FILE_SHA_1,
-            &format!("TestModel/dataset/test-{}-2-0-0.parquet", GROUP_ID),
+            &format!("TestModel/dataset/test-{GROUP_ID}-2-0-0.parquet"),
         )
         .await;
 
@@ -902,7 +902,7 @@ async fn test_expired_incomplete_group_soft_invalidation() -> Result<(), Error> 
 
     // Manually expire the incomplete group tracking by removing it and simulating expiry
     // In a real test, you would wait for the actual expiry, but for testing we simulate it
-    let group_key = format!("group:{}:2:0", GROUP_ID);
+    let group_key = format!("group:{GROUP_ID}:2:0");
     validator.track_incomplete_group(&group_key).await?;
 
     // Process groups past grace period (this would normally find groups past deadline)
@@ -936,7 +936,7 @@ async fn test_expired_incomplete_group_soft_invalidation() -> Result<(), Error> 
     assert_eq!(key_status, Some(ValidationResult::IncompleteGroup));
 
     let metrics = export_metrics().unwrap();
-    assert!(metrics.contains(&format!("validator_work_keys_soft_invalidated_total{{group_key=\"group:{}:2:0\",pool_id=\"0\",validator_id=\"0\"}} 1", GROUP_ID)));
+    assert!(metrics.contains(&format!("validator_work_keys_soft_invalidated_total{{group_key=\"group:{GROUP_ID}:2:0\",pool_id=\"0\",validator_id=\"0\"}} 1")));
 
     Ok(())
 }
@@ -952,14 +952,14 @@ async fn test_incomplete_group_status_tracking() -> Result<(), Error> {
 
     mock_storage
         .add_file(
-            &format!("TestModel/dataset/test-{}-3-0-0.parquet", GROUP_ID),
+            &format!("TestModel/dataset/test-{GROUP_ID}-3-0-0.parquet"),
             "file1",
         )
         .await;
     mock_storage
         .add_mapping_file(
             FILE_SHA_1,
-            &format!("TestModel/dataset/test-{}-3-0-0.parquet", GROUP_ID),
+            &format!("TestModel/dataset/test-{GROUP_ID}-3-0-0.parquet"),
         )
         .await;
 
@@ -1006,7 +1006,7 @@ async fn test_incomplete_group_status_tracking() -> Result<(), Error> {
 
     // Manually process groups past grace period to simulate what would happen
     // after the grace period expires (we simulate this since we can't wait in tests)
-    let group_key = format!("group:{}:3:0", GROUP_ID);
+    let group_key = format!("group:{GROUP_ID}:3:0");
 
     // Manually add the group to tracking and then process it
     validator.track_incomplete_group(&group_key).await?;

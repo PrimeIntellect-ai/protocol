@@ -144,12 +144,12 @@ mod tests {
         );
         assert_eq!(
             env_vars.get("NODE_VAR").unwrap(),
-            &format!("node-{}", node_address)
+            &format!("node-{node_address}")
         );
 
         // Check cmd replacement
         let cmd = returned_task.cmd.unwrap();
         assert_eq!(cmd[0], format!("--task={}", task.id));
-        assert_eq!(cmd[1], format!("--node={}", node_address));
+        assert_eq!(cmd[1], format!("--node={node_address}"));
     }
 }

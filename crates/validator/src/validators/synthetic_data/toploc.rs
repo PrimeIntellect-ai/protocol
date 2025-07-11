@@ -689,8 +689,7 @@ mod tests {
                 Some(expected_idx) => {
                     assert!(
                         matched,
-                        "Expected file {} to match config {}",
-                        test_file, expected_idx
+                        "Expected file {test_file} to match config {expected_idx}"
                     );
                     assert_eq!(
                         matched_idx,
@@ -701,7 +700,7 @@ mod tests {
                         expected_idx
                     );
                 }
-                None => assert!(!matched, "File {} should not match any config", test_file),
+                None => assert!(!matched, "File {test_file} should not match any config"),
             }
         }
     }

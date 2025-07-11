@@ -404,7 +404,7 @@ mod tests {
 
         let task = match task.try_into() {
             Ok(task) => task,
-            Err(e) => panic!("Failed to convert TaskRequest to Task: {}", e),
+            Err(e) => panic!("Failed to convert TaskRequest to Task: {e}"),
         };
         let _ = app_state.store_context.task_store.add_task(task).await;
 

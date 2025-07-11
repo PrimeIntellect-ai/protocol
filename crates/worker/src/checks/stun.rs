@@ -139,7 +139,7 @@ mod tests {
     async fn test_get_public_ip() {
         let stun_check = StunCheck::new(Duration::from_secs(5), 0);
         let public_ip = stun_check.get_public_ip().await.unwrap();
-        println!("Public IP: {}", public_ip);
+        println!("Public IP: {public_ip}");
         assert!(!public_ip.is_empty());
     }
 }

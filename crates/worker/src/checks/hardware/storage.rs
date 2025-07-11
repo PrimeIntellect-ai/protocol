@@ -216,7 +216,7 @@ fn test_or_create_app_directory(path: &str) -> bool {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn find_largest_storage() -> Option<MountPoint> {
+pub(crate) fn find_largest_storage() -> Option<MountPoint> {
     None
 }
 
@@ -233,7 +233,7 @@ pub(crate) fn get_available_space(path: &str) -> Option<u64> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn get_available_space(_path: &str) -> Option<u64> {
+pub(crate) fn get_available_space(_path: &str) -> Option<u64> {
     None
 }
 
