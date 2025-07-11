@@ -375,7 +375,7 @@ async fn handle_validation_authentication_response(
             let Ok(recovered_address) = parsed_signature
                 .recover_address_from_msg(&ongoing_challenge.auth_challenge_request_message)
             else {
-                bail!("Failed to recover address from response signature")
+                bail!("failed to recover address from response signature")
             };
 
             // verify the recovered address matches the expected worker wallet address

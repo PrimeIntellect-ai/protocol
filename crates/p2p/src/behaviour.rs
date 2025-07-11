@@ -19,6 +19,8 @@ use crate::message::{Request, Response};
 use crate::Protocols;
 use crate::PRIME_STREAM_PROTOCOL;
 
+const DEFAULT_MAX_PEER_COUNT: u32 = 100;
+
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "BehaviourEvent")]
 pub(crate) struct Behaviour {
@@ -109,7 +111,7 @@ impl Behaviour {
 
         let autonat = autonat::Behaviour::new(peer_id, autonat::Config::default());
         let connection_limits = connection_limits::Behaviour::new(
-            ConnectionLimits::default().with_max_established(Some(100)),
+            ConnectionLimits::default().with_max_established(Some(DEFAULT_MAX_PEER_COUNT)),
         );
 
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id)

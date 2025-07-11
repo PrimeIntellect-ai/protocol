@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 pub struct Service {
     inner: P2PService,
 
-    // converts incoming hardware challenges to outgoing requests
+    // converts this validator's hardware challenges to outgoing requests to workers
     outgoing_message_tx: Sender<OutgoingRequest>,
     hardware_challenge_rx: Receiver<HardwareChallengeRequest>,
 }
