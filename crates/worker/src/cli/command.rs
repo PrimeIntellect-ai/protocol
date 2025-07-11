@@ -220,11 +220,19 @@ pub async fn execute_command(
                 );
                 std::process::exit(1);
             }
-            let state = Arc::new(SystemState::new(
+            let state = match SystemState::new(
                 state_dir_overwrite.clone(),
                 *disable_state_storing,
                 *compute_pool_id,
-            ));
+            ) {
+                Ok(state) => state,
+                Err(e) => {
+                    error!("❌ Failed to initialize system state: {e}");
+                    std::process::exit(1);
+                }
+            };
+
+            let state = Arc::new(state);
 
             let private_key_provider = if let Some(key) = private_key_provider {
                 Console::warning("Using private key from command line is not recommended. Consider using PRIVATE_KEY_PROVIDER environment variable instead.");
