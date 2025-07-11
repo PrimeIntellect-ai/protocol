@@ -312,7 +312,7 @@ async fn handle_incoming_response(
                 bail!("received GetTaskLogsResponse from {from}, but get task logs protocol is not enabled");
             }
 
-            log::info!("received GetTaskLogsResponse from {from}: {resp:?}");
+            log::debug!("received GetTaskLogsResponse from {from}: {resp:?}");
             let mut ongoing_outbound_requests = context.ongoing_outbound_requests.write().await;
             let Some(response_tx) =
                 ongoing_outbound_requests.remove(&(from, Protocol::GetTaskLogs))
