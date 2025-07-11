@@ -9,6 +9,7 @@ use libp2p::SwarmBuilder;
 use libp2p::{identity, Transport};
 use std::time::Duration;
 use tracing::debug;
+use tracing::info;
 
 mod behaviour;
 mod message;
@@ -134,20 +135,24 @@ impl Node {
                 event = swarm.select_next_some() => {
                     match event {
                         SwarmEvent::NewListenAddr {
-                            listener_id: _,
                             address,
+                            ..
                         } => {
                             debug!("new listen address: {address}");
                         }
                         SwarmEvent::ExternalAddrConfirmed { address } => {
                             debug!("external address confirmed: {address}");
                         }
+                        SwarmEvent::ConnectionEstablished {
+                            peer_id,
+                            ..
+                        } => {
+                            info!("connection established with peer {peer_id}");
+                        }
                         SwarmEvent::ConnectionClosed {
                             peer_id,
                             cause,
-                            endpoint: _,
-                            connection_id: _,
-                            num_established: _,
+                            ..
                         } => {
                             debug!("connection closed with peer {peer_id}: {cause:?}");
                         }
@@ -209,8 +214,8 @@ impl NodeBuilder {
         self
     }
 
-    pub fn with_validator_authentication(mut self) -> Self {
-        self.protocols = self.protocols.with_validator_authentication();
+    pub fn with_authentication(mut self) -> Self {
+        self.protocols = self.protocols.with_authentication();
         self
     }
 

@@ -3,8 +3,8 @@ use std::{collections::HashSet, hash::Hash};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Protocol {
-    // validator -> worker
-    ValidatorAuthentication,
+    // validator or orchestrator -> worker
+    Authentication,
     // validator -> worker
     HardwareChallenge,
     // orchestrator -> worker
@@ -20,9 +20,7 @@ pub enum Protocol {
 impl Protocol {
     pub(crate) fn as_stream_protocol(&self) -> StreamProtocol {
         match self {
-            Protocol::ValidatorAuthentication => {
-                StreamProtocol::new("/prime/validator_authentication/1.0.0")
-            }
+            Protocol::Authentication => StreamProtocol::new("/prime/authentication/1.0.0"),
             Protocol::HardwareChallenge => StreamProtocol::new("/prime/hardware_challenge/1.0.0"),
             Protocol::Invite => StreamProtocol::new("/prime/invite/1.0.0"),
             Protocol::GetTaskLogs => StreamProtocol::new("/prime/get_task_logs/1.0.0"),
@@ -46,8 +44,8 @@ impl Protocols {
         Self(HashSet::new())
     }
 
-    pub fn has_validator_authentication(&self) -> bool {
-        self.0.contains(&Protocol::ValidatorAuthentication)
+    pub fn has_authentication(&self) -> bool {
+        self.0.contains(&Protocol::Authentication)
     }
 
     pub fn has_hardware_challenge(&self) -> bool {
@@ -70,8 +68,8 @@ impl Protocols {
         self.0.contains(&Protocol::General)
     }
 
-    pub fn with_validator_authentication(mut self) -> Self {
-        self.0.insert(Protocol::ValidatorAuthentication);
+    pub fn with_authentication(mut self) -> Self {
+        self.0.insert(Protocol::Authentication);
         self
     }
 

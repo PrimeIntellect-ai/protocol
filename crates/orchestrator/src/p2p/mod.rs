@@ -41,7 +41,7 @@ impl Service {
                 .with_invite()
                 .with_get_task_logs()
                 .with_restart()
-                .with_validator_authentication(),
+                .with_authentication(),
         )
         .context("failed to create p2p service")?;
         Ok((
@@ -120,7 +120,7 @@ impl Service {
                 Some(request) = restart_task_rx.recv() => {
                     let (incoming_resp_tx, incoming_resp_rx) = tokio::sync::oneshot::channel();
                     let fut = async move {
-                        let p2p::Response::Restart(resp) = incoming_resp_rx.await.context("outgoing request tx channel was dropped")? else {
+                        let p2p::Response::RestartTask(resp) = incoming_resp_rx.await.context("outgoing request tx channel was dropped")? else {
                             bail!("unexpected response type for restart task request");
                         };
                         request.response_tx.send(resp).map_err(|_|anyhow::anyhow!("caller dropped response channel"))?;
@@ -132,7 +132,7 @@ impl Service {
                         peer_wallet_address: request.worker_wallet_address,
                         peer_id: request.worker_p2p_id,
                         multiaddrs: request.worker_addresses,
-                        request: p2p::Request::Restart,
+                        request: p2p::Request::RestartTask,
                         response_tx: incoming_resp_tx,
                     };
                     outgoing_message_tx.send(outgoing_request).await
@@ -167,5 +167,5 @@ pub struct RestartTaskRequest {
     pub(crate) worker_wallet_address: alloy::primitives::Address,
     pub(crate) worker_p2p_id: String,
     pub(crate) worker_addresses: Vec<String>,
-    pub(crate) response_tx: tokio::sync::oneshot::Sender<p2p::RestartResponse>,
+    pub(crate) response_tx: tokio::sync::oneshot::Sender<p2p::RestartTaskResponse>,
 }

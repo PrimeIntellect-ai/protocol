@@ -30,7 +30,7 @@ impl Service {
             wallet,
             Protocols::new()
                 .with_hardware_challenge()
-                .with_validator_authentication(),
+                .with_authentication(),
         )
         .context("failed to create p2p service")?;
         Ok((

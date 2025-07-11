@@ -27,11 +27,11 @@ pub enum OutgoingMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
-    ValidatorAuthentication(ValidatorAuthenticationRequest),
+    Authentication(AuthenticationRequest),
     HardwareChallenge(HardwareChallengeRequest),
     Invite(InviteRequest),
     GetTaskLogs,
-    Restart,
+    RestartTask,
     General(GeneralRequest),
 }
 
@@ -46,11 +46,11 @@ impl Request {
 
     pub fn protocol(&self) -> Protocol {
         match self {
-            Request::ValidatorAuthentication(_) => Protocol::ValidatorAuthentication,
+            Request::Authentication(_) => Protocol::Authentication,
             Request::HardwareChallenge(_) => Protocol::HardwareChallenge,
             Request::Invite(_) => Protocol::Invite,
             Request::GetTaskLogs => Protocol::GetTaskLogs,
-            Request::Restart => Protocol::Restart,
+            Request::RestartTask => Protocol::Restart,
             Request::General(_) => Protocol::General,
         }
     }
@@ -58,11 +58,11 @@ impl Request {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Response {
-    ValidatorAuthentication(ValidatorAuthenticationResponse),
+    Authentication(AuthenticationResponse),
     HardwareChallenge(HardwareChallengeResponse),
     Invite(InviteResponse),
     GetTaskLogs(GetTaskLogsResponse),
-    Restart(RestartResponse),
+    RestartTask(RestartTaskResponse),
     General(GeneralResponse),
 }
 
@@ -76,72 +76,72 @@ impl Response {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ValidatorAuthenticationRequest {
-    Initiation(ValidatorAuthenticationInitiationRequest),
-    Solution(ValidatorAuthenticationSolutionRequest),
+pub enum AuthenticationRequest {
+    Initiation(AuthenticationInitiationRequest),
+    Solution(AuthenticationSolutionRequest),
 }
 
-impl From<ValidatorAuthenticationRequest> for Request {
-    fn from(request: ValidatorAuthenticationRequest) -> Self {
-        Request::ValidatorAuthentication(request)
+impl From<AuthenticationRequest> for Request {
+    fn from(request: AuthenticationRequest) -> Self {
+        Request::Authentication(request)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ValidatorAuthenticationResponse {
-    Initiation(ValidatorAuthenticationInitiationResponse),
-    Solution(ValidatorAuthenticationSolutionResponse),
+pub enum AuthenticationResponse {
+    Initiation(AuthenticationInitiationResponse),
+    Solution(AuthenticationSolutionResponse),
 }
 
-impl From<ValidatorAuthenticationResponse> for Response {
-    fn from(response: ValidatorAuthenticationResponse) -> Self {
-        Response::ValidatorAuthentication(response)
+impl From<AuthenticationResponse> for Response {
+    fn from(response: AuthenticationResponse) -> Self {
+        Response::Authentication(response)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidatorAuthenticationInitiationRequest {
+pub struct AuthenticationInitiationRequest {
     pub message: String,
 }
 
-impl From<ValidatorAuthenticationInitiationRequest> for Request {
-    fn from(request: ValidatorAuthenticationInitiationRequest) -> Self {
-        Request::ValidatorAuthentication(ValidatorAuthenticationRequest::Initiation(request))
+impl From<AuthenticationInitiationRequest> for Request {
+    fn from(request: AuthenticationInitiationRequest) -> Self {
+        Request::Authentication(AuthenticationRequest::Initiation(request))
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidatorAuthenticationInitiationResponse {
+pub struct AuthenticationInitiationResponse {
     pub signature: String,
     pub message: String,
 }
 
-impl From<ValidatorAuthenticationInitiationResponse> for Response {
-    fn from(response: ValidatorAuthenticationInitiationResponse) -> Self {
-        Response::ValidatorAuthentication(ValidatorAuthenticationResponse::Initiation(response))
+impl From<AuthenticationInitiationResponse> for Response {
+    fn from(response: AuthenticationInitiationResponse) -> Self {
+        Response::Authentication(AuthenticationResponse::Initiation(response))
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidatorAuthenticationSolutionRequest {
+pub struct AuthenticationSolutionRequest {
     pub signature: String,
 }
 
-impl From<ValidatorAuthenticationSolutionRequest> for Request {
-    fn from(request: ValidatorAuthenticationSolutionRequest) -> Self {
-        Request::ValidatorAuthentication(ValidatorAuthenticationRequest::Solution(request))
+impl From<AuthenticationSolutionRequest> for Request {
+    fn from(request: AuthenticationSolutionRequest) -> Self {
+        Request::Authentication(AuthenticationRequest::Solution(request))
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ValidatorAuthenticationSolutionResponse {
+pub enum AuthenticationSolutionResponse {
     Granted,
     Rejected,
 }
 
-impl From<ValidatorAuthenticationSolutionResponse> for Response {
-    fn from(response: ValidatorAuthenticationSolutionResponse) -> Self {
-        Response::ValidatorAuthentication(ValidatorAuthenticationResponse::Solution(response))
+impl From<AuthenticationSolutionResponse> for Response {
+    fn from(response: AuthenticationSolutionResponse) -> Self {
+        Response::Authentication(AuthenticationResponse::Solution(response))
     }
 }
 
@@ -216,14 +216,14 @@ impl From<GetTaskLogsResponse> for Response {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RestartResponse {
+pub enum RestartTaskResponse {
     Ok,
     Error(String),
 }
 
-impl From<RestartResponse> for Response {
-    fn from(response: RestartResponse) -> Self {
-        Response::Restart(response)
+impl From<RestartTaskResponse> for Response {
+    fn from(response: RestartTaskResponse) -> Self {
+        Response::RestartTask(response)
     }
 }
 

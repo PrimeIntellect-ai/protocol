@@ -113,7 +113,7 @@ fn build_p2p_node(
     let (node, _, incoming_message_rx, outgoing_message_tx) = NodeBuilder::new()
         .with_keypair(keypair)
         .with_port(port)
-        .with_validator_authentication()
+        .with_authentication()
         .with_hardware_challenge()
         .with_invite()
         .with_get_task_logs()
@@ -201,24 +201,24 @@ async fn handle_incoming_request(
     context: Context,
 ) -> Result<()> {
     let resp = match request {
-        p2p::Request::ValidatorAuthentication(req) => {
+        p2p::Request::Authentication(req) => {
             tracing::debug!("handling ValidatorAuthentication request");
             match req {
-                p2p::ValidatorAuthenticationRequest::Initiation(req) => {
+                p2p::AuthenticationRequest::Initiation(req) => {
                     handle_validator_authentication_initiation_request(from, req, &context)
                         .await
                         .context("failed to handle ValidatorAuthenticationInitiationRequest")?
                 }
-                p2p::ValidatorAuthenticationRequest::Solution(req) => {
+                p2p::AuthenticationRequest::Solution(req) => {
                     match handle_validator_authentication_solution_request(from, req, &context)
                         .await
                     {
-                        Ok(()) => p2p::ValidatorAuthenticationSolutionResponse::Granted.into(),
+                        Ok(()) => p2p::AuthenticationSolutionResponse::Granted.into(),
                         Err(e) => {
                             tracing::error!(
                                 "failed to handle ValidatorAuthenticationSolutionRequest: {e:?}"
                             );
-                            p2p::ValidatorAuthenticationSolutionResponse::Rejected.into()
+                            p2p::AuthenticationSolutionResponse::Rejected.into()
                         }
                     }
                 }
@@ -241,7 +241,7 @@ async fn handle_incoming_request(
             tracing::debug!("handling GetTaskLogs request");
             handle_get_task_logs_request(from, &context).await
         }
-        p2p::Request::Restart => {
+        p2p::Request::RestartTask => {
             tracing::debug!("handling Restart request");
             handle_restart_request(from, &context).await
         }
@@ -262,7 +262,7 @@ async fn handle_incoming_request(
 
 async fn handle_validator_authentication_initiation_request(
     from: PeerId,
-    req: p2p::ValidatorAuthenticationInitiationRequest,
+    req: p2p::AuthenticationInitiationRequest,
     context: &Context,
 ) -> Result<Response> {
     use rand_v8::Rng as _;
@@ -283,7 +283,7 @@ async fn handle_validator_authentication_initiation_request(
     let mut ongoing_auth_challenges = context.ongoing_auth_challenges.write().await;
     ongoing_auth_challenges.insert(from, challenge_message.clone());
 
-    Ok(p2p::ValidatorAuthenticationInitiationResponse {
+    Ok(p2p::AuthenticationInitiationResponse {
         message: challenge_message,
         signature,
     }
@@ -292,7 +292,7 @@ async fn handle_validator_authentication_initiation_request(
 
 async fn handle_validator_authentication_solution_request(
     from: PeerId,
-    req: p2p::ValidatorAuthenticationSolutionRequest,
+    req: p2p::AuthenticationSolutionRequest,
     context: &Context,
 ) -> Result<()> {
     use std::str::FromStr as _;
@@ -358,19 +358,19 @@ async fn handle_get_task_logs_request(from: PeerId, context: &Context) -> Respon
 async fn handle_restart_request(from: PeerId, context: &Context) -> Response {
     let authorized_peers = context.authorized_peers.read().await;
     if !authorized_peers.contains(&from) {
-        return p2p::RestartResponse::Error("unauthorized".to_string()).into();
+        return p2p::RestartTaskResponse::Error("unauthorized".to_string()).into();
     }
 
     match context.docker_service.restart_task().await {
-        Ok(()) => p2p::RestartResponse::Ok.into(),
-        Err(e) => p2p::RestartResponse::Error(format!("failed to restart task: {e:?}")).into(),
+        Ok(()) => p2p::RestartTaskResponse::Ok.into(),
+        Err(e) => p2p::RestartTaskResponse::Error(format!("failed to restart task: {e:?}")).into(),
     }
 }
 
 fn handle_incoming_response(response: p2p::Response) {
     // critical developer error if any of these happen, could panic here
     match response {
-        p2p::Response::ValidatorAuthentication(_) => {
+        p2p::Response::Authentication(_) => {
             tracing::error!("worker should never receive ValidatorAuthentication responses");
         }
         p2p::Response::HardwareChallenge(_) => {
@@ -382,7 +382,7 @@ fn handle_incoming_response(response: p2p::Response) {
         p2p::Response::GetTaskLogs(_) => {
             tracing::error!("worker should never receive GetTaskLogs responses");
         }
-        p2p::Response::Restart(_) => {
+        p2p::Response::RestartTask(_) => {
             tracing::error!("worker should never receive Restart responses");
         }
         p2p::Response::General(_) => {

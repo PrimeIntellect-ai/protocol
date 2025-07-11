@@ -2,9 +2,9 @@ use crate::web3::wallet::Wallet;
 use anyhow::{bail, Context as _, Result};
 use futures::stream::FuturesUnordered;
 use p2p::{
+    AuthenticationInitiationRequest, AuthenticationResponse, AuthenticationSolutionRequest,
     IncomingMessage, Libp2pIncomingMessage, Node, NodeBuilder, OutgoingMessage, PeerId, Protocol,
-    Protocols, Response, ValidatorAuthenticationInitiationRequest, ValidatorAuthenticationResponse,
-    ValidatorAuthenticationSolutionRequest,
+    Protocols, Response,
 };
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -115,7 +115,7 @@ fn build_p2p_node(
     NodeBuilder::new()
         .with_keypair(keypair)
         .with_port(port)
-        .with_validator_authentication()
+        .with_authentication()
         .with_protocols(protocols)
         .with_cancellation_token(cancellation_token)
         .try_build()
@@ -233,7 +233,7 @@ async fn handle_outgoing_message(
     let challenge_bytes: [u8; 32] = OsRng.gen();
     let auth_challenge_message: String = hex::encode(challenge_bytes);
 
-    let req: p2p::Request = ValidatorAuthenticationInitiationRequest {
+    let req: p2p::Request = AuthenticationInitiationRequest {
         message: auth_challenge_message.clone(),
     }
     .into();
@@ -288,7 +288,7 @@ async fn handle_incoming_response(
     context: Context,
 ) -> Result<()> {
     match response {
-        p2p::Response::ValidatorAuthentication(resp) => {
+        p2p::Response::Authentication(resp) => {
             log::debug!("received ValidatorAuthenticationSolutionResponse from {from}: {resp:?}");
             handle_validation_authentication_response(from, resp, context)
                 .await
@@ -337,7 +337,7 @@ async fn handle_incoming_response(
             };
             let _ = response_tx.send(response);
         }
-        p2p::Response::Restart(ref resp) => {
+        p2p::Response::RestartTask(ref resp) => {
             if !context.protocols.has_restart() {
                 bail!("received RestartResponse from {from}, but restart protocol is not enabled");
             }
@@ -370,14 +370,14 @@ async fn handle_incoming_response(
 
 async fn handle_validation_authentication_response(
     from: PeerId,
-    response: p2p::ValidatorAuthenticationResponse,
+    response: p2p::AuthenticationResponse,
     context: Context,
 ) -> Result<()> {
     use crate::security::request_signer::sign_message;
     use std::str::FromStr as _;
 
     match response {
-        ValidatorAuthenticationResponse::Initiation(req) => {
+        AuthenticationResponse::Initiation(req) => {
             let ongoing_auth_requests = context.ongoing_auth_requests.read().await;
             let Some(ongoing_challenge) = ongoing_auth_requests.get(&from) else {
                 bail!(
@@ -408,7 +408,7 @@ async fn handle_validation_authentication_response(
             log::debug!("auth challenge initiation response received from node: {from}");
             let signature = sign_message(&req.message, &context.wallet).await.unwrap();
 
-            let req: p2p::Request = ValidatorAuthenticationSolutionRequest { signature }.into();
+            let req: p2p::Request = AuthenticationSolutionRequest { signature }.into();
             let req = req.into_outgoing_message(from, vec![]);
             context
                 .outgoing_messages
@@ -416,7 +416,7 @@ async fn handle_validation_authentication_response(
                 .await
                 .context("failed to send outgoing message")?;
         }
-        ValidatorAuthenticationResponse::Solution(req) => {
+        AuthenticationResponse::Solution(req) => {
             let mut ongoing_auth_requests = context.ongoing_auth_requests.write().await;
             let Some(ongoing_challenge) = ongoing_auth_requests.remove(&from) else {
                 bail!(
@@ -425,8 +425,8 @@ async fn handle_validation_authentication_response(
             };
 
             match req {
-                p2p::ValidatorAuthenticationSolutionResponse::Granted => {}
-                p2p::ValidatorAuthenticationSolutionResponse::Rejected => {
+                p2p::AuthenticationSolutionResponse::Granted => {}
+                p2p::AuthenticationSolutionResponse::Rejected => {
                     log::debug!("auth challenge rejected by node: {from}");
                     return Ok(());
                 }
