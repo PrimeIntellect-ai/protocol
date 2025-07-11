@@ -1,40 +1,40 @@
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
-use crate::p2p::client::P2PClient;
+use crate::p2p::InviteRequest as InviteRequestWithMetadata;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::utils::keccak256 as keccak;
 use alloy::primitives::U256;
 use alloy::signers::Signer;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use futures::stream;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
-use shared::models::invite::InviteRequest;
+use p2p::InviteRequest;
+use p2p::InviteRequestUrl;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use tokio::sync::mpsc::Sender;
 use tokio::time::{interval, Duration};
 
 // Timeout constants
 const DEFAULT_INVITE_CONCURRENT_COUNT: usize = 32; // Max concurrent count of nodes being invited
 
-pub struct NodeInviter<'a> {
+pub struct NodeInviter {
     wallet: Wallet,
     pool_id: u32,
     domain_id: u32,
-    host: Option<&'a str>,
-    port: Option<&'a u16>,
-    url: Option<&'a str>,
+    url: InviteRequestUrl,
     store_context: Arc<StoreContext>,
     heartbeats: Arc<LoopHeartbeats>,
-    p2p_client: Arc<P2PClient>,
+    invite_tx: Sender<InviteRequestWithMetadata>,
 }
 
-impl<'a> NodeInviter<'a> {
+impl NodeInviter {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub fn new<'a>(
         wallet: Wallet,
         pool_id: u32,
         domain_id: u32,
@@ -43,19 +43,31 @@ impl<'a> NodeInviter<'a> {
         url: Option<&'a str>,
         store_context: Arc<StoreContext>,
         heartbeats: Arc<LoopHeartbeats>,
-        p2p_client: Arc<P2PClient>,
-    ) -> Self {
-        Self {
+        invite_tx: Sender<InviteRequestWithMetadata>,
+    ) -> Result<Self> {
+        let url = if let Some(url) = url {
+            InviteRequestUrl::MasterUrl(url.to_string())
+        } else {
+            let Some(host) = host else {
+                bail!("either host or url must be provided");
+            };
+
+            let Some(port) = port else {
+                bail!("either port or url must be provided");
+            };
+
+            InviteRequestUrl::MasterIpPort(host.to_string(), *port)
+        };
+
+        Ok(Self {
             wallet,
             pool_id,
             domain_id,
-            host,
-            port,
             url,
             store_context,
             heartbeats,
-            p2p_client,
-        }
+            invite_tx,
+        })
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -71,7 +83,7 @@ impl<'a> NodeInviter<'a> {
         }
     }
 
-    async fn _generate_invite(
+    async fn generate_invite(
         &self,
         node: &OrchestratorNode,
         nonce: [u8; 32],
@@ -102,7 +114,7 @@ impl<'a> NodeInviter<'a> {
         Ok(signature)
     }
 
-    async fn _send_invite(&self, node: &OrchestratorNode) -> Result<(), anyhow::Error> {
+    async fn send_invite(&self, node: &OrchestratorNode) -> Result<(), anyhow::Error> {
         if node.worker_p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
             return Err(anyhow::anyhow!("Node does not have p2p information"));
         }
@@ -120,21 +132,11 @@ impl<'a> NodeInviter<'a> {
         )
         .to_be_bytes();
 
-        let invite_signature = self._generate_invite(node, nonce, expiration).await?;
+        let invite_signature = self.generate_invite(node, nonce, expiration).await?;
         let payload = InviteRequest {
             invite: hex::encode(invite_signature),
             pool_id: self.pool_id,
-            master_url: self.url.map(|u| u.to_string()),
-            master_ip: if self.url.is_none() {
-                self.host.map(|h| h.to_string())
-            } else {
-                None
-            },
-            master_port: if self.url.is_none() {
-                self.port.copied()
-            } else {
-                None
-            },
+            url: self.url.clone(),
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|e| anyhow::anyhow!("System time error: {}", e))?
@@ -145,11 +147,19 @@ impl<'a> NodeInviter<'a> {
 
         info!("Sending invite to node: {p2p_id}");
 
-        match self
-            .p2p_client
-            .invite_worker(node.address, p2p_id, p2p_addresses, payload)
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+        let invite = InviteRequestWithMetadata {
+            worker_wallet_address: node.address,
+            worker_p2p_id: p2p_id.clone(),
+            worker_addresses: p2p_addresses.clone(),
+            invite: payload,
+            response_tx,
+        };
+        self.invite_tx
+            .send(invite)
             .await
-        {
+            .map_err(|_| anyhow::anyhow!("failed to send invite request"))?;
+        match response_rx.await {
             Ok(_) => {
                 info!("Successfully invited node");
                 if let Err(e) = self
@@ -182,7 +192,7 @@ impl<'a> NodeInviter<'a> {
 
         let invited_nodes = stream::iter(nodes.into_iter().map(|node| async move {
             info!("Processing node {:?}", node.address);
-            match self._send_invite(&node).await {
+            match self.send_invite(&node).await {
                 Ok(_) => {
                     info!("Successfully processed node {:?}", node.address);
                     Ok(())

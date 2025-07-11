@@ -9,12 +9,13 @@ use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use orchestrator::{
     start_server, DiscoveryMonitor, LoopHeartbeats, MetricsContext, MetricsSyncService,
     MetricsWebhookSender, NodeGroupConfiguration, NodeGroupsPlugin, NodeInviter, NodeStatusUpdater,
-    P2PClient, RedisStore, Scheduler, SchedulerPlugin, ServerMode, StatusUpdatePlugin,
+    P2PService, RedisStore, Scheduler, SchedulerPlugin, ServerMode, StatusUpdatePlugin,
     StoreContext, WebhookConfig, WebhookPlugin,
 };
 
@@ -91,6 +92,10 @@ struct Args {
     /// Max healthy nodes with same endpoint
     #[arg(long, default_value = "1")]
     max_healthy_nodes_with_same_endpoint: u32,
+
+    /// Libp2p port
+    #[arg(long, default_value = "4004")]
+    libp2p_port: u16,
 }
 
 #[tokio::main]
@@ -143,7 +148,27 @@ async fn main() -> Result<()> {
     let store = Arc::new(RedisStore::new(&args.redis_store_url));
     let store_context = Arc::new(StoreContext::new(store.clone()));
 
-    let p2p_client = Arc::new(P2PClient::new(wallet.clone()).await.unwrap());
+    let keypair = p2p::Keypair::generate_ed25519();
+    let cancellation_token = CancellationToken::new();
+    let (p2p_service, invite_tx, get_task_logs_tx, restart_task_tx) = {
+        match P2PService::new(
+            keypair,
+            args.libp2p_port,
+            cancellation_token.clone(),
+            wallet.clone(),
+        ) {
+            Ok(res) => {
+                info!("p2p service initialized successfully");
+                res
+            }
+            Err(e) => {
+                error!("failed to initialize p2p service: {e}");
+                std::process::exit(1);
+            }
+        }
+    };
+
+    tokio::task::spawn(p2p_service.run());
 
     let contracts = ContractBuilder::new(wallet.provider())
         .with_compute_registry()
@@ -297,24 +322,29 @@ async fn main() -> Result<()> {
 
         let inviter_store_context = store_context.clone();
         let inviter_heartbeats = heartbeats.clone();
-        tasks.spawn({
-            let wallet = wallet.clone();
-            let p2p_client = p2p_client.clone();
-            async move {
-                let inviter = NodeInviter::new(
-                    wallet,
-                    compute_pool_id,
-                    domain_id,
-                    args.host.as_deref(),
-                    Some(&args.port),
-                    args.url.as_deref(),
-                    inviter_store_context.clone(),
-                    inviter_heartbeats.clone(),
-                    p2p_client,
-                );
-                inviter.run().await
+        let wallet = wallet.clone();
+        let inviter = match NodeInviter::new(
+            wallet,
+            compute_pool_id,
+            domain_id,
+            args.host.as_deref(),
+            Some(&args.port),
+            args.url.as_deref(),
+            inviter_store_context.clone(),
+            inviter_heartbeats.clone(),
+            invite_tx,
+        ) {
+            Ok(inviter) => {
+                info!("Node inviter initialized successfully");
+                inviter
             }
-        });
+            Err(e) => {
+                error!("Failed to initialize node inviter: {e}");
+                std::process::exit(1);
+            }
+        };
+
+        tasks.spawn(async move { inviter.run().await });
 
         // Create status_update_plugins for status updater
         let mut status_updater_plugins: Vec<StatusUpdatePlugin> = vec![];
@@ -387,7 +417,8 @@ async fn main() -> Result<()> {
             scheduler,
             node_groups_plugin,
             metrics_context,
-            p2p_client,
+            get_task_logs_tx,
+            restart_task_tx,
         ) => {
             if let Err(e) = res {
                 error!("Server error: {e}");
@@ -403,6 +434,8 @@ async fn main() -> Result<()> {
         }
     }
 
+    // TODO: use cancellation token to gracefully shutdown tasks
+    cancellation_token.cancel();
     tasks.shutdown().await;
     Ok(())
 }

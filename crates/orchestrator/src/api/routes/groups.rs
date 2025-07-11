@@ -236,9 +236,6 @@ async fn fetch_node_logs_p2p(
 
     match node {
         Some(node) => {
-            // Check if P2P client is available
-            let p2p_client = app_state.p2p_client.clone();
-
             // Check if node has P2P information
             let (worker_p2p_id, worker_p2p_addresses) =
                 match (&node.worker_p2p_id, &node.worker_p2p_addresses) {
@@ -254,11 +251,22 @@ async fn fetch_node_logs_p2p(
                 };
 
             // Send P2P request for task logs
-            match tokio::time::timeout(
-                Duration::from_secs(NODE_REQUEST_TIMEOUT),
-                p2p_client.get_task_logs(node_address, worker_p2p_id, worker_p2p_addresses),
-            )
-            .await
+            let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+            let get_task_logs_request = crate::p2p::GetTaskLogsRequest {
+                worker_wallet_address: node_address,
+                worker_p2p_id: worker_p2p_id.clone(),
+                worker_addresses: worker_p2p_addresses.clone(),
+                response_tx,
+            };
+            if let Err(e) = app_state.get_task_logs_tx.send(get_task_logs_request).await {
+                error!("Failed to send GetTaskLogsRequest for node {node_address}: {e}");
+                return json!({
+                    "success": false,
+                    "error": format!("Failed to send request: {}", e),
+                    "status": node.status.to_string()
+                });
+            };
+            match tokio::time::timeout(Duration::from_secs(NODE_REQUEST_TIMEOUT), response_rx).await
             {
                 Ok(Ok(log_lines)) => {
                     json!({

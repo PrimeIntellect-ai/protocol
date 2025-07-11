@@ -32,7 +32,7 @@ impl<'c> ComputeNodeOperations<'c> {
     pub(crate) fn start_monitoring(
         &self,
         cancellation_token: CancellationToken,
-        pool_id: String,
+        pool_id: u32,
     ) -> Result<()> {
         let provider_address = self.provider_wallet.wallet.default_signer().address();
         let node_address = self.node_wallet.wallet.default_signer().address();
@@ -81,9 +81,8 @@ impl<'c> ComputeNodeOperations<'c> {
                                 }
 
                                 // Check rewards for the current compute pool
-                                if let Ok(pool_id_u32) = pool_id.parse::<u32>() {
                                     match contracts.compute_pool.calculate_node_rewards(
-                                        U256::from(pool_id_u32),
+                                        U256::from(pool_id),
                                         node_address,
                                     ).await {
                                         Ok((claimable, locked)) => {
@@ -96,9 +95,9 @@ impl<'c> ComputeNodeOperations<'c> {
                                             }
                                         }
                                         Err(e) => {
-                                            log::debug!("Failed to check rewards for pool {pool_id_u32}: {e}");
+                                            log::debug!("Failed to check rewards for pool {pool_id}: {e}");
                                         }
-                                    }
+
                                 }
 
                                 first_check = false;
@@ -163,25 +162,6 @@ impl<'c> ComputeNodeOperations<'c> {
             .add_compute_node(node_address, compute_units, signature.to_vec())
             .await?;
         Console::success(&format!("Add node tx: {add_node_tx:?}"));
-        Ok(true)
-    }
-
-    pub(crate) async fn remove_compute_node(&self) -> Result<bool, Box<dyn std::error::Error>> {
-        Console::title("🔄 Removing compute node");
-
-        if !self.check_compute_node_exists().await? {
-            return Ok(false);
-        }
-
-        Console::progress("Removing compute node");
-        let provider_address = self.provider_wallet.wallet.default_signer().address();
-        let node_address = self.node_wallet.wallet.default_signer().address();
-        let remove_node_tx = self
-            .contracts
-            .prime_network
-            .remove_compute_node(provider_address, node_address)
-            .await?;
-        Console::success(&format!("Remove node tx: {remove_node_tx:?}"));
         Ok(true)
     }
 }

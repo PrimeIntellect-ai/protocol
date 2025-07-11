@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use validator::{
-    export_metrics, HardwareValidator, InvalidationType, MetricsContext, P2PClient, RedisStore,
+    export_metrics, HardwareValidator, InvalidationType, MetricsContext, P2PService, RedisStore,
     SyntheticDataValidator,
 };
 
@@ -196,6 +196,10 @@ struct Args {
     /// Redis URL
     #[arg(long, default_value = "redis://localhost:6380")]
     redis_url: String,
+
+    /// Libp2p port
+    #[arg(long, default_value = "4003")]
+    libp2p_port: u16,
 }
 
 #[tokio::main]
@@ -269,18 +273,26 @@ async fn main() -> anyhow::Result<()> {
         MetricsContext::new(validator_wallet.address().to_string(), args.pool_id.clone());
 
     // Initialize P2P client if enabled
-    let p2p_client = {
-        match P2PClient::new(validator_wallet.clone()).await {
-            Ok(client) => {
-                info!("P2P client initialized for testing");
-                Some(client)
+    let keypair = p2p::Keypair::generate_ed25519();
+    let (p2p_service, hardware_challenge_tx) = {
+        match P2PService::new(
+            keypair,
+            args.libp2p_port,
+            cancellation_token.clone(),
+            validator_wallet.clone(),
+        ) {
+            Ok(res) => {
+                info!("p2p service initialized successfully");
+                res
             }
             Err(e) => {
-                error!("Failed to initialize P2P client: {e}");
-                None
+                error!("failed to initialize p2p service: {e}");
+                std::process::exit(1);
             }
         }
     };
+
+    tokio::task::spawn(p2p_service.run());
 
     if let Some(pool_id) = args.pool_id.clone() {
         let pool = match contracts
@@ -308,8 +320,7 @@ async fn main() -> anyhow::Result<()> {
 
     let contracts = contract_builder.build().unwrap();
 
-    let hardware_validator =
-        HardwareValidator::new(&validator_wallet, contracts.clone(), p2p_client.as_ref());
+    let hardware_validator = HardwareValidator::new(contracts.clone(), hardware_challenge_tx);
 
     let synthetic_validator = if let Some(pool_id) = args.pool_id.clone() {
         let penalty = U256::from(args.validator_penalty) * Unit::ETHER.wei();
@@ -628,7 +639,7 @@ mod tests {
         web::{self, post},
         HttpResponse, Scope,
     };
-    use shared::models::challenge::{calc_matrix, ChallengeRequest, ChallengeResponse, FixedF64};
+    use p2p::{calc_matrix, ChallengeRequest, ChallengeResponse, FixedF64};
 
     async fn handle_challenge(challenge: web::Json<ChallengeRequest>) -> HttpResponse {
         let result = calc_matrix(&challenge);

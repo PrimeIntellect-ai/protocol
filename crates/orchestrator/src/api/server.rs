@@ -5,7 +5,7 @@ use crate::api::routes::task::tasks_routes;
 use crate::api::routes::{heartbeat::heartbeat_routes, metrics::metrics_routes};
 use crate::metrics::MetricsContext;
 use crate::models::node::NodeStatus;
-use crate::p2p::client::P2PClient;
+use crate::p2p::{GetTaskLogsRequest, RestartTaskRequest};
 use crate::plugins::node_groups::NodeGroupsPlugin;
 use crate::scheduler::Scheduler;
 use crate::store::core::{RedisStore, StoreContext};
@@ -23,6 +23,7 @@ use shared::utils::StorageProvider;
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::WalletProvider;
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 use utoipa::{
     openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
     Modify, OpenApi,
@@ -116,17 +117,18 @@ async fn health_check(data: web::Data<AppState>) -> HttpResponse {
 }
 
 pub(crate) struct AppState {
-    pub store_context: Arc<StoreContext>,
-    pub storage_provider: Option<Arc<dyn StorageProvider>>,
-    pub heartbeats: Arc<LoopHeartbeats>,
-    pub redis_store: Arc<RedisStore>,
-    pub hourly_upload_limit: i64,
-    pub contracts: Option<Contracts<WalletProvider>>,
-    pub pool_id: u32,
-    pub scheduler: Scheduler,
-    pub node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
-    pub metrics: Arc<MetricsContext>,
-    pub p2p_client: Arc<P2PClient>,
+    pub(crate) store_context: Arc<StoreContext>,
+    pub(crate) storage_provider: Option<Arc<dyn StorageProvider>>,
+    pub(crate) heartbeats: Arc<LoopHeartbeats>,
+    pub(crate) redis_store: Arc<RedisStore>,
+    pub(crate) hourly_upload_limit: i64,
+    pub(crate) contracts: Option<Contracts<WalletProvider>>,
+    pub(crate) pool_id: u32,
+    pub(crate) scheduler: Scheduler,
+    pub(crate) node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
+    pub(crate) metrics: Arc<MetricsContext>,
+    pub(crate) get_task_logs_tx: Sender<GetTaskLogsRequest>,
+    pub(crate) restart_task_tx: Sender<RestartTaskRequest>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -145,7 +147,8 @@ pub async fn start_server(
     scheduler: Scheduler,
     node_groups_plugin: Option<Arc<NodeGroupsPlugin>>,
     metrics: Arc<MetricsContext>,
-    p2p_client: Arc<P2PClient>,
+    get_task_logs_tx: Sender<GetTaskLogsRequest>,
+    restart_task_tx: Sender<RestartTaskRequest>,
 ) -> Result<(), Error> {
     info!("Starting server at http://{host}:{port}");
     let app_state = Data::new(AppState {
@@ -159,7 +162,8 @@ pub async fn start_server(
         scheduler,
         node_groups_plugin,
         metrics,
-        p2p_client,
+        get_task_logs_tx,
+        restart_task_tx,
     });
     let node_store = app_state.store_context.node_store.clone();
     let node_store_clone = node_store.clone();
