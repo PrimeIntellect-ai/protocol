@@ -12,7 +12,7 @@ from primeprotocol import WorkerClient
 
 FORMAT = '%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(message)s'
 logging.basicConfig(format=FORMAT)
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.INFO)
 
 
 def handle_pool_owner_message(message: Dict[str, Any]) -> None:
@@ -85,22 +85,30 @@ def main():
             logging.error(f"Error during shutdown: {e}")
         sys.exit(0)
     
-    # Register signal handler for Ctrl+C
+    # Register signal handler for Ctrl+C before starting client
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
+        logging.info("Starting client... (Press Ctrl+C to interrupt)")
         client.start()
         logging.info("Setup completed. Starting message polling loop...")
         print("Worker client started. Polling for messages. Press Ctrl+C to stop.")
         
         # Message polling loop
         while True:
-            check_for_messages(client)
-            time.sleep(0.1)  # Small delay to prevent busy waiting
+            try:
+                check_for_messages(client)
+                time.sleep(0.1)  # Small delay to prevent busy waiting
+            except KeyboardInterrupt:
+                # Handle Ctrl+C during message polling
+                logging.info("Keyboard interrupt received during polling")
+                signal_handler(signal.SIGINT, None)
+                break
             
     except KeyboardInterrupt:
-        logging.info("Keyboard interrupt received")
+        # Handle Ctrl+C during client startup
+        logging.info("Keyboard interrupt received during startup")
         signal_handler(signal.SIGINT, None)
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
