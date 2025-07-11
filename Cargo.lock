@@ -6216,6 +6216,7 @@ version = "0.3.11"
 dependencies = [
  "anyhow",
  "libp2p",
+ "log",
  "nalgebra",
  "serde",
  "tokio",

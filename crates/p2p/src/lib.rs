@@ -102,13 +102,15 @@ impl Node {
 
         loop {
             tokio::select! {
+                biased;
                 _ = cancellation_token.cancelled() => {
                     debug!("cancellation token triggered, shutting down node");
                     break Ok(());
                 }
                 Some((addrs, res_tx)) = dial_rx.recv() => {
+                    log::info!("dialing addresses: {addrs:?}");
                     let mut res = Ok(());
-                    for addr in addrs {
+                    for addr in &addrs {
                         match swarm.dial(addr.clone()) {
                             Ok(_) => {}
                             Err(e) => {
@@ -117,15 +119,18 @@ impl Node {
                             }
                         }
                     }
+                    log::info!("finished dialing addresses: {addrs:?}");
                     let _ = res_tx.send(res);
                 }
                 Some(message) = outgoing_message_rx.recv() => {
                     match message {
                         OutgoingMessage::Request((peer, _addrs, request)) => {
                             // TODO: if we're not connected to the peer, we should dial it
+                            log::info!("sending request to peer {peer}: {request:?}");
                             swarm.behaviour_mut().request_response().send_request(&peer, request);
                         }
                         OutgoingMessage::Response((channel, response)) => {
+                            log::info!("sending response: {response:?}");
                             if let Err(e) = swarm.behaviour_mut().request_response().send_response(channel, response) {
                                 debug!("failed to send response: {e:?}");
                             }
@@ -358,6 +363,27 @@ fn create_transport(
 mod test {
     use super::NodeBuilder;
     use crate::message;
+
+    #[tokio::test]
+    async fn can_dial() {
+        let (node1, _, _, _) = NodeBuilder::new().with_port(4002).try_build().unwrap();
+        let node1_peer_id = node1.peer_id();
+        let local_p2p_address: crate::Multiaddr =
+            format!("/ip4/127.0.0.1/tcp/4002/p2p/{}", node1_peer_id)
+                .parse()
+                .expect("can parse valid multiaddr");
+        let (node2, dial_tx2, _, _) = NodeBuilder::new().try_build().unwrap();
+        tokio::spawn(async move { node1.run().await });
+        tokio::spawn(async move { node2.run().await });
+
+        let (res_tx, res_rx) = tokio::sync::oneshot::channel();
+        dial_tx2
+            .send((vec![local_p2p_address], res_tx))
+            .await
+            .expect("can send dial request");
+        let res = res_rx.await.expect("can receive dial response");
+        assert!(res.is_ok(), "dialing node1 should succeed: {res:?}");
+    }
 
     #[tokio::test]
     async fn two_nodes_can_connect_and_do_request_response() {

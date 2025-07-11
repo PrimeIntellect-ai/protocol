@@ -747,13 +747,13 @@ pub async fn execute_command(
             let peer_id = p2p_service.peer_id();
             node_config.worker_p2p_id = Some(peer_id.to_string());
             let external_p2p_address =
-                format!("/ip4/{}/tcp/{}", node_config.ip_address, *libp2p_port,);
+                format!("/ip4/{}/tcp/{}", node_config.ip_address, *libp2p_port);
             node_config.worker_p2p_addresses = Some(
                 p2p_service
                     .listen_addrs()
                     .iter()
                     .map(|addr| addr.to_string())
-                    .chain(std::iter::once(external_p2p_address))
+                    .chain(vec![external_p2p_address])
                     .collect(),
             );
             tokio::task::spawn(p2p_service.run());

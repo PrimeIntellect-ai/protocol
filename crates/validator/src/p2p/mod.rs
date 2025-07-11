@@ -59,6 +59,7 @@ impl Service {
         loop {
             tokio::select! {
                 Some(request) = hardware_challenge_rx.recv() => {
+                    println!("p2p: got hardware challenge");
                     let (incoming_resp_tx, incoming_resp_rx) = tokio::sync::oneshot::channel();
                     let fut = async move {
                         let resp = match incoming_resp_rx.await.context("outgoing request tx channel was dropped")? {

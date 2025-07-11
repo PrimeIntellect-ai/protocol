@@ -6,7 +6,7 @@ use libp2p::connection_limits::ConnectionLimits;
 use libp2p::identify;
 use libp2p::identity;
 use libp2p::kad;
-use libp2p::kad::store::MemoryStore;
+// use libp2p::kad::store::MemoryStore;
 use libp2p::mdns;
 use libp2p::ping;
 use libp2p::request_response;
@@ -27,7 +27,8 @@ pub(crate) struct Behaviour {
 
     // discovery
     mdns: mdns::tokio::Behaviour,
-    kademlia: kad::Behaviour<MemoryStore>,
+    // comment out kademlia for now as it requires bootnodes to be provided
+    // kademlia: kad::Behaviour<MemoryStore>,
 
     // protocols
     identify: identify::Behaviour,
@@ -113,7 +114,7 @@ impl Behaviour {
 
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id)
             .context("failed to create mDNS behaviour")?;
-        let kademlia = kad::Behaviour::new(peer_id, MemoryStore::new(peer_id));
+        // let kademlia = kad::Behaviour::new(peer_id, MemoryStore::new(peer_id));
 
         let identify = identify::Behaviour::new(
             identify::Config::new(PRIME_STREAM_PROTOCOL.to_string(), keypair.public())
@@ -124,7 +125,7 @@ impl Behaviour {
         Ok(Self {
             autonat,
             connection_limits,
-            kademlia,
+            // kademlia,
             mdns,
             identify,
             ping,

@@ -25,7 +25,7 @@ pub struct OutgoingRequest {
 /// It handles the authentication protocol used before sending
 /// requests to the worker.
 pub struct Service {
-    _node: Node,
+    node: Node,
     dial_tx: p2p::DialSender,
     incoming_messages_rx: Receiver<IncomingMessage>,
     outgoing_messages_rx: Receiver<OutgoingRequest>,
@@ -48,7 +48,7 @@ impl Service {
 
         Ok((
             Self {
-                _node: node,
+                node,
                 dial_tx,
                 incoming_messages_rx,
                 outgoing_messages_rx,
@@ -63,15 +63,17 @@ impl Service {
         use futures::StreamExt as _;
 
         let Self {
-            _node,
+            node,
             dial_tx,
             mut incoming_messages_rx,
             mut outgoing_messages_rx,
             cancellation_token,
             context,
         } = self;
+        tokio::task::spawn(node.run());
 
-        let mut message_handlers = FuturesUnordered::new();
+        let mut incoming_message_handlers = FuturesUnordered::new();
+        let mut outgoing_message_handlers = FuturesUnordered::new();
 
         loop {
             tokio::select! {
@@ -79,21 +81,24 @@ impl Service {
                     break;
                 }
                 Some(message) = outgoing_messages_rx.recv() => {
-                    if let Err(e) = handle_outgoing_message(message, dial_tx.clone(), context.clone())
-                        .await {
-                        log::error!("failed to handle outgoing message: {e}");
-                        }
+                    let handle = tokio::task::spawn(handle_outgoing_message(message, dial_tx.clone(), context.clone()));
+                    outgoing_message_handlers.push(handle);
                 }
                 Some(message) = incoming_messages_rx.recv() => {
                     let context = context.clone();
                     let handle = tokio::task::spawn(
                             handle_incoming_message(message, context)
                     );
-                    message_handlers.push(handle);
+                    incoming_message_handlers.push(handle);
                 }
-                Some(res) = message_handlers.next() => {
+                Some(res) = incoming_message_handlers.next() => {
                     if let Err(e) = res {
                         log::error!("failed to handle incoming message: {e}");
+                    }
+                }
+                Some(res) = outgoing_message_handlers.next() => {
+                    if let Err(e) = res {
+                        log::error!("failed to handle outgoing message: {e}");
                     }
                 }
             }
@@ -200,7 +205,7 @@ async fn handle_outgoing_message(
         return Ok(());
     }
 
-    log::debug!("sending validation authentication request to {peer_id}");
+    log::info!("sending validation authentication request to {peer_id}");
 
     // first, dial the worker
     // ensure there's no ongoing challenge
@@ -224,10 +229,12 @@ async fn handle_outgoing_message(
         .send((multiaddrs.clone(), res_tx))
         .await
         .context("failed to send dial request")?;
+    log::info!("dialing worker {peer_id} with multiaddrs: {multiaddrs:?}");
     res_rx
         .await
         .context("failed to receive dial response")?
         .context("failed to dial worker")?;
+    log::info!("dialed worker {peer_id} with multiaddrs: {multiaddrs:?}");
 
     // create the authentication challenge request message
     let challenge_bytes: [u8; 32] = OsRng.gen();

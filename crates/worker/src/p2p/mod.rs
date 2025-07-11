@@ -75,11 +75,13 @@ impl Service {
         use futures::StreamExt as _;
 
         let Self {
-            node: _,
+            node,
             mut incoming_messages,
             cancellation_token,
             context,
         } = self;
+
+        tokio::task::spawn(node.run());
 
         let mut message_handlers = FuturesUnordered::new();
 
