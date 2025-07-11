@@ -16,12 +16,16 @@ shared = { workspace = true }
 prime-core = { workspace = true }
 alloy = { workspace = true }
 alloy-provider = { workspace = true }
-tokio = { version = "1.35", features = ["rt"] }
+tokio = { version = "1.35", features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }
 url = "2.5"
 log = { workspace = true }
 pyo3-log = "0.12.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+pythonize = "0.25"
 
 [dev-dependencies]
+test-log = "0.2"
 tokio-test = "0.4"
 
 [profile.release]

@@ -6730,7 +6730,11 @@ dependencies = [
  "prime-core",
  "pyo3",
  "pyo3-log",
+ "pythonize",
+ "serde",
+ "serde_json",
  "shared",
+ "test-log",
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
@@ -6992,6 +6996,16 @@ dependencies = [
  "pyo3-build-config",
  "quote",
  "syn 2.0.101",
+]
+
+[[package]]
+name = "pythonize"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "597907139a488b22573158793aa7539df36ae863eba300c75f3a0d65fc475e27"
+dependencies = [
+ "pyo3",
+ "serde",
 ]
 
 [[package]]
@@ -8787,6 +8801,28 @@ dependencies = [
  "once_cell",
  "rustix 0.38.44",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "test-log"
+version = "0.2.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e33b98a582ea0be1168eba097538ee8dd4bbe0f2b01b22ac92ea30054e5be7b"
+dependencies = [
+ "env_logger",
+ "test-log-macros",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "test-log-macros"
+version = "0.2.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "451b374529930d7601b1eef8d32bc79ae870b6079b069401709c2a8bf9e75f36"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
 ]
 
 [[package]]
