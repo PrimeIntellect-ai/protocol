@@ -315,8 +315,8 @@ mod tests {
         // Add tasks in sequence with delays
         for i in 1..=3 {
             let task: Task = TaskRequest {
-                image: format!("test{}", i),
-                name: format!("test{}", i),
+                image: format!("test{i}"),
+                name: format!("test{i}"),
                 ..Default::default()
             }
             .try_into()

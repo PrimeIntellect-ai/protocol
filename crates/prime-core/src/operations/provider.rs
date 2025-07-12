@@ -1,4 +1,3 @@
-use crate::console::Console;
 use alloy::primitives::utils::format_ether;
 use alloy::primitives::{Address, U256};
 use log::error;
@@ -9,18 +8,14 @@ use std::{fmt, io};
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 
-pub(crate) struct ProviderOperations {
+pub struct ProviderOperations {
     wallet: Wallet,
     contracts: Contracts<WalletProvider>,
     auto_accept: bool,
 }
 
 impl ProviderOperations {
-    pub(crate) fn new(
-        wallet: Wallet,
-        contracts: Contracts<WalletProvider>,
-        auto_accept: bool,
-    ) -> Self {
+    pub fn new(wallet: Wallet, contracts: Contracts<WalletProvider>, auto_accept: bool) -> Self {
         Self {
             wallet,
             contracts,
@@ -44,7 +39,7 @@ impl ProviderOperations {
         }
     }
 
-    pub(crate) fn start_monitoring(&self, cancellation_token: CancellationToken) {
+    pub fn start_monitoring(&self, cancellation_token: CancellationToken) {
         let provider_address = self.wallet.wallet.default_signer().address();
         let contracts = self.contracts.clone();
 
@@ -58,12 +53,12 @@ impl ProviderOperations {
             loop {
                 tokio::select! {
                     _ = cancellation_token.cancelled() => {
-                        Console::info("Monitor", "Shutting down provider status monitor...");
+                        log::info!("Shutting down provider status monitor...");
                         break;
                     }
                     _ = async {
                         let Some(stake_manager) = contracts.stake_manager.as_ref() else {
-                                Console::user_error("Cannot start monitoring - stake manager not initialized");
+                                log::error!("Cannot start monitoring - stake manager not initialized");
                                 return;
                             };
 
@@ -71,21 +66,21 @@ impl ProviderOperations {
                         match stake_manager.get_stake(provider_address).await {
                             Ok(stake) => {
                                 if first_check || stake != last_stake {
-                                    Console::info("🔄 Chain Sync - Provider stake", &format_ether(stake));
+                                    log::info!("🔄 Chain Sync - Provider stake: {}", format_ether(stake));
                                     if !first_check {
                                         if stake < last_stake {
-                                            Console::warning(&format!("Stake decreased - possible slashing detected: From {} to {}",
+                                            log::warn!("Stake decreased - possible slashing detected: From {} to {}",
                                                 format_ether(last_stake),
                                                 format_ether(stake)
-                                            ));
+                                            );
                                             if stake == U256::ZERO {
-                                                Console::warning("Stake is 0 - you might have to restart the node to increase your stake (if you still have balance left)");
+                                                log::warn!("Stake is 0 - you might have to restart the node to increase your stake (if you still have balance left)");
                                             }
                                         } else {
-                                            Console::info("🔄 Chain Sync - Stake changed", &format!("From {} to {}",
+                                            log::info!("🔄 Chain Sync - Stake increased: From {} to {}",
                                                 format_ether(last_stake),
                                                 format_ether(stake)
-                                            ));
+                                            );
                                         }
                                     }
                                     last_stake = stake;
@@ -102,13 +97,7 @@ impl ProviderOperations {
                         match contracts.ai_token.balance_of(provider_address).await {
                             Ok(balance) => {
                                 if first_check || balance != last_balance {
-                                    Console::info("🔄 Chain Sync - Balance", &format_ether(balance));
-                                    if !first_check {
-                                        Console::info("🔄 Chain Sync - Balance changed", &format!("From {} to {}",
-                                            format_ether(last_balance),
-                                            format_ether(balance)
-                                        ));
-                                    }
+                                    log::info!("🔄 Chain Sync - Balance: {}", format_ether(balance));
                                     last_balance = balance;
                                 }
                                 Some(balance)
@@ -123,12 +112,12 @@ impl ProviderOperations {
                         match contracts.compute_registry.get_provider(provider_address).await {
                             Ok(provider) => {
                                 if first_check || provider.is_whitelisted != last_whitelist_status {
-                                    Console::info("🔄 Chain Sync - Whitelist status", &format!("{}", provider.is_whitelisted));
+                                    log::info!("🔄 Chain Sync - Whitelist status: {}", provider.is_whitelisted);
                                     if !first_check {
-                                        Console::info("🔄 Chain Sync - Whitelist status changed", &format!("From {} to {}",
+                                        log::info!("🔄 Chain Sync - Whitelist status changed: {} -> {}",
                                             last_whitelist_status,
                                             provider.is_whitelisted
-                                        ));
+                                        );
                                     }
                                     last_whitelist_status = provider.is_whitelisted;
                                 }
@@ -146,7 +135,7 @@ impl ProviderOperations {
         });
     }
 
-    pub(crate) async fn check_provider_exists(&self) -> Result<bool, ProviderError> {
+    pub async fn check_provider_exists(&self) -> Result<bool, ProviderError> {
         let address = self.wallet.wallet.default_signer().address();
 
         let provider = self
@@ -159,7 +148,7 @@ impl ProviderOperations {
         Ok(provider.provider_address != Address::default())
     }
 
-    pub(crate) async fn check_provider_whitelisted(&self) -> Result<bool, ProviderError> {
+    pub async fn check_provider_whitelisted(&self) -> Result<bool, ProviderError> {
         let address = self.wallet.wallet.default_signer().address();
 
         let provider = self
@@ -171,29 +160,32 @@ impl ProviderOperations {
 
         Ok(provider.is_whitelisted)
     }
-
-    pub(crate) async fn retry_register_provider(
+    pub async fn retry_register_provider(
         &self,
         stake: U256,
         max_attempts: u32,
-        cancellation_token: CancellationToken,
+        cancellation_token: Option<CancellationToken>,
     ) -> Result<(), ProviderError> {
-        Console::title("Registering Provider");
+        log::info!("Registering Provider");
         let mut attempts = 0;
         while attempts < max_attempts || max_attempts == 0 {
-            Console::progress("Registering provider...");
+            log::info!("Registering provider...");
             match self.register_provider(stake).await {
                 Ok(_) => {
                     return Ok(());
                 }
                 Err(e) => match e {
                     ProviderError::NotWhitelisted | ProviderError::InsufficientBalance => {
-                        Console::info("Info", "Retrying in 10 seconds...");
-                        tokio::select! {
-                            _ = tokio::time::sleep(tokio::time::Duration::from_secs(10)) => {}
-                            _ = cancellation_token.cancelled() => {
-                                return Err(e);
+                        log::info!("Retrying in 10 seconds...");
+                        if let Some(ref token) = cancellation_token {
+                            tokio::select! {
+                                _ = tokio::time::sleep(tokio::time::Duration::from_secs(10)) => {}
+                                _ = token.cancelled() => {
+                                    return Err(e);
+                                }
                             }
+                        } else {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                         }
                         attempts += 1;
                         continue;
@@ -206,7 +198,7 @@ impl ProviderOperations {
         Err(ProviderError::Other)
     }
 
-    pub(crate) async fn register_provider(&self, stake: U256) -> Result<(), ProviderError> {
+    pub async fn register_provider(&self, stake: U256) -> Result<(), ProviderError> {
         let address = self.wallet.wallet.default_signer().address();
         let balance: U256 = self
             .contracts
@@ -224,42 +216,39 @@ impl ProviderOperations {
         let provider_exists = self.check_provider_exists().await?;
 
         if !provider_exists {
-            Console::info("Balance", &format_ether(balance));
-            Console::info(
-                "ETH Balance",
+            log::info!("Balance: {}", &format_ether(balance));
+            log::info!(
+                "ETH Balance: {}",
                 &format!("{} ETH", format_ether(U256::from(eth_balance))),
             );
             if balance < stake {
-                Console::user_error(&format!(
-                    "Insufficient balance for stake: {}",
-                    format_ether(stake)
-                ));
+                log::error!("Insufficient balance for stake: {}", format_ether(stake));
                 return Err(ProviderError::InsufficientBalance);
             }
             if !self.prompt_user_confirmation(&format!(
                 "Do you want to approve staking {}?",
                 format_ether(stake)
             )) {
-                Console::info("Operation cancelled by user", "Staking approval declined");
+                log::info!("Operation cancelled by user: Staking approval declined");
                 return Err(ProviderError::UserCancelled);
             }
 
-            Console::progress("Approving for Stake transaction");
+            log::info!("Approving for Stake transaction");
             self.contracts
                 .ai_token
                 .approve(stake)
                 .await
                 .map_err(|_| ProviderError::Other)?;
-            Console::progress("Registering Provider");
+            log::info!("Registering Provider");
             let Ok(register_tx) = self.contracts.prime_network.register_provider(stake).await
             else {
                 return Err(ProviderError::Other);
             };
-            Console::info("Registration tx", &format!("{register_tx:?}"));
+            log::info!("Registration tx: {}", &format!("{register_tx:?}"));
         }
 
         // Get provider details again  - cleanup later
-        Console::progress("Getting provider details");
+        log::info!("Getting provider details");
         let _ = self
             .contracts
             .compute_registry
@@ -270,32 +259,29 @@ impl ProviderOperations {
         let provider_exists = self.check_provider_exists().await?;
 
         if !provider_exists {
-            Console::info("Balance", &format_ether(balance));
-            Console::info(
-                "ETH Balance",
+            log::info!("Balance: {}", &format_ether(balance));
+            log::info!(
+                "ETH Balance: {}",
                 &format!("{} ETH", format_ether(U256::from(eth_balance))),
             );
             if balance < stake {
-                Console::user_error(&format!(
-                    "Insufficient balance for stake: {}",
-                    format_ether(stake)
-                ));
+                log::error!("Insufficient balance for stake: {}", format_ether(stake));
                 return Err(ProviderError::InsufficientBalance);
             }
             if !self.prompt_user_confirmation(&format!(
                 "Do you want to approve staking {}?",
                 format_ether(stake)
             )) {
-                Console::info("Operation cancelled by user", "Staking approval declined");
+                log::info!("Operation cancelled by user: Staking approval declined");
                 return Err(ProviderError::UserCancelled);
             }
 
-            Console::progress("Approving Stake transaction");
+            log::info!("Approving Stake transaction");
             self.contracts.ai_token.approve(stake).await.map_err(|e| {
                 error!("Failed to approve stake: {e}");
                 ProviderError::Other
             })?;
-            Console::progress("Registering Provider");
+            log::info!("Registering Provider");
             let register_tx = match self.contracts.prime_network.register_provider(stake).await {
                 Ok(tx) => tx,
                 Err(e) => {
@@ -303,7 +289,7 @@ impl ProviderOperations {
                     return Err(ProviderError::Other);
                 }
             };
-            Console::info("Registration tx", &format!("{register_tx:?}"));
+            log::info!("Registration tx: {register_tx:?}");
         }
 
         let provider = self
@@ -315,23 +301,23 @@ impl ProviderOperations {
 
         let provider_exists = provider.provider_address != Address::default();
         if !provider_exists {
-            Console::user_error(
-                "Provider could not be registered. Please ensure your balance is high enough.",
+            log::error!(
+                "Provider could not be registered. Please ensure your balance is high enough."
             );
             return Err(ProviderError::Other);
         }
 
-        Console::success("Provider registered");
+        log::info!("Provider registered");
         if !provider.is_whitelisted {
-            Console::user_error("Provider is not whitelisted yet.");
+            log::error!("Provider is not whitelisted yet.");
             return Err(ProviderError::NotWhitelisted);
         }
 
         Ok(())
     }
 
-    pub(crate) async fn increase_stake(&self, additional_stake: U256) -> Result<(), ProviderError> {
-        Console::title("💰 Increasing Provider Stake");
+    pub async fn increase_stake(&self, additional_stake: U256) -> Result<(), ProviderError> {
+        log::info!("💰 Increasing Provider Stake");
 
         let address = self.wallet.wallet.default_signer().address();
         let balance: U256 = self
@@ -341,11 +327,14 @@ impl ProviderOperations {
             .await
             .map_err(|_| ProviderError::Other)?;
 
-        Console::info("Current Balance", &format_ether(balance));
-        Console::info("Additional stake amount", &format_ether(additional_stake));
+        log::info!("Current Balance: {}", &format_ether(balance));
+        log::info!(
+            "Additional stake amount: {}",
+            &format_ether(additional_stake)
+        );
 
         if balance < additional_stake {
-            Console::user_error("Insufficient balance for stake increase");
+            log::error!("Insufficient balance for stake increase");
             return Err(ProviderError::Other);
         }
 
@@ -353,20 +342,20 @@ impl ProviderOperations {
             "Do you want to approve staking {} additional funds?",
             format_ether(additional_stake)
         )) {
-            Console::info("Operation cancelled by user", "Staking approval declined");
+            log::info!("Operation cancelled by user: Staking approval declined");
             return Err(ProviderError::UserCancelled);
         }
 
-        Console::progress("Approving additional stake");
+        log::info!("Approving additional stake");
         let approve_tx = self
             .contracts
             .ai_token
             .approve(additional_stake)
             .await
             .map_err(|_| ProviderError::Other)?;
-        Console::info("Transaction approved", &format!("{approve_tx:?}"));
+        log::info!("Transaction approved: {}", &format!("{approve_tx:?}"));
 
-        Console::progress("Increasing stake");
+        log::info!("Increasing stake");
         let stake_tx = match self.contracts.prime_network.stake(additional_stake).await {
             Ok(tx) => tx,
             Err(e) => {
@@ -374,17 +363,15 @@ impl ProviderOperations {
                 return Err(ProviderError::Other);
             }
         };
-        Console::info(
-            "Stake increase transaction completed: ",
-            &format!("{stake_tx:?}"),
+        log::info!(
+            "Stake increase transaction completed: {}",
+            &format!("{stake_tx:?}")
         );
 
-        Console::success("Provider stake increased successfully");
         Ok(())
     }
 
-    pub(crate) async fn reclaim_stake(&self, amount: U256) -> Result<(), ProviderError> {
-        Console::progress("Reclaiming stake");
+    pub async fn reclaim_stake(&self, amount: U256) -> Result<(), ProviderError> {
         let reclaim_tx = match self.contracts.prime_network.reclaim_stake(amount).await {
             Ok(tx) => tx,
             Err(e) => {
@@ -392,17 +379,16 @@ impl ProviderOperations {
                 return Err(ProviderError::Other);
             }
         };
-        Console::info(
-            "Stake reclaim transaction completed: ",
-            &format!("{reclaim_tx:?}"),
+        log::info!(
+            "Stake reclaim transaction completed: {}",
+            &format!("{reclaim_tx:?}")
         );
-        Console::success("Provider stake reclaimed successfully");
         Ok(())
     }
 }
 
 #[derive(Debug)]
-pub(crate) enum ProviderError {
+pub enum ProviderError {
     NotWhitelisted,
     UserCancelled,
     Other,

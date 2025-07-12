@@ -36,13 +36,13 @@ async fn main() -> Result<()> {
         .unwrap();
 
     let min_stake_amount = U256::from(args.min_stake_amount) * Unit::ETHER.wei();
-    println!("Min stake amount: {}", min_stake_amount);
+    println!("Min stake amount: {min_stake_amount}");
 
     let tx = contracts
         .prime_network
         .set_stake_minimum(min_stake_amount)
         .await;
-    println!("Transaction: {:?}", tx);
+    println!("Transaction: {tx:?}");
 
     Ok(())
 }

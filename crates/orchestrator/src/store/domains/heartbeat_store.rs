@@ -80,7 +80,7 @@ impl HeartbeatStore {
             .get_multiplexed_async_connection()
             .await
             .map_err(|_| anyhow!("Failed to get connection"))?;
-        let key = format!("{}:{}", ORCHESTRATOR_UNHEALTHY_COUNTER_KEY, address);
+        let key = format!("{ORCHESTRATOR_UNHEALTHY_COUNTER_KEY}:{address}");
         con.set(key, counter.to_string())
             .await
             .map_err(|_| anyhow!("Failed to set value"))

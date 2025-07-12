@@ -55,9 +55,6 @@ async fn main() -> Result<()> {
         .await
         .unwrap();
 
-    println!(
-        "Node Active: {}, Validated: {}, In Pool: {}",
-        active, validated, is_node_in_pool
-    );
+    println!("Node Active: {active}, Validated: {validated}, In Pool: {is_node_in_pool}");
     Ok(())
 }

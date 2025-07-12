@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
         "Submitted work for node {} in pool {}",
         args.node, args.pool_id
     );
-    println!("Transaction hash: {:?}", tx);
+    println!("Transaction hash: {tx:?}");
 
     Ok(())
 }
