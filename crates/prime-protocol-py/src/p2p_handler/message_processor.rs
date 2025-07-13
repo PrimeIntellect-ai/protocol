@@ -8,7 +8,18 @@ use tokio::sync::{
     mpsc::{Receiver, Sender},
     Mutex, RwLock,
 };
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+
+/// Configuration for creating a MessageProcessor
+pub struct MessageProcessorConfig {
+    pub auth_manager: Arc<AuthenticationManager>,
+    pub message_queue_rx: Arc<Mutex<Receiver<Message>>>,
+    pub user_message_tx: Sender<Message>,
+    pub outbound_tx: Arc<Mutex<Sender<Message>>>,
+    pub authenticated_peers: Arc<RwLock<HashMap<String, String>>>,
+    pub cancellation_token: CancellationToken,
+}
 
 /// Handles processing of incoming P2P messages
 pub struct MessageProcessor {
@@ -37,6 +48,24 @@ impl MessageProcessor {
             authenticated_peers,
             cancellation_token,
         }
+    }
+
+    /// Create a MessageProcessor from a config struct
+    pub fn from_config(config: MessageProcessorConfig) -> Self {
+        Self::new(
+            config.auth_manager,
+            config.message_queue_rx,
+            config.user_message_tx,
+            config.outbound_tx,
+            config.authenticated_peers,
+            config.cancellation_token,
+        )
+    }
+
+    /// Start the message processor as a background task
+    /// Returns a JoinHandle that can be used to await or abort the task
+    pub fn spawn(self) -> JoinHandle<()> {
+        tokio::task::spawn(self.run())
     }
 
     /// Run the message processing loop

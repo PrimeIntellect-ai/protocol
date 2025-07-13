@@ -13,7 +13,10 @@ use tokio_util::sync::CancellationToken;
 use crate::constants::{MESSAGE_QUEUE_CHANNEL_SIZE, P2P_CHANNEL_SIZE};
 
 pub(crate) mod auth;
+pub(crate) mod common;
 pub(crate) mod message_processor;
+
+pub use common::send_message_with_auth;
 
 // Type alias for the complex return type of Service::new
 type ServiceNewResult = Result<(

@@ -1,9 +1,9 @@
 use crate::constants::{DEFAULT_FUNDING_RETRY_COUNT, MESSAGE_QUEUE_TIMEOUT, P2P_SHUTDOWN_TIMEOUT};
 use crate::error::{PrimeProtocolError, Result};
 use crate::p2p_handler::auth::AuthenticationManager;
-use crate::p2p_handler::message_processor::MessageProcessor;
+use crate::p2p_handler::message_processor::{MessageProcessor, MessageProcessorConfig};
 use crate::worker::blockchain::{BlockchainConfig, BlockchainService};
-use crate::worker::p2p_handler::{Message, MessageType, Service as P2PService};
+use crate::worker::p2p_handler::{Message, Service as P2PService};
 use p2p::{Keypair, PeerId};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -166,8 +166,6 @@ impl WorkerClientCore {
 
     /// Send a message to a peer
     pub async fn send_message(&self, message: Message) -> Result<()> {
-        log::debug!("Sending message to peer: {}", message.peer_id);
-
         let auth_manager = self.auth_manager.as_ref().ok_or_else(|| {
             PrimeProtocolError::InvalidConfig("Authentication manager not initialized".to_string())
         })?;
@@ -176,66 +174,7 @@ impl WorkerClientCore {
             PrimeProtocolError::InvalidConfig("P2P service not initialized".to_string())
         })?;
 
-        // Check if we're already authenticated with this peer
-        if auth_manager.is_authenticated(&message.peer_id).await {
-            log::debug!(
-                "Already authenticated with peer {}, sending message directly",
-                message.peer_id
-            );
-            return tx.lock().await.send(message).await.map_err(|e| {
-                PrimeProtocolError::InvalidConfig(format!("Failed to send message: {}", e))
-            });
-        }
-
-        // Not authenticated yet, check if we have ongoing authentication
-        log::debug!("Not authenticated with peer {}", message.peer_id);
-
-        // Check if there's already an ongoing auth request
-        if let Some(role) = auth_manager.get_auth_role(&message.peer_id).await {
-            match role.as_str() {
-                "initiator" => {
-                    return Err(PrimeProtocolError::InvalidConfig(format!(
-                        "Already initiated authentication with peer {}",
-                        message.peer_id
-                    )));
-                }
-                "responder" => {
-                    // We're responding to their auth, queue the message
-                    log::debug!(
-                        "Queuing message for peer {} (we're responding to their auth)",
-                        message.peer_id
-                    );
-                    return auth_manager
-                        .queue_message_as_responder(message.peer_id.clone(), message)
-                        .await;
-                }
-                _ => {}
-            }
-        }
-
-        // Extract fields we need before moving the message
-        let peer_id = message.peer_id.clone();
-        let multiaddrs = message.multiaddrs.clone();
-
-        // Start authentication (takes ownership of message)
-        let auth_challenge = auth_manager
-            .start_authentication(peer_id.clone(), message)
-            .await?;
-
-        // Send authentication initiation
-        let auth_message = Message {
-            message_type: MessageType::AuthenticationInitiation {
-                challenge: auth_challenge,
-            },
-            peer_id,
-            multiaddrs,
-            sender_address: Some(auth_manager.wallet_address()),
-            response_tx: None,
-        };
-
-        tx.lock().await.send(auth_message).await.map_err(|e| {
-            PrimeProtocolError::InvalidConfig(format!("Failed to send auth message: {}", e))
-        })
+        crate::p2p_handler::send_message_with_auth(message, auth_manager, tx).await
     }
 
     // Private helper methods
@@ -310,6 +249,19 @@ impl WorkerClientCore {
     }
 
     async fn start_message_processor(&mut self) -> Result<()> {
+        // Build the message processor configuration
+        let config = self.build_message_processor_config()?;
+
+        // Create and spawn the message processor
+        let message_processor = MessageProcessor::from_config(config);
+        self.message_processor_handle = Some(message_processor.spawn());
+
+        Ok(())
+    }
+
+    /// Build configuration for the message processor
+    /// This method is public to allow reuse in other crates
+    pub fn build_message_processor_config(&self) -> Result<MessageProcessorConfig> {
         let message_queue_rx = self
             .p2p_state
             .message_queue_rx
@@ -359,17 +311,14 @@ impl WorkerClientCore {
             })?
             .clone();
 
-        let message_processor = MessageProcessor::new(
+        Ok(MessageProcessorConfig {
             auth_manager,
             message_queue_rx,
             user_message_tx,
             outbound_tx,
             authenticated_peers,
-            self.cancellation_token.clone(),
-        );
-
-        self.message_processor_handle = Some(tokio::task::spawn(message_processor.run()));
-        Ok(())
+            cancellation_token: self.cancellation_token.clone(),
+        })
     }
 
     /// Get the provider's Ethereum address
