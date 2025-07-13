@@ -36,7 +36,6 @@ mod worker_integration_tests {
         // Verify peer ID was assigned
         let peer_id = worker.get_peer_id();
         assert!(peer_id.is_some());
-        println!("Worker started with peer ID: {:?}", peer_id);
 
         // Test message sending to self
         let test_message = Message {
@@ -111,8 +110,6 @@ mod worker_integration_tests {
         let peer_id1 = worker1.get_peer_id().unwrap();
         let peer_id2 = worker2.get_peer_id().unwrap();
 
-        println!("Worker1 peer ID: {}", peer_id1);
-        println!("Worker2 peer ID: {}", peer_id2);
 
         // Worker1 sends message to Worker2
         let message = Message {

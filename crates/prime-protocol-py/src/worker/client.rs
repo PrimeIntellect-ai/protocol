@@ -374,6 +374,67 @@ impl WorkerClientCore {
         Ok(())
     }
 
+    /// Get the provider's Ethereum address
+    pub fn get_provider_address(&self) -> Result<String> {
+        let blockchain_service = self.blockchain_service.as_ref().ok_or_else(|| {
+            PrimeProtocolError::InvalidConfig("Blockchain service not initialized".to_string())
+        })?;
+        let provider_wallet = blockchain_service.provider_wallet().ok_or_else(|| {
+            PrimeProtocolError::InvalidConfig("Provider wallet not initialized".to_string())
+        })?;
+        Ok(provider_wallet
+            .wallet
+            .default_signer()
+            .address()
+            .to_string())
+    }
+
+    // todo: move to blockchain service
+    pub fn get_node_address(&self) -> Result<String> {
+        let blockchain_service = self.blockchain_service.as_ref().ok_or_else(|| {
+            PrimeProtocolError::InvalidConfig("Blockchain service not initialized".to_string())
+        })?;
+        let node_wallet = blockchain_service.node_wallet().ok_or_else(|| {
+            PrimeProtocolError::InvalidConfig("Node wallet not initialized".to_string())
+        })?;
+        Ok(node_wallet.wallet.default_signer().address().to_string())
+    }
+
+    /// Get the compute pool ID
+    pub fn get_compute_pool_id(&self) -> u64 {
+        self.config.compute_pool_id
+    }
+
+    /// Get the listening multiaddresses from the P2P service
+    pub async fn get_listening_addresses(&self) -> Vec<String> {
+        // For now, return a simple localhost address with the configured port
+        // In the future, this could query the actual P2P service for its listen addresses
+        vec![format!("/ip4/0.0.0.0/tcp/{}", self.config.p2p_port)]
+    }
+
+    /// Upload node information to discovery services
+    pub async fn upload_to_discovery(
+        &self,
+        node_info: &crate::worker::discovery::SimpleNode,
+        discovery_urls: &[String],
+    ) -> Result<()> {
+        let blockchain_service = self.blockchain_service.as_ref().ok_or_else(|| {
+            PrimeProtocolError::InvalidConfig("Blockchain service not initialized".to_string())
+        })?;
+
+        let node_wallet = blockchain_service.node_wallet().ok_or_else(|| {
+            PrimeProtocolError::InvalidConfig("Provider wallet not initialized".to_string())
+        })?;
+
+        let node_json = node_info.to_json_value();
+
+        shared::discovery::upload_node_to_discovery(discovery_urls, &node_json, node_wallet)
+            .await
+            .map_err(|e| {
+                PrimeProtocolError::RuntimeError(format!("Failed to upload to discovery: {}", e))
+            })
+    }
+
     fn get_private_key_provider(&self) -> Result<String> {
         self.config
             .private_key_provider

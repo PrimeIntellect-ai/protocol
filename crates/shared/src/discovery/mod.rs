@@ -12,11 +12,7 @@ pub async fn fetch_nodes_from_discovery_url(
     route: &str,
     wallet: &Wallet,
 ) -> Result<Vec<DiscoveryNode>> {
-    let address = wallet
-        .wallet
-        .default_signer()
-        .address()
-        .to_string();
+    let address = wallet.wallet.default_signer().address().to_string();
 
     let signature = sign_request_with_nonce(route, wallet, None)
         .await
@@ -113,7 +109,7 @@ pub async fn fetch_pool_nodes_from_discovery(
     compute_pool_id: u32,
     wallet: &Wallet,
 ) -> Result<Vec<DiscoveryNode>> {
-    let route = format!("/api/pool/{}", compute_pool_id);
+    let route = format!("/api/pool/{compute_pool_id}");
     fetch_nodes_from_discovery_urls(discovery_urls, &route, wallet).await
 }
 
@@ -123,5 +119,104 @@ pub async fn fetch_validator_nodes_from_discovery(
     wallet: &Wallet,
 ) -> Result<Vec<DiscoveryNode>> {
     let route = "/api/validator";
-    fetch_nodes_from_discovery_urls(discovery_urls, &route, wallet).await
-} 
+    fetch_nodes_from_discovery_urls(discovery_urls, route, wallet).await
+}
+
+/// Upload node information to discovery services
+///
+/// This function attempts to upload node information to all provided discovery URLs.
+/// It returns Ok(()) if at least one upload succeeds.
+pub async fn upload_node_to_discovery(
+    discovery_urls: &[String],
+    node_data: &serde_json::Value,
+    wallet: &Wallet,
+) -> Result<()> {
+    let endpoint = "/api/nodes";
+    let mut last_error: Option<String> = None;
+
+    for discovery_url in discovery_urls {
+        match upload_to_single_discovery(discovery_url, endpoint, node_data, wallet).await {
+            Ok(_) => {
+                debug!("Successfully uploaded node info to {discovery_url}");
+                return Ok(());
+            }
+            Err(e) => {
+                error!("Failed to upload to {discovery_url}: {e}");
+                last_error = Some(e.to_string());
+            }
+        }
+    }
+
+    // If we reach here, all discovery services failed
+    if let Some(error) = last_error {
+        Err(anyhow::anyhow!(
+            "Failed to upload to all discovery services. Last error: {}",
+            error
+        ))
+    } else {
+        Err(anyhow::anyhow!(
+            "Failed to upload to all discovery services"
+        ))
+    }
+}
+
+async fn upload_to_single_discovery(
+    base_url: &str,
+    endpoint: &str,
+    node_data: &serde_json::Value,
+    wallet: &Wallet,
+) -> Result<()> {
+
+    let signed_request = sign_request_with_nonce(endpoint, wallet, Some(node_data))
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "x-address",
+        wallet
+            .wallet
+            .default_signer()
+            .address()
+            .to_string()
+            .parse()
+            .context("Failed to parse address header")?,
+    );
+    headers.insert(
+        "x-signature",
+        signed_request
+            .signature
+            .parse()
+            .context("Failed to parse signature header")?,
+    );
+
+    let request_url = format!("{base_url}{endpoint}");
+    let response = reqwest::Client::new()
+        .put(&request_url)
+        .headers(headers)
+        .json(
+            &signed_request
+                .data
+                .expect("Signed request data should always be present for discovery upload"),
+        )
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .context("Failed to send request")?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "No error message".to_string());
+        return Err(anyhow::anyhow!(
+            "Error: Received response with status code {} from {}: {}",
+            status,
+            base_url,
+            error_text
+        ));
+    }
+
+    Ok(())
+}

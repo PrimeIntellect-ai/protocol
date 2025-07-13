@@ -8315,6 +8315,7 @@ dependencies = [
  "rand 0.9.1",
  "redis",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "subtle",

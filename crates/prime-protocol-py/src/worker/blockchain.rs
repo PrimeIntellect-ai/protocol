@@ -44,6 +44,11 @@ impl BlockchainService {
         self.node_wallet.as_ref()
     }
 
+    /// Get the provider wallet
+    pub fn provider_wallet(&self) -> Option<&Wallet> {
+        self.provider_wallet.as_ref()
+    }
+
     /// Initialize blockchain components and ensure the node is properly registered
     pub async fn initialize(&mut self) -> Result<()> {
         let (provider_wallet, node_wallet, contracts) = self.create_wallets_and_contracts().await?;

@@ -4,6 +4,7 @@ mod auth;
 mod blockchain;
 mod client;
 mod constants;
+mod discovery;
 mod message_processor;
 mod p2p;
 
@@ -101,6 +102,47 @@ impl WorkerClient {
     pub fn get_own_peer_id(&self) -> PyResult<Option<String>> {
         self.ensure_runtime()?;
         Ok(self.inner.get_peer_id().map(|id| id.to_string()))
+    }
+
+    /// Upload node information to discovery services
+    ///
+    /// Args:
+    ///     ip_address: External IP address of the node
+    ///     discovery_urls: List of discovery service URLs (defaults to ["http://localhost:8089"])
+    pub fn upload_to_discovery(
+        &self,
+        ip_address: String,
+        discovery_urls: Option<Vec<String>>,
+        py: Python,
+    ) -> PyResult<()> {
+        let rt = self.ensure_runtime()?;
+
+        // Get the peer ID and multiaddresses from the P2P service
+        let peer_id = self
+            .inner
+            .get_peer_id()
+            .ok_or_else(|| to_py_err("P2P service not started. Cannot get peer ID"))?
+            .to_string();
+
+        let multi_addresses =
+            py.allow_threads(|| rt.block_on(self.inner.get_listening_addresses()));
+        // Create simple node info (port 0 indicates dynamic port allocation)
+        let node_info = discovery::SimpleNode::new(
+            ip_address,
+            0, // Port 0 for dynamic allocation
+            self.inner.get_provider_address().map_err(to_py_err)?,
+            self.inner.get_node_address().map_err(to_py_err)?,
+            self.inner.get_compute_pool_id() as u32,
+            peer_id,
+            multi_addresses,
+        );
+
+        // Use default discovery URLs if none provided
+        let urls = discovery_urls.unwrap_or_else(|| vec!["http://localhost:8089".to_string()]);
+
+        // Upload to discovery
+        py.allow_threads(|| rt.block_on(self.inner.upload_to_discovery(&node_info, &urls)))
+            .map_err(to_py_err)
     }
 
     /// Stop the worker client and clean up resources

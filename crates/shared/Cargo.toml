@@ -44,3 +44,4 @@ subtle = "2.6.1"
 utoipa = { version = "5.3.0", features = ["actix_extras", "chrono", "uuid"] }
 futures = { workspace = true }
 tokio-util = { workspace = true }
+reqwest = { workspace = true }

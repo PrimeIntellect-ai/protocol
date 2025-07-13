@@ -102,7 +102,7 @@ up:
 bootstrap:
 	@echo "Starting Docker services and deploying contracts..."
 	@# Start Docker services
-	@docker compose up -d reth redis --wait --wait-timeout 180
+	@docker compose up -d reth redis discovery --wait --wait-timeout 180
 	@# Deploy contracts
 	@cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd ..
 	@# Run setup

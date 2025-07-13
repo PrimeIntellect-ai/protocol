@@ -98,6 +98,8 @@ def main():
         logging.info("Starting client... (Press Ctrl+C to interrupt)")
         client.start()
 
+        client.upload_to_discovery("127.0.0.1", None)
+
         my_peer_id = client.get_own_peer_id()
         logging.info(f"My Peer ID: {my_peer_id}")
 
