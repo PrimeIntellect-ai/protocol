@@ -24,6 +24,10 @@ use prime_core::invite::{
 };
 use std::str::FromStr;
 
+// Add imports for compute pool contract functionality
+use shared::web3::contracts::core::builder::{ContractBuilder, Contracts};
+use shared::web3::wallet::WalletProvider;
+
 /// Prime Protocol Orchestrator Client - for managing and distributing tasks
 #[pyclass]
 pub struct OrchestratorClient {
@@ -38,6 +42,8 @@ pub struct OrchestratorClient {
     peer_id: Option<PeerId>,
     // Discovery service URLs
     discovery_urls: Vec<String>,
+    // Contracts
+    contracts: Option<Arc<Contracts<WalletProvider>>>,
 }
 
 #[pymethods]
@@ -79,12 +85,50 @@ impl OrchestratorClient {
             message_processor_handle: None,
             peer_id: None,
             discovery_urls,
+            contracts: None,
         })
     }
 
     /// Initialize the orchestrator client with optional P2P support
     #[pyo3(signature = (p2p_port=None))]
     pub fn start(&mut self, py: Python, p2p_port: Option<u16>) -> PyResult<()> {
+        // Initialize contracts if not already done
+        if self.contracts.is_none() {
+            let wallet = self.wallet.as_ref().ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    "Wallet not initialized. Provide private_key when creating client.",
+                )
+            })?;
+
+            let wallet_provider = wallet.provider();
+
+            // Get runtime reference and use it before mutating self
+            let rt = self.runtime.as_ref().ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Runtime not initialized")
+            })?;
+
+            let contracts = py.allow_threads(|| {
+                rt.block_on(async {
+                    // Build all contracts (required due to known bug)
+                    ContractBuilder::new(wallet_provider)
+                        .with_compute_pool()
+                        .with_compute_registry()
+                        .with_ai_token()
+                        .with_prime_network()
+                        .with_stake_manager()
+                        .build()
+                        .map_err(|e| {
+                            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                "Failed to build contracts: {}",
+                                e
+                            ))
+                        })
+                })
+            })?;
+
+            self.contracts = Some(Arc::new(contracts));
+        }
+
         let rt = self.get_or_create_runtime()?;
 
         if let Some(port) = p2p_port {
@@ -359,6 +403,235 @@ impl OrchestratorClient {
                 println!("invite sent");
 
                 Ok(())
+            })
+        })
+    }
+
+    /// Eject a node from a compute pool
+    ///
+    /// This method removes a node from the specified compute pool. Only the pool's
+    /// compute manager can eject nodes from their pool.
+    ///
+    /// Args:
+    ///     pool_id: The ID of the compute pool
+    ///     node_address: The address of the node to eject
+    ///     
+    /// Returns:
+    ///     The transaction hash as a hex string
+    pub fn eject_node(&self, py: Python, pool_id: u32, node_address: String) -> PyResult<String> {
+        let rt = self.get_or_create_runtime()?;
+
+        let contracts = self.contracts.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Contracts not initialized. Call start() first.",
+            )
+        })?;
+
+        // Parse node address
+        let node_addr = Address::from_str(&node_address).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid node address: {}", e))
+        })?;
+
+        let contracts_clone = contracts.clone();
+
+        py.allow_threads(|| {
+            rt.block_on(async {
+                // Call eject_node on the contract
+                let tx_hash = contracts_clone
+                    .compute_pool
+                    .eject_node(pool_id, node_addr)
+                    .await
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to eject node: {}",
+                            e
+                        ))
+                    })?;
+
+                // Convert transaction hash to hex string
+                Ok(format!("0x{}", tx_hash))
+            })
+        })
+    }
+
+    /// Blacklist a node from a compute pool
+    ///
+    /// This method blacklists a node from the specified compute pool, preventing it from
+    /// rejoining. Only the pool's compute manager can blacklist nodes in their pool.
+    ///
+    /// Args:
+    ///     pool_id: The ID of the compute pool
+    ///     node_address: The address of the node to blacklist
+    ///     
+    /// Returns:
+    ///     The transaction hash as a hex string
+    pub fn blacklist_node(
+        &self,
+        py: Python,
+        pool_id: u32,
+        node_address: String,
+    ) -> PyResult<String> {
+        let rt = self.get_or_create_runtime()?;
+
+        let contracts = self.contracts.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Contracts not initialized. Call start() first.",
+            )
+        })?;
+
+        // Parse node address
+        let node_addr = Address::from_str(&node_address).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid node address: {}", e))
+        })?;
+
+        let contracts_clone = contracts.clone();
+
+        py.allow_threads(|| {
+            rt.block_on(async {
+                // Call blacklist_node on the contract
+                let tx_hash = contracts_clone
+                    .compute_pool
+                    .blacklist_node(pool_id, node_addr)
+                    .await
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to blacklist node: {}",
+                            e
+                        ))
+                    })?;
+
+                // Convert transaction hash to hex string
+                Ok(format!("0x{}", tx_hash))
+            })
+        })
+    }
+
+    /// Check if a node is blacklisted from a compute pool
+    ///
+    /// Args:
+    ///     pool_id: The ID of the compute pool
+    ///     node_address: The address of the node to check
+    ///     
+    /// Returns:
+    ///     True if the node is blacklisted, False otherwise
+    pub fn is_node_blacklisted(
+        &self,
+        py: Python,
+        pool_id: u32,
+        node_address: String,
+    ) -> PyResult<bool> {
+        let rt = self.get_or_create_runtime()?;
+
+        let contracts = self.contracts.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Contracts not initialized. Call start() first.",
+            )
+        })?;
+
+        // Parse node address
+        let node_addr = Address::from_str(&node_address).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid node address: {}", e))
+        })?;
+
+        let contracts_clone = contracts.clone();
+
+        py.allow_threads(|| {
+            rt.block_on(async {
+                // Check if node is blacklisted
+                contracts_clone
+                    .compute_pool
+                    .is_node_blacklisted(pool_id, node_addr)
+                    .await
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to check blacklist status: {}",
+                            e
+                        ))
+                    })
+            })
+        })
+    }
+
+    /// Get all blacklisted nodes for a compute pool
+    ///
+    /// Args:
+    ///     pool_id: The ID of the compute pool
+    ///     
+    /// Returns:
+    ///     List of blacklisted node addresses
+    pub fn get_blacklisted_nodes(&self, py: Python, pool_id: u32) -> PyResult<Vec<String>> {
+        let rt = self.get_or_create_runtime()?;
+
+        let contracts = self.contracts.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Contracts not initialized. Call start() first.",
+            )
+        })?;
+
+        let contracts_clone = contracts.clone();
+
+        py.allow_threads(|| {
+            rt.block_on(async {
+                // Get blacklisted nodes
+                let nodes = contracts_clone
+                    .compute_pool
+                    .get_blacklisted_nodes(pool_id)
+                    .await
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to get blacklisted nodes: {}",
+                            e
+                        ))
+                    })?;
+
+                // Convert addresses to strings
+                Ok(nodes.iter().map(|addr| addr.to_string()).collect())
+            })
+        })
+    }
+
+    /// Check if a node is in a compute pool
+    ///
+    /// Args:
+    ///     pool_id: The ID of the compute pool
+    ///     node_address: The address of the node to check
+    ///     
+    /// Returns:
+    ///     True if the node is in the pool, False otherwise
+    pub fn is_node_in_pool(
+        &self,
+        py: Python,
+        pool_id: u32,
+        node_address: String,
+    ) -> PyResult<bool> {
+        let rt = self.get_or_create_runtime()?;
+
+        let contracts = self.contracts.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Contracts not initialized. Call start() first.",
+            )
+        })?;
+
+        // Parse node address
+        let node_addr = Address::from_str(&node_address).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid node address: {}", e))
+        })?;
+
+        let contracts_clone = contracts.clone();
+
+        py.allow_threads(|| {
+            rt.block_on(async {
+                // Check if node is in pool
+                contracts_clone
+                    .compute_pool
+                    .is_node_in_pool(pool_id, node_addr)
+                    .await
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to check if node is in pool: {}",
+                            e
+                        ))
+                    })
             })
         })
     }

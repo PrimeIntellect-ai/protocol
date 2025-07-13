@@ -6,6 +6,7 @@ Example demonstrating how to list nodes for a specific pool using the Orchestrat
 import os
 import signal
 import sys
+from time import sleep
 from primeprotocol import OrchestratorClient
 
 def signal_handler(sig, frame):
@@ -31,6 +32,8 @@ def main():
     try:
         # Initialize the orchestrator (without P2P for this example)
         orchestrator.start(p2p_port=8180)
+        # todo: temp fix for establishing p2p connections
+        sleep(5)
         
         # List nodes for a specific pool (example pool ID: 0)
         pool_id = 0
@@ -63,6 +66,17 @@ def main():
                     orchestrator_url=None,  
                     expiration_seconds=1000  
                 )
+            else:
+                try:
+                    # todo: we need an actual ack
+                    orchestrator.send_message(
+                        peer_id=node.worker_p2p_id,
+                        multiaddrs=node.worker_p2p_addresses,
+                        data=b"Hello, world!",
+                    )
+                    print(f"Message sent to node {node.id}")
+                except Exception as e:
+                    print(f"Error sending message to node {node.id}: {e}")
         
         print("\nPress Ctrl+C to exit...")
         
