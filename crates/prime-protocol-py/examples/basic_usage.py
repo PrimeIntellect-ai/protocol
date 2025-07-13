@@ -74,7 +74,12 @@ def main():
     private_key_node = os.getenv("PRIVATE_KEY_NODE", None)
 
     logging.info(f"Connecting to: {rpc_url}")
-    client = WorkerClient(pool_id, rpc_url, private_key_provider, private_key_node)
+
+    peer_id = os.getenv("PEER_ID", "12D3KooWELi4p1oR3QBSYiq1rvPpyjbkiQVhQJqCobBBUS7C6JrX")
+    port = int(os.getenv("PORT", 8003))
+    peer_port = int(os.getenv("PEER_PORT", port-1))
+    send_message_to_peer = os.getenv("SEND_MESSAGE_TO_PEER", "True").lower() == "true"
+    client = WorkerClient(pool_id, rpc_url, private_key_provider, private_key_node, port)
     
     def signal_handler(sig, frame):
         logging.info("Received interrupt signal, shutting down gracefully...")
@@ -92,13 +97,37 @@ def main():
     try:
         logging.info("Starting client... (Press Ctrl+C to interrupt)")
         client.start()
+
+        my_peer_id = client.get_own_peer_id()
+        logging.info(f"My Peer ID: {my_peer_id}")
+
+        time.sleep(5)
+        peer_multi_addr = f"/ip4/127.0.0.1/tcp/{peer_port}"
+
+        if send_message_to_peer:
+            print(f"Sending message to peer: {peer_id} on {peer_multi_addr}")
+            client.send_message(peer_id, b"Hello, world!", [peer_multi_addr])
+
         logging.info("Setup completed. Starting message polling loop...")
         print("Worker client started. Polling for messages. Press Ctrl+C to stop.")
         
         # Message polling loop
         while True:
             try:
-                check_for_messages(client)
+                message = client.get_next_message()
+                if message:
+                    logging.info(f"Received full message: {message}")
+                    logging.info(f"Received message from peer {message['peer_id']}")
+                    if message.get('sender_address'):
+                        logging.info(f"Sender Ethereum address: {message['sender_address']}")
+                    
+                    msg_data = message.get('message', {})
+                    if msg_data.get('type') == 'general':
+                        data = bytes(msg_data.get('data', []))
+                        logging.info(f"Message data: {data}")
+                    else:
+                        logging.info(f"Message type: {msg_data.get('type')}")
+                        
                 time.sleep(0.1)  # Small delay to prevent busy waiting
             except KeyboardInterrupt:
                 # Handle Ctrl+C during message polling

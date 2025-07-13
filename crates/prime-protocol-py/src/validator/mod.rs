@@ -1,8 +1,5 @@
 use pyo3::prelude::*;
 
-pub(crate) mod message_queue;
-use self::message_queue::MessageQueue;
-
 /// Node details for validator operations
 #[pyclass]
 #[derive(Clone)]
@@ -22,7 +19,6 @@ impl NodeDetails {
 /// Prime Protocol Validator Client - for validating task results
 #[pyclass]
 pub(crate) struct ValidatorClient {
-    message_queue: MessageQueue,
     runtime: Option<tokio::runtime::Runtime>,
 }
 
@@ -35,14 +31,11 @@ impl ValidatorClient {
         let _ = rpc_url;
         let _ = private_key;
 
-        Ok(Self {
-            message_queue: MessageQueue::new(),
-            runtime: None,
-        })
+        Ok(Self { runtime: None })
     }
 
     /// Initialize the validator client and start listening for messages
-    pub fn start(&mut self, py: Python) -> PyResult<()> {
+    pub fn start(&mut self, _py: Python) -> PyResult<()> {
         // Create a new runtime for this validator
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -60,17 +53,17 @@ impl ValidatorClient {
         Ok(vec![])
     }
 
-    pub fn fetch_node_details(&self, node_id: String) -> PyResult<Option<NodeDetails>> {
+    pub fn fetch_node_details(&self, _node_id: String) -> PyResult<Option<NodeDetails>> {
         // TODO: Implement validator node details fetching
         Ok(None)
     }
 
-    pub fn mark_node_as_validated(&self, node_id: String) -> PyResult<()> {
+    pub fn mark_node_as_validated(&self, _node_id: String) -> PyResult<()> {
         // TODO: Implement validator node marking as validated
         Ok(())
     }
 
-    pub fn send_request_to_node(&self, node_id: String, request: String) -> PyResult<()> {
+    pub fn send_request_to_node(&self, _node_id: String, _request: String) -> PyResult<()> {
         // TODO: Implement validator node request sending
         Ok(())
     }
@@ -86,23 +79,8 @@ impl ValidatorClient {
         Ok(())
     }
 
-    /// Get the latest validation result from the internal message queue
-    pub fn get_latest_message(&self, py: Python) -> PyResult<Option<PyObject>> {
-        if let Some(rt) = self.runtime.as_ref() {
-            Ok(py.allow_threads(|| rt.block_on(self.message_queue.get_validation_result())))
-        } else {
-            Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Validator not started. Call start() first.".to_string(),
-            ))
-        }
-    }
-
     /// Get the number of pending validation results
-    pub fn get_queue_size(&self, py: Python) -> PyResult<usize> {
-        if let Some(rt) = self.runtime.as_ref() {
-            Ok(py.allow_threads(|| rt.block_on(self.message_queue.get_queue_size())))
-        } else {
-            Ok(0)
-        }
+    pub fn get_queue_size(&self) -> usize {
+        0
     }
 }

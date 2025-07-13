@@ -14,6 +14,7 @@ pyo3 = { version = "0.25.1", features = ["extension-module"] }
 thiserror = "1.0"
 shared = { workspace = true }
 prime-core = { workspace = true }
+p2p = { workspace = true }
 alloy = { workspace = true }
 alloy-provider = { workspace = true }
 tokio = { version = "1.35", features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }
@@ -23,6 +24,11 @@ pyo3-log = "0.12.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 pythonize = "0.25"
+futures = { workspace = true }
+anyhow = { workspace = true }
+tokio-util = { workspace = true }
+rand = { version = "0.8", features = ["std"] }
+hex = "0.4"
 
 [dev-dependencies]
 test-log = "0.2"
