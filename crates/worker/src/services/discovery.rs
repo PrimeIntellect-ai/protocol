@@ -23,12 +23,7 @@ impl DiscoveryService {
     pub(crate) async fn upload_discovery_info(&self, node_config: &Node) -> Result<()> {
         let node_data = serde_json::to_value(node_config)?;
 
-        shared::discovery::upload_node_to_discovery(
-            &self.base_urls,
-            &node_data,
-            &self.wallet,
-        )
-        .await
+        shared::discovery::upload_node_to_discovery(&self.base_urls, &node_data, &self.wallet).await
     }
 }
 

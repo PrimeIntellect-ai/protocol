@@ -1,18 +1,14 @@
 use pyo3::prelude::*;
 
-mod auth;
 mod blockchain;
 mod client;
-mod constants;
 mod discovery;
-mod message_processor;
-mod p2p;
 
+use crate::constants::DEFAULT_P2P_PORT;
+use crate::p2p_handler;
+use crate::p2p_handler::Message;
 pub(crate) use client::WorkerClientCore;
 use tokio_util::sync::CancellationToken;
-
-use crate::worker::p2p::Message;
-use constants::DEFAULT_P2P_PORT;
 
 /// Prime Protocol Worker Client - for compute nodes that execute tasks
 #[pyclass]
@@ -87,7 +83,7 @@ impl WorkerClient {
         let rt = self.ensure_runtime()?;
 
         let message = Message {
-            message_type: p2p::MessageType::General { data },
+            message_type: p2p_handler::MessageType::General { data },
             peer_id,
             multiaddrs,
             sender_address: None, // Will be filled from our wallet automatically
@@ -192,19 +188,19 @@ fn to_py_runtime_err(msg: &str) -> PyErr {
 
 fn message_to_pyobject(message: Message) -> PyObject {
     let message_data = match message.message_type {
-        p2p::MessageType::General { data } => {
+        p2p_handler::MessageType::General { data } => {
             serde_json::json!({
                 "type": "general",
                 "data": data,
             })
         }
-        p2p::MessageType::AuthenticationInitiation { challenge } => {
+        p2p_handler::MessageType::AuthenticationInitiation { challenge } => {
             serde_json::json!({
                 "type": "auth_initiation",
                 "challenge": challenge,
             })
         }
-        p2p::MessageType::AuthenticationResponse {
+        p2p_handler::MessageType::AuthenticationResponse {
             challenge,
             signature,
         } => {
@@ -214,7 +210,7 @@ fn message_to_pyobject(message: Message) -> PyObject {
                 "signature": signature,
             })
         }
-        p2p::MessageType::AuthenticationSolution { signature } => {
+        p2p_handler::MessageType::AuthenticationSolution { signature } => {
             serde_json::json!({
                 "type": "auth_solution",
                 "signature": signature,

@@ -1,6 +1,6 @@
 use crate::error::Result;
-use crate::worker::auth::AuthenticationManager;
-use crate::worker::p2p::{Message, MessageType};
+use crate::p2p_handler::auth::AuthenticationManager;
+use crate::p2p_handler::{Message, MessageType};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -50,7 +50,7 @@ impl MessageProcessor {
                 message_result = async {
                     let mut rx = self.message_queue_rx.lock().await;
                     tokio::time::timeout(
-                        crate::worker::constants::MESSAGE_QUEUE_TIMEOUT,
+                        crate::constants::MESSAGE_QUEUE_TIMEOUT,
                         rx.recv()
                     ).await
                 } => {
@@ -62,6 +62,8 @@ impl MessageProcessor {
                         }
                         Err(_) => continue, // Timeout, continue loop
                     };
+
+                    log::debug!("Received message: {:?}", message);
 
                     if let Err(e) = self.process_message(message).await {
                         log::error!("Failed to process message: {}", e);

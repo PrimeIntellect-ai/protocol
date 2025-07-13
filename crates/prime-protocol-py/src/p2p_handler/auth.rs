@@ -1,5 +1,5 @@
 use crate::error::{PrimeProtocolError, Result};
-use crate::worker::p2p::Message;
+use crate::p2p_handler::Message;
 use alloy::primitives::{Address, Signature};
 use rand::Rng;
 use shared::security::request_signer::sign_message;

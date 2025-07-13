@@ -166,7 +166,6 @@ async fn upload_to_single_discovery(
     node_data: &serde_json::Value,
     wallet: &Wallet,
 ) -> Result<()> {
-
     let signed_request = sign_request_with_nonce(endpoint, wallet, Some(node_data))
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;

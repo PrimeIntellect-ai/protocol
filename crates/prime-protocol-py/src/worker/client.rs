@@ -1,11 +1,9 @@
+use crate::constants::{DEFAULT_FUNDING_RETRY_COUNT, MESSAGE_QUEUE_TIMEOUT, P2P_SHUTDOWN_TIMEOUT};
 use crate::error::{PrimeProtocolError, Result};
-use crate::worker::auth::AuthenticationManager;
+use crate::p2p_handler::auth::AuthenticationManager;
+use crate::p2p_handler::message_processor::MessageProcessor;
 use crate::worker::blockchain::{BlockchainConfig, BlockchainService};
-use crate::worker::constants::{
-    DEFAULT_FUNDING_RETRY_COUNT, MESSAGE_QUEUE_TIMEOUT, P2P_SHUTDOWN_TIMEOUT,
-};
-use crate::worker::message_processor::MessageProcessor;
-use crate::worker::p2p::{Message, MessageType, Service as P2PService};
+use crate::worker::p2p_handler::{Message, MessageType, Service as P2PService};
 use p2p::{Keypair, PeerId};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};

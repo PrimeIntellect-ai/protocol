@@ -8,7 +8,7 @@ use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::{Wallet, WalletProvider};
 use url::Url;
 
-use crate::worker::constants::{BLOCKCHAIN_OPERATION_TIMEOUT, DEFAULT_COMPUTE_UNITS};
+use crate::constants::{BLOCKCHAIN_OPERATION_TIMEOUT, DEFAULT_COMPUTE_UNITS};
 
 /// Configuration for blockchain operations
 pub struct BlockchainConfig {
@@ -109,7 +109,7 @@ impl BlockchainService {
                         self.config.compute_pool_id,
                         pool.status
                     );
-                    tokio::time::sleep(crate::worker::constants::POOL_STATUS_CHECK_INTERVAL).await;
+                    tokio::time::sleep(crate::constants::POOL_STATUS_CHECK_INTERVAL).await;
                 }
                 Err(e) => {
                     return Err(anyhow::anyhow!("Failed to get pool info: {}", e));

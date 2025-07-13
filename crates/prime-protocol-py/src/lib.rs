@@ -3,8 +3,10 @@ use crate::validator::ValidatorClient;
 use crate::worker::WorkerClient;
 use pyo3::prelude::*;
 
+mod constants;
 mod error;
 mod orchestrator;
+mod p2p_handler;
 mod utils;
 mod validator;
 mod worker;
