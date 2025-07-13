@@ -1,12 +1,14 @@
 use crate::p2p_handler::auth::AuthenticationManager;
 use crate::p2p_handler::message_processor::{MessageProcessor, MessageProcessorConfig};
 use crate::p2p_handler::{Message, MessageType, Service as P2PService};
+use alloy::primitives::Address;
 use p2p::{Keypair, PeerId};
 use pyo3::prelude::*;
 use pythonize::pythonize;
 use shared::models::node::DiscoveryNode;
 use shared::security::request_signer::sign_request_with_nonce;
-use shared::web3::wallet::Wallet;
+use shared::web3::contracts::core::builder::{ContractBuilder, Contracts};
+use shared::web3::wallet::{Wallet, WalletProvider};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -94,6 +96,7 @@ pub(crate) struct ValidatorClient {
     user_message_rx: Option<Arc<Mutex<Receiver<Message>>>>,
     message_processor_handle: Option<JoinHandle<()>>,
     peer_id: Option<PeerId>,
+    contracts: Option<Arc<Contracts<WalletProvider>>>,
 }
 
 #[pymethods]
@@ -128,6 +131,7 @@ impl ValidatorClient {
             user_message_rx: None,
             message_processor_handle: None,
             peer_id: None,
+            contracts: None,
         })
     }
 
@@ -188,7 +192,40 @@ impl ValidatorClient {
     /// Initialize the validator client with optional P2P support
     #[pyo3(signature = (p2p_port=None))]
     pub fn start(&mut self, py: Python, p2p_port: Option<u16>) -> PyResult<()> {
-        let rt = self.get_or_create_runtime()?;
+        // Initialize contracts if not already done
+        if self.contracts.is_none() {
+            let wallet = self.wallet.as_ref().ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Wallet not initialized")
+            })?;
+
+            let wallet_provider = wallet.provider();
+
+            // Get runtime reference and use it before mutating self
+            let rt = self.runtime.as_ref().ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Runtime not initialized")
+            })?;
+
+            let contracts = py.allow_threads(|| {
+                rt.block_on(async {
+                    // Build all contracts (required due to known bug)
+                    ContractBuilder::new(wallet_provider)
+                        .with_compute_pool()
+                        .with_compute_registry()
+                        .with_ai_token()
+                        .with_prime_network()
+                        .with_stake_manager()
+                        .build()
+                        .map_err(|e| {
+                            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                "Failed to build contracts: {}",
+                                e
+                            ))
+                        })
+                })
+            })?;
+
+            self.contracts = Some(Arc::new(contracts));
+        }
 
         if let Some(port) = p2p_port {
             // Initialize P2P if port is provided
@@ -201,6 +238,11 @@ impl ValidatorClient {
                 .clone();
 
             let cancellation_token = self.cancellation_token.clone();
+
+            // Get runtime reference for P2P initialization
+            let rt = self.runtime.as_ref().ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Runtime not initialized")
+            })?;
 
             // Create the P2P components
             let (auth_manager, peer_id, outbound_tx, user_message_rx, message_processor_handle) =
@@ -294,6 +336,124 @@ impl ValidatorClient {
             }
             None => Ok(None),
         }
+    }
+
+    /// Validate a node on the Prime Network contract
+    ///
+    /// Args:
+    ///     node_address: The node address to validate
+    ///     provider_address: The provider's address
+    ///
+    /// Returns:
+    ///     Transaction hash as a string if successful
+    pub fn validate_node(
+        &self,
+        py: Python,
+        node_address: String,
+        provider_address: String,
+    ) -> PyResult<String> {
+        let rt = self.get_or_create_runtime()?;
+
+        let contracts = self.contracts.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Contracts not initialized. Call start() first.",
+            )
+        })?;
+
+        let contracts_clone = contracts.clone();
+
+        // Release the GIL while performing async operations
+        py.allow_threads(|| {
+            rt.block_on(async {
+                // Parse addresses
+                let provider_addr =
+                    Address::parse_checksummed(&provider_address, None).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                            "Invalid provider address: {}",
+                            e
+                        ))
+                    })?;
+
+                let node_addr = Address::parse_checksummed(&node_address, None).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Invalid node address: {}",
+                        e
+                    ))
+                })?;
+
+                let tx_hash = contracts_clone
+                    .prime_network
+                    .validate_node(provider_addr, node_addr)
+                    .await
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to validate node: {}",
+                            e
+                        ))
+                    })?;
+
+                Ok(format!("0x{}", hex::encode(tx_hash)))
+            })
+        })
+    }
+
+    /// Validate a node on the Prime Network contract with explicit addresses
+    ///
+    /// Args:
+    ///     provider_address: The provider's address
+    ///     node_address: The node's address  
+    ///
+    /// Returns:
+    ///     Transaction hash as a string if successful
+    pub fn validate_node_with_addresses(
+        &self,
+        py: Python,
+        provider_address: String,
+        node_address: String,
+    ) -> PyResult<String> {
+        let rt = self.get_or_create_runtime()?;
+
+        let contracts = self.contracts.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Contracts not initialized. Call start() first.",
+            )
+        })?;
+
+        let contracts_clone = contracts.clone();
+
+        // Release the GIL while performing async operations
+        py.allow_threads(|| {
+            rt.block_on(async {
+                // Parse addresses
+                let provider_addr =
+                    Address::parse_checksummed(&provider_address, None).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                            "Invalid provider address: {}",
+                            e
+                        ))
+                    })?;
+
+                let node_addr = Address::parse_checksummed(&node_address, None).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Invalid node address: {}",
+                        e
+                    ))
+                })?;
+
+                let tx_hash = contracts_clone
+                    .prime_network
+                    .validate_node(provider_addr, node_addr)
+                    .await
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to validate node: {}",
+                            e
+                        ))
+                    })?;
+
+                Ok(format!("0x{}", hex::encode(tx_hash)))
+            })
+        })
     }
 
     /// Get the validator's peer ID

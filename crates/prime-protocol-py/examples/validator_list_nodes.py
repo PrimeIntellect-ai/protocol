@@ -11,37 +11,6 @@ FORMAT = '%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(messag
 logging.basicConfig(format=FORMAT)
 logging.getLogger().setLevel(logging.INFO)
 
-
-def print_node_summary(nodes: List) -> None:
-    """Print a summary of nodes"""
-    print(f"\nTotal nodes found: {len(nodes)}")
-    
-    if not nodes:
-        print("No non-validated nodes found.")
-        return
-    
-    print("\nNon-validated nodes:")
-    print("-" * 80)
-    
-    for idx, node in enumerate(nodes, 1):
-        print(f"\n{idx}. Node ID: {node.id}")
-        print(f"   Provider Address: {node.provider_address}")
-        print(f"   IP: {node.ip_address}:{node.port}")
-        print(f"   Compute Pool ID: {node.compute_pool_id}")
-        print(f"   Active: {node.is_active}")
-        print(f"   Whitelisted: {node.is_provider_whitelisted}")
-        print(f"   Blacklisted: {node.is_blacklisted}")
-        
-        if node.worker_p2p_id:
-            print(f"   P2P ID: {node.worker_p2p_id}")
-        
-        if node.created_at:
-            print(f"   Created At: {node.created_at}")
-        
-        if node.last_updated:
-            print(f"   Last Updated: {node.last_updated}")
-
-
 def main():
     # Get configuration from environment variables
     rpc_url = os.getenv("RPC_URL", "http://localhost:8545")
@@ -62,19 +31,28 @@ def main():
         validator = ValidatorClient(
             rpc_url=rpc_url,
             private_key=private_key,
-            discovery_urls=discovery_urls
+            discovery_urls=discovery_urls,
         )
+        print("Starting validator client...")
+        validator.start()
+        print("Validator client started")
         
         # List all non-validated nodes
         print("\nFetching non-validated nodes from discovery service...")
         non_validated_nodes = validator.list_non_validated_nodes()
-        
-        # Print summary
-        print_node_summary(non_validated_nodes)
+        for node in non_validated_nodes:
+            print(node.id)
+            if node.is_validated is False:
+                print(f"Validating node {node.id}...")
+                validator.validate_node(node.id, node.provider_address)
+                print(f"Node {node.id} validated")
+            else:
+                print(f"Node {node.id} is already validated")
         
         # You can also get all nodes as dictionaries for more flexibility
         print("\n\nFetching all nodes as dictionaries...")
         all_nodes = validator.list_all_nodes_dict()
+        print(all_nodes)
         
         # Count validated vs non-validated
         validated_count = sum(1 for node in all_nodes if node['is_validated'])
