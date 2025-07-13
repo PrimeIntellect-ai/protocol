@@ -29,6 +29,7 @@ anyhow = { workspace = true }
 tokio-util = { workspace = true }
 rand = { version = "0.8", features = ["std"] }
 hex = "0.4"
+reqwest = { version = "0.11", features = ["json"] }
 
 [dev-dependencies]
 test-log = "0.2"
