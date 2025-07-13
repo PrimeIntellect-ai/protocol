@@ -1,8 +1,10 @@
+use crate::common::NodeDetails;
 use crate::orchestrator::OrchestratorClient;
 use crate::validator::ValidatorClient;
 use crate::worker::WorkerClient;
 use pyo3::prelude::*;
 
+mod common;
 mod constants;
 mod error;
 mod orchestrator;
@@ -17,5 +19,6 @@ fn primeprotocol(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<WorkerClient>()?;
     m.add_class::<OrchestratorClient>()?;
     m.add_class::<ValidatorClient>()?;
+    m.add_class::<NodeDetails>()?;
     Ok(())
 }

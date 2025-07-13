@@ -1,3 +1,4 @@
+use crate::common::NodeDetails;
 use crate::p2p_handler::auth::AuthenticationManager;
 use crate::p2p_handler::message_processor::{MessageProcessor, MessageProcessorConfig};
 use crate::p2p_handler::{Message, MessageType, Service as P2PService};
@@ -12,6 +13,9 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+// Add new imports for discovery functionality
+use shared::discovery::fetch_nodes_from_discovery_urls;
+
 /// Prime Protocol Orchestrator Client - for managing and distributing tasks
 #[pyclass]
 pub struct OrchestratorClient {
@@ -24,13 +28,19 @@ pub struct OrchestratorClient {
     user_message_rx: Option<Arc<Mutex<Receiver<Message>>>>,
     message_processor_handle: Option<JoinHandle<()>>,
     peer_id: Option<PeerId>,
+    // Discovery service URLs
+    discovery_urls: Vec<String>,
 }
 
 #[pymethods]
 impl OrchestratorClient {
     #[new]
-    #[pyo3(signature = (rpc_url, private_key=None))]
-    pub fn new(rpc_url: String, private_key: Option<String>) -> PyResult<Self> {
+    #[pyo3(signature = (rpc_url, private_key=None, discovery_urls=vec!["http://localhost:8089".to_string()]))]
+    pub fn new(
+        rpc_url: String,
+        private_key: Option<String>,
+        discovery_urls: Vec<String>,
+    ) -> PyResult<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -60,6 +70,7 @@ impl OrchestratorClient {
             user_message_rx: None,
             message_processor_handle: None,
             peer_id: None,
+            discovery_urls,
         })
     }
 
@@ -201,14 +212,28 @@ impl OrchestratorClient {
         Ok(())
     }
 
-    pub fn list_validated_nodes(&self) -> PyResult<Vec<String>> {
-        // TODO: Implement orchestrator node listing
-        Ok(vec![])
-    }
+    /// List nodes for a specific compute pool
+    pub fn list_nodes_for_pool(&self, py: Python, pool_id: u32) -> PyResult<Vec<NodeDetails>> {
+        let rt = self.get_or_create_runtime()?;
 
-    pub fn list_nodes_from_chain(&self) -> PyResult<Vec<String>> {
-        // TODO: Implement orchestrator node listing from chain
-        Ok(vec![])
+        let wallet = self.wallet.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Wallet not initialized. Provide private_key when creating client.",
+            )
+        })?;
+
+        let discovery_urls = self.discovery_urls.clone();
+        let route = format!("/api/pool/{}", pool_id);
+
+        let nodes = py.allow_threads(|| {
+            rt.block_on(async {
+                fetch_nodes_from_discovery_urls(&discovery_urls, &route, wallet)
+                    .await
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+            })
+        })?;
+
+        Ok(nodes.into_iter().map(NodeDetails::from).collect())
     }
 }
 
