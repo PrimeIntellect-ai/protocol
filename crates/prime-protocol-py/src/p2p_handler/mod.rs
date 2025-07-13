@@ -41,6 +41,7 @@ pub enum MessageType {
     AuthenticationSolution {
         signature: String,
     },
+    AuthenticationComplete,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -77,7 +78,10 @@ impl Service {
         let (message_queue_tx, message_queue_rx) =
             tokio::sync::mpsc::channel(MESSAGE_QUEUE_CHANNEL_SIZE);
 
-        let protocols = Protocols::new().with_general().with_authentication();
+        let protocols = Protocols::new()
+            .with_general()
+            .with_authentication()
+            .with_invite();
 
         let listen_addr = format!("/ip4/0.0.0.0/tcp/{}", port)
             .parse()
@@ -146,6 +150,14 @@ impl Service {
                     signature: signature.clone(),
                 }),
             ),
+            MessageType::AuthenticationComplete => {
+                // This message type should not be sent as a request
+                // It should be handled via response channels
+                log::error!(
+                    "AuthenticationComplete should be sent via response channel, not as a request"
+                );
+                return Ok(());
+            }
         };
 
         let peer_id = PeerId::from_str(&message.peer_id).context("Failed to parse peer ID")?;
@@ -453,7 +465,29 @@ impl Service {
                     }
                     p2p::AuthenticationResponse::Solution(sol_resp) => {
                         log::debug!("Auth solution response: {:?}", sol_resp);
-                        // This is handled by the authentication flow
+                        // Forward the auth solution response to the message processor
+                        match sol_resp {
+                            p2p::AuthenticationSolutionResponse::Granted => {
+                                // Create a special message to indicate auth is complete
+                                let message = Message {
+                                    message_type: MessageType::AuthenticationComplete,
+                                    peer_id: peer_id.to_string(),
+                                    multiaddrs: vec![],
+                                    sender_address: None,
+                                    response_tx: None,
+                                };
+
+                                if let Err(e) = message_queue_tx.send(message).await {
+                                    log::error!(
+                                        "Failed to forward auth complete to application: {}",
+                                        e
+                                    );
+                                }
+                            }
+                            p2p::AuthenticationSolutionResponse::Rejected => {
+                                log::warn!("Authentication rejected by peer: {}", peer_id);
+                            }
+                        }
                     }
                 }
             }

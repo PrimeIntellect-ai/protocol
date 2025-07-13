@@ -26,6 +26,8 @@ pub struct NodeDetails {
     #[pyo3(get)]
     pub worker_p2p_id: Option<String>,
     #[pyo3(get)]
+    pub worker_p2p_addresses: Option<Vec<String>>,
+    #[pyo3(get)]
     pub last_updated: Option<String>,
     #[pyo3(get)]
     pub created_at: Option<String>,
@@ -43,9 +45,10 @@ impl From<DiscoveryNode> for NodeDetails {
             is_active: node.is_active,
             is_provider_whitelisted: node.is_provider_whitelisted,
             is_blacklisted: node.is_blacklisted,
-            worker_p2p_id: node.node.worker_p2p_id,
             last_updated: node.last_updated.map(|dt| dt.to_rfc3339()),
             created_at: node.created_at.map(|dt| dt.to_rfc3339()),
+            worker_p2p_id: node.node.worker_p2p_id,
+            worker_p2p_addresses: node.node.worker_p2p_addresses,
         }
     }
 }

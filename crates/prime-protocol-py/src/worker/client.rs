@@ -3,7 +3,7 @@ use crate::error::{PrimeProtocolError, Result};
 use crate::p2p_handler::auth::AuthenticationManager;
 use crate::p2p_handler::message_processor::{MessageProcessor, MessageProcessorConfig};
 use crate::worker::blockchain::{BlockchainConfig, BlockchainService};
-use crate::worker::p2p_handler::{Message, Service as P2PService};
+use crate::worker::p2p_handler::{Message, MessageType, Service as P2PService};
 use p2p::{Keypair, PeerId};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -106,29 +106,20 @@ impl WorkerClientCore {
 
     /// Start the worker client asynchronously
     pub async fn start_async(&mut self) -> Result<()> {
-        log::info!("Starting worker client...");
+        log::info!("Starting WorkerClient");
 
-        // Initialize blockchain components
         self.initialize_blockchain().await?;
-
-        // Initialize authentication manager
         self.initialize_auth_manager()?;
-
-        // Start P2P networking
         self.start_p2p_service().await?;
-
-        // Start message processor
         self.start_message_processor().await?;
 
-        log::info!("Worker client started successfully");
+        log::info!("WorkerClient started successfully");
         Ok(())
     }
 
-    /// Stop the worker client and clean up resources
+    /// Stop the worker client asynchronously
     pub async fn stop_async(&mut self) -> Result<()> {
         log::info!("Stopping worker client...");
-
-        // Cancel all background tasks
         self.cancellation_token.cancel();
 
         // Stop message processor
@@ -136,13 +127,12 @@ impl WorkerClientCore {
             handle.abort();
         }
 
-        // Wait for P2P service to shut down
+        // Give P2P service time to shutdown gracefully
+        tokio::time::sleep(P2P_SHUTDOWN_TIMEOUT).await;
+
+        // Stop P2P service
         if let Some(handle) = self.p2p_state.handle.take() {
-            match tokio::time::timeout(P2P_SHUTDOWN_TIMEOUT, handle).await {
-                Ok(Ok(_)) => log::info!("P2P service shut down gracefully"),
-                Ok(Err(e)) => log::error!("P2P service error during shutdown: {:?}", e),
-                Err(_) => log::warn!("P2P service shutdown timed out"),
-            }
+            let _ = tokio::time::timeout(P2P_SHUTDOWN_TIMEOUT, handle).await;
         }
 
         log::info!("Worker client stopped");
@@ -154,14 +144,60 @@ impl WorkerClientCore {
         self.p2p_state.peer_id
     }
 
-    /// Get the next message from the P2P network (only returns general messages)
+    /// Get the next message from the P2P network
     pub async fn get_next_message(&self) -> Option<Message> {
         let rx = self.user_message_rx.as_ref()?;
 
-        tokio::time::timeout(MESSAGE_QUEUE_TIMEOUT, rx.lock().await.recv())
-            .await
-            .ok()
-            .flatten()
+        match tokio::time::timeout(MESSAGE_QUEUE_TIMEOUT, rx.lock().await.recv()).await {
+            Ok(Some(message)) => {
+                // Check if it's an invite and process it automatically
+                if let MessageType::General { ref data } = message.message_type {
+                    if let Ok(invite) = serde_json::from_slice::<p2p::InviteRequest>(data) {
+                        println!("Received invite from peer: {}", message.peer_id);
+                        log::info!("Received invite from peer: {}", message.peer_id);
+
+                        // Check if invite has expired
+                        if let Ok(true) = prime_core::invite::worker::is_invite_expired(&invite) {
+                            log::warn!("Received expired invite from peer: {}", message.peer_id);
+                            return Some(message); // Return it so user can see the expired invite
+                        }
+
+                        // Verify pool ID matches
+                        if invite.pool_id != self.config.compute_pool_id as u32 {
+                            log::warn!(
+                                "Received invite for wrong pool: expected {}, got {}",
+                                self.config.compute_pool_id,
+                                invite.pool_id
+                            );
+                            return Some(message); // Return it so user can see the wrong pool invite
+                        }
+
+                        // Process the invite automatically
+                        if let Some(blockchain_service) = &self.blockchain_service {
+                            match blockchain_service
+                                .join_compute_pool_with_invite(&invite)
+                                .await
+                            {
+                                Ok(()) => {
+                                    log::info!(
+                                        "Successfully processed invite and joined compute pool"
+                                    );
+                                    // Don't return the invite message since we handled it
+                                    return None;
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to process invite: {}", e);
+                                    // Return the message so user knows about the failed invite
+                                }
+                            }
+                        }
+                    }
+                }
+                Some(message)
+            }
+            Ok(None) => None,
+            Err(_) => None, // Timeout
+        }
     }
 
     /// Send a message to a peer
@@ -256,6 +292,7 @@ impl WorkerClientCore {
         let message_processor = MessageProcessor::from_config(config);
         self.message_processor_handle = Some(message_processor.spawn());
 
+        log::info!("Message processor started");
         Ok(())
     }
 

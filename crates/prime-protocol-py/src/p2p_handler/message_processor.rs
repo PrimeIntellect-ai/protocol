@@ -159,6 +159,10 @@ impl MessageProcessor {
                     Ok(())
                 }
             }
+            MessageType::AuthenticationComplete => {
+                // Authentication has been acknowledged by the peer
+                self.handle_auth_complete(peer_id).await
+            }
             MessageType::General { data } => {
                 // Forward general messages to user
                 let msg = Message {
@@ -210,7 +214,7 @@ impl MessageProcessor {
         challenge: String,
         signature: String,
     ) -> Result<()> {
-        let (our_signature, queued_message) = self
+        let our_signature = self
             .auth_manager
             .handle_auth_response(&message.peer_id, &challenge, &signature)
             .await?;
@@ -247,16 +251,6 @@ impl MessageProcessor {
                     e
                 ))
             })?;
-
-        // Send the queued message if any
-        if let Some(msg) = queued_message {
-            self.outbound_tx.lock().await.send(msg).await.map_err(|e| {
-                crate::error::PrimeProtocolError::InvalidConfig(format!(
-                    "Failed to send queued message: {}",
-                    e
-                ))
-            })?;
-        }
 
         Ok(())
     }
@@ -297,5 +291,30 @@ impl MessageProcessor {
                 "Failed to send auth solution response: receiver dropped".to_string(),
             )
         })
+    }
+
+    async fn handle_auth_complete(&self, peer_id: String) -> Result<()> {
+        log::info!("Authentication complete for peer: {}", peer_id);
+
+        // Mark peer as authenticated
+        self.auth_manager.mark_authenticated(peer_id.clone()).await;
+
+        // Get and send any queued message
+        if let Some(queued_message) = self.auth_manager.handle_auth_acknowledgment(&peer_id).await {
+            log::debug!("Sending queued message to peer {}", peer_id);
+            self.outbound_tx
+                .lock()
+                .await
+                .send(queued_message)
+                .await
+                .map_err(|e| {
+                    crate::error::PrimeProtocolError::InvalidConfig(format!(
+                        "Failed to send queued message: {}",
+                        e
+                    ))
+                })?;
+        }
+
+        Ok(())
     }
 }

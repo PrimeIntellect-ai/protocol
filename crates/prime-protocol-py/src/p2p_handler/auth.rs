@@ -64,6 +64,8 @@ pub struct AuthenticationManager {
     responder_message_queue: Arc<RwLock<HashMap<String, Vec<Message>>>>,
     /// Track authenticated peers
     authenticated_peers: Arc<RwLock<HashSet<String>>>,
+    /// Track peers we're waiting for authentication acknowledgment from
+    pending_auth_acknowledgment: Arc<RwLock<HashMap<String, Message>>>,
     /// Our wallet for signing
     node_wallet: Arc<Wallet>,
 }
@@ -76,6 +78,7 @@ impl AuthenticationManager {
             responding_to_peers: Arc::new(RwLock::new(HashSet::new())),
             responder_message_queue: Arc::new(RwLock::new(HashMap::new())),
             authenticated_peers: Arc::new(RwLock::new(HashSet::new())),
+            pending_auth_acknowledgment: Arc::new(RwLock::new(HashMap::new())),
             node_wallet,
         }
     }
@@ -174,14 +177,14 @@ impl AuthenticationManager {
         Ok((our_challenge, signature))
     }
 
-    /// Handle authentication response from peer
+    /// Handle authentication response from peer (when we initiated)
     pub async fn handle_auth_response(
         &self,
         peer_id: &str,
         their_challenge: &str,
         their_signature: &str,
-    ) -> Result<(String, Option<Message>)> {
-        // Verify we have an ongoing auth request for this peer
+    ) -> Result<String> {
+        // Get our ongoing auth challenge
         let mut ongoing_auth = self.ongoing_auth_requests.write().await;
         let auth_challenge = ongoing_auth.get_mut(peer_id).ok_or_else(|| {
             PrimeProtocolError::InvalidConfig(format!(
@@ -190,12 +193,11 @@ impl AuthenticationManager {
             ))
         })?;
 
-        // Verify their signature to get their address
+        // Verify the signature matches the challenge we sent
         let parsed_signature = Signature::from_str(their_signature).map_err(|e| {
             PrimeProtocolError::InvalidConfig(format!("Invalid signature format: {}", e))
         })?;
 
-        // Recover the peer's address from their signature
         let recovered_address = parsed_signature
             .recover_address_from_msg(&auth_challenge.auth_challenge_request_message)
             .map_err(|e| {
@@ -214,15 +216,13 @@ impl AuthenticationManager {
                 PrimeProtocolError::BlockchainError(format!("Failed to sign challenge: {}", e))
             })?;
 
-        // Mark peer as authenticated
-        self.mark_authenticated(peer_id.to_string()).await;
+        // Store the queued message for sending after acknowledgment
+        if let Some(auth) = ongoing_auth.remove(peer_id) {
+            self.queue_for_acknowledgment(peer_id.to_string(), auth.outgoing_message)
+                .await;
+        }
 
-        // Get the queued message to send after auth
-        let queued_message = ongoing_auth
-            .remove(peer_id)
-            .map(|auth| auth.outgoing_message);
-
-        Ok((our_signature, queued_message))
+        Ok(our_signature)
     }
 
     /// Handle authentication solution from peer
@@ -280,5 +280,21 @@ impl AuthenticationManager {
             .default_signer()
             .address()
             .to_string()
+    }
+
+    /// Store a message to send after receiving authentication acknowledgment
+    pub async fn queue_for_acknowledgment(&self, peer_id: String, message: Message) {
+        self.pending_auth_acknowledgment
+            .write()
+            .await
+            .insert(peer_id, message);
+    }
+
+    /// Handle authentication acknowledgment and return queued message if any
+    pub async fn handle_auth_acknowledgment(&self, peer_id: &str) -> Option<Message> {
+        self.pending_auth_acknowledgment
+            .write()
+            .await
+            .remove(peer_id)
     }
 }

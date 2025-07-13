@@ -16,6 +16,14 @@ use url::Url;
 // Add new imports for discovery functionality
 use shared::discovery::fetch_nodes_from_discovery_urls;
 
+// Add imports for invite functionality
+use alloy::primitives::Address;
+use prime_core::invite::{
+    admin::{generate_invite_expiration, generate_invite_nonce, generate_invite_signature},
+    common::InviteBuilder,
+};
+use std::str::FromStr;
+
 /// Prime Protocol Orchestrator Client - for managing and distributing tasks
 #[pyclass]
 pub struct OrchestratorClient {
@@ -234,6 +242,125 @@ impl OrchestratorClient {
         })?;
 
         Ok(nodes.into_iter().map(NodeDetails::from).collect())
+    }
+
+    /// Invite a node to join a compute pool
+    ///
+    /// This method creates a signed invite and sends it to the specified worker node.
+    /// The invite contains pool information and authentication details that the worker
+    /// can validate before joining the pool.
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (peer_id, worker_address, pool_id, multiaddrs, domain_id=1, orchestrator_url=None, expiration_seconds=1000))]
+    pub fn invite_node(
+        &self,
+        py: Python,
+        peer_id: String,
+        worker_address: String,
+        pool_id: u32,
+        multiaddrs: Vec<String>,
+        domain_id: u32,
+        orchestrator_url: Option<String>,
+        expiration_seconds: u64,
+    ) -> PyResult<()> {
+        println!("invite_node");
+        let rt = self.get_or_create_runtime()?;
+
+        let wallet = self.wallet.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Wallet not initialized. Provide private_key when creating client.",
+            )
+        })?;
+
+        let outbound_tx = self.outbound_tx.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "P2P not initialized. Call start() with p2p_port parameter.",
+            )
+        })?;
+
+        let auth_manager = self.auth_manager.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "P2P not initialized. Call start() with p2p_port parameter.",
+            )
+        })?;
+
+        // Parse worker address
+        let worker_addr = Address::from_str(&worker_address).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid worker address: {}",
+                e
+            ))
+        })?;
+
+        println!("worker_addr: {:?}", worker_addr);
+
+        let wallet = wallet.clone();
+        let outbound_tx = outbound_tx.clone();
+        let auth_manager = auth_manager.clone();
+
+        println!("invite_node 2");
+
+        py.allow_threads(|| {
+            rt.block_on(async {
+                // Generate invite parameters
+                let nonce = generate_invite_nonce();
+                let expiration =
+                    generate_invite_expiration(Some(expiration_seconds)).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+                    })?;
+
+                // Generate the invite signature
+                let invite_signature = generate_invite_signature(
+                    &wallet,
+                    domain_id,
+                    pool_id,
+                    worker_addr,
+                    nonce,
+                    expiration,
+                )
+                .await
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+                // Build the invite request
+                let invite_builder = if let Some(url) = orchestrator_url {
+                    InviteBuilder::with_url(pool_id, url)
+                } else {
+                    // Default to localhost if no URL provided
+                    InviteBuilder::with_url(pool_id, "http://localhost:8080".to_string())
+                };
+
+                let invite_request = invite_builder
+                    .build(invite_signature, nonce, expiration)
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+                    })?;
+
+                // Serialize the invite request
+                let invite_data = serde_json::to_vec(&invite_request).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+                })?;
+
+                // Create a general message with the invite data
+                let message = Message {
+                    message_type: MessageType::General { data: invite_data },
+                    peer_id,
+                    multiaddrs,
+                    sender_address: Some(wallet.wallet.default_signer().address().to_string()),
+                    response_tx: None,
+                };
+
+                // Send the invite
+                println!("sending invite");
+                crate::p2p_handler::send_message_with_auth(message, &auth_manager, &outbound_tx)
+                    .await
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+                    })?;
+
+                println!("invite sent");
+
+                Ok(())
+            })
+        })
     }
 }
 

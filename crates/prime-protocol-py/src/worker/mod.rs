@@ -216,6 +216,11 @@ fn message_to_pyobject(message: Message) -> PyObject {
                 "signature": signature,
             })
         }
+        p2p_handler::MessageType::AuthenticationComplete => {
+            serde_json::json!({
+                "type": "auth_complete",
+            })
+        }
     };
 
     let json_value = serde_json::json!({

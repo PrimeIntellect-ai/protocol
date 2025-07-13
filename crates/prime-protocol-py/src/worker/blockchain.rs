@@ -271,4 +271,64 @@ impl BlockchainService {
         log::info!("Compute node registered successfully");
         Ok(())
     }
+
+    /// Join compute pool using an invite
+    pub async fn join_compute_pool_with_invite(&self, invite: &p2p::InviteRequest) -> Result<()> {
+        use shared::web3::contracts::core::builder::ContractBuilder;
+        use shared::web3::contracts::helpers::utils::retry_call;
+
+        let invite_bytes = hex::decode(&invite.invite).context("Failed to decode invite")?;
+
+        if invite_bytes.len() < 65 {
+            anyhow::bail!("Invite data is too short");
+        }
+
+        let bytes_array: [u8; 65] = invite_bytes[..65]
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Failed to convert invite to array"))?;
+
+        // Get wallets
+        let provider_wallet = self
+            .provider_wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Provider wallet not initialized"))?;
+        let node_wallet = self
+            .node_wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Node wallet not initialized"))?;
+
+        // Create contracts
+        let contracts = ContractBuilder::new(provider_wallet.provider())
+            .with_compute_pool()
+            .with_compute_registry()
+            .with_ai_token()
+            .with_prime_network()
+            .with_stake_manager()
+            .build()
+            .context("Failed to build contracts")?;
+
+        let pool_id = alloy::primitives::U256::from(invite.pool_id);
+        let provider_address = provider_wallet.wallet.default_signer().address();
+        let node_address = vec![node_wallet.wallet.default_signer().address()];
+        let signatures = vec![alloy::primitives::FixedBytes::from(&bytes_array)];
+
+        let call = contracts
+            .compute_pool
+            .build_join_compute_pool_call(
+                pool_id,
+                provider_address,
+                node_address,
+                vec![invite.nonce],
+                vec![invite.expiration],
+                signatures,
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to build join compute pool call: {}", e))?;
+
+        let result = retry_call(call, 3, provider_wallet.provider.clone(), None)
+            .await
+            .context("Failed to join compute pool")?;
+
+        log::info!("Successfully joined compute pool with tx: {}", result);
+        Ok(())
+    }
 }
