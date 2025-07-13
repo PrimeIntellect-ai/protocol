@@ -97,6 +97,18 @@ up:
 	@# Attach to session
 	@tmux attach-session -t prime-dev
 
+# Start Docker services and deploy contracts only
+.PHONY: bootstrap
+bootstrap:
+	@echo "Starting Docker services and deploying contracts..."
+	@# Start Docker services
+	@docker compose up -d reth redis discovery --wait --wait-timeout 180
+	@# Deploy contracts
+	@cd smart-contracts && sh deploy.sh && sh deploy_work_validation.sh && cd ..
+	@# Run setup
+	@$(MAKE) setup
+	@echo "Bootstrap complete - Docker services running and contracts deployed"
+
 # Stop development environment
 .PHONY: down
 down:
@@ -267,4 +279,13 @@ invalidate-work:
 deregister-worker:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run --bin worker -- deregister --compute-pool-id $${WORKER_COMPUTE_POOL_ID} --private-key-provider $${PRIVATE_KEY_PROVIDER} --private-key-node $${PRIVATE_KEY_NODE} --rpc-url $${RPC_URL}
+
+# Python Package
+.PHONY: python-install
+python-install:
+	@cd crates/prime-protocol-py && make install
+
+.PHONY: python-test
+python-test:
+	@cd crates/prime-protocol-py && make test
 

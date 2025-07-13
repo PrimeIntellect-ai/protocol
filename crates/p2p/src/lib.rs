@@ -274,6 +274,8 @@ impl NodeBuilder {
             cancellation_token,
         } = self;
 
+        println!("multi addrs: {listen_addrs:?}");
+
         let keypair = keypair.unwrap_or(identity::Keypair::generate_ed25519());
         let peer_id = keypair.public().to_peer_id();
 

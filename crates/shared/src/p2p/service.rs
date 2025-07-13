@@ -365,7 +365,7 @@ async fn handle_validation_authentication_response(
             let ongoing_auth_requests = context.ongoing_auth_requests.read().await;
             let Some(ongoing_challenge) = ongoing_auth_requests.get(&from) else {
                 bail!(
-                    "no ongoing hardware challenge for peer {from}, cannot handle ValidatorAuthenticationInitiationResponse"
+                    "no ongoing challenge for peer {from}, cannot handle ValidatorAuthenticationInitiationResponse"
                 );
             };
 

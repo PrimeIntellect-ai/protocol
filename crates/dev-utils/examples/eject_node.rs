@@ -52,20 +52,20 @@ async fn main() -> Result<()> {
         .compute_registry
         .get_node(provider_address, node_address)
         .await;
-    println!("Node info: {:?}", node_info);
+    println!("Node info: {node_info:?}");
 
     let tx = contracts
         .compute_pool
         .eject_node(args.pool_id, node_address)
         .await;
     println!("Ejected node {} from pool {}", args.node, args.pool_id);
-    println!("Transaction: {:?}", tx);
+    println!("Transaction: {tx:?}");
 
     let node_info = contracts
         .compute_registry
         .get_node(provider_address, node_address)
         .await;
-    println!("Post ejection node info: {:?}", node_info);
+    println!("Post ejection node info: {node_info:?}");
 
     Ok(())
 }

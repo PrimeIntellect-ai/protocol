@@ -237,7 +237,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let score: Option<f64> = con
             .zscore("incomplete_groups", group_key)
             .await
-            .map_err(|e| Error::msg(format!("Failed to check incomplete tracking: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to check incomplete tracking: {e}")))?;
         Ok(score.is_some())
     }
 
@@ -270,13 +270,10 @@ impl SyntheticDataValidator<WalletProvider> {
         let _: () = con
             .zadd("incomplete_groups", group_key, new_deadline)
             .await
-            .map_err(|e| {
-                Error::msg(format!("Failed to update incomplete group deadline: {}", e))
-            })?;
+            .map_err(|e| Error::msg(format!("Failed to update incomplete group deadline: {e}")))?;
 
         debug!(
-            "Updated deadline for incomplete group {} to {} ({} minutes from now)",
-            group_key, new_deadline, minutes_from_now
+            "Updated deadline for incomplete group {group_key} to {new_deadline} ({minutes_from_now} minutes from now)"
         );
 
         Ok(())
@@ -420,7 +417,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let data: Option<String> = con
             .get(key)
             .await
-            .map_err(|e| Error::msg(format!("Failed to get work validation status: {}", e)))?;
+            .map_err(|e| Error::msg(format!("Failed to get work validation status: {e}")))?;
 
         match data {
             Some(data) => {
@@ -435,8 +432,7 @@ impl SyntheticDataValidator<WalletProvider> {
                             reason: None,
                         })),
                         Err(e) => Err(Error::msg(format!(
-                            "Failed to parse work validation data: {}",
-                            e
+                            "Failed to parse work validation data: {e}"
                         ))),
                     }
                 }
@@ -1576,8 +1572,7 @@ impl SyntheticDataValidator<WalletProvider> {
                                     .await
                                 {
                                     error!(
-                                        "Failed to update work validation status for {}: {}",
-                                        work_key, e
+                                        "Failed to update work validation status for {work_key}: {e}"
                                     );
                                 }
                             }

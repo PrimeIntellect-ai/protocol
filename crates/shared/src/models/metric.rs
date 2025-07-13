@@ -58,7 +58,7 @@ mod tests {
         let invalid_values = vec![(f64::INFINITY, "infinite value"), (f64::NAN, "NaN value")];
         for (value, case) in invalid_values {
             let entry = MetricEntry::new(key.clone(), value);
-            assert!(entry.is_err(), "Should fail for {}", case);
+            assert!(entry.is_err(), "Should fail for {case}");
         }
     }
 

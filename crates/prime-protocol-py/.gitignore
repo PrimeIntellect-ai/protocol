@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.egg-info/
+dist/
+
+# Virtual environments  
+.venv/
+
+# Testing
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Rust/Maturin
+target/
+Cargo.lock
+
+# OS
+.DS_Store 

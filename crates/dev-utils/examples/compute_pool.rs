@@ -68,17 +68,14 @@ async fn main() -> Result<()> {
             compute_limit,
         )
         .await;
-    println!("Transaction: {:?}", tx);
+    println!("Transaction: {tx:?}");
     let rewards_distributor_address = contracts
         .compute_pool
         .get_reward_distributor_address(U256::from(0))
         .await
         .unwrap();
 
-    println!(
-        "Rewards distributor address: {:?}",
-        rewards_distributor_address
-    );
+    println!("Rewards distributor address: {rewards_distributor_address:?}");
     let rewards_distributor = RewardsDistributor::new(
         rewards_distributor_address,
         wallet.provider(),
@@ -86,7 +83,7 @@ async fn main() -> Result<()> {
     );
     let rate = U256::from(10000000000000000u64);
     let tx = rewards_distributor.set_reward_rate(rate).await;
-    println!("Setting reward rate: {:?}", tx);
+    println!("Setting reward rate: {tx:?}");
 
     let reward_rate = rewards_distributor.get_reward_rate().await.unwrap();
     println!(

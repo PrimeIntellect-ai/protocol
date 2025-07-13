@@ -229,7 +229,7 @@ impl From<RestartTaskResponse> for Response {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneralRequest {
-    data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 impl From<GeneralRequest> for Request {
@@ -240,7 +240,7 @@ impl From<GeneralRequest> for Request {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneralResponse {
-    data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 impl From<GeneralResponse> for Response {

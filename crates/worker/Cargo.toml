@@ -9,6 +9,7 @@ workspace = true
 [dependencies]
 shared = { workspace = true }
 p2p = { workspace = true }
+prime-core = { workspace = true}
 
 actix-web = { workspace = true }
 alloy = { workspace = true }

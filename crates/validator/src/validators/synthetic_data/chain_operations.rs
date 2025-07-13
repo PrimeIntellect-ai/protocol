@@ -3,7 +3,7 @@ use super::*;
 impl SyntheticDataValidator<WalletProvider> {
     #[cfg(test)]
     pub fn soft_invalidate_work(&self, work_key: &str) -> Result<(), Error> {
-        info!("Soft invalidating work: {}", work_key);
+        info!("Soft invalidating work: {work_key}");
 
         if self.disable_chain_invalidation {
             info!("Chain invalidation is disabled, skipping work soft invalidation");
@@ -54,7 +54,7 @@ impl SyntheticDataValidator<WalletProvider> {
 
     #[cfg(test)]
     pub fn invalidate_work(&self, work_key: &str) -> Result<(), Error> {
-        info!("Invalidating work: {}", work_key);
+        info!("Invalidating work: {work_key}");
 
         if let Some(metrics) = &self.metrics {
             metrics.record_work_key_invalidation();
@@ -98,20 +98,27 @@ impl SyntheticDataValidator<WalletProvider> {
             }
         }
     }
-
+    #[cfg(test)]
+    #[allow(clippy::unused_async)]
     pub async fn invalidate_according_to_invalidation_type(
         &self,
         work_key: &str,
         invalidation_type: InvalidationType,
     ) -> Result<(), Error> {
         match invalidation_type {
-            #[cfg(test)]
             InvalidationType::Soft => self.soft_invalidate_work(work_key),
-            #[cfg(not(test))]
-            InvalidationType::Soft => self.soft_invalidate_work(work_key).await,
-            #[cfg(test)]
             InvalidationType::Hard => self.invalidate_work(work_key),
-            #[cfg(not(test))]
+        }
+    }
+
+    #[cfg(not(test))]
+    pub async fn invalidate_according_to_invalidation_type(
+        &self,
+        work_key: &str,
+        invalidation_type: InvalidationType,
+    ) -> Result<(), Error> {
+        match invalidation_type {
+            InvalidationType::Soft => self.soft_invalidate_work(work_key).await,
             InvalidationType::Hard => self.invalidate_work(work_key).await,
         }
     }

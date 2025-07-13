@@ -1,12 +1,12 @@
 use anyhow::Context as _;
 use anyhow::Result;
 use futures::stream::FuturesUnordered;
-use p2p::InviteRequestUrl;
 use p2p::Node;
 use p2p::NodeBuilder;
 use p2p::PeerId;
 use p2p::Response;
 use p2p::{IncomingMessage, Libp2pIncomingMessage, OutgoingMessage};
+use prime_core::invite::{common::get_endpoint_from_url, worker::is_invite_expired};
 use shared::web3::contracts::core::builder::Contracts;
 use shared::web3::wallet::Wallet;
 use std::collections::HashMap;
@@ -421,6 +421,11 @@ async fn handle_invite_request(
         );
     }
 
+    // Check if invite has expired
+    if is_invite_expired(&req)? {
+        anyhow::bail!("invite has expired");
+    }
+
     let invite_bytes = hex::decode(&req.invite).context("failed to decode invite hex")?;
 
     if invite_bytes.len() < 65 {
@@ -481,12 +486,7 @@ async fn handle_invite_request(
         }
     }
 
-    let heartbeat_endpoint = match req.url {
-        InviteRequestUrl::MasterIpPort(ip, port) => {
-            format!("http://{ip}:{port}/heartbeat")
-        }
-        InviteRequestUrl::MasterUrl(url) => format!("{url}/heartbeat"),
-    };
+    let heartbeat_endpoint = get_endpoint_from_url(&req.url, "heartbeat");
 
     context
         .heartbeat_service

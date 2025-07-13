@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
         "Invalidated work in pool {} with penalty {}",
         args.pool_id, args.penalty
     );
-    println!("Transaction hash: {:?}", tx);
+    println!("Transaction hash: {tx:?}");
 
     Ok(())
 }
