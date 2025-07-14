@@ -1,10 +1,10 @@
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use alloy::primitives::utils::Unit;
 use alloy::primitives::{Address, U256};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use log::{debug, LevelFilter};
-use log::{error, info};
+use log::{error, info, warn};
 use serde_json::json;
 use shared::models::api::ApiResponse;
 use shared::models::node::DiscoveryNode;
@@ -13,6 +13,7 @@ use shared::security::request_signer::sign_request_with_nonce;
 use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
@@ -200,6 +201,16 @@ struct Args {
     /// Libp2p port
     #[arg(long, default_value = "4003")]
     libp2p_port: u16,
+
+    /// Comma-separated list of libp2p bootnode multiaddresses
+    /// Example: `/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ,/ip4/104.131.131.82/udp/4001/quic-v1/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ`
+    #[arg(long, default_value = "")]
+    bootnodes: String,
+
+    /// Path to the libp2p private key file which contains the hex-encoded private key
+    /// A new key is generated if this is not provided
+    #[arg(long)]
+    libp2p_private_key_file: Option<String>,
 }
 
 #[tokio::main]
@@ -274,10 +285,27 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize P2P client if enabled
     let keypair = p2p::Keypair::generate_ed25519();
-    let (p2p_service, hardware_challenge_tx) = {
+    let bootnodes: Vec<p2p::Multiaddr> = args
+        .bootnodes
+        .split(',')
+        .filter_map(|addr| match addr.to_string().try_into() {
+            Ok(multiaddr) => Some(multiaddr),
+            Err(e) => {
+                error!("Invalid bootnode address '{addr}': {e}");
+                None
+            }
+        })
+        .collect();
+    if bootnodes.is_empty() {
+        error!("No valid bootnodes provided. Please provide at least one valid bootnode address.");
+        std::process::exit(1);
+    }
+
+    let (p2p_service, hardware_challenge_tx, kademlia_action_tx) = {
         match P2PService::new(
             keypair,
             args.libp2p_port,
+            bootnodes,
             cancellation_token.clone(),
             validator_wallet.clone(),
         ) {
@@ -454,58 +482,65 @@ async fn main() -> anyhow::Result<()> {
         }
 
         if !args.disable_hardware_validation {
-            async fn _fetch_nodes_from_discovery_url(
-                discovery_url: &str,
-                validator_wallet: &Wallet,
-            ) -> Result<Vec<DiscoveryNode>> {
-                let address = validator_wallet
-                    .wallet
-                    .default_signer()
-                    .address()
-                    .to_string();
+            // async fn _fetch_nodes_from_discovery_url(
+            //     discovery_url: &str,
+            //     validator_wallet: &Wallet,
+            // ) -> Result<Vec<DiscoveryNode>> {
+            //     let address = validator_wallet
+            //         .wallet
+            //         .default_signer()
+            //         .address()
+            //         .to_string();
 
-                let discovery_route = "/api/validator";
-                let signature = sign_request_with_nonce(discovery_route, validator_wallet, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+            //     let discovery_route = "/api/validator";
+            //     let signature = sign_request_with_nonce(discovery_route, validator_wallet, None)
+            //         .await
+            //         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-                let mut headers = reqwest::header::HeaderMap::new();
-                headers.insert(
-                    "x-address",
-                    reqwest::header::HeaderValue::from_str(&address)
-                        .context("Failed to create address header")?,
-                );
-                headers.insert(
-                    "x-signature",
-                    reqwest::header::HeaderValue::from_str(&signature.signature)
-                        .context("Failed to create signature header")?,
-                );
+            //     let mut headers = reqwest::header::HeaderMap::new();
+            //     headers.insert(
+            //         "x-address",
+            //         reqwest::header::HeaderValue::from_str(&address)
+            //             .context("Failed to create address header")?,
+            //     );
+            //     headers.insert(
+            //         "x-signature",
+            //         reqwest::header::HeaderValue::from_str(&signature.signature)
+            //             .context("Failed to create signature header")?,
+            //     );
 
-                debug!("Fetching nodes from: {discovery_url}{discovery_route}");
-                let response = reqwest::Client::new()
-                    .get(format!("{discovery_url}{discovery_route}"))
-                    .query(&[("nonce", signature.nonce)])
-                    .headers(headers)
-                    .timeout(Duration::from_secs(10))
-                    .send()
-                    .await
-                    .context("Failed to fetch nodes")?;
+            //     debug!("Fetching nodes from: {discovery_url}{discovery_route}");
+            //     let response = reqwest::Client::new()
+            //         .get(format!("{discovery_url}{discovery_route}"))
+            //         .query(&[("nonce", signature.nonce)])
+            //         .headers(headers)
+            //         .timeout(Duration::from_secs(10))
+            //         .send()
+            //         .await
+            //         .context("Failed to fetch nodes")?;
 
-                let response_text = response
-                    .text()
-                    .await
-                    .context("Failed to get response text")?;
+            //     let response_text = response
+            //         .text()
+            //         .await
+            //         .context("Failed to get response text")?;
 
-                let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
-                    serde_json::from_str(&response_text).context("Failed to parse response")?;
+            //     let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
+            //         serde_json::from_str(&response_text).context("Failed to parse response")?;
 
-                if !parsed_response.success {
-                    error!("Failed to fetch nodes from {discovery_url}: {parsed_response:?}");
-                    return Ok(vec![]);
-                }
+            //     if !parsed_response.success {
+            //         error!("Failed to fetch nodes from {discovery_url}: {parsed_response:?}");
+            //         return Ok(vec![]);
+            //     }
 
-                Ok(parsed_response.data)
-            }
+            //     Ok(parsed_response.data)
+            // }
+
+            let nodes = get_worker_nodes_from_dht(kademlia_action_tx.clone())
+                .await
+                .unwrap_or_else(|e| {
+                    error!("Failed to fetch nodes from DHT: {e}");
+                    vec![]
+                });
 
             let nodes = match async {
                 let mut all_nodes = Vec::new();
@@ -630,6 +665,95 @@ async fn main() -> anyhow::Result<()> {
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
     Ok(())
+}
+
+async fn get_worker_nodes_from_dht(
+    kademlia_action_tx: tokio::sync::mpsc::Sender<p2p::KademliaActionWithChannel>,
+) -> Result<Vec<shared::models::node::Node>, anyhow::Error> {
+    let (kad_action, mut result_rx) =
+        p2p::KademliaAction::GetProviders(p2p::WORKER_DHT_KEY.as_bytes().to_vec())
+            .into_kademlia_action_with_channel();
+    if let Err(e) = kademlia_action_tx.send(kad_action).await {
+        bail!("failed to send Kademlia action: {e}");
+    }
+
+    info!("🔄 Fetching worker nodes from DHT...");
+    let mut workers = HashSet::new();
+    while let Some(result) = result_rx.recv().await {
+        match result {
+            Ok(res) => {
+                match res {
+                    p2p::KademliaQueryResult::GetProviders(res) => match res {
+                        Ok(res) => match res {
+                            p2p::KademliaGetProvidersOk::FoundProviders { key: _, providers } => {
+                                workers.extend(providers.into_iter());
+                            }
+                            _ => {}
+                        },
+                        Err(e) => {
+                            bail!("failed to get providers from DHT: {e}");
+                        }
+                    },
+                    _ => {
+                        // this case should never happen
+                        bail!("unexpected Kademlia query result: {res:?}");
+                    }
+                }
+            }
+            Err(e) => {
+                bail!("kademlia action failed: {e}");
+            }
+        }
+    }
+
+    let mut nodes = Vec::new();
+    for peer_id in workers {
+        let record_key = format!("{}:{}", p2p::WORKER_DHT_KEY, peer_id);
+        let (kad_action, mut result_rx) =
+            p2p::KademliaAction::GetRecord(record_key.as_bytes().to_vec())
+                .into_kademlia_action_with_channel();
+        if let Err(e) = kademlia_action_tx.send(kad_action).await {
+            bail!("failed to send Kademlia action: {e}");
+        }
+
+        while let Some(result) = result_rx.recv().await {
+            match result {
+                Ok(res) => {
+                    match res {
+                        p2p::KademliaQueryResult::GetRecord(res) => match res {
+                            Ok(res) => match res {
+                                p2p::KademliaGetRecordOk::FoundRecord(record) => {
+                                    match serde_json::from_slice::<shared::models::node::Node>(
+                                        &record.record.value,
+                                    ) {
+                                        Ok(node) => {
+                                            nodes.push(node);
+                                        }
+                                        Err(e) => {
+                                            warn!("failed to deserialize node record: {e}");
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            },
+                            Err(e) => {
+                                warn!("failed to get record from DHT: {e}");
+                            }
+                        },
+                        _ => {
+                            // this case should never happen
+                            bail!("unexpected Kademlia query result: {res:?}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Kademlia action failed: {e}");
+                }
+            }
+        }
+    }
+
+    Ok(nodes)
 }
 
 #[cfg(test)]

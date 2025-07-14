@@ -6215,6 +6215,7 @@ name = "p2p"
 version = "0.3.11"
 dependencies = [
  "anyhow",
+ "hex",
  "libp2p",
  "log",
  "nalgebra",

@@ -1,5 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
+use libp2p::kad::QueryId;
 use libp2p::noise;
 use libp2p::swarm::SwarmEvent;
 use libp2p::tcp;
@@ -8,14 +9,20 @@ use libp2p::Swarm;
 use libp2p::SwarmBuilder;
 use libp2p::{identity, Transport};
 use log::debug;
+use log::warn;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 
 mod behaviour;
+mod discovery;
 mod message;
 mod protocol;
 
 use behaviour::Behaviour;
 
+pub use discovery::*;
 pub use message::*;
 pub use protocol::*;
 
@@ -24,6 +31,11 @@ pub type ResponseChannel = libp2p::request_response::ResponseChannel<Response>;
 pub type PeerId = libp2p::PeerId;
 pub type Multiaddr = libp2p::Multiaddr;
 pub type Keypair = libp2p::identity::Keypair;
+pub type KademliaQueryResult = libp2p::kad::QueryResult;
+pub type KademliaGetProvidersOk = libp2p::kad::GetProvidersOk;
+pub type KademliaGetRecordOk = libp2p::kad::GetRecordOk;
+
+type MultiaddrProtocol<'a> = libp2p::multiaddr::Protocol<'a>;
 
 pub const PRIME_STREAM_PROTOCOL: libp2p::StreamProtocol =
     libp2p::StreamProtocol::new("/prime/1.0.0");
@@ -42,6 +54,10 @@ pub struct Node {
 
     // channel for receiving outgoing messages from the consumer of this library
     outgoing_message_rx: tokio::sync::mpsc::Receiver<OutgoingMessage>,
+
+    // channel for receiving kademlia actions from the consumer of this library
+    kademlia_action_rx: tokio::sync::mpsc::Receiver<discovery::KademliaActionWithChannel>,
+    ongoing_kademlia_queries: Arc<Mutex<HashMap<QueryId, OngoingKademliaQuery>>>,
 }
 
 impl Node {
@@ -76,6 +92,8 @@ impl Node {
             cancellation_token,
             incoming_message_tx,
             mut outgoing_message_rx,
+            mut kademlia_action_rx,
+            ongoing_kademlia_queries,
         } = self;
 
         for addr in listen_addrs {
@@ -84,11 +102,21 @@ impl Node {
                 .context("swarm failed to listen on multiaddr")?;
         }
 
-        for bootnode in bootnodes {
-            match swarm.dial(bootnode.clone()) {
-                Ok(_) => {}
+        for mut multiaddr in bootnodes {
+            let Some(MultiaddrProtocol::P2p(peer_id)) = multiaddr.pop() else {
+                warn!("bootnode {multiaddr} does not have a peer ID, skipping");
+                continue;
+            };
+
+            match swarm.dial(multiaddr.clone()) {
+                Ok(()) => {
+                    swarm
+                        .behaviour_mut()
+                        .kademlia()
+                        .add_address(&peer_id, multiaddr);
+                }
                 Err(e) => {
-                    debug!("failed to dial bootnode {bootnode}: {e:?}");
+                    debug!("failed to dial bootnode {multiaddr}: {e:?}");
                 }
             }
         }
@@ -116,6 +144,13 @@ impl Node {
                         }
                     }
                 }
+                Some(kademlia_action) = kademlia_action_rx.recv() => {
+                    let result_tx = kademlia_action.result_tx();
+                    if let Err(e) = discovery::handle_kademlia_action(swarm.behaviour_mut().kademlia(), kademlia_action, ongoing_kademlia_queries.clone()).await {
+                        debug!("failed to handle kademlia action: {e:?}");
+                        let _ = result_tx.send(Err(e)).await;
+                    }
+                }
                 event = swarm.select_next_some() => {
                     match event {
                         SwarmEvent::NewListenAddr {
@@ -140,7 +175,7 @@ impl Node {
                         } => {
                             debug!("connection closed with peer {peer_id}: {cause:?}");
                         }
-                        SwarmEvent::Behaviour(event) => event.handle(incoming_message_tx.clone()).await,
+                        SwarmEvent::Behaviour(event) => event.handle(incoming_message_tx.clone(), ongoing_kademlia_queries.clone()).await,
                         _ => continue,
                     }
                 },
@@ -263,6 +298,7 @@ impl NodeBuilder {
         Node,
         tokio::sync::mpsc::Receiver<IncomingMessage>,
         tokio::sync::mpsc::Sender<OutgoingMessage>,
+        tokio::sync::mpsc::Sender<discovery::KademliaActionWithChannel>,
     )> {
         let Self {
             port,
@@ -275,6 +311,10 @@ impl NodeBuilder {
         } = self;
 
         let keypair = keypair.unwrap_or(identity::Keypair::generate_ed25519());
+        println!(
+            "keypair: {}",
+            hex::encode(keypair.clone().try_into_ed25519().unwrap().to_bytes())
+        );
         let peer_id = keypair.public().to_peer_id();
 
         let transport = create_transport(&keypair)?;
@@ -304,6 +344,8 @@ impl NodeBuilder {
 
         let (incoming_message_tx, incoming_message_rx) = tokio::sync::mpsc::channel(100);
         let (outgoing_message_tx, outgoing_message_rx) = tokio::sync::mpsc::channel(100);
+        let (kademlia_action_tx, kademlia_action_rx) = tokio::sync::mpsc::channel(100);
+        let ongoing_kademlia_queries = Arc::new(Mutex::new(HashMap::new()));
 
         Ok((
             Node {
@@ -313,10 +355,13 @@ impl NodeBuilder {
                 bootnodes,
                 incoming_message_tx,
                 outgoing_message_rx,
+                kademlia_action_rx,
                 cancellation_token: cancellation_token.unwrap_or_default(),
+                ongoing_kademlia_queries,
             },
             incoming_message_rx,
             outgoing_message_tx,
+            kademlia_action_tx,
         ))
     }
 }
@@ -341,11 +386,12 @@ mod test {
 
     #[tokio::test]
     async fn two_nodes_can_connect_and_do_request_response() {
-        let (node1, mut incoming_message_rx1, outgoing_message_tx1) =
+        let (node1, mut incoming_message_rx1, outgoing_message_tx1, _) =
             NodeBuilder::new().with_get_task_logs().try_build().unwrap();
         let node1_peer_id = node1.peer_id();
 
-        let (node2, mut incoming_message_rx2, outgoing_message_tx2) = NodeBuilder::new()
+        println!("{:?}", node1.multiaddrs());
+        let (node2, mut incoming_message_rx2, outgoing_message_tx2, _) = NodeBuilder::new()
             .with_get_task_logs()
             .with_bootnodes(node1.multiaddrs())
             .try_build()

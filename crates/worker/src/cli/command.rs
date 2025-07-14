@@ -9,8 +9,8 @@ use crate::metrics::store::MetricsStore;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderOperations;
-use crate::services::discovery::DiscoveryService;
-use crate::services::discovery_updater::DiscoveryUpdater;
+// use crate::services::discovery::DiscoveryService;
+// use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::utils::format_ether;
@@ -20,6 +20,7 @@ use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
 use log::{error, info};
+use p2p::KademliaAction;
 use shared::models::node::ComputeRequirements;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
@@ -61,6 +62,11 @@ pub enum Commands {
         #[arg(long, default_value = "4002")]
         libp2p_port: u16,
 
+        /// Comma-separated list of libp2p bootnode multiaddresses
+        /// Example: `/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ,/ip4/104.131.131.82/udp/4001/quic-v1/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ`
+        #[arg(long, default_value = "")]
+        bootnodes: String,
+
         /// External IP address for the worker to advertise
         #[arg(long)]
         external_ip: Option<String>,
@@ -84,10 +90,6 @@ pub enum Commands {
         /// Auto recover from previous state
         #[arg(long, default_value = "false")]
         no_auto_recover: bool,
-
-        /// Discovery service URL
-        #[arg(long)]
-        discovery_url: Option<String>,
 
         /// Private key for the provider (not recommended, use environment variable PRIVATE_KEY_PROVIDER instead)
         #[arg(long)]
@@ -194,11 +196,11 @@ pub async fn execute_command(
         Commands::Run {
             port: _,
             libp2p_port,
+            bootnodes,
             external_ip,
             compute_pool_id,
             dry_run: _,
             rpc_url,
-            discovery_url,
             state_dir_overwrite,
             disable_state_storing,
             no_auto_recover,
@@ -302,14 +304,14 @@ pub async fn execute_command(
                 compute_node_state,
             );
 
-            let discovery_urls = vec![discovery_url
-                .clone()
-                .unwrap_or("http://localhost:8089".to_string())];
-            let discovery_service =
-                DiscoveryService::new(node_wallet_instance.clone(), discovery_urls, None);
-            let discovery_state = state.clone();
-            let discovery_updater =
-                DiscoveryUpdater::new(discovery_service.clone(), discovery_state.clone());
+            // let discovery_urls = vec![discovery_url
+            //     .clone()
+            //     .unwrap_or("http://localhost:8089".to_string())];
+            // let discovery_service =
+            //     DiscoveryService::new(node_wallet_instance.clone(), discovery_urls, None);
+            // let discovery_state = state.clone();
+            // let discovery_updater =
+            //     DiscoveryUpdater::new(discovery_service.clone(), discovery_state.clone());
             let pool_id = U256::from(*compute_pool_id);
 
             let pool_info = loop {
@@ -733,9 +735,25 @@ pub async fn execute_command(
             allowed_addresses.extend(validators);
 
             let validator_addresses = std::collections::HashSet::from_iter(allowed_addresses);
-            let p2p_service = match crate::p2p::Service::new(
+            let bootnodes: Vec<p2p::Multiaddr> = bootnodes
+                .split(',')
+                .filter_map(|addr| match addr.to_string().try_into() {
+                    Ok(multiaddr) => Some(multiaddr),
+                    Err(e) => {
+                        error!("❌ Invalid bootnode address '{addr}': {e}");
+                        None
+                    }
+                })
+                .collect();
+            if bootnodes.is_empty() {
+                error!("❌ No valid bootnodes provided. Please provide at least one valid bootnode address.");
+                std::process::exit(1);
+            }
+
+            let (p2p_service, kademlia_action_tx) = match crate::p2p::Service::new(
                 state.get_p2p_keypair().clone(),
                 *libp2p_port,
+                bootnodes,
                 node_wallet_instance.clone(),
                 validator_addresses,
                 docker_service.clone(),
@@ -766,52 +784,127 @@ pub async fn execute_command(
             );
             tokio::task::spawn(p2p_service.run());
 
-            Console::success(&format!("P2P service started with ID: {peer_id}",));
+            Console::success(&format!("P2P service started with ID: {peer_id}"));
 
-            let mut attempts = 0;
-            let max_attempts = 100;
-            while attempts < max_attempts {
-                Console::title("📦 Uploading discovery info");
-                match discovery_service.upload_discovery_info(&node_config).await {
-                    Ok(_) => break,
-                    Err(e) => {
-                        attempts += 1;
-                        let error_msg = e.to_string();
+            let record_key = format!("{}:{}", p2p::WORKER_DHT_KEY, peer_id);
+            let (kad_action, mut result_rx) = KademliaAction::PutRecord {
+                key: record_key.as_bytes().to_vec(),
+                value: serde_json::to_vec(&node_config).unwrap(),
+            }
+            .into_kademlia_action_with_channel();
+            if let Err(e) = kademlia_action_tx.send(kad_action).await {
+                error!("❌ Failed to send Kademlia action: {e}");
+                std::process::exit(1);
+            }
 
-                        // Check if this is a Cloudflare block
-                        if error_msg.contains("403 Forbidden")
-                            && (error_msg.contains("Cloudflare")
-                                || error_msg.contains("Sorry, you have been blocked")
-                                || error_msg.contains("Attention Required!"))
-                        {
-                            error!(
-                                "Attempt {attempts}: ❌ Discovery service blocked by Cloudflare protection. This may indicate:"
-                            );
-                            error!("  • Your IP address has been flagged by Cloudflare security");
-                            error!("  • Too many requests from your location");
-                            error!("  • Network configuration issues");
-                            error!("  • Discovery service may be under DDoS protection");
-                            error!(
-                                "Please contact support or try from a different network/IP address"
-                            );
-                        } else {
-                            error!("Attempt {attempts}: ❌ Failed to upload discovery info: {e}");
-                        }
-
-                        if attempts >= max_attempts {
-                            if error_msg.contains("403 Forbidden")
-                                && (error_msg.contains("Cloudflare")
-                                    || error_msg.contains("Sorry, you have been blocked"))
-                            {
-                                error!("❌ Unable to reach discovery service due to Cloudflare blocking after {max_attempts} attempts");
-                                error!("This is likely a network/IP issue rather than a worker configuration problem");
+            while let Some(result) = result_rx.recv().await {
+                match result {
+                    Ok(res) => {
+                        match res {
+                            p2p::KademliaQueryResult::PutRecord(res) => match res {
+                                Ok(_) => {
+                                    Console::success("Worker info published to DHT");
+                                }
+                                Err(e) => {
+                                    error!("❌ Failed to put record in DHT: {e}");
+                                    std::process::exit(1);
+                                }
+                            },
+                            _ => {
+                                // this case should never happen
+                                error!("❌ Unexpected result from putting record in DHT: {res:?}");
+                                std::process::exit(1);
                             }
-                            std::process::exit(1);
                         }
                     }
+                    Err(e) => {
+                        error!("❌ Failed to publish worker info to DHT: {e}");
+                        std::process::exit(1);
+                    }
                 }
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             }
+
+            let (kad_action, mut result_rx) =
+                KademliaAction::StartProviding(p2p::WORKER_DHT_KEY.as_bytes().to_vec())
+                    .into_kademlia_action_with_channel();
+            if let Err(e) = kademlia_action_tx.send(kad_action).await {
+                error!("❌ Failed to send Kademlia action: {e}");
+                std::process::exit(1);
+            }
+
+            while let Some(result) = result_rx.recv().await {
+                match result {
+                    Ok(res) => {
+                        match res {
+                            p2p::KademliaQueryResult::StartProviding(res) => match res {
+                                Ok(_) => {
+                                    Console::success(
+                                        "Advertising ourselves as a worker in the DHT",
+                                    );
+                                }
+                                Err(e) => {
+                                    error!("❌ Failed to start providing worker info in DHT: {e}");
+                                    std::process::exit(1);
+                                }
+                            },
+                            _ => {
+                                // this case should never happen
+                                error!("❌ Unexpected result from starting providing worker info in DHT: {res:?}");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("❌ Failed to start providing worker info in DHT: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+
+            // let mut attempts = 0;
+            // let max_attempts = 100;
+            // while attempts < max_attempts {
+            //     Console::title("📦 Uploading discovery info");
+            //     match discovery_service.upload_discovery_info(&node_config).await {
+            //         Ok(_) => break,
+            //         Err(e) => {
+            //             attempts += 1;
+            //             let error_msg = e.to_string();
+
+            //             // Check if this is a Cloudflare block
+            //             if error_msg.contains("403 Forbidden")
+            //                 && (error_msg.contains("Cloudflare")
+            //                     || error_msg.contains("Sorry, you have been blocked")
+            //                     || error_msg.contains("Attention Required!"))
+            //             {
+            //                 error!(
+            //                     "Attempt {attempts}: ❌ Discovery service blocked by Cloudflare protection. This may indicate:"
+            //                 );
+            //                 error!("  • Your IP address has been flagged by Cloudflare security");
+            //                 error!("  • Too many requests from your location");
+            //                 error!("  • Network configuration issues");
+            //                 error!("  • Discovery service may be under DDoS protection");
+            //                 error!(
+            //                     "Please contact support or try from a different network/IP address"
+            //                 );
+            //             } else {
+            //                 error!("Attempt {attempts}: ❌ Failed to upload discovery info: {e}");
+            //             }
+
+            //             if attempts >= max_attempts {
+            //                 if error_msg.contains("403 Forbidden")
+            //                     && (error_msg.contains("Cloudflare")
+            //                         || error_msg.contains("Sorry, you have been blocked"))
+            //                 {
+            //                     error!("❌ Unable to reach discovery service due to Cloudflare blocking after {max_attempts} attempts");
+            //                     error!("This is likely a network/IP issue rather than a worker configuration problem");
+            //                 }
+            //                 std::process::exit(1);
+            //             }
+            //         }
+            //     }
+            //     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            // }
 
             Console::success("Discovery info uploaded");
 
@@ -827,7 +920,7 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
-            discovery_updater.start_auto_update(node_config);
+            // discovery_updater.start_auto_update(node_config);
 
             if recover_last_state {
                 info!("Recovering from previous state: {recover_last_state}");

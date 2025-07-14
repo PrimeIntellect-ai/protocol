@@ -2,6 +2,7 @@ use anyhow::Context as _;
 use anyhow::Result;
 use futures::stream::FuturesUnordered;
 use p2p::InviteRequestUrl;
+use p2p::KademliaActionWithChannel;
 use p2p::Node;
 use p2p::NodeBuilder;
 use p2p::PeerId;
@@ -34,6 +35,7 @@ impl Service {
     pub(crate) fn new(
         keypair: p2p::Keypair,
         port: u16,
+        bootnodes: Vec<p2p::Multiaddr>,
         wallet: Wallet,
         validator_addresses: HashSet<alloy::primitives::Address>,
         docker_service: Arc<DockerService>,
@@ -42,25 +44,28 @@ impl Service {
         contracts: Contracts<WalletProvider>,
         provider_wallet: Wallet,
         cancellation_token: CancellationToken,
-    ) -> Result<Self> {
-        let (node, incoming_messages, outgoing_messages) =
-            build_p2p_node(keypair, port, cancellation_token.clone())
+    ) -> Result<(Self, Sender<KademliaActionWithChannel>)> {
+        let (node, incoming_messages, outgoing_messages, kademlia_action_tx) =
+            build_p2p_node(keypair, port, bootnodes, cancellation_token.clone())
                 .context("failed to build p2p node")?;
-        Ok(Self {
-            node,
-            incoming_messages,
-            cancellation_token,
-            context: Context::new(
-                wallet,
-                outgoing_messages,
-                validator_addresses,
-                docker_service,
-                heartbeat_service,
-                system_state,
-                contracts,
-                provider_wallet,
-            ),
-        })
+        Ok((
+            Self {
+                node,
+                incoming_messages,
+                cancellation_token,
+                context: Context::new(
+                    wallet,
+                    outgoing_messages,
+                    validator_addresses,
+                    docker_service,
+                    heartbeat_service,
+                    system_state,
+                    contracts,
+                    provider_wallet,
+                ),
+            },
+            kademlia_action_tx,
+        ))
     }
 
     pub(crate) fn peer_id(&self) -> PeerId {
@@ -110,11 +115,18 @@ impl Service {
 fn build_p2p_node(
     keypair: p2p::Keypair,
     port: u16,
+    bootnodes: Vec<p2p::Multiaddr>,
     cancellation_token: CancellationToken,
-) -> Result<(Node, Receiver<IncomingMessage>, Sender<OutgoingMessage>)> {
-    let (node, incoming_message_rx, outgoing_message_tx) = NodeBuilder::new()
+) -> Result<(
+    Node,
+    Receiver<IncomingMessage>,
+    Sender<OutgoingMessage>,
+    Sender<p2p::KademliaActionWithChannel>,
+)> {
+    let (node, incoming_message_rx, outgoing_message_tx, kademlia_action_tx) = NodeBuilder::new()
         .with_keypair(keypair)
         .with_port(port)
+        .with_bootnodes(bootnodes)
         .with_authentication()
         .with_hardware_challenge()
         .with_invite()
@@ -123,7 +135,12 @@ fn build_p2p_node(
         .with_cancellation_token(cancellation_token)
         .try_build()
         .context("failed to build p2p node")?;
-    Ok((node, incoming_message_rx, outgoing_message_tx))
+    Ok((
+        node,
+        incoming_message_rx,
+        outgoing_message_tx,
+        kademlia_action_tx,
+    ))
 }
 
 #[derive(Clone)]

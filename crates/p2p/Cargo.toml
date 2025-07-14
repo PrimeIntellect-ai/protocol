@@ -14,6 +14,7 @@ tokio = {workspace = true, features = ["sync"]}
 tokio-util = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 log = { workspace = true }
+hex = {workspace = true}
 
 [lints]
 workspace = true

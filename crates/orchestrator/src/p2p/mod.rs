@@ -32,9 +32,10 @@ impl Service {
         let (invite_tx, invite_rx) = tokio::sync::mpsc::channel(100);
         let (get_task_logs_tx, get_task_logs_rx) = tokio::sync::mpsc::channel(100);
         let (restart_task_tx, restart_task_rx) = tokio::sync::mpsc::channel(100);
-        let (inner, outgoing_message_tx) = P2PService::new(
+        let (inner, outgoing_message_tx, kademlia_action_tx) = P2PService::new(
             keypair,
             port,
+            vec![],
             cancellation_token.clone(),
             wallet,
             Protocols::new()

@@ -96,6 +96,11 @@ struct Args {
     /// Libp2p port
     #[arg(long, default_value = "4004")]
     libp2p_port: u16,
+
+    /// Hex-encoded libp2p private key.
+    /// A new key is generated if this is not provided.
+    #[arg(long)]
+    libp2p_private_key: Option<String>,
 }
 
 #[tokio::main]
