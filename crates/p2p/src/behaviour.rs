@@ -11,10 +11,13 @@ use libp2p::mdns;
 use libp2p::ping;
 use libp2p::request_response;
 use libp2p::swarm::NetworkBehaviour;
-use log::debug;
+use libp2p::Multiaddr;
+use libp2p::PeerId;
+use log::{debug, info};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use std::vec;
 use tokio::sync::Mutex;
 
 use crate::discovery::OngoingKademliaQuery;
@@ -119,7 +122,12 @@ impl Behaviour {
 
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id)
             .context("failed to create mDNS behaviour")?;
-        let kademlia = kad::Behaviour::new(peer_id, MemoryStore::new(peer_id));
+        let mut kad_config = kad::Config::new(kad::PROTOCOL_NAME);
+        // TODO: by default this is 20, however on a local test network we won't have 20 nodes.
+        kad_config
+            .set_replication_factor(1usize.try_into().expect("can convert 1 to NonZeroUsize"));
+        kad_config.set_provider_publication_interval(Some(Duration::from_secs(10)));
+        let kademlia = kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), kad_config);
 
         let identify = identify::Behaviour::new(
             identify::Config::new(PRIME_STREAM_PROTOCOL.to_string(), keypair.public())
@@ -157,12 +165,17 @@ impl BehaviourEvent {
         self,
         message_tx: tokio::sync::mpsc::Sender<IncomingMessage>,
         ongoing_kademlia_queries: Arc<Mutex<HashMap<QueryId, OngoingKademliaQuery>>>,
-    ) {
+    ) -> Vec<(PeerId, Multiaddr)> {
         match self {
             BehaviourEvent::Autonat(_event) => {}
             BehaviourEvent::Identify(_event) => {}
             BehaviourEvent::Kademlia(event) => {
                 match event {
+                    kad::Event::RoutingUpdated {
+                        peer, addresses, ..
+                    } => {
+                        log::info!("kademlia routing updated for peer {peer:?} with addresses {addresses:?}");
+                    }
                     // TODO: also handle InboundRequest::AddProvider and InboundRequest::PutRecord,
                     // as these are new workers joining the network
                     kad::Event::OutboundQueryProgressed {
@@ -171,7 +184,7 @@ impl BehaviourEvent {
                         stats: _,
                         step,
                     } => {
-                        debug!("kademlia query {id:?} progressed with step {step:?} and result {result:?}");
+                        info!("kademlia query {id:?} progressed with step {step:?} and result {result:?}");
 
                         let mut ongoing_queries = ongoing_kademlia_queries.lock().await;
                         if let Some(query) = ongoing_queries.get_mut(&id) {
@@ -185,7 +198,12 @@ impl BehaviourEvent {
                     _ => {}
                 }
             }
-            BehaviourEvent::Mdns(_event) => {}
+            BehaviourEvent::Mdns(event) => match event {
+                mdns::Event::Discovered(peers) => {
+                    return peers;
+                }
+                _ => {}
+            },
             BehaviourEvent::Ping(_event) => {}
             BehaviourEvent::RequestResponse(event) => match event {
                 request_response::Event::Message { peer, message } => {
@@ -217,5 +235,7 @@ impl BehaviourEvent {
                 }
             },
         }
+
+        vec![]
     }
 }

@@ -786,6 +786,10 @@ pub async fn execute_command(
 
             Console::success(&format!("P2P service started with ID: {peer_id}"));
 
+            // TODO: sleep so that dht is bootstrapped before publishing;
+            // should update p2p service to expose this.
+            tokio::time::sleep(Duration::from_secs(30)).await;
+
             let record_key = format!("{}:{}", p2p::WORKER_DHT_KEY, peer_id);
             let (kad_action, mut result_rx) = KademliaAction::PutRecord {
                 key: record_key.as_bytes().to_vec(),
@@ -807,7 +811,6 @@ pub async fn execute_command(
                                 }
                                 Err(e) => {
                                     error!("❌ Failed to put record in DHT: {e}");
-                                    std::process::exit(1);
                                 }
                             },
                             _ => {
@@ -860,53 +863,6 @@ pub async fn execute_command(
                     }
                 }
             }
-
-            // let mut attempts = 0;
-            // let max_attempts = 100;
-            // while attempts < max_attempts {
-            //     Console::title("📦 Uploading discovery info");
-            //     match discovery_service.upload_discovery_info(&node_config).await {
-            //         Ok(_) => break,
-            //         Err(e) => {
-            //             attempts += 1;
-            //             let error_msg = e.to_string();
-
-            //             // Check if this is a Cloudflare block
-            //             if error_msg.contains("403 Forbidden")
-            //                 && (error_msg.contains("Cloudflare")
-            //                     || error_msg.contains("Sorry, you have been blocked")
-            //                     || error_msg.contains("Attention Required!"))
-            //             {
-            //                 error!(
-            //                     "Attempt {attempts}: ❌ Discovery service blocked by Cloudflare protection. This may indicate:"
-            //                 );
-            //                 error!("  • Your IP address has been flagged by Cloudflare security");
-            //                 error!("  • Too many requests from your location");
-            //                 error!("  • Network configuration issues");
-            //                 error!("  • Discovery service may be under DDoS protection");
-            //                 error!(
-            //                     "Please contact support or try from a different network/IP address"
-            //                 );
-            //             } else {
-            //                 error!("Attempt {attempts}: ❌ Failed to upload discovery info: {e}");
-            //             }
-
-            //             if attempts >= max_attempts {
-            //                 if error_msg.contains("403 Forbidden")
-            //                     && (error_msg.contains("Cloudflare")
-            //                         || error_msg.contains("Sorry, you have been blocked"))
-            //                 {
-            //                     error!("❌ Unable to reach discovery service due to Cloudflare blocking after {max_attempts} attempts");
-            //                     error!("This is likely a network/IP issue rather than a worker configuration problem");
-            //                 }
-            //                 std::process::exit(1);
-            //             }
-            //         }
-            //     }
-            //     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            // }
-
-            Console::success("Discovery info uploaded");
 
             Console::section("Starting Worker with Task Bridge");
 

@@ -8,8 +8,7 @@ use libp2p::yamux;
 use libp2p::Swarm;
 use libp2p::SwarmBuilder;
 use libp2p::{identity, Transport};
-use log::debug;
-use log::warn;
+use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -108,30 +107,68 @@ impl Node {
                 continue;
             };
 
+            swarm
+                .behaviour_mut()
+                .kademlia()
+                .add_address(&peer_id, multiaddr.clone());
+
+            log::info!("dialing bootnode {peer_id} at {multiaddr}");
+
             match swarm.dial(multiaddr.clone()) {
-                Ok(()) => {
-                    swarm
-                        .behaviour_mut()
-                        .kademlia()
-                        .add_address(&peer_id, multiaddr);
-                }
+                Ok(()) => {}
                 Err(e) => {
                     debug!("failed to dial bootnode {multiaddr}: {e:?}");
                 }
             }
         }
 
+        // this will only error if we have no known peers
+        let (bootstrap_result_tx, mut bootstrap_result_rx) = tokio::sync::mpsc::channel(100);
+        match swarm.behaviour_mut().kademlia().bootstrap() {
+            Ok(query_id) => {
+                let mut ongoing_kademlia_queries = ongoing_kademlia_queries.lock().await;
+                ongoing_kademlia_queries.insert(
+                    query_id,
+                    OngoingKademliaQuery {
+                        result_tx: bootstrap_result_tx,
+                    },
+                );
+            }
+            Err(e) => {
+                warn!("failed to bootstrap kademlia: {e:?}");
+            }
+        };
+
+        let connected_peers_check_interval = Duration::from_secs(5);
+
         loop {
+            let sleep = tokio::time::sleep(connected_peers_check_interval);
             tokio::select! {
                 biased;
+                _ = sleep => {
+                    let peer_count = swarm.connected_peers().count();
+                    info!("connected peers: {peer_count}");
+                }
                 _ = cancellation_token.cancelled() => {
                     debug!("cancellation token triggered, shutting down node");
                     break Ok(());
                 }
+                Some(res) = bootstrap_result_rx.recv() => {
+                    match res {
+                        Ok(libp2p::kad::QueryResult::Bootstrap(_)) => {
+                            log::info!("kademlia bootstrap progressed successfully");
+                        }
+                        Ok(res) => {
+                            warn!("kademlia bootstrap query returned unexpected result: {res:?}");
+                        }
+                        Err(e) => {
+                            warn!("kademlia bootstrap query failed: {e:?}");
+                        }
+                    }
+                }
                 Some(message) = outgoing_message_rx.recv() => {
                     match message {
                         OutgoingMessage::Request((peer, addrs, request)) => {
-                            // TODO: if we're not connected to the peer, we should dial it
                             for addr in addrs {
                                 swarm.add_peer_address(peer, addr);
                             }
@@ -166,7 +203,7 @@ impl Node {
                             peer_id,
                             ..
                         } => {
-                            debug!("connection established with peer {peer_id}");
+                            log::info!("connection established with peer {peer_id}");
                         }
                         SwarmEvent::ConnectionClosed {
                             peer_id,
@@ -175,7 +212,14 @@ impl Node {
                         } => {
                             debug!("connection closed with peer {peer_id}: {cause:?}");
                         }
-                        SwarmEvent::Behaviour(event) => event.handle(incoming_message_tx.clone(), ongoing_kademlia_queries.clone()).await,
+                        SwarmEvent::Behaviour(event) => {
+                            let discovered_peers = event.handle(incoming_message_tx.clone(), ongoing_kademlia_queries.clone()).await;
+                            for (peer_id, addr) in discovered_peers {
+                                log::info!("discovered peer {peer_id} at {addr}");
+                                swarm.add_peer_address(peer_id, addr.clone());
+                                swarm.behaviour_mut().kademlia().add_address(&peer_id, addr.clone());
+                            }
+                        }
                         _ => continue,
                     }
                 },
@@ -311,10 +355,6 @@ impl NodeBuilder {
         } = self;
 
         let keypair = keypair.unwrap_or(identity::Keypair::generate_ed25519());
-        println!(
-            "keypair: {}",
-            hex::encode(keypair.clone().try_into_ed25519().unwrap().to_bytes())
-        );
         let peer_id = keypair.public().to_peer_id();
 
         let transport = create_transport(&keypair)?;

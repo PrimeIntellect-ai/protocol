@@ -103,8 +103,10 @@ impl Validator {
             .as_ref()
             .expect("stake manager contract must be initialized");
 
+        let sleep_duration = std::time::Duration::from_secs(5);
+
         loop {
-            let sleep = tokio::time::sleep(std::time::Duration::from_secs(5));
+            let sleep = tokio::time::sleep(sleep_duration);
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
                     info!("Validator is stopping due to cancellation signal");
@@ -124,8 +126,6 @@ impl Validator {
                         validator_health.clone(),
                     ).await {
                         error!("Validation loop failed: {e:#}");
-                    } else {
-                        info!("Validation loop completed successfully");
                     }
                 }
             }
@@ -288,6 +288,8 @@ async fn get_worker_nodes_from_dht(
             }
         }
     }
+
+    info!("got {} worker nodes from DHT", workers.len());
 
     let mut nodes = Vec::new();
     for peer_id in workers {

@@ -32,10 +32,9 @@ struct Args {
     #[arg(short = 'k', long)]
     validator_key: String,
 
-    /// Discovery URLs (comma-separated)
-    #[arg(long, default_value = "http://localhost:8089", value_delimiter = ',')]
-    discovery_urls: Vec<String>,
-
+    // /// Discovery URLs (comma-separated)
+    // #[arg(long, default_value = "http://localhost:8089", value_delimiter = ',')]
+    // discovery_urls: Vec<String>,
     /// Ability to disable hardware validation
     #[arg(long, default_value = "false")]
     disable_hardware_validation: bool,
