@@ -2,7 +2,7 @@ use alloy::primitives::Address;
 use anyhow::{bail, Context as _, Result};
 use log::{error, info};
 use rand::{rng, Rng};
-use shared::models::node::DiscoveryNode;
+use shared::models::node::Node;
 use std::str::FromStr;
 
 use crate::p2p::HardwareChallengeRequest;
@@ -16,16 +16,14 @@ impl HardwareChallenge {
         Self { challenge_tx }
     }
 
-    pub(crate) async fn challenge_node(&self, node: &DiscoveryNode) -> Result<()> {
+    pub(crate) async fn challenge_node(&self, node: &Node) -> Result<()> {
         // Check if node has P2P ID and addresses
         let p2p_id = node
-            .node
             .worker_p2p_id
             .clone()
             .ok_or_else(|| anyhow::anyhow!("Node {} does not have P2P ID", node.id))?;
 
         let p2p_addresses = node
-            .node
             .worker_p2p_addresses
             .clone()
             .ok_or_else(|| anyhow::anyhow!("Node {} does not have P2P addresses", node.id))?;
@@ -42,9 +40,7 @@ impl HardwareChallenge {
         let mut challenge_with_timestamp = challenge_matrix.clone();
         challenge_with_timestamp.timestamp = Some(current_time);
 
-        let node_address = Address::from_str(&node.node.id)
-            .map_err(|e| anyhow::anyhow!("Failed to parse node address {}: {}", node.node.id, e))?;
-
+        let node_address = Address::from_str(&node.id).context("failed to parse node address")?;
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
         let hardware_challenge = HardwareChallengeRequest {
             worker_wallet_address: node_address,

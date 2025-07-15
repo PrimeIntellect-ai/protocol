@@ -1,5 +1,7 @@
-use alloy::primitives::U256;
-use anyhow::anyhow;
+use crate::web3::{contracts::core::builder::Contracts, wallet::WalletProvider};
+use alloy::primitives::{Address, U256};
+use alloy::providers::Provider as _;
+use anyhow::{anyhow, Context as _};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -9,6 +11,7 @@ use utoipa::{openapi::Object, ToSchema};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct Node {
+    // TODO: change all three of these from `String` to `Address`
     pub id: String,
     // the node's on-chain address.
     pub provider_address: String,
@@ -547,6 +550,128 @@ pub struct NodeLocation {
     pub city: Option<String>,
     pub region: Option<String>,
     pub country: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeWithMetadata {
+    node: Node,
+    is_validated: bool,
+    is_active: bool,
+    is_provider_whitelisted: bool,
+    is_blacklisted: bool,
+    latest_balance: U256,
+    last_updated: Option<DateTime<Utc>>,
+    created_at: Option<DateTime<Utc>>,
+    location: Option<NodeLocation>,
+}
+
+impl NodeWithMetadata {
+    pub fn new(
+        node: Node,
+        is_validated: bool,
+        is_active: bool,
+        is_provider_whitelisted: bool,
+        is_blacklisted: bool,
+        latest_balance: U256,
+        last_updated: Option<DateTime<Utc>>,
+        created_at: Option<DateTime<Utc>>,
+        location: Option<NodeLocation>,
+    ) -> Self {
+        Self {
+            node,
+            is_validated,
+            is_active,
+            is_provider_whitelisted,
+            is_blacklisted,
+            latest_balance,
+            last_updated,
+            created_at,
+            location,
+        }
+    }
+
+    pub async fn new_from_contracts(
+        node: Node,
+        provider: &WalletProvider,
+        contracts: &Contracts<WalletProvider>,
+    ) -> anyhow::Result<Self> {
+        let provider_address =
+            Address::from_str(&node.provider_address).context("invalid provider address")?;
+        let node_address = Address::from_str(&node.id).context("invalid node address")?;
+        let latest_balance = provider
+            .get_balance(node_address)
+            .await
+            .context("failed to get node balance")?;
+
+        let node_info = contracts
+            .compute_registry
+            .get_node(provider_address, node_address)
+            .await
+            .context("failed to get node info from compute registry")?;
+
+        let provider_info = contracts
+            .compute_registry
+            .get_provider(provider_address)
+            .await
+            .map_err(|e| anyhow!("failed to get provider info from compute registry: {e}"))?;
+
+        let (is_active, is_validated) = node_info;
+        let is_provider_whitelisted = provider_info.is_whitelisted;
+
+        let is_blacklisted = contracts
+            .compute_pool
+            .is_node_blacklisted(node.compute_pool_id, node_address)
+            .await
+            .map_err(|e| anyhow!("failed to check if node is blacklisted: {e}"))?;
+
+        Ok(Self {
+            node,
+            is_validated,
+            is_active,
+            is_provider_whitelisted,
+            is_blacklisted,
+            latest_balance,
+            last_updated: None, // TODO
+            created_at: None,   // TODO
+            location: None,     // TODO
+        })
+    }
+
+    pub fn node(&self) -> &Node {
+        &self.node
+    }
+
+    pub fn is_validated(&self) -> bool {
+        self.is_validated
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.is_active
+    }
+
+    pub fn is_provider_whitelisted(&self) -> bool {
+        self.is_provider_whitelisted
+    }
+
+    pub fn is_blacklisted(&self) -> bool {
+        self.is_blacklisted
+    }
+
+    pub fn latest_balance(&self) -> U256 {
+        self.latest_balance
+    }
+
+    pub fn last_updated(&self) -> Option<DateTime<Utc>> {
+        self.last_updated
+    }
+
+    pub fn created_at(&self) -> Option<DateTime<Utc>> {
+        self.created_at
+    }
+
+    pub fn location(&self) -> Option<&NodeLocation> {
+        self.location.as_ref()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
