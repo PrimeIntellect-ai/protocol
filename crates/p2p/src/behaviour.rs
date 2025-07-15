@@ -163,6 +163,8 @@ impl BehaviourEvent {
             BehaviourEvent::Identify(_event) => {}
             BehaviourEvent::Kademlia(event) => {
                 match event {
+                    // TODO: also handle InboundRequest::AddProvider and InboundRequest::PutRecord,
+                    // as these are new workers joining the network
                     kad::Event::OutboundQueryProgressed {
                         id,
                         result,

@@ -1,6 +1,6 @@
 use crate::{HardwareValidator, MetricsContext, SyntheticDataValidator};
 use alloy::primitives::{utils::Unit, Address, U256};
-use anyhow::{bail, Result};
+use anyhow::{bail, Context as _, Result};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt as _;
 use log::{error, info, warn};
@@ -104,118 +104,150 @@ impl Validator {
             .expect("stake manager contract must be initialized");
 
         loop {
-            if cancellation_token.is_cancelled() {
-                info!("Validation loop is stopping due to cancellation signal");
-                break;
-            }
-
-            // Start timing the loop
-            let loop_start = Instant::now();
-
-            // Update the last validation timestamp
-            let last_validation_timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("current time must be after unix epoch")
-                .as_secs();
-
-            if let Some(validator) = synthetic_validator.clone() {
-                if let Err(e) = validator.validate_work().await {
-                    error!("Failed to validate work: {e}");
+            let sleep = tokio::time::sleep(std::time::Duration::from_secs(5));
+            tokio::select! {
+                _ = cancellation_token.cancelled() => {
+                    info!("Validator is stopping due to cancellation signal");
+                    break;
                 }
-            }
-
-            if !disable_hardware_validation {
-                let nodes = get_worker_nodes_from_dht(kademlia_action_tx.clone())
-                    .await
-                    .unwrap_or_else(|e| {
-                        error!("Failed to fetch nodes from DHT: {e}");
-                        vec![]
-                    });
-
-                if nodes.is_empty() {
-                    info!("No worker nodes found in DHT, skipping hardware validation");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                }
-
-                let futures = FuturesUnordered::new();
-                for node in nodes {
-                    futures.push(NodeWithMetadata::new_from_contracts(
-                        node, &provider, &contracts,
-                    ));
-                }
-                let nodes = futures
-                    .collect::<Vec<_>>()
-                    .await
-                    .into_iter()
-                    .filter_map(Result::ok)
-                    .collect::<Vec<NodeWithMetadata>>();
-                if nodes.is_empty() {
-                    info!("No valid nodes found for hardware validation");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                }
-
-                // Ensure nodes have enough stake
-                let mut nodes_with_enough_stake = Vec::new();
-                let mut provider_stake_cache: std::collections::HashMap<Address, (U256, U256)> =
-                    std::collections::HashMap::new();
-
-                for node in nodes {
-                    let provider_address = Address::from_str(&node.node().provider_address).expect("provider address must be valid, as it was checked in `NodeWithMetadata::new`");
-
-                    let (stake, required_stake) =
-                        if let Some(&cached_info) = provider_stake_cache.get(&provider_address) {
-                            cached_info
-                        } else {
-                            let stake = stake_manager
-                                .get_stake(provider_address)
-                                .await
-                                .unwrap_or_default();
-                            let total_compute = contracts
-                                .compute_registry
-                                .get_provider_total_compute(provider_address)
-                                .await
-                                .unwrap_or_default();
-                            let required_stake = stake_manager
-                                .calculate_stake(U256::from(0), total_compute)
-                                .await
-                                .unwrap_or_default();
-
-                            provider_stake_cache.insert(provider_address, (stake, required_stake));
-                            (stake, required_stake)
-                        };
-
-                    if stake >= required_stake {
-                        nodes_with_enough_stake.push(node);
+                _ = sleep => {
+                    info!("Validator is starting validation loop");
+                    if let Err(e) = perform_validation(
+                        synthetic_validator.clone(),
+                        provider.clone(),
+                        contracts.clone(),
+                        hardware_validator.clone(),
+                        stake_manager.clone(),
+                        kademlia_action_tx.clone(),
+                        disable_hardware_validation,
+                        metrics_ctx.clone(),
+                        validator_health.clone(),
+                    ).await {
+                        error!("Validation loop failed: {e:#}");
                     } else {
-                        info!(
-                            "Node {} has insufficient stake: {} (required: {})",
-                            node.node().id,
-                            stake / Unit::ETHER.wei(),
-                            required_stake / Unit::ETHER.wei()
-                        );
+                        info!("Validation loop completed successfully");
                     }
                 }
-
-                if let Err(e) = hardware_validator
-                    .validate_nodes(nodes_with_enough_stake)
-                    .await
-                {
-                    error!("Error validating nodes: {e:#}");
-                }
             }
-
-            // Calculate and store loop duration
-            let last_loop_duration_ms = loop_start.elapsed().as_millis();
-            metrics_ctx.record_validation_loop_duration(loop_start.elapsed().as_secs_f64());
-            info!("Validation loop completed in {last_loop_duration_ms}ms");
-
-            let mut validator_health = validator_health.lock().await;
-            validator_health.update(last_validation_timestamp, last_loop_duration_ms as u64);
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
     }
+}
+
+async fn perform_validation(
+    synthetic_validator: Option<SyntheticDataValidator<WalletProvider>>,
+    provider: WalletProvider,
+    contracts: Contracts<WalletProvider>,
+    hardware_validator: HardwareValidator,
+    stake_manager: shared::web3::contracts::implementations::stake_manager::StakeManagerContract<
+        WalletProvider,
+    >,
+    kademlia_action_tx: tokio::sync::mpsc::Sender<p2p::KademliaActionWithChannel>,
+    disable_hardware_validation: bool,
+    metrics_ctx: MetricsContext,
+    validator_health: Arc<Mutex<ValidatorHealth>>,
+) -> Result<()> {
+    // Start timing the loop
+    let loop_start = Instant::now();
+
+    // Update the last validation timestamp
+    let last_validation_timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("current time must be after unix epoch")
+        .as_secs();
+
+    if let Some(validator) = synthetic_validator.clone() {
+        if let Err(e) = validator.validate_work().await {
+            error!("Failed to validate work: {e}");
+        }
+    }
+
+    if !disable_hardware_validation {
+        let nodes = get_worker_nodes_from_dht(kademlia_action_tx.clone())
+            .await
+            .context("failed to fetch nodes from DHT")?;
+
+        if nodes.is_empty() {
+            info!("No worker nodes found in DHT, skipping hardware validation");
+            return Ok(());
+        }
+
+        let futures = FuturesUnordered::new();
+        for node in nodes {
+            futures.push(NodeWithMetadata::new_from_contracts(
+                node, &provider, &contracts,
+            ));
+        }
+        let nodes = futures
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<NodeWithMetadata>>();
+        if nodes.is_empty() {
+            info!("No valid nodes found for hardware validation");
+            return Ok(());
+        }
+
+        // Ensure nodes have enough stake
+        let mut nodes_with_enough_stake = Vec::new();
+        let mut provider_stake_cache: std::collections::HashMap<Address, (U256, U256)> =
+            std::collections::HashMap::new();
+
+        for node in nodes {
+            let provider_address = Address::from_str(&node.node().provider_address).expect(
+                "provider address must be valid, as it was checked in `NodeWithMetadata::new`",
+            );
+
+            let (stake, required_stake) =
+                if let Some(&cached_info) = provider_stake_cache.get(&provider_address) {
+                    cached_info
+                } else {
+                    let stake = stake_manager
+                        .get_stake(provider_address)
+                        .await
+                        .unwrap_or_default();
+                    let total_compute = contracts
+                        .compute_registry
+                        .get_provider_total_compute(provider_address)
+                        .await
+                        .unwrap_or_default();
+                    let required_stake = stake_manager
+                        .calculate_stake(U256::from(0), total_compute)
+                        .await
+                        .unwrap_or_default();
+
+                    provider_stake_cache.insert(provider_address, (stake, required_stake));
+                    (stake, required_stake)
+                };
+
+            if stake >= required_stake {
+                nodes_with_enough_stake.push(node);
+            } else {
+                info!(
+                    "Node {} has insufficient stake: {} (required: {})",
+                    node.node().id,
+                    stake / Unit::ETHER.wei(),
+                    required_stake / Unit::ETHER.wei()
+                );
+            }
+        }
+
+        if let Err(e) = hardware_validator
+            .validate_nodes(nodes_with_enough_stake)
+            .await
+        {
+            error!("Error validating nodes: {e:#}");
+        }
+    }
+
+    // Calculate and store loop duration
+    let last_loop_duration_ms = loop_start.elapsed().as_millis();
+    metrics_ctx.record_validation_loop_duration(loop_start.elapsed().as_secs_f64());
+    info!("Validation loop completed in {last_loop_duration_ms}ms");
+
+    let mut validator_health = validator_health.lock().await;
+    validator_health.update(last_validation_timestamp, last_loop_duration_ms as u64);
+    Ok(())
 }
 
 async fn get_worker_nodes_from_dht(

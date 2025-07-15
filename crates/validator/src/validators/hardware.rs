@@ -15,6 +15,7 @@ use crate::validators::hardware_challenge::HardwareChallenge;
 /// NOTE: This is a temporary implementation that will be replaced with a proper
 /// hardware validator in the near future. The current implementation only performs
 /// basic matrix multiplication challenges and does not verify actual hardware specs.
+#[derive(Clone)]
 pub struct HardwareValidator {
     contracts: Contracts<WalletProvider>,
     challenge_tx: tokio::sync::mpsc::Sender<HardwareChallengeRequest>,
