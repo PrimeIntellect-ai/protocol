@@ -112,7 +112,7 @@ impl Service {
     }
 }
 
-// TODO: refactor all these channels into a `P2PHandle` struct or similar
+// TODO: refactor all these channels into a `P2PHandle` struct or similar (https://github.com/PrimeIntellect-ai/protocol/issues/628)
 #[allow(clippy::type_complexity)]
 fn build_p2p_node(
     keypair: p2p::Keypair,
@@ -267,7 +267,7 @@ async fn handle_incoming_request(
             handle_restart_request(from, &context).await
         }
         p2p::Request::General(_) => {
-            todo!()
+            unimplemented!("no services use the `General` protocol yet")
         }
     };
 
@@ -407,7 +407,7 @@ fn handle_incoming_response(response: p2p::Response) {
             tracing::error!("worker should never receive Restart responses");
         }
         p2p::Response::General(_) => {
-            todo!()
+            tracing::error!("worker should never receive General responses");
         }
     }
 }

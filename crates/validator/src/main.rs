@@ -363,8 +363,7 @@ async fn main() -> anyhow::Result<()> {
     }
     cancellation_token.cancel();
 
-    // TODO: handle spawn handles here
-
+    // TODO: handle spawn handles here (https://github.com/PrimeIntellect-ai/protocol/issues/627)
     Ok(())
 }
 

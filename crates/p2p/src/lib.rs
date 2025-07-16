@@ -445,7 +445,7 @@ mod test {
         tokio::spawn(async move { node1.run().await });
         tokio::spawn(async move { node2.run().await });
 
-        // TODO: implement a way to get peer count
+        // TODO: implement a way to get peer count (https://github.com/PrimeIntellect-ai/protocol/issues/628)
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
         // send request from node1->node2

@@ -339,7 +339,7 @@ async fn main() -> Result<()> {
         );
 
         tasks.spawn(
-            // TODO: refactor task handling
+            // TODO: refactor task handling (https://github.com/PrimeIntellect-ai/protocol/issues/627)
             monitor.run().map(|_| Ok(())),
         );
 
@@ -457,7 +457,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    // TODO: use cancellation token to gracefully shutdown tasks
+    // TODO: use cancellation token to gracefully shutdown tasks (https://github.com/PrimeIntellect-ai/protocol/issues/627)
     cancellation_token.cancel();
     tasks.shutdown().await;
     Ok(())

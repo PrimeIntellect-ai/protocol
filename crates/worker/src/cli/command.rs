@@ -9,8 +9,6 @@ use crate::metrics::store::MetricsStore;
 use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
 use crate::operations::provider::ProviderOperations;
-// use crate::services::discovery::DiscoveryService;
-// use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
 use crate::TaskHandles;
 use alloy::primitives::utils::format_ether;
@@ -777,8 +775,8 @@ pub async fn execute_command(
 
             Console::success(&format!("P2P service started with ID: {peer_id}"));
 
-            // TODO: sleep so that dht is bootstrapped before publishing;
-            // should update p2p service to expose this.
+            // sleep so that dht is bootstrapped before publishing.
+            // TOOD: should update p2p service to expose this better (https://github.com/PrimeIntellect-ai/protocol/issues/628)
             tokio::time::sleep(Duration::from_secs(1)).await;
 
             let record_key = p2p::worker_dht_key_with_peer_id(&peer_id);

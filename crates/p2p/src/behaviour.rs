@@ -124,7 +124,7 @@ impl Behaviour {
             .context("failed to create mDNS behaviour")?;
         let mut kad_config = kad::Config::new(kad::PROTOCOL_NAME);
         // TODO: by default this is 20, however on a local test network we won't have 20 nodes.
-        // make this configurable?
+        // should make this configurable.
         kad_config
             .set_replication_factor(1usize.try_into().expect("can convert 1 to NonZeroUsize"));
         kad_config.set_provider_publication_interval(Some(Duration::from_secs(30)));
@@ -188,8 +188,6 @@ impl BehaviourEvent {
                     } => {
                         debug!("kademlia routing updated for peer {peer:?} with addresses {addresses:?}");
                     }
-                    // TODO: also handle InboundRequest::AddProvider and InboundRequest::PutRecord,
-                    // as these are new workers joining the network
                     kad::Event::OutboundQueryProgressed {
                         id,
                         result,

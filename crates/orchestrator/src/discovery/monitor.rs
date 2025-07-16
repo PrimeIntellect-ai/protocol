@@ -27,7 +27,10 @@ impl NodeFetcher {
         use futures::stream::FuturesUnordered;
         use futures::StreamExt as _;
 
-        // TODO: this actually needs to fetch for compute pool ID only (`self.compute_pool_id`)
+        // TODO: this function fetches all worker nodes from the dht; however,
+        // we only care about workers with the same compute pool ID.
+        // this can be improved by having workers also advertise their compute pool ID
+        // when they join one, and then only performing a DHT query for that pool ID.
         let nodes = get_worker_nodes_from_dht(self.kademlia_action_tx.clone())
             .await
             .context("failed to get worker nodes from DHT")?;
@@ -138,7 +141,6 @@ impl Updater {
         let node_address = node.node().id.parse::<Address>()?;
 
         // Check if there's any healthy node with the same peer ID
-        // TODO: can this case still happen? i think so if there's stale provider records in the dht
         let healthy_nodes_with_same_peer_id = self
             .count_healthy_nodes_with_same_peer_id(
                 node_address,

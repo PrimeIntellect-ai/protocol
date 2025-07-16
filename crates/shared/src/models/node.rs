@@ -630,9 +630,9 @@ impl NodeWithMetadata {
             is_provider_whitelisted,
             is_blacklisted,
             latest_balance,
-            last_updated: None, // TODO
-            created_at: None,   // TODO
-            location: None,     // TODO
+            last_updated: None,
+            created_at: None,
+            location: None,
         })
     }
 
