@@ -74,7 +74,7 @@ pub(crate) async fn handle_kademlia_action<S: RecordStore + Send + 'static>(
                 .put_record(
                     kad::Record {
                         key: key.into(),
-                        value: value.into(),
+                        value,
                         publisher: None,
                         expires: None,
                     },

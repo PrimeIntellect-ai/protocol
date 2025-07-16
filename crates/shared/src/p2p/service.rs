@@ -34,6 +34,7 @@ pub struct Service {
 }
 
 impl Service {
+    #[allow(clippy::type_complexity)]
     pub fn new(
         keypair: p2p::Keypair,
         port: u16,
@@ -115,6 +116,7 @@ impl Service {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn build_p2p_node(
     keypair: p2p::Keypair,
     port: u16,

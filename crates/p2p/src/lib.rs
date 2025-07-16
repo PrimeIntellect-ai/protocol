@@ -335,6 +335,7 @@ impl NodeBuilder {
         self
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn try_build(
         self,
     ) -> Result<(

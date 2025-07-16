@@ -5,9 +5,8 @@ use anyhow::{anyhow, Context as _};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::ops::Deref;
 use std::str::FromStr;
-use utoipa::{openapi::Object, ToSchema};
+use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct Node {
@@ -565,6 +564,7 @@ pub struct NodeWithMetadata {
 }
 
 impl NodeWithMetadata {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         node: Node,
         is_validated: bool,
@@ -673,76 +673,6 @@ impl NodeWithMetadata {
     }
 }
 
-// TODO: delete
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
-pub struct DiscoveryNode {
-    #[serde(flatten)]
-    pub node: Node,
-    pub is_validated: bool,
-    pub is_active: bool,
-    #[serde(default)]
-    pub is_provider_whitelisted: bool,
-    #[serde(default)]
-    pub is_blacklisted: bool,
-    #[serde(default)]
-    pub last_updated: Option<DateTime<Utc>>,
-    #[serde(default)]
-    pub created_at: Option<DateTime<Utc>>,
-    #[serde(default)]
-    pub location: Option<NodeLocation>,
-    #[schema(schema_with = u256_schema)]
-    pub latest_balance: Option<U256>,
-}
-
-fn u256_schema() -> Object {
-    utoipa::openapi::ObjectBuilder::new()
-        .schema_type(utoipa::openapi::schema::Type::String)
-        .description(Some("A U256 value represented as a decimal string"))
-        .examples(Some(serde_json::json!("1000000000000000000")))
-        .build()
-}
-
-impl DiscoveryNode {
-    pub fn with_updated_node(&self, new_node: Node) -> Self {
-        DiscoveryNode {
-            node: new_node,
-            is_validated: self.is_validated,
-            is_active: self.is_active,
-            is_provider_whitelisted: self.is_provider_whitelisted,
-            is_blacklisted: self.is_blacklisted,
-            last_updated: Some(Utc::now()),
-            created_at: self.created_at,
-            location: self.location.clone(),
-            latest_balance: self.latest_balance,
-        }
-    }
-}
-
-impl Deref for DiscoveryNode {
-    type Target = Node;
-
-    fn deref(&self) -> &Self::Target {
-        &self.node
-    }
-}
-
-impl From<Node> for DiscoveryNode {
-    fn from(node: Node) -> Self {
-        DiscoveryNode {
-            node,
-            is_validated: false, // Default values for new discovery nodes
-            is_active: false,
-            is_provider_whitelisted: false,
-            is_blacklisted: false,
-            last_updated: None,
-            created_at: Some(Utc::now()),
-            location: None,
-            latest_balance: None,
-        }
-    }
-}
-
-// --- Tests ---
 #[cfg(test)]
 mod tests {
     use super::*;

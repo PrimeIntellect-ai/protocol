@@ -312,10 +312,10 @@ async fn main() -> anyhow::Result<()> {
 
         if let Err(e) = HttpServer::new(move || {
             App::new()
-                .app_data(web::Data::new((
-                    synthetic_validator.clone(),
-                    validator_health.clone(),
-                )))
+                .app_data(web::Data::new(State {
+                    synthetic_validator: synthetic_validator.clone(),
+                    validator_health: validator_health.clone(),
+                }))
                 .route("/health", web::get().to(health_check))
                 .route(
                     "/rejections",
@@ -375,26 +375,16 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn health_check(
-    _: HttpRequest,
-    state: web::Data<
-        Option<(
-            SyntheticDataValidator<shared::web3::wallet::WalletProvider>,
-            Arc<tokio::sync::Mutex<validator::ValidatorHealth>>,
-        )>,
-    >,
-) -> impl Responder {
+struct State {
+    synthetic_validator: Option<SyntheticDataValidator<shared::web3::wallet::WalletProvider>>,
+    validator_health: Arc<tokio::sync::Mutex<validator::ValidatorHealth>>,
+}
+
+async fn health_check(_: HttpRequest, state: web::Data<State>) -> impl Responder {
     // Maximum allowed time between validation loops (2 minutes)
     const MAX_VALIDATION_INTERVAL_SECS: u64 = 120;
 
-    let Some(state) = state.get_ref() else {
-        return HttpResponse::ServiceUnavailable().json(json!({
-            "status": "error",
-            "message": "Validator not initialized"
-        }));
-    };
-
-    let validator_health = state.1.lock().await;
+    let validator_health = state.validator_health.lock().await;
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -426,25 +416,24 @@ async fn health_check(
     }))
 }
 
-async fn get_rejections(
-    req: HttpRequest,
-    validator: web::Data<Option<SyntheticDataValidator<shared::web3::wallet::WalletProvider>>>,
-) -> impl Responder {
-    match validator.as_ref() {
-        Some(validator) => {
+async fn get_rejections(req: HttpRequest, state: web::Data<State>) -> impl Responder {
+    match state.synthetic_validator.as_ref() {
+        Some(synthetic_validator) => {
             // Parse query parameters
             let query = req.query_string();
             let limit = parse_limit_param(query).unwrap_or(100); // Default limit of 100
 
             let result = if limit > 0 && limit < 1000 {
                 // Use the optimized recent rejections method for reasonable limits
-                validator.get_recent_rejections(limit as isize).await
+                synthetic_validator
+                    .get_recent_rejections(limit as isize)
+                    .await
             } else {
                 // Fallback to all rejections (but warn about potential performance impact)
                 if limit >= 1000 {
                     info!("Large limit requested ({limit}), this may impact performance");
                 }
-                validator.get_all_rejections().await
+                synthetic_validator.get_all_rejections().await
             };
 
             match result {

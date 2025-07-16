@@ -171,8 +171,8 @@ impl BehaviourEvent {
     ) -> Vec<(PeerId, Multiaddr)> {
         match self {
             BehaviourEvent::Autonat(_event) => {}
-            BehaviourEvent::Identify(event) => match event {
-                identify::Event::Received { peer_id, info, .. } => {
+            BehaviourEvent::Identify(event) => {
+                if let identify::Event::Received { peer_id, info, .. } = event {
                     let addrs = info
                         .listen_addrs
                         .into_iter()
@@ -180,8 +180,7 @@ impl BehaviourEvent {
                         .collect::<Vec<_>>();
                     return addrs;
                 }
-                _ => {}
-            },
+            }
             BehaviourEvent::Kademlia(event) => {
                 match event {
                     kad::Event::RoutingUpdated {
@@ -211,12 +210,11 @@ impl BehaviourEvent {
                     _ => {}
                 }
             }
-            BehaviourEvent::Mdns(event) => match event {
-                mdns::Event::Discovered(peers) => {
+            BehaviourEvent::Mdns(event) => {
+                if let mdns::Event::Discovered(peers) = event {
                     return peers;
                 }
-                _ => {}
-            },
+            }
             BehaviourEvent::Ping(_event) => {}
             BehaviourEvent::RequestResponse(event) => match event {
                 request_response::Event::Message { peer, message } => {

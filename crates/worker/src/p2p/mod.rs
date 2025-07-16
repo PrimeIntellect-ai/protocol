@@ -112,6 +112,8 @@ impl Service {
     }
 }
 
+// TODO: refactor all these channels into a `P2PHandle` struct or similar
+#[allow(clippy::type_complexity)]
 fn build_p2p_node(
     keypair: p2p::Keypair,
     port: u16,

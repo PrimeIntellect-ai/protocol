@@ -20,7 +20,6 @@ futures = { workspace = true }
 hex = { workspace = true }
 log = { workspace = true }
 redis = { workspace = true, features = ["tokio-comp"] }
-redis-test = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -39,3 +38,4 @@ utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web", "debug-embed",
 
 [dev-dependencies]
 mockito = { workspace = true }
+redis-test = { workspace = true }
