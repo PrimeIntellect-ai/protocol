@@ -148,27 +148,22 @@ async fn restart_node_task(node_id: web::Path<String>, app_state: Data<AppState>
         }
     };
 
-    if node.worker_p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
+    if node.worker_p2p_addresses.is_none() {
         return HttpResponse::BadRequest().json(json!({
             "success": false,
-            "error": "Node does not have p2p information"
+            "error": "Node does not have p2p addresses"
         }));
     }
 
-    let p2p_id = node
-        .worker_p2p_id
-        .as_ref()
-        .expect("worker_p2p_id should be present");
     let p2p_addresses = node
         .worker_p2p_addresses
-        .as_ref()
         .expect("worker_p2p_addresses should be present");
 
     let (response_tx, response_rx) = tokio::sync::oneshot::channel();
     let restart_task_request = crate::p2p::RestartTaskRequest {
         worker_wallet_address: node.address,
-        worker_p2p_id: p2p_id.clone(),
-        worker_addresses: p2p_addresses.clone(),
+        worker_p2p_id: node.p2p_id,
+        worker_addresses: p2p_addresses,
         response_tx,
     };
     if let Err(e) = app_state.restart_task_tx.send(restart_task_request).await {
@@ -231,20 +226,14 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
         }
     };
 
-    if node.worker_p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
+    if node.worker_p2p_addresses.is_none() {
         return HttpResponse::BadRequest().json(json!({
             "success": false,
-            "error": "Node does not have p2p information"
+            "error": "Node does not have p2p addresses"
         }));
     }
 
-    let Some(p2p_id) = node.worker_p2p_id.as_ref() else {
-        return HttpResponse::BadRequest().json(json!({
-            "success": false,
-            "error": "Node does not have worker p2p id"
-        }));
-    };
-    let Some(p2p_addresses) = node.worker_p2p_addresses.as_ref() else {
+    let Some(p2p_addresses) = node.worker_p2p_addresses else {
         return HttpResponse::BadRequest().json(json!({
             "success": false,
             "error": "Node does not have worker p2p addresses"
@@ -254,8 +243,8 @@ async fn get_node_logs(node_id: web::Path<String>, app_state: Data<AppState>) ->
     let (response_tx, response_rx) = tokio::sync::oneshot::channel();
     let get_task_logs_request = crate::p2p::GetTaskLogsRequest {
         worker_wallet_address: node.address,
-        worker_p2p_id: p2p_id.clone(),
-        worker_addresses: p2p_addresses.clone(),
+        worker_p2p_id: node.p2p_id,
+        worker_addresses: p2p_addresses,
         response_tx,
     };
     if let Err(e) = app_state.get_task_logs_tx.send(get_task_logs_request).await {

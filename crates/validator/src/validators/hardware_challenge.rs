@@ -17,12 +17,6 @@ impl HardwareChallenge {
     }
 
     pub(crate) async fn challenge_node(&self, node: &Node) -> Result<()> {
-        // Check if node has P2P ID and addresses
-        let p2p_id = node
-            .worker_p2p_id
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("Node {} does not have P2P ID", node.id))?;
-
         let p2p_addresses = node
             .worker_p2p_addresses
             .clone()
@@ -44,7 +38,7 @@ impl HardwareChallenge {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
         let hardware_challenge = HardwareChallengeRequest {
             worker_wallet_address: node_address,
-            worker_p2p_id: p2p_id,
+            worker_p2p_id: node.worker_p2p_id.clone(),
             worker_addresses: p2p_addresses,
             challenge: challenge_with_timestamp,
             response_tx,

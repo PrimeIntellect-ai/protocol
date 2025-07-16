@@ -38,7 +38,7 @@ fn create_test_node(
         ip_address,
         port: 8080,
         status,
-        p2p_id: Some("test_p2p_id".to_string()),
+        p2p_id: "test_p2p_id".to_string(),
         compute_specs,
         ..Default::default()
     }

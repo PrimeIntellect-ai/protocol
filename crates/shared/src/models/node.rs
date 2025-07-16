@@ -1,6 +1,6 @@
-use crate::web3::{contracts::core::builder::Contracts, wallet::WalletProvider};
+use crate::web3::contracts::core::builder::Contracts;
 use alloy::primitives::{Address, U256};
-use alloy::providers::Provider as _;
+use alloy_provider::Provider;
 use anyhow::{anyhow, Context as _};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -19,10 +19,9 @@ pub struct Node {
     pub port: u16,
     pub compute_pool_id: u32,
     pub compute_specs: Option<ComputeSpecs>,
+    pub worker_p2p_id: String, // TODO: change to p2p::PeerId
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub worker_p2p_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub worker_p2p_addresses: Option<Vec<String>>,
+    pub worker_p2p_addresses: Option<Vec<String>>, // TODO: change to p2p::Multiaddr
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, ToSchema)]
@@ -590,10 +589,10 @@ impl NodeWithMetadata {
         }
     }
 
-    pub async fn new_from_contracts(
+    pub async fn new_from_contracts<P: Provider>(
         node: Node,
-        provider: &WalletProvider,
-        contracts: &Contracts<WalletProvider>,
+        provider: &P,
+        contracts: &Contracts<P>,
     ) -> anyhow::Result<Self> {
         let provider_address =
             Address::from_str(&node.provider_address).context("invalid provider address")?;
@@ -674,6 +673,7 @@ impl NodeWithMetadata {
     }
 }
 
+// TODO: delete
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct DiscoveryNode {
     #[serde(flatten)]

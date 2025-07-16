@@ -355,7 +355,7 @@ pub async fn execute_command(
                     .to_string(),
                 compute_specs: None,
                 compute_pool_id: *compute_pool_id,
-                worker_p2p_id: None,
+                worker_p2p_id: state.get_p2p_id().to_string(),
                 worker_p2p_addresses: None,
             };
 
@@ -771,7 +771,7 @@ pub async fn execute_command(
             };
 
             let peer_id = p2p_service.peer_id();
-            node_config.worker_p2p_id = Some(peer_id.to_string());
+            node_config.worker_p2p_id = p2p_service.peer_id().to_string();
             let external_p2p_address =
                 format!("/ip4/{}/tcp/{}", node_config.ip_address, *libp2p_port);
             node_config.worker_p2p_addresses = Some(
@@ -910,7 +910,7 @@ pub async fn execute_command(
                 compute_specs: None,
                 provider_address: String::new(),
                 compute_pool_id: 0,
-                worker_p2p_id: None,
+                worker_p2p_id: "empty".to_string(), // TODO: this should be a different type, as peer id is not needed for this code path
                 worker_p2p_addresses: None,
             };
 

@@ -115,10 +115,9 @@ impl NodeInviter {
     }
 
     async fn send_invite(&self, node: &OrchestratorNode) -> Result<(), anyhow::Error> {
-        if node.worker_p2p_id.is_none() || node.worker_p2p_addresses.is_none() {
+        if node.worker_p2p_addresses.is_none() {
             return Err(anyhow::anyhow!("Node does not have p2p information"));
         }
-        let p2p_id = node.worker_p2p_id.as_ref().unwrap();
         let p2p_addresses = node.worker_p2p_addresses.as_ref().unwrap();
 
         // Generate random nonce and expiration
@@ -145,12 +144,12 @@ impl NodeInviter {
             nonce,
         };
 
-        info!("Sending invite to node: {p2p_id}");
+        info!("Sending invite to node: {}", node.p2p_id);
 
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
         let invite = InviteRequestWithMetadata {
             worker_wallet_address: node.address,
-            worker_p2p_id: p2p_id.clone(),
+            worker_p2p_id: node.p2p_id.clone(),
             worker_addresses: p2p_addresses.clone(),
             invite: payload,
             response_tx,

@@ -13,7 +13,7 @@ use libp2p::request_response;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::Multiaddr;
 use libp2p::PeerId;
-use log::{debug, info};
+use log::debug;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -187,7 +187,7 @@ impl BehaviourEvent {
                     kad::Event::RoutingUpdated {
                         peer, addresses, ..
                     } => {
-                        info!("kademlia routing updated for peer {peer:?} with addresses {addresses:?}");
+                        debug!("kademlia routing updated for peer {peer:?} with addresses {addresses:?}");
                     }
                     // TODO: also handle InboundRequest::AddProvider and InboundRequest::PutRecord,
                     // as these are new workers joining the network

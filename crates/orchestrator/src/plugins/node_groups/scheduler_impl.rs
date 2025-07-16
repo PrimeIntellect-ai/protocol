@@ -122,7 +122,7 @@ impl NodeGroupsPlugin {
                     .get_node(&Address::from_str(next_node_addr).unwrap())
                     .await
                 {
-                    next_node.p2p_id.unwrap_or_default()
+                    next_node.p2p_id
                 } else {
                     String::new()
                 };
