@@ -1,5 +1,7 @@
+use alloy::providers::Provider;
 use anyhow::Result;
 use clap::Parser;
+use futures::FutureExt;
 use log::debug;
 use log::error;
 use log::info;
@@ -188,7 +190,15 @@ async fn main() -> Result<()> {
 
     tokio::task::spawn(p2p_service.run());
 
-    let contracts = ContractBuilder::new(wallet.provider())
+    let contracts = ContractBuilder::new(wallet.provider().root().clone())
+        .with_compute_registry()
+        .with_ai_token()
+        .with_prime_network()
+        .with_compute_pool()
+        .build()
+        .unwrap();
+
+    let contracts_with_wallet = ContractBuilder::new(wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
@@ -306,37 +316,36 @@ async fn main() -> Result<()> {
             });
         }
 
-        // // Create status_update_plugins for discovery monitor
-        // let mut discovery_status_update_plugins: Vec<StatusUpdatePlugin> = vec![];
+        // Create status_update_plugins for discovery monitor
+        let mut discovery_status_update_plugins: Vec<StatusUpdatePlugin> = vec![];
 
-        // // Add webhook plugins to discovery status update plugins
-        // for plugin in &webhook_plugins {
-        //     discovery_status_update_plugins.push(plugin.into());
-        // }
+        // Add webhook plugins to discovery status update plugins
+        for plugin in &webhook_plugins {
+            discovery_status_update_plugins.push(plugin.into());
+        }
 
-        // // Add node groups plugin if available
-        // if let Some(group_plugin) = node_groups_plugin.clone() {
-        //     discovery_status_update_plugins.push(group_plugin.into());
-        // }
+        // Add node groups plugin if available
+        if let Some(group_plugin) = node_groups_plugin.clone() {
+            discovery_status_update_plugins.push(group_plugin.into());
+        }
 
-        // let discovery_store_context = store_context.clone();
-        // let discovery_heartbeats = heartbeats.clone();
-        // tasks.spawn({
-        //     let wallet = wallet.clone();
-        //     async move {
-        //         let monitor = DiscoveryMonitor::new(
-        //             wallet,
-        //             compute_pool_id,
-        //             args.discovery_refresh_interval,
-        //             args.discovery_urls,
-        //             discovery_store_context.clone(),
-        //             discovery_heartbeats.clone(),
-        //             args.max_healthy_nodes_with_same_endpoint,
-        //             discovery_status_update_plugins,
-        //         );
-        //         monitor.run().await
-        //     }
-        // });
+        let discovery_store_context = store_context.clone();
+        let discovery_heartbeats = heartbeats.clone();
+        let monitor = orchestrator::DiscoveryMonitor::new(
+            compute_pool_id,
+            args.discovery_refresh_interval,
+            discovery_store_context.clone(),
+            discovery_heartbeats.clone(),
+            discovery_status_update_plugins,
+            kademlia_action_tx,
+            wallet.provider().root().clone(),
+            contracts.clone(),
+        );
+
+        tasks.spawn(
+            // TODO: refactor task handling
+            monitor.run().map(|_| Ok(())),
+        );
 
         let inviter_store_context = store_context.clone();
         let inviter_heartbeats = heartbeats.clone();
@@ -381,7 +390,7 @@ async fn main() -> Result<()> {
         let status_update_heartbeats = heartbeats.clone();
         let status_update_metrics = metrics_context.clone();
         tasks.spawn({
-            let contracts = contracts.clone();
+            let contracts = contracts_with_wallet.clone();
             async move {
                 let status_updater = NodeStatusUpdater::new(
                     status_update_store_context.clone(),
@@ -429,7 +438,7 @@ async fn main() -> Result<()> {
             heartbeats.clone(),
             store.clone(),
             args.hourly_s3_upload_limit,
-            Some(contracts),
+            Some(contracts_with_wallet),
             compute_pool_id,
             server_mode,
             scheduler,
