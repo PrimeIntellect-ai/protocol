@@ -1,11 +1,16 @@
 use anyhow::{Context as _, Result};
 use libp2p::kad::QueryResult;
 use libp2p::kad::{self, store::RecordStore, QueryId, Quorum};
+use libp2p::PeerId;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub const WORKER_DHT_KEY: &str = "prime-worker/1.0.0";
+
+pub fn worker_dht_key_with_peer_id(peer_id: &PeerId) -> String {
+    format!("{WORKER_DHT_KEY}/{peer_id}")
+}
 
 pub struct KademliaActionWithChannel {
     kad_action: KademliaAction,

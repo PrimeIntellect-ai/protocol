@@ -1724,6 +1724,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bootnode"
+version = "0.3.11"
+dependencies = [
+ "anyhow",
+ "clap",
+ "hex",
+ "p2p",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "bounded-integer"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

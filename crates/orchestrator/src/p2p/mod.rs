@@ -21,6 +21,7 @@ impl Service {
     pub fn new(
         keypair: Keypair,
         port: u16,
+        bootnodes: Vec<p2p::Multiaddr>,
         cancellation_token: CancellationToken,
         wallet: Wallet,
     ) -> Result<(
@@ -28,6 +29,7 @@ impl Service {
         Sender<InviteRequest>,
         Sender<GetTaskLogsRequest>,
         Sender<RestartTaskRequest>,
+        Sender<p2p::KademliaActionWithChannel>,
     )> {
         let (invite_tx, invite_rx) = tokio::sync::mpsc::channel(100);
         let (get_task_logs_tx, get_task_logs_rx) = tokio::sync::mpsc::channel(100);
@@ -35,7 +37,7 @@ impl Service {
         let (inner, outgoing_message_tx, kademlia_action_tx) = P2PService::new(
             keypair,
             port,
-            vec![],
+            bootnodes,
             cancellation_token.clone(),
             wallet,
             Protocols::new()
@@ -56,6 +58,7 @@ impl Service {
             invite_tx,
             get_task_logs_tx,
             restart_task_tx,
+            kademlia_action_tx,
         ))
     }
 

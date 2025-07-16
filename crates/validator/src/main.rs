@@ -106,11 +106,6 @@ struct Args {
     /// Example: `/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ,/ip4/104.131.131.82/udp/4001/quic-v1/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ`
     #[arg(long, default_value = "")]
     bootnodes: String,
-
-    /// Path to the libp2p private key file which contains the hex-encoded private key
-    /// A new key is generated if this is not provided
-    #[arg(long)]
-    libp2p_private_key_file: Option<String>,
 }
 
 #[tokio::main]

@@ -124,10 +124,13 @@ impl Behaviour {
             .context("failed to create mDNS behaviour")?;
         let mut kad_config = kad::Config::new(kad::PROTOCOL_NAME);
         // TODO: by default this is 20, however on a local test network we won't have 20 nodes.
+        // make this configurable?
         kad_config
             .set_replication_factor(1usize.try_into().expect("can convert 1 to NonZeroUsize"));
-        kad_config.set_provider_publication_interval(Some(Duration::from_secs(10)));
-        let kademlia = kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), kad_config);
+        kad_config.set_provider_publication_interval(Some(Duration::from_secs(30)));
+        let mut kademlia =
+            kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), kad_config);
+        kademlia.set_mode(Some(kad::Mode::Server));
 
         let identify = identify::Behaviour::new(
             identify::Config::new(PRIME_STREAM_PROTOCOL.to_string(), keypair.public())
@@ -168,13 +171,23 @@ impl BehaviourEvent {
     ) -> Vec<(PeerId, Multiaddr)> {
         match self {
             BehaviourEvent::Autonat(_event) => {}
-            BehaviourEvent::Identify(_event) => {}
+            BehaviourEvent::Identify(event) => match event {
+                identify::Event::Received { peer_id, info, .. } => {
+                    let addrs = info
+                        .listen_addrs
+                        .into_iter()
+                        .map(|addr| (peer_id, addr))
+                        .collect::<Vec<_>>();
+                    return addrs;
+                }
+                _ => {}
+            },
             BehaviourEvent::Kademlia(event) => {
                 match event {
                     kad::Event::RoutingUpdated {
                         peer, addresses, ..
                     } => {
-                        log::info!("kademlia routing updated for peer {peer:?} with addresses {addresses:?}");
+                        info!("kademlia routing updated for peer {peer:?} with addresses {addresses:?}");
                     }
                     // TODO: also handle InboundRequest::AddProvider and InboundRequest::PutRecord,
                     // as these are new workers joining the network
@@ -184,7 +197,7 @@ impl BehaviourEvent {
                         stats: _,
                         step,
                     } => {
-                        info!("kademlia query {id:?} progressed with step {step:?} and result {result:?}");
+                        debug!("kademlia query {id:?} progressed with step {step:?} and result {result:?}");
 
                         let mut ongoing_queries = ongoing_kademlia_queries.lock().await;
                         if let Some(query) = ongoing_queries.get_mut(&id) {

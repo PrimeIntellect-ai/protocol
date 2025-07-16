@@ -788,9 +788,9 @@ pub async fn execute_command(
 
             // TODO: sleep so that dht is bootstrapped before publishing;
             // should update p2p service to expose this.
-            tokio::time::sleep(Duration::from_secs(30)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
 
-            let record_key = format!("{}:{}", p2p::WORKER_DHT_KEY, peer_id);
+            let record_key = p2p::worker_dht_key_with_peer_id(&peer_id);
             let (kad_action, mut result_rx) = KademliaAction::PutRecord {
                 key: record_key.as_bytes().to_vec(),
                 value: serde_json::to_vec(&node_config).unwrap(),

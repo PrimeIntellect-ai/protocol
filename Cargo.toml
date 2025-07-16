@@ -6,7 +6,8 @@ members = [
     "crates/shared",
     "crates/orchestrator",
     "crates/p2p",
-    "crates/dev-utils",
+    "crates/dev-utils", 
+    "crates/bootnode",
 ]
 resolver = "2"
 

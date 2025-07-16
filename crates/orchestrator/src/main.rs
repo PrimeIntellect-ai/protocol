@@ -13,10 +13,10 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use orchestrator::{
-    start_server, DiscoveryMonitor, LoopHeartbeats, MetricsContext, MetricsSyncService,
-    MetricsWebhookSender, NodeGroupConfiguration, NodeGroupsPlugin, NodeInviter, NodeStatusUpdater,
-    P2PService, RedisStore, Scheduler, SchedulerPlugin, ServerMode, StatusUpdatePlugin,
-    StoreContext, WebhookConfig, WebhookPlugin,
+    start_server, LoopHeartbeats, MetricsContext, MetricsSyncService, MetricsWebhookSender,
+    NodeGroupConfiguration, NodeGroupsPlugin, NodeInviter, NodeStatusUpdater, P2PService,
+    RedisStore, Scheduler, SchedulerPlugin, ServerMode, StatusUpdatePlugin, StoreContext,
+    WebhookConfig, WebhookPlugin,
 };
 
 #[derive(Parser)]
@@ -61,10 +61,6 @@ struct Args {
     #[arg(short = 's', long, default_value = "redis://localhost:6380")]
     redis_store_url: String,
 
-    /// Discovery URLs (comma-separated)
-    #[arg(long, default_value = "http://localhost:8089", value_delimiter = ',')]
-    discovery_urls: Vec<String>,
-
     /// Admin api key
     #[arg(short = 'a', long, default_value = "admin")]
     admin_api_key: String,
@@ -97,10 +93,10 @@ struct Args {
     #[arg(long, default_value = "4004")]
     libp2p_port: u16,
 
-    /// Hex-encoded libp2p private key.
-    /// A new key is generated if this is not provided.
-    #[arg(long)]
-    libp2p_private_key: Option<String>,
+    /// Comma-separated list of libp2p bootnode multiaddresses
+    /// Example: `/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ,/ip4/104.131.131.82/udp/4001/quic-v1/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ`
+    #[arg(long, default_value = "")]
+    bootnodes: String,
 }
 
 #[tokio::main]
@@ -154,11 +150,28 @@ async fn main() -> Result<()> {
     let store_context = Arc::new(StoreContext::new(store.clone()));
 
     let keypair = p2p::Keypair::generate_ed25519();
+    let bootnodes: Vec<p2p::Multiaddr> = args
+        .bootnodes
+        .split(',')
+        .filter_map(|addr| match addr.to_string().try_into() {
+            Ok(multiaddr) => Some(multiaddr),
+            Err(e) => {
+                error!("Invalid bootnode address '{addr}': {e}");
+                None
+            }
+        })
+        .collect();
+    if bootnodes.is_empty() {
+        error!("No valid bootnodes provided. Please provide at least one valid bootnode address.");
+        std::process::exit(1);
+    }
+
     let cancellation_token = CancellationToken::new();
-    let (p2p_service, invite_tx, get_task_logs_tx, restart_task_tx) = {
+    let (p2p_service, invite_tx, get_task_logs_tx, restart_task_tx, kademlia_action_tx) = {
         match P2PService::new(
             keypair,
             args.libp2p_port,
+            bootnodes,
             cancellation_token.clone(),
             wallet.clone(),
         ) {
@@ -293,37 +306,37 @@ async fn main() -> Result<()> {
             });
         }
 
-        // Create status_update_plugins for discovery monitor
-        let mut discovery_status_update_plugins: Vec<StatusUpdatePlugin> = vec![];
+        // // Create status_update_plugins for discovery monitor
+        // let mut discovery_status_update_plugins: Vec<StatusUpdatePlugin> = vec![];
 
-        // Add webhook plugins to discovery status update plugins
-        for plugin in &webhook_plugins {
-            discovery_status_update_plugins.push(plugin.into());
-        }
+        // // Add webhook plugins to discovery status update plugins
+        // for plugin in &webhook_plugins {
+        //     discovery_status_update_plugins.push(plugin.into());
+        // }
 
-        // Add node groups plugin if available
-        if let Some(group_plugin) = node_groups_plugin.clone() {
-            discovery_status_update_plugins.push(group_plugin.into());
-        }
+        // // Add node groups plugin if available
+        // if let Some(group_plugin) = node_groups_plugin.clone() {
+        //     discovery_status_update_plugins.push(group_plugin.into());
+        // }
 
-        let discovery_store_context = store_context.clone();
-        let discovery_heartbeats = heartbeats.clone();
-        tasks.spawn({
-            let wallet = wallet.clone();
-            async move {
-                let monitor = DiscoveryMonitor::new(
-                    wallet,
-                    compute_pool_id,
-                    args.discovery_refresh_interval,
-                    args.discovery_urls,
-                    discovery_store_context.clone(),
-                    discovery_heartbeats.clone(),
-                    args.max_healthy_nodes_with_same_endpoint,
-                    discovery_status_update_plugins,
-                );
-                monitor.run().await
-            }
-        });
+        // let discovery_store_context = store_context.clone();
+        // let discovery_heartbeats = heartbeats.clone();
+        // tasks.spawn({
+        //     let wallet = wallet.clone();
+        //     async move {
+        //         let monitor = DiscoveryMonitor::new(
+        //             wallet,
+        //             compute_pool_id,
+        //             args.discovery_refresh_interval,
+        //             args.discovery_urls,
+        //             discovery_store_context.clone(),
+        //             discovery_heartbeats.clone(),
+        //             args.max_healthy_nodes_with_same_endpoint,
+        //             discovery_status_update_plugins,
+        //         );
+        //         monitor.run().await
+        //     }
+        // });
 
         let inviter_store_context = store_context.clone();
         let inviter_heartbeats = heartbeats.clone();

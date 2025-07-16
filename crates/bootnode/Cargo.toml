@@ -1,0 +1,18 @@
+[package]
+name = "bootnode"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+p2p = {workspace = true}
+
+anyhow = {workspace = true}
+clap = { workspace = true }
+hex = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+
+[lints]
+workspace = true

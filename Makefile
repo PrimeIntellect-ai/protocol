@@ -76,19 +76,19 @@ up:
 	@tmux set -t prime-dev pane-border-format " #{pane_title} "
 	@# Start Worker pane first (pane 0)
 	@tmux select-pane -t prime-dev:services.0 -T "Worker"
-	# @# Discovery pane (pane 1)
-	# @tmux split-window -h -t prime-dev:services
-	# @tmux select-pane -t prime-dev:services.1 -T "Discovery"
-	# @tmux send-keys -t prime-dev:services.1 'make watch-discovery' C-m
-	@# Orchestrator pane (pane 1)
+	@# Bootnode pane (pane 1)
 	@tmux split-window -h -t prime-dev:services
-	@tmux select-pane -t prime-dev:services.1 -T "Orchestrator"
-	@tmux send-keys -t prime-dev:services.1 'make watch-orchestrator' C-m
-	@tmux select-layout -t prime-dev:services even-horizontal
-	@# Validator pane (pane 2)
+	@tmux select-pane -t prime-dev:services.1 -T "Bootnode"
+	@tmux send-keys -t prime-dev:services.1 'make run-bootnode' C-m
+	@# Orchestrator pane (pane 2)
 	@tmux split-window -h -t prime-dev:services.1
-	@tmux select-pane -t prime-dev:services.2 -T "Validator"
-	@tmux send-keys -t prime-dev:services.2 'make watch-validator' C-m
+	@tmux select-pane -t prime-dev:services.2 -T "Orchestrator"
+	@tmux send-keys -t prime-dev:services.2 'make watch-orchestrator' C-m
+	@tmux select-layout -t prime-dev:services even-horizontal
+	@# Validator pane (pane 3)
+	@tmux split-window -h -t prime-dev:services.2
+	@tmux select-pane -t prime-dev:services.3 -T "Validator"
+	@tmux send-keys -t prime-dev:services.3 'make watch-validator' C-m
 	@# Create background window for docker logs
 	@tmux new-window -t prime-dev -n background
 	@tmux send-keys -t prime-dev:background 'docker compose logs -f reth redis' C-m
@@ -105,8 +105,8 @@ down:
 	@pkill -f "target/debug/worker" 2>/dev/null || true
 	@pkill -f "target/debug/orchestrator" 2>/dev/null || true
 	@pkill -f "target/debug/validator" 2>/dev/null || true
-	@pkill -f "target/debug/discovery" 2>/dev/null || true
-	@pkill -9 -f "cargo run --bin discovery" 2>/dev/null || true
+	@pkill -f "target/debug/bootnode" 2>/dev/null || true
+	@pkill -9 -f "cargo run --bin bootnode" 2>/dev/null || true
 	@pkill -9 -f "cargo watch" 2>/dev/null || true
 
 # Whitelist provider
@@ -115,28 +115,40 @@ whitelist-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
 
-watch-discovery:
-	set -a; source .env; set +a; \
-	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL} --max-nodes-per-ip $${MAX_NODES_PER_IP:-2} $${LOCATION_SERVICE_URL:+--location-service-url $${LOCATION_SERVICE_URL}} $${LOCATION_SERVICE_API_KEY:+--location-service-api-key $${LOCATION_SERVICE_API_KEY}}"
+# watch-discovery:
+# 	set -a; source .env; set +a; \
+# 	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL} --max-nodes-per-ip $${MAX_NODES_PER_IP:-2} $${LOCATION_SERVICE_URL:+--location-service-url $${LOCATION_SERVICE_URL}} $${LOCATION_SERVICE_API_KEY:+--location-service-api-key $${LOCATION_SERVICE_API_KEY}}"
 
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/worker/src -x "run --bin worker -- run --bootnodes $${ORCHESTRATOR_P2P_ADDRESS} --port 8091 --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
+	cargo watch -w crates/worker/src -x "run --bin worker -- run --bootnodes $${BOOTNODE_P2P_ADDRESS} --port 8091 \
+	--compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info}"
 
 watch-worker-two:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8092 --private-key-node $${PRIVATE_KEY_NODE_2} --private-key-provider $${PRIVATE_KEY_PROVIDER} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} --log-level $${LOG_LEVEL:-info} --disable-state-storing --no-auto-recover"
+	cargo watch -w crates/worker/src -x "run --bin worker -- run --port 8092 --private-key-node $${PRIVATE_KEY_NODE_2} \
+	--private-key-provider $${PRIVATE_KEY_PROVIDER} --compute-pool-id $$WORKER_COMPUTE_POOL_ID --skip-system-checks $${LOKI_URL:+--loki-url $${LOKI_URL}} \
+	--log-level $${LOG_LEVEL:-info} --disable-state-storing --no-auto-recover"
 
 watch-check:
 	cargo watch -w crates/worker/src -x "run --bin worker -- check"	
 
 watch-validator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/validator/src -x "run --bin validator -- --bootnodes $${ORCHESTRATOR_P2P_ADDRESS} --validator-key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} $${BUCKET_NAME:+--bucket-name $${BUCKET_NAME}} -l $${LOG_LEVEL:-info} --toploc-grace-interval $${TOPLOC_GRACE_INTERVAL:-30} --incomplete-group-grace-period-minutes $${INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES:-1} --use-grouping"
+	cargo watch -w crates/validator/src -x "run --bin validator -- --bootnodes $${BOOTNODE_P2P_ADDRESS} --validator-key $${PRIVATE_KEY_VALIDATOR} \
+	--rpc-url $${RPC_URL} --pool-id $${WORKER_COMPUTE_POOL_ID} $${BUCKET_NAME:+--bucket-name $${BUCKET_NAME}} -l $${LOG_LEVEL:-info} \
+	--toploc-grace-interval $${TOPLOC_GRACE_INTERVAL:-30} --incomplete-group-grace-period-minutes $${INCOMPLETE_GROUP_GRACE_PERIOD_MINUTES:-1} --use-grouping"
 
 watch-orchestrator:
 	set -a; source ${ENV_FILE}; set +a; \
-	cargo watch -w crates/orchestrator/src -x "run --bin orchestrator -- -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY -d 0  -p 8090 -i 10 -u http://localhost:8090 --libp2p-private-key $${ORCHESTRATOR_LIBP2P_PRIVATE_KEY} --discovery-urls $${DISCOVERY_URLS:-$${DISCOVERY_URL:-http://localhost:8089}} --compute-pool-id $$WORKER_COMPUTE_POOL_ID $${BUCKET_NAME:+--bucket-name $$BUCKET_NAME} -l $${LOG_LEVEL:-info} --hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3} --max-healthy-nodes-with-same-endpoint $${MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT:-2}"
+	cargo watch -w crates/orchestrator/src -x "run --bin orchestrator -- --bootnodes $${BOOTNODE_P2P_ADDRESS} -r $$RPC_URL -k $$POOL_OWNER_PRIVATE_KEY \
+	-d 0  -p 8090 -i 10 -u http://localhost:8090 \
+	--compute-pool-id $$WORKER_COMPUTE_POOL_ID $${BUCKET_NAME:+--bucket-name $$BUCKET_NAME} -l $${LOG_LEVEL:-info} \
+	--hourly-s3-upload-limit $${HOURLY_S3_LIMIT:-3} --max-healthy-nodes-with-same-endpoint $${MAX_HEALTHY_NODES_WITH_SAME_ENDPOINT:-2}"
+
+run-bootnode:
+	set -a; source ${ENV_FILE}; set +a; \
+	cargo run --bin bootnode -- --libp2p-private-key $${BOOTNODE_LIBP2P_PRIVATE_KEY}
 
 build-worker:
 	cargo build --release --bin worker

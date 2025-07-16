@@ -289,11 +289,11 @@ async fn get_worker_nodes_from_dht(
         }
     }
 
-    info!("got {} worker nodes from DHT", workers.len());
+    log::debug!("got {} worker nodes from DHT", workers.len());
 
     let mut nodes = Vec::new();
     for peer_id in workers {
-        let record_key = format!("{}:{}", p2p::WORKER_DHT_KEY, peer_id);
+        let record_key = p2p::worker_dht_key_with_peer_id(&peer_id);
         let (kad_action, mut result_rx) =
             p2p::KademliaAction::GetRecord(record_key.as_bytes().to_vec())
                 .into_kademlia_action_with_channel();
@@ -332,7 +332,7 @@ async fn get_worker_nodes_from_dht(
                     }
                 }
                 Err(e) => {
-                    warn!("Kademlia action failed: {e}");
+                    warn!("kademlia action failed: {e}");
                 }
             }
         }
