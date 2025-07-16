@@ -93,7 +93,7 @@ make up
 
 This will start:
 - Local blockchain node
-- Discovery service
+- Bootnode
 - Validator node
 - Orchestrator service
 - Redis instance
@@ -141,7 +141,7 @@ make down
 ```
 
 ## Docker Compose Setup
-You can run all supporting services (chain, validator, discovery, orchestrator) (if you only want to work on the worker sw) in docker compose.
+You can run all supporting services (chain, validator, bootnode, orchestrator) (if you only want to work on the worker sw) in docker compose.
 
 1. Start docker compose:
    ```bash

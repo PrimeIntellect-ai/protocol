@@ -32,9 +32,6 @@ struct Args {
     #[arg(short = 'k', long)]
     validator_key: String,
 
-    // /// Discovery URLs (comma-separated)
-    // #[arg(long, default_value = "http://localhost:8089", value_delimiter = ',')]
-    // discovery_urls: Vec<String>,
     /// Ability to disable hardware validation
     #[arg(long, default_value = "false")]
     disable_hardware_validation: bool,
@@ -121,10 +118,6 @@ async fn main() -> anyhow::Result<()> {
     };
     env_logger::Builder::new()
         .filter_level(log_level)
-        .filter_module("iroh", log::LevelFilter::Warn)
-        .filter_module("iroh_net", log::LevelFilter::Warn)
-        .filter_module("iroh_quinn", log::LevelFilter::Warn)
-        .filter_module("iroh_base", log::LevelFilter::Warn)
         .filter_module("tracing::span", log::LevelFilter::Warn)
         .format_timestamp(None)
         .init();

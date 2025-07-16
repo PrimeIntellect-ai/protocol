@@ -1,21 +1,21 @@
 {{/* Helm helper templates */}}
 
-{{- define "discovery.fullname" -}}
+{{- define "bootnode.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- printf "discovery" -}}
+{{- printf "bootnode" -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "discovery.namespace" -}}
+{{- define "bootnode.namespace" -}}
 {{- .Values.namespace | default .Release.Namespace -}}
 {{- end -}}
 
-{{- define "discovery.container" -}}
+{{- define "bootnode.container" -}}
 {{- $mode := .mode }}
 {{- $root := .root }}
-- name: discovery
+- name: bootnode
   image: {{ $root.Values.image }}
   ports:
   - containerPort: {{ $root.Values.port }}

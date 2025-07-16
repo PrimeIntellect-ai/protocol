@@ -2,8 +2,8 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "discovery.fullname" . }}-redis-data
-  namespace: {{ include "discovery.namespace" . }}
+  name: {{ include "bootnode.fullname" . }}-redis-data
+  namespace: {{ include "bootnode.namespace" . }}
 spec:
   accessModes:
     - ReadWriteOnce

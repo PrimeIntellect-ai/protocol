@@ -2,13 +2,13 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "discovery.fullname" . }}-api
-  namespace: {{ include "discovery.namespace" . }}
+  name: {{ include "bootnode.fullname" . }}-api
+  namespace: {{ include "bootnode.namespace" . }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "discovery.fullname" . }}-api
+    name: {{ include "bootnode.fullname" . }}-api
   minReplicas: {{ .Values.api.hpa.minReplicas }}
   maxReplicas: {{ .Values.api.hpa.maxReplicas }}
   {{- if or .Values.api.hpa.metrics.cpu.enabled .Values.api.hpa.metrics.memory.enabled }}

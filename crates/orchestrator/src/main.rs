@@ -115,10 +115,6 @@ async fn main() -> Result<()> {
     env_logger::Builder::new()
         .filter_level(log_level)
         .format_timestamp(None)
-        .filter_module("iroh", log::LevelFilter::Warn)
-        .filter_module("iroh_net", log::LevelFilter::Warn)
-        .filter_module("iroh_quinn", log::LevelFilter::Warn)
-        .filter_module("iroh_base", log::LevelFilter::Warn)
         .filter_module("tracing::span", log::LevelFilter::Warn)
         .init();
 

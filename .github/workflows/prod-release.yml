@@ -45,7 +45,7 @@ jobs:
       - name: Prepare binaries
         run: |
           mkdir -p release-artifacts
-          for binary in worker validator orchestrator discovery; do
+          for binary in worker validator orchestrator bootnode; do
             if [ -f "target/release/$binary" ]; then
               cp "target/release/$binary" "release-artifacts/$binary-linux-x86_64"
             fi
@@ -78,7 +78,7 @@ jobs:
             - Worker
             - Validator
             - Orchestrator
-            - Discovery service
+            - Bootnode
             
             SHA256 checksums are provided for each binary.
             
@@ -126,17 +126,17 @@ jobs:
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "repo_lower=${REPO_LOWER}" >> $GITHUB_OUTPUT
 
-      - name: Build and push Discovery image
+      - name: Build and push bootnode image
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./crates/discovery/Dockerfile
+          file: ./crates/bootnode/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:latest
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.get_version.outputs.tag_name }}
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:latest
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:${{ steps.get_version.outputs.tag_name }}
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/bootnode:latest
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/bootnode:${{ steps.get_version.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/bootnode:latest
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/bootnode:${{ steps.get_version.outputs.tag_name }}
 
       - name: Build and push Validator image
         uses: docker/build-push-action@v4

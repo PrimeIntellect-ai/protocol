@@ -28,7 +28,7 @@ The Prime Protocol follows a modular architecture designed for decentralized AI 
 
 ### Component Overview
 - **Smart Contracts**: Ethereum-based contracts manage the protocol's economic layer
-- **Discovery Service**: Enables secure peer discovery and metadata sharing 
+- **Bootnode**:  Simple bootnode for the p2p network
 - **Orchestrator**: Coordinates compute jobs across worker nodes
 - **Validator Network**: Ensures quality through random challenges
 - **Worker Nodes**: Execute AI workloads in secure containers

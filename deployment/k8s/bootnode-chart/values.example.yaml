@@ -1,6 +1,6 @@
-# fullnameOverride: discovery-2
+# fullnameOverride: bootnode-2
 namespace: example-namespace
-image: ghcr.io/primeintellect-ai/protocol/discovery:v0.3.1-beta.5
+image: ghcr.io/primeintellect-ai/protocol/bootnode:v0.3.1-beta.5
 port: 8089
 
 redis:
@@ -23,7 +23,7 @@ api:
         enabled: false
 
 env:
-  REDIS_URL: "redis://discovery-redis:6379"
+  REDIS_URL: "redis://bootnode-redis:6379"
   RPC_URL: "http://reth:8545"
   LOG_LEVEL: "info"
   LOCATION_SERVICE_URL: "https://ipapi.co"
@@ -32,11 +32,11 @@ env:
 envFromSecret:
   - name: PLATFORM_API_KEY
     secretKeyRef:
-      name: discovery-secret
+      name: bootnode-secret
       key: platformApiKey
   - name: LOCATION_SERVICE_API_KEY
     secretKeyRef:
-      name: discovery-secret
+      name: bootnode-secret
       key: locationServiceApiKey
 
 # TODO: fill in the secrets

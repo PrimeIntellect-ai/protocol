@@ -2,17 +2,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "discovery.fullname" . }}-redis
-  namespace: {{ include "discovery.namespace" . }}
+  name: {{ include "bootnode.fullname" . }}-redis
+  namespace: {{ include "bootnode.namespace" . }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ include "discovery.fullname" . }}-redis
+      app: {{ include "bootnode.fullname" . }}-redis
   template:
     metadata:
       labels:
-        app: {{ include "discovery.fullname" . }}-redis
+        app: {{ include "bootnode.fullname" . }}-redis
     spec:
       containers:
         - name: redis
@@ -27,11 +27,11 @@ spec:
               memory: "512Mi"
               cpu: "500m"
           volumeMounts:
-            - name: {{ include "discovery.fullname" . }}-redis-data
+            - name: {{ include "bootnode.fullname" . }}-redis-data
               mountPath: /data
           command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
       volumes:
-        - name: {{ include "discovery.fullname" . }}-redis-data
+        - name: {{ include "bootnode.fullname" . }}-redis-data
           persistentVolumeClaim:
-            claimName: {{ include "discovery.fullname" . }}-redis-data
+            claimName: {{ include "bootnode.fullname" . }}-redis-data
 {{- end }}

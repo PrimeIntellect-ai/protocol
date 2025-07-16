@@ -27,7 +27,7 @@ api:
 
 env:
   RPC_URL: "http://your-rpc-endpoint:8545"
-  DISCOVERY_URLS: "http://your-discovery-service:8089"
+  BOOTNODES: "/ip4/127.0.0.1/tcp/4005/p2p/12D3KooWJj3haDEzxGSbGSAvXCiE9pDYC9xHDdtQe8B2donhfwXL"
   DISCOVERY_REFRESH_INTERVAL: "60"
   BUCKET_NAME: "your-bucket-name"
   LOG_LEVEL: "info"

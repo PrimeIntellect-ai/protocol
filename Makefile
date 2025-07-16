@@ -115,10 +115,6 @@ whitelist-provider:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo run -p dev-utils --example whitelist_provider -- --provider-address $${PROVIDER_ADDRESS} --key $${PRIVATE_KEY_VALIDATOR} --rpc-url $${RPC_URL}
 
-# watch-discovery:
-# 	set -a; source .env; set +a; \
-# 	cargo watch -w crates/discovery/src -x "run --bin discovery -- --rpc-url $${RPC_URL} --max-nodes-per-ip $${MAX_NODES_PER_IP:-2} $${LOCATION_SERVICE_URL:+--location-service-url $${LOCATION_SERVICE_URL}} $${LOCATION_SERVICE_API_KEY:+--location-service-api-key $${LOCATION_SERVICE_API_KEY}}"
-
 watch-worker:
 	set -a; source ${ENV_FILE}; set +a; \
 	cargo watch -w crates/worker/src -x "run --bin worker -- run --bootnodes $${BOOTNODE_P2P_ADDRESS} --port 8091 \
