@@ -23,6 +23,7 @@ impl NodeStore {
     pub fn new(redis: Arc<RedisStore>) -> Self {
         Self { redis }
     }
+
     // convert orchestrator node to redis hash fields
     fn node_to_hash_fields(node: &OrchestratorNode) -> Result<Vec<(String, String)>> {
         let mut fields = vec![

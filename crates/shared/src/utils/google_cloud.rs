@@ -219,15 +219,15 @@ mod tests {
             .generate_mapping_file(&random_sha256, "run_1/file.parquet")
             .await
             .unwrap();
-        println!("mapping_content: {}", mapping_content);
-        println!("bucket_name: {}", bucket_name);
+        println!("mapping_content: {mapping_content}");
+        println!("bucket_name: {bucket_name}");
 
         let original_file_name = storage
             .resolve_mapping_for_sha(&random_sha256)
             .await
             .unwrap();
 
-        println!("original_file_name: {}", original_file_name);
+        println!("original_file_name: {original_file_name}");
         assert_eq!(original_file_name, "run_1/file.parquet");
     }
 }

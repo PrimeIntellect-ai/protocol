@@ -776,7 +776,7 @@ pub async fn execute_command(
             Console::success(&format!("P2P service started with ID: {peer_id}"));
 
             // sleep so that dht is bootstrapped before publishing.
-            // TOOD: should update p2p service to expose this better (https://github.com/PrimeIntellect-ai/protocol/issues/628)
+            // TODO: should update p2p service to expose this better (https://github.com/PrimeIntellect-ai/protocol/issues/628)
             tokio::time::sleep(Duration::from_secs(1)).await;
 
             let record_key = p2p::worker_dht_key_with_peer_id(&peer_id);

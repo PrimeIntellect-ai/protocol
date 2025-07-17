@@ -28,7 +28,7 @@ rust-ipfs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 stun = { workspace = true }
-tokio = { workspace = true, features = ["full", "macros"] }
+tokio = { workspace = true, features = [ "rt-multi-thread" ] }
 tokio-util = { workspace = true, features = ["rt"] }
 url = { workspace = true }
 uuid = { workspace = true }

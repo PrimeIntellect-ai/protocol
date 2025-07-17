@@ -531,12 +531,9 @@ mod test {
             match res {
                 Ok(kad::QueryResult::GetProviders(res)) => {
                     let ok = res.unwrap();
-                    match ok {
-                        GetProvidersOk::FoundProviders { key, providers } => {
-                            assert_eq!(key, test_key.clone().into());
-                            providers_set.insert(providers.iter().map(|p| p.to_string()).collect());
-                        }
-                        _ => {}
+                    if let GetProvidersOk::FoundProviders { key, providers } = ok {
+                        assert_eq!(key, test_key.clone().into());
+                        providers_set.insert(providers.iter().map(|p| p.to_string()).collect());
                     }
                 }
                 Ok(_) => panic!("expected a QueryResult::GetProviders response"),

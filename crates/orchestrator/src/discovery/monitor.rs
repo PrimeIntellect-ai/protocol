@@ -1,3 +1,4 @@
+use crate::discovery::location_service::LocationService;
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::plugins::StatusUpdatePlugin;
@@ -7,14 +8,17 @@ use alloy::primitives::Address;
 use alloy::primitives::U256;
 use anyhow::{bail, Context as _, Error, Result};
 use chrono::Utc;
-use log::{error, info};
+use futures::stream::FuturesUnordered;
+use log::{error, info, warn};
 use shared::models::node::NodeWithMetadata;
 use shared::p2p::get_worker_nodes_from_dht;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 
+#[derive(Clone)]
 struct NodeFetcher {
     compute_pool_id: u32,
     kademlia_action_tx: Sender<p2p::KademliaActionWithChannel>,
@@ -70,18 +74,11 @@ impl NodeFetcher {
             return Ok(vec![]);
         }
 
-        // for node in &nodes {
-        //     if let Err(e) = self.perform_node_updates(node).await {
-        //         error!(
-        //             "failed to perform update for node with id {}: {e}",
-        //             node.node().id
-        //         );
-        //     }
-        // }
-
         Ok(nodes)
     }
 }
+
+#[derive(Clone)]
 struct Updater {
     store_context: Arc<StoreContext>,
     status_change_handlers: Vec<StatusUpdatePlugin>,
@@ -320,6 +317,7 @@ pub struct DiscoveryMonitor {
     heartbeats: Arc<LoopHeartbeats>,
     updater: Updater,
     node_fetcher: NodeFetcher,
+    location_service: Option<LocationService>,
 }
 
 impl DiscoveryMonitor {
@@ -333,8 +331,20 @@ impl DiscoveryMonitor {
         kademlia_action_tx: Sender<p2p::KademliaActionWithChannel>,
         provider: alloy::providers::RootProvider,
         contracts: shared::web3::Contracts<alloy::providers::RootProvider>,
-    ) -> Self {
-        Self {
+        location_service_url: Option<String>,
+        location_service_api_key: Option<String>,
+    ) -> Result<Self> {
+        let location_service = if let Some(location_service_url) = location_service_url {
+            Some(
+                LocationService::new(location_service_url, location_service_api_key)
+                    .context("failed to create location service")?,
+            )
+        } else {
+            info!("Location service is disabled, skipping node enrichment");
+            None
+        };
+
+        Ok(Self {
             interval_s,
             heartbeats,
             updater: Updater {
@@ -347,41 +357,178 @@ impl DiscoveryMonitor {
                 provider,
                 contracts,
             },
-        }
+            location_service,
+        })
     }
 
     pub async fn run(self) {
+        use futures::StreamExt as _;
+
         let Self {
             interval_s,
             heartbeats,
             updater,
             node_fetcher,
+            location_service,
         } = self;
 
         let mut interval = interval(Duration::from_secs(interval_s));
 
+        let mut get_nodes_futures = FuturesUnordered::new();
+        let mut node_update_futures = FuturesUnordered::new();
+        let mut location_futures = FuturesUnordered::new();
+
         loop {
-            interval.tick().await;
-            match node_fetcher.get_nodes().await {
-                Ok(nodes) => {
-                    for node in &nodes {
-                        if let Err(e) = updater.perform_node_updates(node).await {
-                            error!(
-                                "failed to perform update for node with id {}: {e}",
-                                node.node().id
-                            );
+            tokio::select! {
+                _ = interval.tick() => {
+                    let node_fetcher = node_fetcher.clone();
+                    get_nodes_futures.push(tokio::task::spawn(async move {node_fetcher.get_nodes().await}));
+                    if let Some(location_service) = &location_service {
+                        info!("Enriching nodes without location data");
+                    location_futures.push(tokio::task::spawn(enrich_nodes_without_location(
+                        updater.store_context.node_store.clone(),
+                        location_service.clone(),
+                    )));
+                    heartbeats.update_monitor();
+                }
+                }
+                Some(res) = get_nodes_futures.next() => {
+                    match res {
+                        Ok(Ok(nodes)) => {
+                            if nodes.is_empty() {
+                                info!("No nodes found in discovery");
+                                continue;
+                            }
+
+                            for node in nodes {
+                                let updater = updater.clone();
+                                node_update_futures.push(
+                                    tokio::task::spawn(async move {
+                                        updater.perform_node_updates(&node).await
+                                    })
+                                );
+                            }
+                        }
+                        Ok(Err(e)) => {
+                            error!("Error fetching nodes from discovery: {e}");
+                        }
+                        Err(e) => {
+                            error!("Task failed while fetching nodes: {e}");
                         }
                     }
-
-                    info!("Successfully synced {} nodes from discovery", nodes.len());
                 }
-                Err(e) => {
-                    error!("Error syncing nodes from discovery: {e}");
+                Some(res) = node_update_futures.next() => {
+                    match res {
+                        Ok(Ok(())) => {
+                            info!("Successfully updated nodes from discovery");
+                        }
+                        Ok(Err(e)) => {
+                            error!("Error updating nodes from discovery: {e}");
+                        }
+                        Err(e) => {
+                            error!("Task failed while updating nodes: {e}");
+                        }
+                    }
+                }
+                Some(res) = location_futures.next() => {
+                    match res {
+                        Ok(Ok(())) => {
+                            info!("Successfully enriched nodes without location data");
+                        }
+                        Ok(Err(e)) => {
+                            error!("Error enriching nodes without location data: {e}");
+                        }
+                        Err(e) => {
+                            error!("Task failed while enriching nodes: {e}");
+                        }
+                    }
                 }
             }
-            heartbeats.update_monitor();
         }
     }
+}
+
+use crate::store::NodeStore;
+
+async fn enrich_nodes_without_location(
+    node_store: Arc<NodeStore>,
+    location_service: LocationService,
+) -> Result<()> {
+    const BATCH_SIZE: usize = 10;
+    const MAX_RETRIES: u32 = 3;
+
+    let nodes = node_store
+        .get_nodes()
+        .await
+        .context("failed to get nodes from store")?;
+    let nodes_without_location: Vec<_> = nodes
+        .into_iter()
+        .filter(|node| node.location.is_none())
+        .collect();
+
+    if nodes_without_location.is_empty() {
+        return Ok(());
+    }
+
+    info!(
+        "Found {} nodes without location data",
+        nodes_without_location.len()
+    );
+
+    // Process in batches to respect rate limits
+    let mut retry_count: HashMap<Address, u32> = HashMap::new();
+    for chunk in nodes_without_location.chunks(BATCH_SIZE) {
+        for node in chunk {
+            let retries = retry_count.get(&node.address).unwrap_or(&0);
+            if *retries >= MAX_RETRIES {
+                continue; // Skip nodes that have exceeded retry limit
+            }
+
+            match location_service.get_location(&node.ip_address).await {
+                Ok(Some(location)) => {
+                    info!(
+                        "Successfully fetched location for node {}: {:?}",
+                        node.address, location
+                    );
+
+                    if let Err(e) = node_store
+                        .update_node_location(&node.address, &location)
+                        .await
+                    {
+                        error!(
+                            "Failed to update node {} with location: {}",
+                            node.address, e
+                        );
+                    }
+                }
+                Ok(None) => {
+                    // Location service is disabled
+                    break;
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to fetch location for node {} (attempt {}/{}): {}",
+                        node.address,
+                        retries + 1,
+                        MAX_RETRIES,
+                        e
+                    );
+
+                    // Increment retry counter
+                    let retries = retry_count.entry(node.address).or_insert(0);
+                    *retries += 1;
+                }
+            }
+
+            // Rate limiting - wait between requests
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        // Longer wait between batches
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

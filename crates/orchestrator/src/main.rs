@@ -99,6 +99,14 @@ struct Args {
     /// Example: `/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ,/ip4/104.131.131.82/udp/4001/quic-v1/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ`
     #[arg(long, default_value = "")]
     bootnodes: String,
+
+    /// Location service URL (e.g., https://ipapi.co). If not provided, location services are disabled.
+    #[arg(long)]
+    location_service_url: Option<String>,
+
+    /// Location service API key
+    #[arg(long)]
+    location_service_api_key: Option<String>,
 }
 
 #[tokio::main]
@@ -327,7 +335,7 @@ async fn main() -> Result<()> {
 
         let discovery_store_context = store_context.clone();
         let discovery_heartbeats = heartbeats.clone();
-        let monitor = orchestrator::DiscoveryMonitor::new(
+        let monitor = match orchestrator::DiscoveryMonitor::new(
             compute_pool_id,
             args.discovery_refresh_interval,
             discovery_store_context.clone(),
@@ -336,7 +344,18 @@ async fn main() -> Result<()> {
             kademlia_action_tx,
             wallet.provider().root().clone(),
             contracts.clone(),
-        );
+            args.location_service_url,
+            args.location_service_api_key,
+        ) {
+            Ok(monitor) => {
+                info!("Discovery monitor initialized successfully");
+                monitor
+            }
+            Err(e) => {
+                error!("Failed to initialize discovery monitor: {e}");
+                std::process::exit(1);
+            }
+        };
 
         tasks.spawn(
             // TODO: refactor task handling (https://github.com/PrimeIntellect-ai/protocol/issues/627)

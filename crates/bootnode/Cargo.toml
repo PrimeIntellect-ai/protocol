@@ -9,7 +9,7 @@ p2p = {workspace = true}
 anyhow = {workspace = true}
 clap = { workspace = true }
 hex = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = [ "rt-multi-thread" ] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
