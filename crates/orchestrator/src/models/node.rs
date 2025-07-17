@@ -2,7 +2,7 @@ use alloy::primitives::Address;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shared::models::heartbeat::TaskDetails;
-use shared::models::node::{ComputeSpecs, DiscoveryNode, NodeLocation};
+use shared::models::node::{ComputeSpecs, NodeLocation, NodeWithMetadata};
 use shared::models::task::TaskState;
 use std::fmt::{self, Display};
 use utoipa::ToSchema;
@@ -21,15 +21,13 @@ pub struct OrchestratorNode {
     #[serde(default)]
     pub task_details: Option<TaskDetails>,
     pub version: Option<String>,
-    pub p2p_id: Option<String>,
+    pub p2p_id: String,
     pub last_status_change: Option<DateTime<Utc>>,
     #[serde(default)]
     pub first_seen: Option<DateTime<Utc>>,
 
     #[serde(default)]
     pub compute_specs: Option<ComputeSpecs>,
-    #[serde(default)]
-    pub worker_p2p_id: Option<String>,
     #[serde(default)]
     pub worker_p2p_addresses: Option<Vec<String>>,
     #[serde(default)]
@@ -43,24 +41,23 @@ where
     serializer.serialize_str(&address.to_string())
 }
 
-impl From<DiscoveryNode> for OrchestratorNode {
-    fn from(discovery_node: DiscoveryNode) -> Self {
+impl From<&NodeWithMetadata> for OrchestratorNode {
+    fn from(other: &NodeWithMetadata) -> Self {
         Self {
-            address: discovery_node.id.parse().unwrap(),
-            ip_address: discovery_node.ip_address.clone(),
-            port: discovery_node.port,
+            address: other.node().id.parse().unwrap(),
+            ip_address: other.node().ip_address.clone(),
+            port: other.node().port,
             status: NodeStatus::Discovered,
             task_id: None,
             task_state: None,
             version: None,
-            p2p_id: None,
+            p2p_id: other.node().worker_p2p_id.clone(),
             last_status_change: None,
             first_seen: None,
             task_details: None,
-            compute_specs: discovery_node.compute_specs.clone(),
-            worker_p2p_id: discovery_node.worker_p2p_id.clone(),
-            worker_p2p_addresses: discovery_node.worker_p2p_addresses.clone(),
-            location: discovery_node.location.clone(),
+            compute_specs: other.node().compute_specs.clone(),
+            worker_p2p_addresses: other.node().worker_p2p_addresses.clone(),
+            location: other.location().cloned(),
         }
     }
 }

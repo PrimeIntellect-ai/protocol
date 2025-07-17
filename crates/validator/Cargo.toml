@@ -24,7 +24,7 @@ redis = { workspace = true, features = ["tokio-comp"] }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = [ "rt-multi-thread" ] }
 tokio-util = { workspace = true }
 url = { workspace = true }
 

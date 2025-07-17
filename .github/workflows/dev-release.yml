@@ -73,8 +73,8 @@ jobs:
           if [ -f target/release/orchestrator ]; then
             cp target/release/orchestrator release-artifacts/orchestrator-linux-x86_64
           fi
-          if [ -f target/release/discovery ]; then  # Prepare discovery binary
-            cp target/release/discovery release-artifacts/discovery-linux-x86_64
+          if [ -f target/release/bootnode ]; then  # Prepare bootnode binary
+            cp target/release/bootnode release-artifacts/bootnode-linux-x86_64
           fi
 
       - name: Generate checksums
@@ -140,17 +140,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Discovery image
+      - name: Build and push bootnode image
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./crates/discovery/Dockerfile
+          file: ./crates/bootnode/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:dev
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/discovery:${{ steps.next_version.outputs.tag_name }}
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:dev
-            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/discovery:${{ steps.next_version.outputs.tag_name }}
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/bootnode:dev
+            ghcr.io/${{ steps.meta.outputs.repo_lower }}/bootnode:${{ steps.next_version.outputs.tag_name }}
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/bootnode:dev
+            us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/prime-protocol/bootnode:${{ steps.next_version.outputs.tag_name }}
 
       - name: Build and push Validator image
         uses: docker/build-push-action@v4

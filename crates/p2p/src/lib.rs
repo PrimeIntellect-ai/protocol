@@ -1,5 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
+use libp2p::kad::QueryId;
 use libp2p::noise;
 use libp2p::swarm::SwarmEvent;
 use libp2p::tcp;
@@ -7,15 +8,20 @@ use libp2p::yamux;
 use libp2p::Swarm;
 use libp2p::SwarmBuilder;
 use libp2p::{identity, Transport};
-use log::debug;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
+use tracing::{debug, info, warn};
 
 mod behaviour;
+mod discovery;
 mod message;
 mod protocol;
 
 use behaviour::Behaviour;
 
+pub use discovery::*;
 pub use message::*;
 pub use protocol::*;
 
@@ -24,6 +30,11 @@ pub type ResponseChannel = libp2p::request_response::ResponseChannel<Response>;
 pub type PeerId = libp2p::PeerId;
 pub type Multiaddr = libp2p::Multiaddr;
 pub type Keypair = libp2p::identity::Keypair;
+pub type KademliaQueryResult = libp2p::kad::QueryResult;
+pub type KademliaGetProvidersOk = libp2p::kad::GetProvidersOk;
+pub type KademliaGetRecordOk = libp2p::kad::GetRecordOk;
+
+type MultiaddrProtocol<'a> = libp2p::multiaddr::Protocol<'a>;
 
 pub const PRIME_STREAM_PROTOCOL: libp2p::StreamProtocol =
     libp2p::StreamProtocol::new("/prime/1.0.0");
@@ -42,6 +53,10 @@ pub struct Node {
 
     // channel for receiving outgoing messages from the consumer of this library
     outgoing_message_rx: tokio::sync::mpsc::Receiver<OutgoingMessage>,
+
+    // channel for receiving kademlia actions from the consumer of this library
+    kademlia_action_rx: tokio::sync::mpsc::Receiver<discovery::KademliaActionWithChannel>,
+    ongoing_kademlia_queries: Arc<Mutex<HashMap<QueryId, OngoingKademliaQuery>>>,
 }
 
 impl Node {
@@ -76,6 +91,8 @@ impl Node {
             cancellation_token,
             incoming_message_tx,
             mut outgoing_message_rx,
+            mut kademlia_action_rx,
+            ongoing_kademlia_queries,
         } = self;
 
         for addr in listen_addrs {
@@ -84,26 +101,74 @@ impl Node {
                 .context("swarm failed to listen on multiaddr")?;
         }
 
-        for bootnode in bootnodes {
-            match swarm.dial(bootnode.clone()) {
-                Ok(_) => {}
+        for mut multiaddr in bootnodes {
+            let Some(MultiaddrProtocol::P2p(peer_id)) = multiaddr.pop() else {
+                warn!("bootnode {multiaddr} does not have a peer ID, skipping");
+                continue;
+            };
+
+            swarm
+                .behaviour_mut()
+                .kademlia()
+                .add_address(&peer_id, multiaddr.clone());
+
+            log::debug!("dialing bootnode {peer_id} at {multiaddr}");
+
+            match swarm.dial(multiaddr.clone()) {
+                Ok(()) => {}
                 Err(e) => {
-                    debug!("failed to dial bootnode {bootnode}: {e:?}");
+                    debug!("failed to dial bootnode {multiaddr}: {e:?}");
                 }
             }
         }
 
+        // this will only error if we have no known peers
+        let (bootstrap_result_tx, mut bootstrap_result_rx) = tokio::sync::mpsc::channel(100);
+        match swarm.behaviour_mut().kademlia().bootstrap() {
+            Ok(query_id) => {
+                let mut ongoing_kademlia_queries = ongoing_kademlia_queries.lock().await;
+                ongoing_kademlia_queries.insert(
+                    query_id,
+                    OngoingKademliaQuery {
+                        result_tx: bootstrap_result_tx,
+                    },
+                );
+            }
+            Err(e) => {
+                warn!("failed to bootstrap kademlia: {e:?}");
+            }
+        };
+
+        let connected_peers_check_interval = Duration::from_secs(60);
+
         loop {
+            let sleep = tokio::time::sleep(connected_peers_check_interval);
             tokio::select! {
                 biased;
+                _ = sleep => {
+                    let peer_count = swarm.connected_peers().count();
+                    info!("connected peers: {peer_count}");
+                }
                 _ = cancellation_token.cancelled() => {
                     debug!("cancellation token triggered, shutting down node");
                     break Ok(());
                 }
+                Some(res) = bootstrap_result_rx.recv() => {
+                    match res {
+                        Ok(libp2p::kad::QueryResult::Bootstrap(_)) => {
+                            debug!("kademlia bootstrap progressed successfully");
+                        }
+                        Ok(res) => {
+                            warn!("kademlia bootstrap query returned unexpected result: {res:?}");
+                        }
+                        Err(e) => {
+                            warn!("kademlia bootstrap query failed: {e:?}");
+                        }
+                    }
+                }
                 Some(message) = outgoing_message_rx.recv() => {
                     match message {
                         OutgoingMessage::Request((peer, addrs, request)) => {
-                            // TODO: if we're not connected to the peer, we should dial it
                             for addr in addrs {
                                 swarm.add_peer_address(peer, addr);
                             }
@@ -114,6 +179,13 @@ impl Node {
                                 debug!("failed to send response: {e:?}");
                             }
                         }
+                    }
+                }
+                Some(kademlia_action) = kademlia_action_rx.recv() => {
+                    let result_tx = kademlia_action.result_tx();
+                    if let Err(e) = discovery::handle_kademlia_action(swarm.behaviour_mut().kademlia(), kademlia_action, ongoing_kademlia_queries.clone()).await {
+                        debug!("failed to handle kademlia action: {e:?}");
+                        let _ = result_tx.send(Err(e)).await;
                     }
                 }
                 event = swarm.select_next_some() => {
@@ -140,7 +212,13 @@ impl Node {
                         } => {
                             debug!("connection closed with peer {peer_id}: {cause:?}");
                         }
-                        SwarmEvent::Behaviour(event) => event.handle(incoming_message_tx.clone()).await,
+                        SwarmEvent::Behaviour(event) => {
+                            let discovered_peers = event.handle(incoming_message_tx.clone(), ongoing_kademlia_queries.clone()).await;
+                            for (peer_id, addr) in discovered_peers {
+                                swarm.add_peer_address(peer_id, addr.clone());
+                                swarm.behaviour_mut().kademlia().add_address(&peer_id, addr.clone());
+                            }
+                        }
                         _ => continue,
                     }
                 },
@@ -257,12 +335,14 @@ impl NodeBuilder {
         self
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn try_build(
         self,
     ) -> Result<(
         Node,
         tokio::sync::mpsc::Receiver<IncomingMessage>,
         tokio::sync::mpsc::Sender<OutgoingMessage>,
+        tokio::sync::mpsc::Sender<discovery::KademliaActionWithChannel>,
     )> {
         let Self {
             port,
@@ -304,6 +384,8 @@ impl NodeBuilder {
 
         let (incoming_message_tx, incoming_message_rx) = tokio::sync::mpsc::channel(100);
         let (outgoing_message_tx, outgoing_message_rx) = tokio::sync::mpsc::channel(100);
+        let (kademlia_action_tx, kademlia_action_rx) = tokio::sync::mpsc::channel(100);
+        let ongoing_kademlia_queries = Arc::new(Mutex::new(HashMap::new()));
 
         Ok((
             Node {
@@ -313,10 +395,13 @@ impl NodeBuilder {
                 bootnodes,
                 incoming_message_tx,
                 outgoing_message_rx,
+                kademlia_action_rx,
                 cancellation_token: cancellation_token.unwrap_or_default(),
+                ongoing_kademlia_queries,
             },
             incoming_message_rx,
             outgoing_message_tx,
+            kademlia_action_tx,
         ))
     }
 }
@@ -336,16 +421,21 @@ fn create_transport(
 
 #[cfg(test)]
 mod test {
+    use libp2p::kad;
+    use libp2p::kad::GetProvidersOk;
+    use std::collections::HashSet;
+
     use super::NodeBuilder;
     use crate::message;
+    use crate::KademliaAction;
 
     #[tokio::test]
     async fn two_nodes_can_connect_and_do_request_response() {
-        let (node1, mut incoming_message_rx1, outgoing_message_tx1) =
+        let (node1, mut incoming_message_rx1, outgoing_message_tx1, _) =
             NodeBuilder::new().with_get_task_logs().try_build().unwrap();
         let node1_peer_id = node1.peer_id();
 
-        let (node2, mut incoming_message_rx2, outgoing_message_tx2) = NodeBuilder::new()
+        let (node2, mut incoming_message_rx2, outgoing_message_tx2, _) = NodeBuilder::new()
             .with_get_task_logs()
             .with_bootnodes(node1.multiaddrs())
             .try_build()
@@ -355,7 +445,7 @@ mod test {
         tokio::spawn(async move { node1.run().await });
         tokio::spawn(async move { node2.run().await });
 
-        // TODO: implement a way to get peer count
+        // TODO: implement a way to get peer count (https://github.com/PrimeIntellect-ai/protocol/issues/628)
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
         // send request from node1->node2
@@ -395,5 +485,67 @@ mod test {
             panic!("expected a successful GetTaskLogs response");
         };
         assert_eq!(logs, "logs");
+    }
+
+    #[tokio::test]
+    async fn kademlia_get_providers_ok() {
+        let (node1, _, _, _) = NodeBuilder::new().with_get_task_logs().try_build().unwrap();
+
+        let (node2, _, _, kademlia_action_tx_2) = NodeBuilder::new()
+            .with_get_task_logs()
+            .with_bootnodes(node1.multiaddrs())
+            .try_build()
+            .unwrap();
+
+        let (node3, _, _, kademlia_action_tx_3) = NodeBuilder::new()
+            .with_get_task_logs()
+            .with_bootnodes(node1.multiaddrs())
+            .try_build()
+            .unwrap();
+        let node3_peer_id = node3.peer_id();
+
+        tokio::spawn(async move { node1.run().await });
+        tokio::spawn(async move { node2.run().await });
+        tokio::spawn(async move { node3.run().await });
+
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        let test_key = b"test_key".to_vec();
+        let action = KademliaAction::StartProviding(test_key.clone());
+        let (action, mut rx) = action.into_kademlia_action_with_channel();
+        kademlia_action_tx_3.send(action).await.unwrap();
+
+        let result = rx.recv().await.unwrap().unwrap();
+        let kad::QueryResult::StartProviding(res) = result else {
+            panic!("expected a QueryResult::StartProviding response");
+        };
+        res.unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        let action = KademliaAction::GetProviders(test_key.clone());
+        let (action, mut rx) = action.into_kademlia_action_with_channel();
+        kademlia_action_tx_2.send(action).await.unwrap();
+
+        let mut providers_set: HashSet<String> = HashSet::new();
+        while let Some(res) = rx.recv().await {
+            match res {
+                Ok(kad::QueryResult::GetProviders(res)) => {
+                    let ok = res.unwrap();
+                    if let GetProvidersOk::FoundProviders { key, providers } = ok {
+                        assert_eq!(key, test_key.clone().into());
+                        providers_set.insert(providers.iter().map(|p| p.to_string()).collect());
+                    }
+                }
+                Ok(_) => panic!("expected a QueryResult::GetProviders response"),
+                Err(e) => panic!("unexpected error: {e}"),
+            }
+        }
+        assert!(!providers_set.is_empty(), "expected at least one provider");
+        assert!(
+            providers_set
+                .iter()
+                .any(|s| s.contains(&node3_peer_id.to_string())),
+            "expected node3 to be a provider"
+        );
     }
 }

@@ -6,7 +6,7 @@ RUN chmod +x /usr/local/bin/validator
 
 ENV RPC_URL="http://localhost:8545"
 ENV VALIDATOR_KEY=""
-ENV DISCOVERY_URLS="http://localhost:8089"
+ENV BOOTNODES="/ip4/127.0.0.1/tcp/4005/p2p/12D3KooWJj3haDEzxGSbGSAvXCiE9pDYC9xHDdtQe8B2donhfwXL"
 ENV POOL_ID=""
 ENV S3_CREDENTIALS=""
 ENV BUCKET_NAME=""
@@ -30,7 +30,7 @@ RUN echo '#!/bin/sh\n\
 exec /usr/local/bin/validator \
 --rpc-url "$RPC_URL" \
 --validator-key "$VALIDATOR_KEY" \
---discovery-urls "$DISCOVERY_URLS" \
+--bootnodes "$BOOTNODES" \
 $([ ! -z "$POOL_ID" ] && echo "--pool-id $POOL_ID") \
 $([ ! -z "$BUCKET_NAME" ] && echo "--bucket-name $BUCKET_NAME") \
 $([ ! -z "$LOG_LEVEL" ] && echo "--log-level $LOG_LEVEL") \

@@ -38,7 +38,7 @@ fn create_test_node(
         ip_address,
         port: 8080,
         status,
-        p2p_id: Some("test_p2p_id".to_string()),
+        p2p_id: "test_p2p_id".to_string(),
         compute_specs,
         ..Default::default()
     }
@@ -276,9 +276,7 @@ async fn test_group_formation_with_multiple_configs() {
     let _ = plugin.try_form_new_groups().await;
 
     let mut conn = plugin.store.client.get_connection().unwrap();
-    let groups: Vec<String> = conn
-        .keys(format!("{}*", GROUP_KEY_PREFIX).as_str())
-        .unwrap();
+    let groups: Vec<String> = conn.keys(format!("{GROUP_KEY_PREFIX}*").as_str()).unwrap();
     assert_eq!(groups.len(), 2);
 
     // Verify group was created
@@ -1102,7 +1100,7 @@ async fn test_node_cannot_be_in_multiple_groups() {
     );
 
     // Get all group keys
-    let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
+    let group_keys: Vec<String> = conn.keys(format!("{GROUP_KEY_PREFIX}*")).unwrap();
     let group_copy = group_keys.clone();
 
     // There should be exactly one group
@@ -1167,7 +1165,7 @@ async fn test_node_cannot_be_in_multiple_groups() {
     let _ = plugin.try_form_new_groups().await;
 
     // Get updated group keys
-    let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
+    let group_keys: Vec<String> = conn.keys(format!("{GROUP_KEY_PREFIX}*")).unwrap();
 
     // There should now be exactly two groups
     assert_eq!(
@@ -1544,7 +1542,7 @@ async fn test_task_observer() {
     let _ = store_context.task_store.add_task(task2.clone()).await;
     let _ = plugin.try_form_new_groups().await;
     let all_tasks = store_context.task_store.get_all_tasks().await.unwrap();
-    println!("All tasks: {:?}", all_tasks);
+    println!("All tasks: {all_tasks:?}");
     assert_eq!(all_tasks.len(), 2);
     assert!(all_tasks[0].id != all_tasks[1].id);
     let topologies = get_task_topologies(&task).unwrap();
@@ -1588,7 +1586,7 @@ async fn test_task_observer() {
         .unwrap();
     assert!(group_3.is_some());
     let all_tasks = store_context.task_store.get_all_tasks().await.unwrap();
-    println!("All tasks: {:?}", all_tasks);
+    println!("All tasks: {all_tasks:?}");
     assert_eq!(all_tasks.len(), 2);
     // Manually assign the first task to the group to test immediate dissolution
     let group_3_before = plugin
@@ -1615,7 +1613,7 @@ async fn test_task_observer() {
         .get_node_group(&node_3.address.to_string())
         .await
         .unwrap();
-    println!("Group 3 after task deletion: {:?}", group_3);
+    println!("Group 3 after task deletion: {group_3:?}");
     // With new behavior, group should be dissolved immediately when its assigned task is deleted
     assert!(group_3.is_none());
 
@@ -1833,7 +1831,7 @@ async fn test_group_formation_priority() {
     let nodes: Vec<_> = (1..=4)
         .map(|i| {
             create_test_node(
-                &format!("0x{}234567890123456789012345678901234567890", i),
+                &format!("0x{i}234567890123456789012345678901234567890"),
                 NodeStatus::Healthy,
                 None,
             )
@@ -1863,7 +1861,7 @@ async fn test_group_formation_priority() {
     // Verify: Should form one 3-node group + one 1-node group
     // NOT four 1-node groups
     let mut conn = plugin.store.client.get_connection().unwrap();
-    let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
+    let group_keys: Vec<String> = conn.keys(format!("{GROUP_KEY_PREFIX}*")).unwrap();
     assert_eq!(group_keys.len(), 2, "Should form exactly 2 groups");
 
     // Check group compositions
@@ -1944,7 +1942,7 @@ async fn test_multiple_groups_same_configuration() {
     let nodes: Vec<_> = (1..=6)
         .map(|i| {
             create_test_node(
-                &format!("0x{}234567890123456789012345678901234567890", i),
+                &format!("0x{i}234567890123456789012345678901234567890"),
                 NodeStatus::Healthy,
                 None,
             )
@@ -1958,7 +1956,7 @@ async fn test_multiple_groups_same_configuration() {
 
     // Verify: Should create 3 groups of 2 nodes each
     let mut conn = plugin.store.client.get_connection().unwrap();
-    let group_keys: Vec<String> = conn.keys(format!("{}*", GROUP_KEY_PREFIX)).unwrap();
+    let group_keys: Vec<String> = conn.keys(format!("{GROUP_KEY_PREFIX}*")).unwrap();
     assert_eq!(group_keys.len(), 3, "Should form exactly 3 groups");
 
     // Verify all groups have exactly 2 nodes and same configuration
@@ -2663,7 +2661,7 @@ async fn test_no_merge_when_policy_disabled() {
 
     // Create 3 nodes
     let nodes: Vec<_> = (1..=3)
-        .map(|i| create_test_node(&format!("0x{:040x}", i), NodeStatus::Healthy, None))
+        .map(|i| create_test_node(&format!("0x{i:040x}"), NodeStatus::Healthy, None))
         .collect();
 
     for node in &nodes {

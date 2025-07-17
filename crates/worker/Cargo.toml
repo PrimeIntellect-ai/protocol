@@ -28,7 +28,7 @@ rust-ipfs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 stun = { workspace = true }
-tokio = { workspace = true, features = ["full", "macros"] }
+tokio = { workspace = true, features = [ "rt-multi-thread" ] }
 tokio-util = { workspace = true, features = ["rt"] }
 url = { workspace = true }
 uuid = { workspace = true }
@@ -49,7 +49,7 @@ rand = "0.9.0"
 tempfile = "3.14.0"
 tracing-loki = "0.2.6"
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 time = "0.3.41"
 tokio-stream = { version = "0.1.17", features = ["net"] }
 homedir = "0.3"

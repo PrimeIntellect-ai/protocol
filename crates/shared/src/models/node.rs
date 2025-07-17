@@ -1,14 +1,16 @@
-use alloy::primitives::U256;
-use anyhow::anyhow;
+use crate::web3::contracts::core::builder::Contracts;
+use alloy::primitives::{Address, U256};
+use alloy_provider::Provider;
+use anyhow::{anyhow, Context as _};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::ops::Deref;
 use std::str::FromStr;
-use utoipa::{openapi::Object, ToSchema};
+use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
 pub struct Node {
+    // TODO: change all three of these from `String` to `Address`
     pub id: String,
     // the node's on-chain address.
     pub provider_address: String,
@@ -16,10 +18,9 @@ pub struct Node {
     pub port: u16,
     pub compute_pool_id: u32,
     pub compute_specs: Option<ComputeSpecs>,
+    pub worker_p2p_id: String, // TODO: change to p2p::PeerId
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub worker_p2p_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub worker_p2p_addresses: Option<Vec<String>>,
+    pub worker_p2p_addresses: Option<Vec<String>>, // TODO: change to p2p::Multiaddr
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, ToSchema)]
@@ -549,75 +550,129 @@ pub struct NodeLocation {
     pub country: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, ToSchema)]
-pub struct DiscoveryNode {
-    #[serde(flatten)]
-    pub node: Node,
-    pub is_validated: bool,
-    pub is_active: bool,
-    #[serde(default)]
-    pub is_provider_whitelisted: bool,
-    #[serde(default)]
-    pub is_blacklisted: bool,
-    #[serde(default)]
-    pub last_updated: Option<DateTime<Utc>>,
-    #[serde(default)]
-    pub created_at: Option<DateTime<Utc>>,
-    #[serde(default)]
-    pub location: Option<NodeLocation>,
-    #[schema(schema_with = u256_schema)]
-    pub latest_balance: Option<U256>,
+#[derive(Debug, Clone)]
+pub struct NodeWithMetadata {
+    node: Node,
+    is_validated: bool,
+    is_active: bool,
+    is_provider_whitelisted: bool,
+    is_blacklisted: bool,
+    latest_balance: U256,
+    last_updated: Option<DateTime<Utc>>,
+    created_at: Option<DateTime<Utc>>,
+    location: Option<NodeLocation>,
 }
 
-fn u256_schema() -> Object {
-    utoipa::openapi::ObjectBuilder::new()
-        .schema_type(utoipa::openapi::schema::Type::String)
-        .description(Some("A U256 value represented as a decimal string"))
-        .examples(Some(serde_json::json!("1000000000000000000")))
-        .build()
-}
-
-impl DiscoveryNode {
-    pub fn with_updated_node(&self, new_node: Node) -> Self {
-        DiscoveryNode {
-            node: new_node,
-            is_validated: self.is_validated,
-            is_active: self.is_active,
-            is_provider_whitelisted: self.is_provider_whitelisted,
-            is_blacklisted: self.is_blacklisted,
-            last_updated: Some(Utc::now()),
-            created_at: self.created_at,
-            location: self.location.clone(),
-            latest_balance: self.latest_balance,
+impl NodeWithMetadata {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        node: Node,
+        is_validated: bool,
+        is_active: bool,
+        is_provider_whitelisted: bool,
+        is_blacklisted: bool,
+        latest_balance: U256,
+        last_updated: Option<DateTime<Utc>>,
+        created_at: Option<DateTime<Utc>>,
+        location: Option<NodeLocation>,
+    ) -> Self {
+        Self {
+            node,
+            is_validated,
+            is_active,
+            is_provider_whitelisted,
+            is_blacklisted,
+            latest_balance,
+            last_updated,
+            created_at,
+            location,
         }
     }
-}
 
-impl Deref for DiscoveryNode {
-    type Target = Node;
+    pub async fn new_from_contracts<P: Provider>(
+        node: Node,
+        provider: &P,
+        contracts: &Contracts<P>,
+    ) -> anyhow::Result<Self> {
+        let provider_address =
+            Address::from_str(&node.provider_address).context("invalid provider address")?;
+        let node_address = Address::from_str(&node.id).context("invalid node address")?;
+        let latest_balance = provider
+            .get_balance(node_address)
+            .await
+            .context("failed to get node balance")?;
 
-    fn deref(&self) -> &Self::Target {
+        let node_info = contracts
+            .compute_registry
+            .get_node(provider_address, node_address)
+            .await
+            .context("failed to get node info from compute registry")?;
+
+        let provider_info = contracts
+            .compute_registry
+            .get_provider(provider_address)
+            .await
+            .map_err(|e| anyhow!("failed to get provider info from compute registry: {e}"))?;
+
+        let (is_active, is_validated) = node_info;
+        let is_provider_whitelisted = provider_info.is_whitelisted;
+
+        let is_blacklisted = contracts
+            .compute_pool
+            .is_node_blacklisted(node.compute_pool_id, node_address)
+            .await
+            .map_err(|e| anyhow!("failed to check if node is blacklisted: {e}"))?;
+
+        Ok(Self {
+            node,
+            is_validated,
+            is_active,
+            is_provider_whitelisted,
+            is_blacklisted,
+            latest_balance,
+            last_updated: None,
+            created_at: None,
+            location: None,
+        })
+    }
+
+    pub fn node(&self) -> &Node {
         &self.node
     }
-}
 
-impl From<Node> for DiscoveryNode {
-    fn from(node: Node) -> Self {
-        DiscoveryNode {
-            node,
-            is_validated: false, // Default values for new discovery nodes
-            is_active: false,
-            is_provider_whitelisted: false,
-            is_blacklisted: false,
-            last_updated: None,
-            created_at: Some(Utc::now()),
-            location: None,
-            latest_balance: None,
-        }
+    pub fn is_validated(&self) -> bool {
+        self.is_validated
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.is_active
+    }
+
+    pub fn is_provider_whitelisted(&self) -> bool {
+        self.is_provider_whitelisted
+    }
+
+    pub fn is_blacklisted(&self) -> bool {
+        self.is_blacklisted
+    }
+
+    pub fn latest_balance(&self) -> U256 {
+        self.latest_balance
+    }
+
+    pub fn last_updated(&self) -> Option<DateTime<Utc>> {
+        self.last_updated
+    }
+
+    pub fn created_at(&self) -> Option<DateTime<Utc>> {
+        self.created_at
+    }
+
+    pub fn location(&self) -> Option<&NodeLocation> {
+        self.location.as_ref()
     }
 }
 
-// --- Tests ---
 #[cfg(test)]
 mod tests {
     use super::*;

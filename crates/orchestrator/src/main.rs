@@ -1,5 +1,7 @@
+use alloy::providers::Provider;
 use anyhow::Result;
 use clap::Parser;
+use futures::FutureExt;
 use log::debug;
 use log::error;
 use log::info;
@@ -13,10 +15,10 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use orchestrator::{
-    start_server, DiscoveryMonitor, LoopHeartbeats, MetricsContext, MetricsSyncService,
-    MetricsWebhookSender, NodeGroupConfiguration, NodeGroupsPlugin, NodeInviter, NodeStatusUpdater,
-    P2PService, RedisStore, Scheduler, SchedulerPlugin, ServerMode, StatusUpdatePlugin,
-    StoreContext, WebhookConfig, WebhookPlugin,
+    start_server, LoopHeartbeats, MetricsContext, MetricsSyncService, MetricsWebhookSender,
+    NodeGroupConfiguration, NodeGroupsPlugin, NodeInviter, NodeStatusUpdater, P2PService,
+    RedisStore, Scheduler, SchedulerPlugin, ServerMode, StatusUpdatePlugin, StoreContext,
+    WebhookConfig, WebhookPlugin,
 };
 
 #[derive(Parser)]
@@ -61,10 +63,6 @@ struct Args {
     #[arg(short = 's', long, default_value = "redis://localhost:6380")]
     redis_store_url: String,
 
-    /// Discovery URLs (comma-separated)
-    #[arg(long, default_value = "http://localhost:8089", value_delimiter = ',')]
-    discovery_urls: Vec<String>,
-
     /// Admin api key
     #[arg(short = 'a', long, default_value = "admin")]
     admin_api_key: String,
@@ -96,6 +94,19 @@ struct Args {
     /// Libp2p port
     #[arg(long, default_value = "4004")]
     libp2p_port: u16,
+
+    /// Comma-separated list of libp2p bootnode multiaddresses
+    /// Example: `/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ,/ip4/104.131.131.82/udp/4001/quic-v1/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ`
+    #[arg(long, default_value = "")]
+    bootnodes: String,
+
+    /// Location service URL (e.g., https://ipapi.co). If not provided, location services are disabled.
+    #[arg(long)]
+    location_service_url: Option<String>,
+
+    /// Location service API key
+    #[arg(long)]
+    location_service_api_key: Option<String>,
 }
 
 #[tokio::main]
@@ -112,10 +123,6 @@ async fn main() -> Result<()> {
     env_logger::Builder::new()
         .filter_level(log_level)
         .format_timestamp(None)
-        .filter_module("iroh", log::LevelFilter::Warn)
-        .filter_module("iroh_net", log::LevelFilter::Warn)
-        .filter_module("iroh_quinn", log::LevelFilter::Warn)
-        .filter_module("iroh_base", log::LevelFilter::Warn)
         .filter_module("tracing::span", log::LevelFilter::Warn)
         .init();
 
@@ -149,11 +156,28 @@ async fn main() -> Result<()> {
     let store_context = Arc::new(StoreContext::new(store.clone()));
 
     let keypair = p2p::Keypair::generate_ed25519();
+    let bootnodes: Vec<p2p::Multiaddr> = args
+        .bootnodes
+        .split(',')
+        .filter_map(|addr| match addr.to_string().try_into() {
+            Ok(multiaddr) => Some(multiaddr),
+            Err(e) => {
+                error!("Invalid bootnode address '{addr}': {e}");
+                None
+            }
+        })
+        .collect();
+    if bootnodes.is_empty() {
+        error!("No valid bootnodes provided. Please provide at least one valid bootnode address.");
+        std::process::exit(1);
+    }
+
     let cancellation_token = CancellationToken::new();
-    let (p2p_service, invite_tx, get_task_logs_tx, restart_task_tx) = {
+    let (p2p_service, invite_tx, get_task_logs_tx, restart_task_tx, kademlia_action_tx) = {
         match P2PService::new(
             keypair,
             args.libp2p_port,
+            bootnodes,
             cancellation_token.clone(),
             wallet.clone(),
         ) {
@@ -170,7 +194,15 @@ async fn main() -> Result<()> {
 
     tokio::task::spawn(p2p_service.run());
 
-    let contracts = ContractBuilder::new(wallet.provider())
+    let contracts = ContractBuilder::new(wallet.provider().root().clone())
+        .with_compute_registry()
+        .with_ai_token()
+        .with_prime_network()
+        .with_compute_pool()
+        .build()
+        .unwrap();
+
+    let contracts_with_wallet = ContractBuilder::new(wallet.provider())
         .with_compute_registry()
         .with_ai_token()
         .with_prime_network()
@@ -303,22 +335,32 @@ async fn main() -> Result<()> {
 
         let discovery_store_context = store_context.clone();
         let discovery_heartbeats = heartbeats.clone();
-        tasks.spawn({
-            let wallet = wallet.clone();
-            async move {
-                let monitor = DiscoveryMonitor::new(
-                    wallet,
-                    compute_pool_id,
-                    args.discovery_refresh_interval,
-                    args.discovery_urls,
-                    discovery_store_context.clone(),
-                    discovery_heartbeats.clone(),
-                    args.max_healthy_nodes_with_same_endpoint,
-                    discovery_status_update_plugins,
-                );
-                monitor.run().await
+        let monitor = match orchestrator::DiscoveryMonitor::new(
+            compute_pool_id,
+            args.discovery_refresh_interval,
+            discovery_store_context.clone(),
+            discovery_heartbeats.clone(),
+            discovery_status_update_plugins,
+            kademlia_action_tx,
+            wallet.provider().root().clone(),
+            contracts.clone(),
+            args.location_service_url,
+            args.location_service_api_key,
+        ) {
+            Ok(monitor) => {
+                info!("Discovery monitor initialized successfully");
+                monitor
             }
-        });
+            Err(e) => {
+                error!("Failed to initialize discovery monitor: {e}");
+                std::process::exit(1);
+            }
+        };
+
+        tasks.spawn(
+            // TODO: refactor task handling (https://github.com/PrimeIntellect-ai/protocol/issues/627)
+            monitor.run().map(|_| Ok(())),
+        );
 
         let inviter_store_context = store_context.clone();
         let inviter_heartbeats = heartbeats.clone();
@@ -363,7 +405,7 @@ async fn main() -> Result<()> {
         let status_update_heartbeats = heartbeats.clone();
         let status_update_metrics = metrics_context.clone();
         tasks.spawn({
-            let contracts = contracts.clone();
+            let contracts = contracts_with_wallet.clone();
             async move {
                 let status_updater = NodeStatusUpdater::new(
                     status_update_store_context.clone(),
@@ -411,7 +453,7 @@ async fn main() -> Result<()> {
             heartbeats.clone(),
             store.clone(),
             args.hourly_s3_upload_limit,
-            Some(contracts),
+            Some(contracts_with_wallet),
             compute_pool_id,
             server_mode,
             scheduler,
@@ -434,7 +476,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    // TODO: use cancellation token to gracefully shutdown tasks
+    // TODO: use cancellation token to gracefully shutdown tasks (https://github.com/PrimeIntellect-ai/protocol/issues/627)
     cancellation_token.cancel();
     tasks.shutdown().await;
     Ok(())

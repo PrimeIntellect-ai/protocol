@@ -1,124 +1,26 @@
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use alloy::primitives::utils::Unit;
-use alloy::primitives::{Address, U256};
-use anyhow::{Context, Result};
+use alloy::primitives::U256;
 use clap::Parser;
-use log::{debug, LevelFilter};
+use log::LevelFilter;
 use log::{error, info};
 use serde_json::json;
 use shared::models::api::ApiResponse;
-use shared::models::node::DiscoveryNode;
 use shared::security::api_key_middleware::ApiKeyMiddleware;
-use shared::security::request_signer::sign_request_with_nonce;
 use shared::utils::google_cloud::GcsStorageProvider;
 use shared::web3::contracts::core::builder::ContractBuilder;
 use shared::web3::wallet::Wallet;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use validator::{
     export_metrics, HardwareValidator, InvalidationType, MetricsContext, P2PService, RedisStore,
-    SyntheticDataValidator,
+    SyntheticDataValidator, Validator,
 };
-
-// Track the last time the validation loop ran
-static LAST_VALIDATION_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
-// Maximum allowed time between validation loops (2 minutes)
-const MAX_VALIDATION_INTERVAL_SECS: i64 = 120;
-// Track the last loop duration in milliseconds
-static LAST_LOOP_DURATION_MS: AtomicI64 = AtomicI64::new(0);
-
-async fn get_rejections(
-    req: HttpRequest,
-    validator: web::Data<Option<SyntheticDataValidator<shared::web3::wallet::WalletProvider>>>,
-) -> impl Responder {
-    match validator.as_ref() {
-        Some(validator) => {
-            // Parse query parameters
-            let query = req.query_string();
-            let limit = parse_limit_param(query).unwrap_or(100); // Default limit of 100
-
-            let result = if limit > 0 && limit < 1000 {
-                // Use the optimized recent rejections method for reasonable limits
-                validator.get_recent_rejections(limit as isize).await
-            } else {
-                // Fallback to all rejections (but warn about potential performance impact)
-                if limit >= 1000 {
-                    info!("Large limit requested ({limit}), this may impact performance");
-                }
-                validator.get_all_rejections().await
-            };
-
-            match result {
-                Ok(rejections) => HttpResponse::Ok().json(ApiResponse {
-                    success: true,
-                    data: rejections,
-                }),
-                Err(e) => {
-                    error!("Failed to get rejections: {e}");
-                    HttpResponse::InternalServerError().json(ApiResponse {
-                        success: false,
-                        data: format!("Failed to get rejections: {e}"),
-                    })
-                }
-            }
-        }
-        None => HttpResponse::ServiceUnavailable().json(ApiResponse {
-            success: false,
-            data: "Synthetic data validator not available",
-        }),
-    }
-}
-
-fn parse_limit_param(query: &str) -> Option<u32> {
-    for pair in query.split('&') {
-        if let Some((key, value)) = pair.split_once('=') {
-            if key == "limit" {
-                return value.parse::<u32>().ok();
-            }
-        }
-    }
-    None
-}
-
-async fn health_check() -> impl Responder {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-    let last_validation = LAST_VALIDATION_TIMESTAMP.load(Ordering::Relaxed);
-    let last_duration_ms = LAST_LOOP_DURATION_MS.load(Ordering::Relaxed);
-
-    if last_validation == 0 {
-        // Validation hasn't run yet, but we're still starting up
-        return HttpResponse::Ok().json(json!({
-            "status": "starting",
-            "message": "Validation loop hasn't started yet"
-        }));
-    }
-
-    let elapsed = now - last_validation;
-
-    if elapsed > MAX_VALIDATION_INTERVAL_SECS {
-        return HttpResponse::ServiceUnavailable().json(json!({
-            "status": "error",
-            "message": format!("Validation loop hasn't run in {} seconds (max allowed: {})", elapsed, MAX_VALIDATION_INTERVAL_SECS),
-            "last_loop_duration_ms": last_duration_ms
-        }));
-    }
-
-    HttpResponse::Ok().json(json!({
-        "status": "ok",
-        "last_validation_seconds_ago": elapsed,
-        "last_loop_duration_ms": last_duration_ms
-    }))
-}
 
 #[derive(Parser)]
 struct Args {
@@ -129,10 +31,6 @@ struct Args {
     /// Owner key
     #[arg(short = 'k', long)]
     validator_key: String,
-
-    /// Discovery URLs (comma-separated)
-    #[arg(long, default_value = "http://localhost:8089", value_delimiter = ',')]
-    discovery_urls: Vec<String>,
 
     /// Ability to disable hardware validation
     #[arg(long, default_value = "false")]
@@ -200,6 +98,11 @@ struct Args {
     /// Libp2p port
     #[arg(long, default_value = "4003")]
     libp2p_port: u16,
+
+    /// Comma-separated list of libp2p bootnode multiaddresses
+    /// Example: `/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ,/ip4/104.131.131.82/udp/4001/quic-v1/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ`
+    #[arg(long, default_value = "")]
+    bootnodes: String,
 }
 
 #[tokio::main]
@@ -215,42 +118,14 @@ async fn main() -> anyhow::Result<()> {
     };
     env_logger::Builder::new()
         .filter_level(log_level)
-        .filter_module("iroh", log::LevelFilter::Warn)
-        .filter_module("iroh_net", log::LevelFilter::Warn)
-        .filter_module("iroh_quinn", log::LevelFilter::Warn)
-        .filter_module("iroh_base", log::LevelFilter::Warn)
         .filter_module("tracing::span", log::LevelFilter::Warn)
         .format_timestamp(None)
         .init();
 
     let cancellation_token = CancellationToken::new();
-    let mut sigterm = signal(SignalKind::terminate())?;
-    let mut sigint = signal(SignalKind::interrupt())?;
-    let mut sighup = signal(SignalKind::hangup())?;
-    let mut sigquit = signal(SignalKind::quit())?;
-    let signal_token = cancellation_token.clone();
-    let cancellation_token_clone = cancellation_token.clone();
-    tokio::spawn(async move {
-        tokio::select! {
-            _ = sigterm.recv() => {
-                log::info!("Received termination signal");
-            }
-            _ = sigint.recv() => {
-                log::info!("Received interrupt signal");
-            }
-            _ = sighup.recv() => {
-                log::info!("Received hangup signal");
-            }
-            _ = sigquit.recv() => {
-                log::info!("Received quit signal");
-            }
-        }
-        signal_token.cancel();
-    });
 
     let private_key_validator = args.validator_key;
     let rpc_url: Url = args.rpc_url.parse().unwrap();
-    let discovery_urls = args.discovery_urls;
 
     let redis_store = RedisStore::new(&args.redis_url);
 
@@ -268,16 +143,31 @@ async fn main() -> anyhow::Result<()> {
         .with_stake_manager();
 
     let contracts = contract_builder.build_partial().unwrap();
-
     let metrics_ctx =
         MetricsContext::new(validator_wallet.address().to_string(), args.pool_id.clone());
 
-    // Initialize P2P client if enabled
     let keypair = p2p::Keypair::generate_ed25519();
-    let (p2p_service, hardware_challenge_tx) = {
+    let bootnodes: Vec<p2p::Multiaddr> = args
+        .bootnodes
+        .split(',')
+        .filter_map(|addr| match addr.to_string().try_into() {
+            Ok(multiaddr) => Some(multiaddr),
+            Err(e) => {
+                error!("Invalid bootnode address '{addr}': {e}");
+                None
+            }
+        })
+        .collect();
+    if bootnodes.is_empty() {
+        error!("No valid bootnodes provided. Please provide at least one valid bootnode address.");
+        std::process::exit(1);
+    }
+
+    let (p2p_service, hardware_challenge_tx, kademlia_action_tx) = {
         match P2PService::new(
             keypair,
             args.libp2p_port,
+            bootnodes,
             cancellation_token.clone(),
             validator_wallet.clone(),
         ) {
@@ -363,7 +253,7 @@ async fn main() -> anyhow::Result<()> {
                             penalty,
                             storage_provider,
                             redis_store,
-                            cancellation_token,
+                            cancellation_token.clone(),
                             args.toploc_work_validation_interval,
                             args.toploc_work_validation_unknown_status_expiry_seconds,
                             args.toploc_grace_interval,
@@ -391,15 +281,34 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
+    let (validator, validator_health) = match Validator::new(
+        cancellation_token.clone(),
+        validator_wallet.provider(),
+        contracts,
+        hardware_validator,
+        synthetic_validator.clone(),
+        kademlia_action_tx,
+        args.disable_hardware_validation,
+        metrics_ctx,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            error!("Failed to create validator: {e}");
+            std::process::exit(1);
+        }
+    };
+
     // Start HTTP server with access to the validator
-    let validator_for_server = synthetic_validator.clone();
     tokio::spawn(async move {
         let key = std::env::var("VALIDATOR_API_KEY").unwrap_or_default();
         let api_key_middleware = Arc::new(ApiKeyMiddleware::new(key));
 
         if let Err(e) = HttpServer::new(move || {
             App::new()
-                .app_data(web::Data::new(validator_for_server.clone()))
+                .app_data(web::Data::new(State {
+                    synthetic_validator: synthetic_validator.clone(),
+                    validator_health: validator_health.clone(),
+                }))
                 .route("/health", web::get().to(health_check))
                 .route(
                     "/rejections",
@@ -431,205 +340,124 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    loop {
-        if cancellation_token_clone.is_cancelled() {
-            log::info!("Validation loop is stopping due to cancellation signal");
-            break;
+    tokio::task::spawn(validator.run());
+
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sighup = signal(SignalKind::hangup())?;
+    let mut sigquit = signal(SignalKind::quit())?;
+
+    tokio::select! {
+        _ = sigterm.recv() => {
+            log::info!("Received termination signal");
         }
-
-        // Start timing the loop
-        let loop_start = Instant::now();
-
-        // Update the last validation timestamp
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        LAST_VALIDATION_TIMESTAMP.store(now, Ordering::Relaxed);
-
-        if let Some(validator) = synthetic_validator.clone() {
-            if let Err(e) = validator.validate_work().await {
-                error!("Failed to validate work: {e}");
-            }
+        _ = sigint.recv() => {
+            log::info!("Received interrupt signal");
         }
-
-        if !args.disable_hardware_validation {
-            async fn _fetch_nodes_from_discovery_url(
-                discovery_url: &str,
-                validator_wallet: &Wallet,
-            ) -> Result<Vec<DiscoveryNode>> {
-                let address = validator_wallet
-                    .wallet
-                    .default_signer()
-                    .address()
-                    .to_string();
-
-                let discovery_route = "/api/validator";
-                let signature = sign_request_with_nonce(discovery_route, validator_wallet, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-                let mut headers = reqwest::header::HeaderMap::new();
-                headers.insert(
-                    "x-address",
-                    reqwest::header::HeaderValue::from_str(&address)
-                        .context("Failed to create address header")?,
-                );
-                headers.insert(
-                    "x-signature",
-                    reqwest::header::HeaderValue::from_str(&signature.signature)
-                        .context("Failed to create signature header")?,
-                );
-
-                debug!("Fetching nodes from: {discovery_url}{discovery_route}");
-                let response = reqwest::Client::new()
-                    .get(format!("{discovery_url}{discovery_route}"))
-                    .query(&[("nonce", signature.nonce)])
-                    .headers(headers)
-                    .timeout(Duration::from_secs(10))
-                    .send()
-                    .await
-                    .context("Failed to fetch nodes")?;
-
-                let response_text = response
-                    .text()
-                    .await
-                    .context("Failed to get response text")?;
-
-                let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
-                    serde_json::from_str(&response_text).context("Failed to parse response")?;
-
-                if !parsed_response.success {
-                    error!("Failed to fetch nodes from {discovery_url}: {parsed_response:?}");
-                    return Ok(vec![]);
-                }
-
-                Ok(parsed_response.data)
-            }
-
-            let nodes = match async {
-                let mut all_nodes = Vec::new();
-                let mut any_success = false;
-
-                for discovery_url in &discovery_urls {
-                    match _fetch_nodes_from_discovery_url(discovery_url, &validator_wallet).await {
-                        Ok(nodes) => {
-                            debug!(
-                                "Successfully fetched {} nodes from {}",
-                                nodes.len(),
-                                discovery_url
-                            );
-                            all_nodes.extend(nodes);
-                            any_success = true;
-                        }
-                        Err(e) => {
-                            error!("Failed to fetch nodes from {discovery_url}: {e:#}");
-                        }
-                    }
-                }
-
-                if !any_success {
-                    error!("Failed to fetch nodes from all discovery services");
-                    return Ok::<Vec<DiscoveryNode>, anyhow::Error>(vec![]);
-                }
-
-                // Remove duplicates based on node ID
-                let mut unique_nodes = Vec::new();
-                let mut seen_ids = std::collections::HashSet::new();
-                for node in all_nodes {
-                    if seen_ids.insert(node.node.id.clone()) {
-                        unique_nodes.push(node);
-                    }
-                }
-
-                debug!(
-                    "Total unique nodes after deduplication: {}",
-                    unique_nodes.len()
-                );
-                Ok(unique_nodes)
-            }
-            .await
-            {
-                Ok(n) => n,
-                Err(e) => {
-                    error!("Error in node fetching loop: {e:#}");
-                    std::thread::sleep(std::time::Duration::from_secs(10));
-                    continue;
-                }
-            };
-
-            // Ensure nodes have enough stake
-            let mut nodes_with_enough_stake = Vec::new();
-            let Some(stake_manager) = contracts.stake_manager.as_ref() else {
-                error!("Stake manager contract not initialized");
-                continue;
-            };
-
-            let mut provider_stake_cache: std::collections::HashMap<String, (U256, U256)> =
-                std::collections::HashMap::new();
-            for node in nodes {
-                let provider_address_str = &node.node.provider_address;
-                let provider_address = match Address::from_str(provider_address_str) {
-                    Ok(address) => address,
-                    Err(e) => {
-                        error!("Failed to parse provider address {provider_address_str}: {e}");
-                        continue;
-                    }
-                };
-
-                let (stake, required_stake) =
-                    if let Some(&cached_info) = provider_stake_cache.get(provider_address_str) {
-                        cached_info
-                    } else {
-                        let stake = stake_manager
-                            .get_stake(provider_address)
-                            .await
-                            .unwrap_or_default();
-                        let total_compute = contracts
-                            .compute_registry
-                            .get_provider_total_compute(provider_address)
-                            .await
-                            .unwrap_or_default();
-                        let required_stake = stake_manager
-                            .calculate_stake(U256::from(0), total_compute)
-                            .await
-                            .unwrap_or_default();
-
-                        provider_stake_cache
-                            .insert(provider_address_str.clone(), (stake, required_stake));
-                        (stake, required_stake)
-                    };
-
-                if stake >= required_stake {
-                    nodes_with_enough_stake.push(node);
-                } else {
-                    info!(
-                        "Node {} has insufficient stake: {} (required: {})",
-                        node.node.id,
-                        stake / Unit::ETHER.wei(),
-                        required_stake / Unit::ETHER.wei()
-                    );
-                }
-            }
-
-            if let Err(e) = hardware_validator
-                .validate_nodes(nodes_with_enough_stake)
-                .await
-            {
-                error!("Error validating nodes: {e:#}");
-            }
+        _ = sighup.recv() => {
+            log::info!("Received hangup signal");
         }
-
-        // Calculate and store loop duration
-        let loop_duration = loop_start.elapsed();
-        let loop_duration_ms = loop_duration.as_millis() as i64;
-        LAST_LOOP_DURATION_MS.store(loop_duration_ms, Ordering::Relaxed);
-
-        metrics_ctx.record_validation_loop_duration(loop_duration.as_secs_f64());
-        info!("Validation loop completed in {loop_duration_ms}ms");
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        _ = sigquit.recv() => {
+            log::info!("Received quit signal");
+        }
     }
+    cancellation_token.cancel();
+
+    // TODO: handle spawn handles here (https://github.com/PrimeIntellect-ai/protocol/issues/627)
     Ok(())
+}
+
+struct State {
+    synthetic_validator: Option<SyntheticDataValidator<shared::web3::wallet::WalletProvider>>,
+    validator_health: Arc<tokio::sync::Mutex<validator::ValidatorHealth>>,
+}
+
+async fn health_check(_: HttpRequest, state: web::Data<State>) -> impl Responder {
+    // Maximum allowed time between validation loops (2 minutes)
+    const MAX_VALIDATION_INTERVAL_SECS: u64 = 120;
+
+    let validator_health = state.validator_health.lock().await;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    if validator_health.last_validation_timestamp() == 0 {
+        // Validation hasn't run yet, but we're still starting up
+        return HttpResponse::Ok().json(json!({
+            "status": "starting",
+            "message": "Validation loop hasn't started yet"
+        }));
+    }
+
+    let elapsed = now - validator_health.last_validation_timestamp();
+
+    if elapsed > MAX_VALIDATION_INTERVAL_SECS {
+        return HttpResponse::ServiceUnavailable().json(json!({
+        "status": "error",
+        "message": format!("Validation loop hasn't run in {} seconds (max allowed: {})", elapsed, MAX_VALIDATION_INTERVAL_SECS),
+        "last_loop_duration_ms": validator_health.last_loop_duration_ms(),
+    }));
+    }
+
+    HttpResponse::Ok().json(json!({
+        "status": "ok",
+        "last_validation_seconds_ago": elapsed,
+        "last_loop_duration_ms": validator_health.last_loop_duration_ms(),
+    }))
+}
+
+async fn get_rejections(req: HttpRequest, state: web::Data<State>) -> impl Responder {
+    match state.synthetic_validator.as_ref() {
+        Some(synthetic_validator) => {
+            // Parse query parameters
+            let query = req.query_string();
+            let limit = parse_limit_param(query).unwrap_or(100); // Default limit of 100
+
+            let result = if limit > 0 && limit < 1000 {
+                // Use the optimized recent rejections method for reasonable limits
+                synthetic_validator
+                    .get_recent_rejections(limit as isize)
+                    .await
+            } else {
+                // Fallback to all rejections (but warn about potential performance impact)
+                if limit >= 1000 {
+                    info!("Large limit requested ({limit}), this may impact performance");
+                }
+                synthetic_validator.get_all_rejections().await
+            };
+
+            match result {
+                Ok(rejections) => HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: rejections,
+                }),
+                Err(e) => {
+                    error!("Failed to get rejections: {e}");
+                    HttpResponse::InternalServerError().json(ApiResponse {
+                        success: false,
+                        data: format!("Failed to get rejections: {e}"),
+                    })
+                }
+            }
+        }
+        None => HttpResponse::ServiceUnavailable().json(ApiResponse {
+            success: false,
+            data: "Synthetic data validator not available",
+        }),
+    }
+}
+
+fn parse_limit_param(query: &str) -> Option<u32> {
+    for pair in query.split('&') {
+        if let Some((key, value)) = pair.split_once('=') {
+            if key == "limit" {
+                return value.parse::<u32>().ok();
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

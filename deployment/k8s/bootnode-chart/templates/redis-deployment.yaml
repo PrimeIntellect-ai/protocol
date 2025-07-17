@@ -1,0 +1,37 @@
+{{- if .Values.redis.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bootnode.fullname" . }}-redis
+  namespace: {{ include "bootnode.namespace" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "bootnode.fullname" . }}-redis
+  template:
+    metadata:
+      labels:
+        app: {{ include "bootnode.fullname" . }}-redis
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: {{ include "bootnode.fullname" . }}-redis-data
+              mountPath: /data
+          command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+      volumes:
+        - name: {{ include "bootnode.fullname" . }}-redis-data
+          persistentVolumeClaim:
+            claimName: {{ include "bootnode.fullname" . }}-redis-data
+{{- end }}

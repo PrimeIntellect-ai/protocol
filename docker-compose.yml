@@ -67,16 +67,13 @@ services:
       timeout: 3s
       retries: 5
 
-  discovery:
-    image: ghcr.io/primeintellect-ai/protocol/discovery:dev
+  bootnode:
+    image: ghcr.io/primeintellect-ai/protocol/bootnode:dev
     platform: linux/amd64
     ports:
-      - "8089:8089"
+      - "4005:4005"
     environment:
-      - RPC_URL=http://reth:8545
-      - REDIS_URL=redis://redis:6379
-      - PLATFORM_API_KEY=prime
-      - MAX_NODES_PER_IP=3
+      - LIBP2P_PRIVATE_KEY="d0884c9823a0a2c846dbf5e71853bc5f80b2ec5d2de46532cdbe8ab46f020836"
     networks:
       - prime
     depends_on:
@@ -95,7 +92,6 @@ services:
     environment:
       - RPC_URL=http://reth:8545
       - REDIS_STORE_URL=redis://redis:6379
-      - DISCOVERY_URLS=http://discovery:8089
       - URL=http://localhost:8090
       - COORDINATOR_KEY=${POOL_OWNER_PRIVATE_KEY}
       - COMPUTE_POOL_ID=${WORKER_COMPUTE_POOL_ID}
@@ -103,6 +99,7 @@ services:
       - PORT=8090
       - DISCOVERY_REFRESH_INTERVAL=10
       - S3_CREDENTIALS=${S3_CREDENTIALS}
+      - BOOTNODES="/ip4/127.0.0.1/tcp/4005/p2p/12D3KooWJj3haDEzxGSbGSAvXCiE9pDYC9xHDdtQe8B2donhfwXL"
     networks:
       - prime
     depends_on:
@@ -110,7 +107,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      discovery:
+      bootnode:
         condition: service_started
 
   validator:
@@ -124,7 +121,6 @@ services:
       - prime
     environment:
       - RPC_URL=http://reth:8545
-      - DISCOVERY_URLS=http://discovery:8089
       - VALIDATOR_KEY=${PRIVATE_KEY_VALIDATOR}
       - WORK_VALIDATION_CONTRACT=${WORK_VALIDATION_CONTRACT}
       - POOL_ID=${WORKER_COMPUTE_POOL_ID}
@@ -133,10 +129,11 @@ services:
       - TOPLOC_AUTH_TOKEN=${TOPLOC_AUTH_TOKEN}
       - TOPLOC_GRACE_INTERVAL=15
       - REDIS_URL=redis://redis:6379
+      - BOOTNODES="/ip4/127.0.0.1/tcp/4005/p2p/12D3KooWJj3haDEzxGSbGSAvXCiE9pDYC9xHDdtQe8B2donhfwXL"
     depends_on:
       reth:
         condition: service_healthy
       redis:
         condition: service_healthy
-      discovery:
+      bootnode:
         condition: service_started

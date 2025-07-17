@@ -1,6 +1,7 @@
 use crate::web3::wallet::Wallet;
 use anyhow::{bail, Context as _, Result};
 use futures::stream::FuturesUnordered;
+use p2p::KademliaActionWithChannel;
 use p2p::{
     AuthenticationInitiationRequest, AuthenticationResponse, AuthenticationSolutionRequest,
     IncomingMessage, Libp2pIncomingMessage, Node, NodeBuilder, OutgoingMessage, PeerId, Protocol,
@@ -33,16 +34,27 @@ pub struct Service {
 }
 
 impl Service {
+    #[allow(clippy::type_complexity)]
     pub fn new(
         keypair: p2p::Keypair,
         port: u16,
+        bootnodes: Vec<p2p::Multiaddr>,
         cancellation_token: CancellationToken,
         wallet: Wallet,
         protocols: Protocols,
-    ) -> Result<(Self, Sender<OutgoingRequest>)> {
-        let (node, incoming_messages_rx, outgoing_messages) =
-            build_p2p_node(keypair, port, cancellation_token.clone(), protocols.clone())
-                .context("failed to build p2p node")?;
+    ) -> Result<(
+        Self,
+        Sender<OutgoingRequest>,
+        Sender<KademliaActionWithChannel>,
+    )> {
+        let (node, incoming_messages_rx, outgoing_message_tx, kademlia_action_tx) = build_p2p_node(
+            keypair,
+            port,
+            bootnodes,
+            cancellation_token.clone(),
+            protocols.clone(),
+        )
+        .context("failed to build p2p node")?;
         let (outgoing_messages_tx, outgoing_messages_rx) = tokio::sync::mpsc::channel(100);
 
         Ok((
@@ -51,9 +63,10 @@ impl Service {
                 incoming_messages_rx,
                 outgoing_messages_rx,
                 cancellation_token,
-                context: Context::new(outgoing_messages, wallet, protocols),
+                context: Context::new(outgoing_message_tx, wallet, protocols),
             },
             outgoing_messages_tx,
+            kademlia_action_tx,
         ))
     }
 
@@ -103,15 +116,23 @@ impl Service {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn build_p2p_node(
     keypair: p2p::Keypair,
     port: u16,
+    bootnodes: Vec<p2p::Multiaddr>,
     cancellation_token: CancellationToken,
     protocols: Protocols,
-) -> Result<(Node, Receiver<IncomingMessage>, Sender<OutgoingMessage>)> {
+) -> Result<(
+    Node,
+    Receiver<IncomingMessage>,
+    Sender<OutgoingMessage>,
+    Sender<KademliaActionWithChannel>,
+)> {
     NodeBuilder::new()
         .with_keypair(keypair)
         .with_port(port)
+        .with_bootnodes(bootnodes)
         .with_authentication()
         .with_protocols(protocols)
         .with_cancellation_token(cancellation_token)

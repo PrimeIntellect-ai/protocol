@@ -1,0 +1,4 @@
+apiVersion: v2
+name: bootnode
+description: A Helm chart for Prime Bootnode
+version: 0.1.0

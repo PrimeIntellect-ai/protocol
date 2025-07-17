@@ -36,7 +36,7 @@ The following are in scope for security reports:
 - Prime Protocol smart contracts
 - Worker node software
 - Validator node software
-- Discovery service
+- Bootnode service
 - Orchestrator service
 - Protocol APIs and interfaces
 

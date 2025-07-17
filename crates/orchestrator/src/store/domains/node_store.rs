@@ -23,6 +23,7 @@ impl NodeStore {
     pub fn new(redis: Arc<RedisStore>) -> Self {
         Self { redis }
     }
+
     // convert orchestrator node to redis hash fields
     fn node_to_hash_fields(node: &OrchestratorNode) -> Result<Vec<(String, String)>> {
         let mut fields = vec![
@@ -51,9 +52,7 @@ impl NodeStore {
         if let Some(version) = &node.version {
             fields.push(("version".to_string(), version.clone()));
         }
-        if let Some(p2p_id) = &node.p2p_id {
-            fields.push(("p2p_id".to_string(), p2p_id.clone()));
-        }
+        fields.push(("p2p_id".to_string(), node.p2p_id.clone()));
         if let Some(last_status_change) = &node.last_status_change {
             fields.push((
                 "last_status_change".to_string(),
@@ -67,9 +66,6 @@ impl NodeStore {
             let compute_specs_json = serde_json::to_string(compute_specs)
                 .map_err(|e| anyhow::anyhow!("Failed to serialize compute_specs: {}", e))?;
             fields.push(("compute_specs".to_string(), compute_specs_json));
-        }
-        if let Some(worker_p2p_id) = &node.worker_p2p_id {
-            fields.push(("worker_p2p_id".to_string(), worker_p2p_id.clone()));
         }
         if let Some(worker_p2p_addresses) = &node.worker_p2p_addresses {
             let worker_p2p_addresses_json = serde_json::to_string(worker_p2p_addresses)
@@ -121,7 +117,10 @@ impl NodeStore {
             .get("task_details")
             .and_then(|s| serde_json::from_str(s).ok());
         let version = fields.get("version").cloned();
-        let p2p_id = fields.get("p2p_id").cloned();
+        let p2p_id = fields
+            .get("p2p_id")
+            .ok_or_else(|| anyhow::anyhow!("Missing p2p_id field"))?
+            .clone();
         let last_status_change = fields
             .get("last_status_change")
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
@@ -133,7 +132,6 @@ impl NodeStore {
         let compute_specs = fields
             .get("compute_specs")
             .and_then(|s| serde_json::from_str(s).ok());
-        let worker_p2p_id = fields.get("worker_p2p_id").cloned();
         let worker_p2p_addresses = fields
             .get("worker_p2p_addresses")
             .and_then(|s| serde_json::from_str(s).ok());
@@ -154,7 +152,6 @@ impl NodeStore {
             last_status_change,
             first_seen,
             compute_specs,
-            worker_p2p_id,
             worker_p2p_addresses,
             location,
         })

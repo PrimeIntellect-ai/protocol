@@ -492,7 +492,6 @@ impl NodeGroupsPlugin {
         let mut healthy_nodes = nodes
             .iter()
             .filter(|node| node.status == NodeStatus::Healthy)
-            .filter(|node| node.p2p_id.is_some())
             .filter(|node| !assigned_nodes.contains_key(&node.address.to_string()))
             .collect::<Vec<&OrchestratorNode>>();
         info!(

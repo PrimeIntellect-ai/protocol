@@ -5,15 +5,22 @@ use libp2p::connection_limits;
 use libp2p::connection_limits::ConnectionLimits;
 use libp2p::identify;
 use libp2p::identity;
-use libp2p::kad;
-// use libp2p::kad::store::MemoryStore;
+use libp2p::kad::store::MemoryStore;
+use libp2p::kad::{self, QueryId};
 use libp2p::mdns;
 use libp2p::ping;
 use libp2p::request_response;
 use libp2p::swarm::NetworkBehaviour;
+use libp2p::Multiaddr;
+use libp2p::PeerId;
 use log::debug;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
+use std::vec;
+use tokio::sync::Mutex;
 
+use crate::discovery::OngoingKademliaQuery;
 use crate::message::IncomingMessage;
 use crate::message::{Request, Response};
 use crate::Protocols;
@@ -29,8 +36,7 @@ pub(crate) struct Behaviour {
 
     // discovery
     mdns: mdns::tokio::Behaviour,
-    // comment out kademlia for now as it requires bootnodes to be provided
-    // kademlia: kad::Behaviour<MemoryStore>,
+    kademlia: kad::Behaviour<MemoryStore>,
 
     // protocols
     identify: identify::Behaviour,
@@ -116,7 +122,15 @@ impl Behaviour {
 
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id)
             .context("failed to create mDNS behaviour")?;
-        // let kademlia = kad::Behaviour::new(peer_id, MemoryStore::new(peer_id));
+        let mut kad_config = kad::Config::new(kad::PROTOCOL_NAME);
+        // TODO: by default this is 20, however on a local test network we won't have 20 nodes.
+        // should make this configurable.
+        kad_config
+            .set_replication_factor(1usize.try_into().expect("can convert 1 to NonZeroUsize"));
+        kad_config.set_provider_publication_interval(Some(Duration::from_secs(30)));
+        let mut kademlia =
+            kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), kad_config);
+        kademlia.set_mode(Some(kad::Mode::Server));
 
         let identify = identify::Behaviour::new(
             identify::Config::new(PRIME_STREAM_PROTOCOL.to_string(), keypair.public())
@@ -127,7 +141,7 @@ impl Behaviour {
         Ok(Self {
             autonat,
             connection_limits,
-            // kademlia,
+            kademlia,
             mdns,
             identify,
             ping,
@@ -143,16 +157,62 @@ impl Behaviour {
     ) -> &mut request_response::cbor::Behaviour<Request, Response> {
         &mut self.request_response
     }
+
+    pub(crate) fn kademlia(&mut self) -> &mut kad::Behaviour<MemoryStore> {
+        &mut self.kademlia
+    }
 }
 
 impl BehaviourEvent {
-    pub(crate) async fn handle(self, message_tx: tokio::sync::mpsc::Sender<IncomingMessage>) {
+    pub(crate) async fn handle(
+        self,
+        message_tx: tokio::sync::mpsc::Sender<IncomingMessage>,
+        ongoing_kademlia_queries: Arc<Mutex<HashMap<QueryId, OngoingKademliaQuery>>>,
+    ) -> Vec<(PeerId, Multiaddr)> {
         match self {
             BehaviourEvent::Autonat(_event) => {}
-            BehaviourEvent::Identify(_event) => {}
-            BehaviourEvent::Kademlia(_event) => { // TODO: potentially on outbound queries
+            BehaviourEvent::Identify(event) => {
+                if let identify::Event::Received { peer_id, info, .. } = event {
+                    let addrs = info
+                        .listen_addrs
+                        .into_iter()
+                        .map(|addr| (peer_id, addr))
+                        .collect::<Vec<_>>();
+                    return addrs;
+                }
             }
-            BehaviourEvent::Mdns(_event) => {}
+            BehaviourEvent::Kademlia(event) => {
+                match event {
+                    kad::Event::RoutingUpdated {
+                        peer, addresses, ..
+                    } => {
+                        debug!("kademlia routing updated for peer {peer:?} with addresses {addresses:?}");
+                    }
+                    kad::Event::OutboundQueryProgressed {
+                        id,
+                        result,
+                        stats: _,
+                        step,
+                    } => {
+                        debug!("kademlia query {id:?} progressed with step {step:?} and result {result:?}");
+
+                        let mut ongoing_queries = ongoing_kademlia_queries.lock().await;
+                        if let Some(query) = ongoing_queries.get_mut(&id) {
+                            let _ = query.result_tx.send(Ok(result)).await;
+                        }
+
+                        if step.last {
+                            ongoing_queries.remove(&id);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            BehaviourEvent::Mdns(event) => {
+                if let mdns::Event::Discovered(peers) = event {
+                    return peers;
+                }
+            }
             BehaviourEvent::Ping(_event) => {}
             BehaviourEvent::RequestResponse(event) => match event {
                 request_response::Event::Message { peer, message } => {
@@ -184,5 +244,7 @@ impl BehaviourEvent {
                 }
             },
         }
+
+        vec![]
     }
 }

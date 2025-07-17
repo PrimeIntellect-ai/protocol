@@ -1,59 +1,91 @@
+use crate::discovery::location_service::LocationService;
 use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
+use crate::store::NodeStore;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::Address;
 use alloy::primitives::U256;
-use anyhow::Error;
-use anyhow::Result;
+use anyhow::{bail, Context as _, Error, Result};
 use chrono::Utc;
-use log::{error, info};
-use shared::models::api::ApiResponse;
-use shared::models::node::DiscoveryNode;
-use shared::security::request_signer::sign_request_with_nonce;
-use shared::web3::wallet::Wallet;
+use futures::stream::FuturesUnordered;
+use log::{error, info, warn};
+use shared::models::node::NodeWithMetadata;
+use shared::p2p::get_worker_nodes_from_dht;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 
-pub struct DiscoveryMonitor {
-    coordinator_wallet: Wallet,
+#[derive(Clone)]
+struct NodeFetcher {
     compute_pool_id: u32,
-    interval_s: u64,
-    discovery_urls: Vec<String>,
+    kademlia_action_tx: Sender<p2p::KademliaActionWithChannel>,
+    provider: alloy::providers::RootProvider,
+    contracts: shared::web3::Contracts<alloy::providers::RootProvider>,
+}
+
+impl NodeFetcher {
+    async fn get_nodes(&self) -> Result<Vec<NodeWithMetadata>> {
+        use futures::stream::FuturesUnordered;
+        use futures::StreamExt as _;
+
+        // TODO: this function fetches all worker nodes from the dht; however,
+        // we only care about workers with the same compute pool ID.
+        // this can be improved by having workers also advertise their compute pool ID
+        // when they join one, and then only performing a DHT query for that pool ID.
+        let nodes = get_worker_nodes_from_dht(self.kademlia_action_tx.clone())
+            .await
+            .context("failed to get worker nodes from DHT")?;
+        if nodes.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // remove duplicates based on node ID
+        let mut unique_nodes = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
+        for node in nodes {
+            if seen_ids.insert(node.id.clone()) && node.compute_pool_id == self.compute_pool_id {
+                unique_nodes.push(node);
+            }
+        }
+
+        info!(
+            "total unique nodes after deduplication: {}",
+            unique_nodes.len()
+        );
+
+        let futures = FuturesUnordered::new();
+        for node in unique_nodes {
+            futures.push(NodeWithMetadata::new_from_contracts(
+                node,
+                &self.provider,
+                &self.contracts,
+            ));
+        }
+        let nodes = futures
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect::<Vec<NodeWithMetadata>>();
+        if nodes.is_empty() {
+            return Ok(vec![]);
+        }
+
+        Ok(nodes)
+    }
+}
+
+#[derive(Clone)]
+struct Updater {
     store_context: Arc<StoreContext>,
-    heartbeats: Arc<LoopHeartbeats>,
-    http_client: reqwest::Client,
-    max_healthy_nodes_with_same_endpoint: u32,
     status_change_handlers: Vec<StatusUpdatePlugin>,
 }
 
-impl DiscoveryMonitor {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        coordinator_wallet: Wallet,
-        compute_pool_id: u32,
-        interval_s: u64,
-        discovery_urls: Vec<String>,
-        store_context: Arc<StoreContext>,
-        heartbeats: Arc<LoopHeartbeats>,
-        max_healthy_nodes_with_same_endpoint: u32,
-        status_change_handlers: Vec<StatusUpdatePlugin>,
-    ) -> Self {
-        Self {
-            coordinator_wallet,
-            compute_pool_id,
-            interval_s,
-            discovery_urls,
-            store_context,
-            heartbeats,
-            http_client: reqwest::Client::new(),
-            max_healthy_nodes_with_same_endpoint,
-            status_change_handlers,
-        }
-    }
-
+impl Updater {
     async fn handle_status_change(&self, node: &OrchestratorNode, old_status: NodeStatus) {
         for handler in &self.status_change_handlers {
             if let Err(e) = handler.handle_status_change(node, &old_status).await {
@@ -70,7 +102,7 @@ impl DiscoveryMonitor {
         // Get the current node to know the old status
         let old_status = match self.store_context.node_store.get_node(node_address).await? {
             Some(node) => node.status,
-            None => return Err(anyhow::anyhow!("Node not found: {}", node_address)),
+            None => bail!("node not found: {}", node_address),
         };
 
         // Update the status in the store
@@ -87,215 +119,75 @@ impl DiscoveryMonitor {
         Ok(())
     }
 
-    pub async fn run(&self) -> Result<(), Error> {
-        let mut interval = interval(Duration::from_secs(self.interval_s));
-
-        loop {
-            interval.tick().await;
-            match self.get_nodes().await {
-                Ok(nodes) => {
-                    info!(
-                        "Successfully synced {} nodes from discovery service",
-                        nodes.len()
-                    );
-                }
-                Err(e) => {
-                    error!("Error syncing nodes from discovery service: {e}");
-                }
-            }
-            self.heartbeats.update_monitor();
-        }
-    }
-    async fn fetch_nodes_from_single_discovery(
-        &self,
-        discovery_url: &str,
-    ) -> Result<Vec<DiscoveryNode>, Error> {
-        let discovery_route = format!("/api/pool/{}", self.compute_pool_id);
-        let address = self.coordinator_wallet.address().to_string();
-
-        let signature =
-            match sign_request_with_nonce(&discovery_route, &self.coordinator_wallet, None).await {
-                Ok(sig) => sig,
-                Err(e) => {
-                    error!("Failed to sign discovery request: {e}");
-                    return Ok(Vec::new());
-                }
-            };
-
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "x-address",
-            reqwest::header::HeaderValue::from_str(&address)?,
-        );
-        headers.insert(
-            "x-signature",
-            reqwest::header::HeaderValue::from_str(&signature.signature)?,
-        );
-
-        let response = match self
-            .http_client
-            .get(format!("{discovery_url}{discovery_route}"))
-            .query(&[("nonce", signature.nonce)])
-            .headers(headers)
-            .send()
-            .await
-        {
-            Ok(resp) => resp,
-            Err(e) => {
-                error!("Failed to fetch nodes from discovery service {discovery_url}: {e}");
-                return Ok(Vec::new());
-            }
-        };
-
-        let response_text = match response.text().await {
-            Ok(text) => text,
-            Err(e) => {
-                error!("Failed to read discovery response from {discovery_url}: {e}");
-                return Ok(Vec::new());
-            }
-        };
-
-        let parsed_response: ApiResponse<Vec<DiscoveryNode>> =
-            match serde_json::from_str(&response_text) {
-                Ok(resp) => resp,
-                Err(e) => {
-                    error!("Failed to parse discovery response from {discovery_url}: {e}");
-                    return Ok(Vec::new());
-                }
-            };
-
-        let nodes = parsed_response.data;
-        let nodes = nodes
-            .into_iter()
-            .filter(|node| node.is_validated)
-            .collect::<Vec<DiscoveryNode>>();
-
-        Ok(nodes)
-    }
-
-    pub async fn fetch_nodes_from_discovery(&self) -> Result<Vec<DiscoveryNode>, Error> {
-        let mut all_nodes = Vec::new();
-        let mut any_success = false;
-
-        for discovery_url in &self.discovery_urls {
-            match self.fetch_nodes_from_single_discovery(discovery_url).await {
-                Ok(nodes) => {
-                    info!(
-                        "Successfully fetched {} nodes from {}",
-                        nodes.len(),
-                        discovery_url
-                    );
-                    all_nodes.extend(nodes);
-                    any_success = true;
-                }
-                Err(e) => {
-                    error!("Failed to fetch nodes from {discovery_url}: {e}");
-                }
-            }
-        }
-
-        if !any_success {
-            error!("Failed to fetch nodes from all discovery services");
-            return Ok(Vec::new());
-        }
-
-        // Remove duplicates based on node ID
-        let mut unique_nodes = Vec::new();
-        let mut seen_ids = std::collections::HashSet::new();
-        for node in all_nodes {
-            if seen_ids.insert(node.node.id.clone()) {
-                unique_nodes.push(node);
-            }
-        }
-
-        info!(
-            "Total unique nodes after deduplication: {}",
-            unique_nodes.len()
-        );
-        Ok(unique_nodes)
-    }
-
-    async fn count_healthy_nodes_with_same_endpoint(
+    async fn count_healthy_nodes_with_same_peer_id(
         &self,
         node_address: Address,
-        ip_address: &str,
-        port: u16,
-    ) -> Result<u32, Error> {
+        peer_id: &p2p::PeerId,
+    ) -> Result<u32> {
         let nodes = self.store_context.node_store.get_nodes().await?;
         Ok(nodes
             .iter()
             .filter(|other_node| {
                 other_node.address != node_address
-                    && other_node.ip_address == ip_address
-                    && other_node.port == port
+                    && other_node.p2p_id == peer_id.to_string()
                     && other_node.status == NodeStatus::Healthy
             })
             .count() as u32)
     }
 
-    async fn sync_single_node_with_discovery(
-        &self,
-        discovery_node: &DiscoveryNode,
-    ) -> Result<(), Error> {
-        let node_address = discovery_node.node.id.parse::<Address>()?;
+    async fn perform_node_updates(&self, node: &NodeWithMetadata) -> Result<()> {
+        let node_address = node.node().id.parse::<Address>()?;
 
-        // Check if there's any healthy node with the same IP and port
-        let count_healthy_nodes_with_same_endpoint = self
-            .count_healthy_nodes_with_same_endpoint(
+        // Check if there's any healthy node with the same peer ID
+        let healthy_nodes_with_same_peer_id = self
+            .count_healthy_nodes_with_same_peer_id(
                 node_address,
-                &discovery_node.node.ip_address,
-                discovery_node.node.port,
+                &node.node().worker_p2p_id.parse::<p2p::PeerId>()?,
             )
-            .await?;
+            .await
+            .context("failed to count healthy nodes with same peer ID")?;
 
         match self.store_context.node_store.get_node(&node_address).await {
             Ok(Some(existing_node)) => {
                 // If there's a healthy node with same IP and port, and this node isn't healthy, mark it dead
-                if count_healthy_nodes_with_same_endpoint > 0
+                if healthy_nodes_with_same_peer_id > 0
                     && existing_node.status != NodeStatus::Healthy
                 {
                     info!(
-                        "Node {} shares endpoint {}:{} with a healthy node, marking as dead",
-                        node_address, discovery_node.node.ip_address, discovery_node.node.port
+                        "Node {} shares peer ID {} with a healthy node, marking as dead",
+                        node_address,
+                        node.node().worker_p2p_id
                     );
-                    if let Err(e) = self
-                        .update_node_status(&node_address, NodeStatus::Dead)
+                    self.update_node_status(&node_address, NodeStatus::Dead)
                         .await
-                    {
-                        error!("Error updating node status: {e}");
-                    }
+                        .context("failed to update node status to Dead")?;
                     return Ok(());
                 }
 
-                if discovery_node.is_validated && !discovery_node.is_provider_whitelisted {
+                if node.is_validated() && !node.is_provider_whitelisted() {
                     info!(
                         "Node {node_address} is validated but not provider whitelisted, marking as ejected"
                     );
-                    if let Err(e) = self
-                        .update_node_status(&node_address, NodeStatus::Ejected)
+                    self.update_node_status(&node_address, NodeStatus::Ejected)
                         .await
-                    {
-                        error!("Error updating node status: {e}");
-                    }
+                        .context("failed to update node status to Ejected")?;
                 }
 
                 // If a node is already in ejected state (and hence cannot recover) but the provider
                 // gets whitelisted, we need to mark it as dead so it can actually recover again
-                if discovery_node.is_validated
-                    && discovery_node.is_provider_whitelisted
+                if node.is_validated()
+                    && node.is_provider_whitelisted()
                     && existing_node.status == NodeStatus::Ejected
                 {
                     info!(
                         "Node {node_address} is validated and provider whitelisted. Local store status was ejected, marking as dead so node can recover"
                     );
-                    if let Err(e) = self
-                        .update_node_status(&node_address, NodeStatus::Dead)
+                    self.update_node_status(&node_address, NodeStatus::Dead)
                         .await
-                    {
-                        error!("Error updating node status: {e}");
-                    }
+                        .context("failed to update node status to Dead")?;
                 }
-                if !discovery_node.is_active && existing_node.status == NodeStatus::Healthy {
+
+                if !node.is_active() && existing_node.status == NodeStatus::Healthy {
                     // Node is active False but we have it in store and it is healthy
                     // This means that the node likely got kicked by e.g. the validator
                     // Add a grace period check to avoid immediately marking nodes that just became healthy
@@ -313,18 +205,14 @@ impl DiscoveryMonitor {
                         info!(
                             "Node {node_address} is no longer active on chain, marking as ejected"
                         );
-                        if !discovery_node.is_provider_whitelisted {
-                            if let Err(e) = self
-                                .update_node_status(&node_address, NodeStatus::Ejected)
+                        if !node.is_provider_whitelisted() {
+                            self.update_node_status(&node_address, NodeStatus::Ejected)
                                 .await
-                            {
-                                error!("Error updating node status: {e}");
-                            }
-                        } else if let Err(e) = self
-                            .update_node_status(&node_address, NodeStatus::Dead)
-                            .await
-                        {
-                            error!("Error updating node status: {e}");
+                                .context("failed to update node status to Ejected")?;
+                        } else {
+                            self.update_node_status(&node_address, NodeStatus::Dead)
+                                .await
+                                .context("failed to update node status to Dead")?;
                         }
                     } else {
                         info!(
@@ -333,127 +221,329 @@ impl DiscoveryMonitor {
                     }
                 }
 
-                if existing_node.ip_address != discovery_node.node.ip_address {
+                if existing_node.ip_address != node.node().ip_address {
                     info!(
                         "Node {} IP changed from {} to {}",
-                        node_address, existing_node.ip_address, discovery_node.node.ip_address
+                        node_address,
+                        existing_node.ip_address,
+                        node.node().ip_address
                     );
-                    let mut node = existing_node.clone();
-                    node.ip_address = discovery_node.node.ip_address.clone();
-                    let _ = self.store_context.node_store.add_node(node.clone()).await;
+                    let mut existing_node = existing_node.clone();
+                    existing_node.ip_address = node.node().ip_address.clone();
+                    self.store_context
+                        .node_store
+                        .add_node(existing_node)
+                        .await
+                        .context("failed to update node IP address")?;
                 }
-                if existing_node.location.is_none() && discovery_node.location.is_some() {
+
+                if existing_node.location.is_none() && node.location().is_some() {
                     info!(
                         "Node {} location changed from None to {:?}",
-                        node_address, discovery_node.location
+                        node_address,
+                        node.location()
                     );
-                    if let Some(location) = &discovery_node.location {
-                        let _ = self
-                            .store_context
+                    if let Some(location) = node.location() {
+                        self.store_context
                             .node_store
                             .update_node_location(&node_address, location)
-                            .await;
+                            .await
+                            .context("failed to update node location")?;
                     }
                 }
 
                 if existing_node.status == NodeStatus::Dead {
-                    if let (Some(last_change), Some(last_updated)) = (
-                        existing_node.last_status_change,
-                        discovery_node.last_updated,
-                    ) {
+                    if let (Some(last_change), Some(last_updated)) =
+                        (existing_node.last_status_change, node.last_updated())
+                    {
                         if last_change < last_updated {
                             info!("Node {node_address} is dead but has been updated on discovery, marking as discovered");
 
-                            if existing_node.compute_specs != discovery_node.compute_specs {
+                            if existing_node.compute_specs != node.node().compute_specs {
                                 info!(
                                     "Node {node_address} compute specs changed, marking as discovered"
                                 );
                                 let mut node = existing_node.clone();
-                                node.compute_specs = discovery_node.compute_specs.clone();
-                                let _ = self.store_context.node_store.add_node(node.clone()).await;
+                                node.compute_specs = node.compute_specs.clone();
+                                self.store_context
+                                    .node_store
+                                    .add_node(node.clone())
+                                    .await
+                                    .context("failed to update node compute specs")?;
                             }
-                            if let Err(e) = self
-                                .update_node_status(&node_address, NodeStatus::Discovered)
+                            self.update_node_status(&node_address, NodeStatus::Discovered)
                                 .await
-                            {
-                                error!("Error updating node status: {e}");
-                            }
+                                .context("failed to update node status to Discovered")?;
                         }
                     }
                 }
 
-                if let Some(balance) = discovery_node.latest_balance {
-                    if balance == U256::ZERO {
-                        info!("Node {node_address} has zero balance, marking as low balance");
-                        if let Err(e) = self
-                            .update_node_status(&node_address, NodeStatus::LowBalance)
-                            .await
-                        {
-                            error!("Error updating node status: {e}");
-                        }
-                    }
+                if node.latest_balance() == U256::ZERO {
+                    info!("Node {node_address} has zero balance, marking as low balance");
+                    self.update_node_status(&node_address, NodeStatus::LowBalance)
+                        .await
+                        .context("failed to update node status to LowBalance")?;
                 }
             }
             Ok(None) => {
-                // Don't add new node if there's already a healthy node with same IP and port
-                if count_healthy_nodes_with_same_endpoint
-                    >= self.max_healthy_nodes_with_same_endpoint
-                {
+                // Don't add new node if there's already a healthy node with same peer ID
+                if healthy_nodes_with_same_peer_id > 0 {
                     info!(
-                        "Skipping new node {} as endpoint {}:{} is already used by a healthy node",
-                        node_address, discovery_node.node.ip_address, discovery_node.node.port
+                        "Skipping new node {} as peer ID {} is already used by a healthy node",
+                        node_address,
+                        node.node().worker_p2p_id
                     );
                     return Ok(());
                 }
 
                 info!("Discovered new validated node: {node_address}");
-                let mut node = OrchestratorNode::from(discovery_node.clone());
+                let mut node = OrchestratorNode::from(node);
                 node.first_seen = Some(Utc::now());
-                let _ = self.store_context.node_store.add_node(node.clone()).await;
+                self.store_context
+                    .node_store
+                    .add_node(node)
+                    .await
+                    .context("failed to add node to store")?;
             }
             Err(e) => {
-                error!("Error syncing node with discovery: {e}");
-                return Err(e);
+                return Err(e.context("failed to get node from store"));
             }
         }
         Ok(())
     }
+}
 
-    async fn get_nodes(&self) -> Result<Vec<OrchestratorNode>, Error> {
-        let discovery_nodes = self.fetch_nodes_from_discovery().await?;
+pub struct DiscoveryMonitor {
+    interval_s: u64,
+    heartbeats: Arc<LoopHeartbeats>,
+    updater: Updater,
+    node_fetcher: NodeFetcher,
+    location_service: Option<LocationService>,
+}
 
-        for discovery_node in &discovery_nodes {
-            if let Err(e) = self.sync_single_node_with_discovery(discovery_node).await {
-                error!("Error syncing node with discovery: {e}");
+impl DiscoveryMonitor {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        compute_pool_id: u32,
+        interval_s: u64,
+        store_context: Arc<StoreContext>,
+        heartbeats: Arc<LoopHeartbeats>,
+        status_change_handlers: Vec<StatusUpdatePlugin>,
+        kademlia_action_tx: Sender<p2p::KademliaActionWithChannel>,
+        provider: alloy::providers::RootProvider,
+        contracts: shared::web3::Contracts<alloy::providers::RootProvider>,
+        location_service_url: Option<String>,
+        location_service_api_key: Option<String>,
+    ) -> Result<Self> {
+        let location_service = if let Some(location_service_url) = location_service_url {
+            Some(
+                LocationService::new(location_service_url, location_service_api_key)
+                    .context("failed to create location service")?,
+            )
+        } else {
+            info!("Location service is disabled, skipping node enrichment");
+            None
+        };
+
+        Ok(Self {
+            interval_s,
+            heartbeats,
+            updater: Updater {
+                store_context,
+                status_change_handlers,
+            },
+            node_fetcher: NodeFetcher {
+                compute_pool_id,
+                kademlia_action_tx,
+                provider,
+                contracts,
+            },
+            location_service,
+        })
+    }
+
+    pub async fn run(self) {
+        use futures::StreamExt as _;
+
+        let Self {
+            interval_s,
+            heartbeats,
+            updater,
+            node_fetcher,
+            location_service,
+        } = self;
+
+        let mut interval = interval(Duration::from_secs(interval_s));
+
+        let mut get_nodes_futures = FuturesUnordered::new();
+        let mut node_update_futures = FuturesUnordered::new();
+        let mut location_futures = FuturesUnordered::new();
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    let node_fetcher = node_fetcher.clone();
+                    get_nodes_futures.push(tokio::task::spawn(async move {node_fetcher.get_nodes().await}));
+                    if let Some(location_service) = &location_service {
+                        info!("Enriching nodes without location data");
+                    location_futures.push(tokio::task::spawn(enrich_nodes_without_location(
+                        updater.store_context.node_store.clone(),
+                        location_service.clone(),
+                    )));
+                    heartbeats.update_monitor();
+                }
+                }
+                Some(res) = get_nodes_futures.next() => {
+                    match res {
+                        Ok(Ok(nodes)) => {
+                            if nodes.is_empty() {
+                                info!("No nodes found in discovery");
+                                continue;
+                            }
+
+                            for node in nodes {
+                                let updater = updater.clone();
+                                node_update_futures.push(
+                                    tokio::task::spawn(async move {
+                                        updater.perform_node_updates(&node).await
+                                    })
+                                );
+                            }
+                        }
+                        Ok(Err(e)) => {
+                            error!("Error fetching nodes from discovery: {e}");
+                        }
+                        Err(e) => {
+                            error!("Task failed while fetching nodes: {e}");
+                        }
+                    }
+                }
+                Some(res) = node_update_futures.next() => {
+                    match res {
+                        Ok(Ok(())) => {
+                            info!("Successfully updated nodes from discovery");
+                        }
+                        Ok(Err(e)) => {
+                            error!("Error updating nodes from discovery: {e}");
+                        }
+                        Err(e) => {
+                            error!("Task failed while updating nodes: {e}");
+                        }
+                    }
+                }
+                Some(res) = location_futures.next() => {
+                    match res {
+                        Ok(Ok(())) => {
+                            info!("Successfully enriched nodes without location data");
+                        }
+                        Ok(Err(e)) => {
+                            error!("Error enriching nodes without location data: {e}");
+                        }
+                        Err(e) => {
+                            error!("Task failed while enriching nodes: {e}");
+                        }
+                    }
+                }
             }
         }
-
-        Ok(discovery_nodes
-            .into_iter()
-            .map(OrchestratorNode::from)
-            .collect())
     }
+}
+
+async fn enrich_nodes_without_location(
+    node_store: Arc<NodeStore>,
+    location_service: LocationService,
+) -> Result<()> {
+    const BATCH_SIZE: usize = 10;
+    const MAX_RETRIES: u32 = 3;
+
+    let nodes = node_store
+        .get_nodes()
+        .await
+        .context("failed to get nodes from store")?;
+    let nodes_without_location: Vec<_> = nodes
+        .into_iter()
+        .filter(|node| node.location.is_none())
+        .collect();
+
+    if nodes_without_location.is_empty() {
+        return Ok(());
+    }
+
+    info!(
+        "Found {} nodes without location data",
+        nodes_without_location.len()
+    );
+
+    // Process in batches to respect rate limits
+    let mut retry_count: HashMap<Address, u32> = HashMap::new();
+    for chunk in nodes_without_location.chunks(BATCH_SIZE) {
+        for node in chunk {
+            let retries = retry_count.get(&node.address).unwrap_or(&0);
+            if *retries >= MAX_RETRIES {
+                continue; // Skip nodes that have exceeded retry limit
+            }
+
+            match location_service.get_location(&node.ip_address).await {
+                Ok(Some(location)) => {
+                    info!(
+                        "Successfully fetched location for node {}: {:?}",
+                        node.address, location
+                    );
+
+                    if let Err(e) = node_store
+                        .update_node_location(&node.address, &location)
+                        .await
+                    {
+                        error!(
+                            "Failed to update node {} with location: {}",
+                            node.address, e
+                        );
+                    }
+                }
+                Ok(None) => {
+                    // Location service is disabled
+                    break;
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to fetch location for node {} (attempt {}/{}): {}",
+                        node.address,
+                        retries + 1,
+                        MAX_RETRIES,
+                        e
+                    );
+
+                    // Increment retry counter
+                    let retries = retry_count.entry(node.address).or_insert(0);
+                    *retries += 1;
+                }
+            }
+
+            // Rate limiting - wait between requests
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        // Longer wait between batches
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use alloy::primitives::Address;
     use shared::models::node::{ComputeSpecs, Node};
-    use url::Url;
 
     use super::*;
     use crate::models::node::NodeStatus;
     use crate::store::core::{RedisStore, StoreContext};
-    use crate::ServerMode;
 
     #[tokio::test]
-    async fn test_sync_single_node_with_discovery() {
+    async fn perform_node_updates_ok() {
         let node_address = "0x1234567890123456789012345678901234567890";
-        let discovery_node = DiscoveryNode {
-            is_validated: true,
-            is_provider_whitelisted: true,
-            is_active: false,
-            node: Node {
+        let node = NodeWithMetadata::new(
+            Node {
                 id: node_address.to_string(),
                 provider_address: node_address.to_string(),
                 ip_address: "127.0.0.1".to_string(),
@@ -464,15 +554,22 @@ mod tests {
                     storage_gb: Some(10),
                     ..Default::default()
                 }),
+                worker_p2p_id: "12D3KooWJj3haDEzxGSbGSAvXCiE9pDYC9xHDdtQe8B2donhfwXL".to_string(),
                 ..Default::default()
             },
-            is_blacklisted: false,
-            ..Default::default()
-        };
+            true,
+            false,
+            true,
+            false,
+            alloy::primitives::U256::from(1000),
+            None,
+            None,
+            None,
+        );
 
-        let mut orchestrator_node = OrchestratorNode::from(discovery_node.clone());
+        let mut orchestrator_node = OrchestratorNode::from(&node);
         orchestrator_node.status = NodeStatus::Ejected;
-        orchestrator_node.address = discovery_node.node.id.parse::<Address>().unwrap();
+        orchestrator_node.address = node_address.parse::<Address>().unwrap();
         orchestrator_node.first_seen = Some(Utc::now());
         orchestrator_node.compute_specs = Some(ComputeSpecs {
             gpu: None,
@@ -495,35 +592,18 @@ mod tests {
             .expect("Redis should be flushed");
 
         let store_context = Arc::new(StoreContext::new(store.clone()));
-        let discovery_store_context = store_context.clone();
-
-        let _ = store_context
+        store_context
             .node_store
             .add_node(orchestrator_node.clone())
-            .await;
+            .await
+            .unwrap();
 
-        let fake_wallet = Wallet::new(
-            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-            Url::parse("http://localhost:8545").unwrap(),
-        )
-        .unwrap();
+        let updater = Updater {
+            store_context: store_context.clone(),
+            status_change_handlers: vec![],
+        };
 
-        let mode = ServerMode::Full;
-
-        let discovery_monitor = DiscoveryMonitor::new(
-            fake_wallet,
-            1,
-            10,
-            vec!["http://localhost:8080".to_string()],
-            discovery_store_context,
-            Arc::new(LoopHeartbeats::new(&mode)),
-            1,
-            vec![],
-        );
-
-        let store_context_clone = store_context.clone();
-
-        let node_from_store = store_context_clone
+        let node_from_store = store_context
             .node_store
             .get_node(&orchestrator_node.address)
             .await
@@ -533,10 +613,7 @@ mod tests {
             assert_eq!(node.status, NodeStatus::Ejected);
         }
 
-        discovery_monitor
-            .sync_single_node_with_discovery(&discovery_node)
-            .await
-            .unwrap();
+        updater.perform_node_updates(&node).await.unwrap();
 
         let node_after_sync = &store_context
             .node_store
@@ -550,23 +627,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_first_seen_timestamp_set_on_new_node() {
+    async fn first_seen_timestamp_set_on_new_node() {
         let node_address = "0x2234567890123456789012345678901234567890";
-        let discovery_node = DiscoveryNode {
-            is_validated: true,
-            is_provider_whitelisted: true,
-            is_active: true,
-            node: Node {
+        let node = NodeWithMetadata::new(
+            Node {
                 id: node_address.to_string(),
                 provider_address: node_address.to_string(),
                 ip_address: "192.168.1.100".to_string(),
                 port: 8080,
                 compute_pool_id: 1,
+                worker_p2p_id: "12D3KooWJj3haDEzxGSbGSAvXCiE9pDYC9xHDdtQe8B2donhfwXL".to_string(),
                 ..Default::default()
             },
-            is_blacklisted: false,
-            ..Default::default()
-        };
+            true,
+            true,
+            true,
+            false,
+            alloy::primitives::U256::from(1000),
+            None,
+            None,
+            None,
+        );
 
         let store = Arc::new(RedisStore::new_test());
         let mut con = store
@@ -582,40 +663,22 @@ mod tests {
             .expect("Redis should be flushed");
 
         let store_context = Arc::new(StoreContext::new(store.clone()));
-
-        let fake_wallet = Wallet::new(
-            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-            Url::parse("http://localhost:8545").unwrap(),
-        )
-        .unwrap();
-
-        let mode = ServerMode::Full;
-
-        let discovery_monitor = DiscoveryMonitor::new(
-            fake_wallet,
-            1,
-            10,
-            vec!["http://localhost:8080".to_string()],
-            store_context.clone(),
-            Arc::new(LoopHeartbeats::new(&mode)),
-            1,
-            vec![],
-        );
+        let updater = Updater {
+            store_context: store_context.clone(),
+            status_change_handlers: vec![],
+        };
 
         let time_before = Utc::now();
 
         // Sync a new node that doesn't exist in the store
-        discovery_monitor
-            .sync_single_node_with_discovery(&discovery_node)
-            .await
-            .unwrap();
+        updater.perform_node_updates(&node).await.unwrap();
 
         let time_after = Utc::now();
 
         // Verify the node was added with first_seen timestamp
         let node_from_store = store_context
             .node_store
-            .get_node(&discovery_node.node.id.parse::<Address>().unwrap())
+            .get_node(&node_address.parse::<Address>().unwrap())
             .await
             .unwrap();
 
@@ -638,32 +701,33 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Update discovery data to simulate a change (e.g., IP address change)
-        let updated_discovery_node = DiscoveryNode {
-            is_validated: true,
-            is_provider_whitelisted: true,
-            is_active: true,
-            node: Node {
+        let updated_node = NodeWithMetadata::new(
+            Node {
                 id: node_address.to_string(),
                 provider_address: node_address.to_string(),
                 ip_address: "192.168.1.101".to_string(), // Changed IP
                 port: 8080,
                 compute_pool_id: 1,
+                worker_p2p_id: "12D3KooWJj3haDEzxGSbGSAvXCiE9pDYC9xHDdtQe8B2donhfwXL".to_string(),
                 ..Default::default()
             },
-            is_blacklisted: false,
-            ..Default::default()
-        };
+            true,
+            true,
+            true,
+            false,
+            alloy::primitives::U256::from(1000),
+            None,
+            None,
+            None,
+        );
 
         // Sync the node again
-        discovery_monitor
-            .sync_single_node_with_discovery(&updated_discovery_node)
-            .await
-            .unwrap();
+        updater.perform_node_updates(&updated_node).await.unwrap();
 
         // Verify the node was updated but first_seen is preserved
         let node_after_resync = store_context
             .node_store
-            .get_node(&discovery_node.node.id.parse::<Address>().unwrap())
+            .get_node(&node_address.parse::<Address>().unwrap())
             .await
             .unwrap()
             .unwrap();
@@ -679,7 +743,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_sync_node_with_same_endpoint() {
+    async fn sync_node_with_same_peer_id() {
         let store = Arc::new(RedisStore::new_test());
         let mut con = store
             .client
@@ -697,11 +761,8 @@ mod tests {
 
         // Create first node (will be healthy)
         let node1_address = "0x1234567890123456789012345678901234567890";
-        let node1 = DiscoveryNode {
-            is_validated: true,
-            is_provider_whitelisted: true,
-            is_active: true,
-            node: Node {
+        let node1 = NodeWithMetadata::new(
+            Node {
                 id: node1_address.to_string(),
                 provider_address: node1_address.to_string(),
                 ip_address: "127.0.0.1".to_string(),
@@ -712,50 +773,62 @@ mod tests {
                     storage_gb: Some(10),
                     ..Default::default()
                 }),
+                worker_p2p_id: "12D3KooWJj3haDEzxGSbGSAvXCiE9pDYC9xHDdtQe8B2donhfwXL".to_string(),
                 ..Default::default()
             },
-            is_blacklisted: false,
-            ..Default::default()
-        };
+            true,
+            true,
+            true,
+            false,
+            alloy::primitives::U256::from(1000),
+            None,
+            None,
+            None,
+        );
 
-        let mut orchestrator_node1 = OrchestratorNode::from(node1.clone());
+        let mut orchestrator_node1 = OrchestratorNode::from(&node1);
         orchestrator_node1.status = NodeStatus::Healthy;
-        orchestrator_node1.address = node1.node.id.parse::<Address>().unwrap();
+        orchestrator_node1.address = node1_address.parse::<Address>().unwrap();
 
         let _ = store_context
             .node_store
             .add_node(orchestrator_node1.clone())
             .await;
 
-        // Create second node with same IP and port
+        // Create second node with same peer ID
         let node2_address = "0x2234567890123456789012345678901234567890";
-        let mut node2 = node1.clone();
-        node2.node.id = node2_address.to_string();
-        node2.node.provider_address = node2_address.to_string();
-
-        let fake_wallet = Wallet::new(
-            "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
-            Url::parse("http://localhost:8545").unwrap(),
-        )
-        .unwrap();
-
-        let mode = ServerMode::Full;
-        let discovery_monitor = DiscoveryMonitor::new(
-            fake_wallet,
-            1,
-            10,
-            vec!["http://localhost:8080".to_string()],
-            store_context.clone(),
-            Arc::new(LoopHeartbeats::new(&mode)),
-            1,
-            vec![],
+        let node2 = NodeWithMetadata::new(
+            Node {
+                id: node2_address.to_string(),
+                provider_address: node2_address.to_string(),
+                ip_address: "127.0.0.1".to_string(),
+                port: 8080,
+                compute_pool_id: 1,
+                compute_specs: Some(ComputeSpecs {
+                    ram_mb: Some(1024),
+                    storage_gb: Some(10),
+                    ..Default::default()
+                }),
+                worker_p2p_id: "12D3KooWJj3haDEzxGSbGSAvXCiE9pDYC9xHDdtQe8B2donhfwXL".to_string(),
+                ..Default::default()
+            },
+            true,
+            true,
+            true,
+            false,
+            alloy::primitives::U256::from(1000),
+            None,
+            None,
+            None,
         );
 
+        let updater = Updater {
+            store_context: store_context.clone(),
+            status_change_handlers: vec![],
+        };
+
         // Try to sync the second node
-        discovery_monitor
-            .sync_single_node_with_discovery(&node2)
-            .await
-            .unwrap();
+        updater.perform_node_updates(&node2).await.unwrap();
 
         // Verify second node was not added
         let node2_result = store_context
@@ -765,31 +838,7 @@ mod tests {
             .unwrap();
         assert!(
             node2_result.is_none(),
-            "Node with same endpoint should not be added"
-        );
-
-        // Create third node with same IP but different port (should be allowed)
-        let node3_address = "0x3234567890123456789012345678901234567890";
-        let mut node3 = node1.clone();
-        node3.node.id = node3_address.to_string();
-        node3.node.provider_address = node3_address.to_string();
-        node3.node.port = 8081; // Different port
-
-        // Try to sync the third node
-        discovery_monitor
-            .sync_single_node_with_discovery(&node3)
-            .await
-            .unwrap();
-
-        // Verify third node was added (different port)
-        let node3_result = store_context
-            .node_store
-            .get_node(&node3_address.parse::<Address>().unwrap())
-            .await
-            .unwrap();
-        assert!(
-            node3_result.is_some(),
-            "Node with different port should be added"
+            "Node with same peer ID should not be added"
         );
     }
 }

@@ -538,7 +538,7 @@ mod tests {
             address: Address::ZERO,
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
-            p2p_id: Some("test_p2p_id".to_string()),
+            p2p_id: "test_p2p_id".to_string(),
             status: NodeStatus::Healthy,
             ..Default::default()
         };
@@ -722,7 +722,7 @@ mod tests {
             address: Address::ZERO,
             ip_address: "127.0.0.1".to_string(),
             port: 8080,
-            p2p_id: Some("test_p2p_id".to_string()),
+            p2p_id: "test_p2p_id".to_string(),
             status: NodeStatus::Healthy,
             ..Default::default()
         };

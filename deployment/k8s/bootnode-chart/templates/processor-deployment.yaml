@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bootnode.fullname" . }}-processor
+  namespace: {{ include "bootnode.namespace" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "bootnode.fullname" . }}-processor
+  template:
+    metadata:
+      labels:
+        app: {{ include "bootnode.fullname" . }}-processor
+    spec:
+      containers: {{- include "bootnode.container" (dict "root" . "mode" "processor") | nindent 6 }}

@@ -1,5 +1,6 @@
 use anyhow::{bail, Context as _, Result};
 use futures::stream::FuturesUnordered;
+use p2p::KademliaActionWithChannel;
 use p2p::{Keypair, Protocols};
 use shared::p2p::OutgoingRequest;
 use shared::p2p::Service as P2PService;
@@ -19,13 +20,19 @@ impl Service {
     pub fn new(
         keypair: Keypair,
         port: u16,
+        bootnodes: Vec<p2p::Multiaddr>,
         cancellation_token: CancellationToken,
         wallet: Wallet,
-    ) -> Result<(Self, Sender<HardwareChallengeRequest>)> {
+    ) -> Result<(
+        Self,
+        Sender<HardwareChallengeRequest>,
+        Sender<KademliaActionWithChannel>,
+    )> {
         let (hardware_challenge_tx, hardware_challenge_rx) = tokio::sync::mpsc::channel(100);
-        let (inner, outgoing_message_tx) = P2PService::new(
+        let (inner, outgoing_message_tx, kademlia_action_tx) = P2PService::new(
             keypair,
             port,
+            bootnodes,
             cancellation_token.clone(),
             wallet,
             Protocols::new()
@@ -40,6 +47,7 @@ impl Service {
                 hardware_challenge_rx,
             },
             hardware_challenge_tx,
+            kademlia_action_tx,
         ))
     }
 

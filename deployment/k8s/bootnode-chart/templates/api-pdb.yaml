@@ -1,0 +1,12 @@
+{{- if .Values.api.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "bootnode.fullname" . }}-api
+  namespace: {{ include "bootnode.namespace" . }}
+spec:
+  maxUnavailable: {{ .Values.api.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      app: {{ include "bootnode.fullname" . }}-api
+{{- end }}

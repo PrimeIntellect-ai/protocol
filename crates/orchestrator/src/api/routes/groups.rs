@@ -237,25 +237,21 @@ async fn fetch_node_logs_p2p(
     match node {
         Some(node) => {
             // Check if node has P2P information
-            let (worker_p2p_id, worker_p2p_addresses) =
-                match (&node.worker_p2p_id, &node.worker_p2p_addresses) {
-                    (Some(p2p_id), Some(p2p_addrs)) if !p2p_addrs.is_empty() => (p2p_id, p2p_addrs),
-                    _ => {
-                        error!("Node {node_address} does not have P2P information");
-                        return json!({
-                            "success": false,
-                            "error": "Node does not have P2P information",
-                            "status": node.status.to_string()
-                        });
-                    }
-                };
+            let Some(p2p_addresses) = node.worker_p2p_addresses else {
+                error!("Node {node_address} does not have P2P addresses");
+                return json!({
+                    "success": false,
+                    "error": "Node does not have P2P addresses",
+                    "status": node.status.to_string()
+                });
+            };
 
             // Send P2P request for task logs
             let (response_tx, response_rx) = tokio::sync::oneshot::channel();
             let get_task_logs_request = crate::p2p::GetTaskLogsRequest {
                 worker_wallet_address: node_address,
-                worker_p2p_id: worker_p2p_id.clone(),
-                worker_addresses: worker_p2p_addresses.clone(),
+                worker_p2p_id: node.p2p_id.clone(),
+                worker_addresses: p2p_addresses,
                 response_tx,
             };
             if let Err(e) = app_state.get_task_logs_tx.send(get_task_logs_request).await {

@@ -1,0 +1,14 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bootnode.fullname" . }}-redis
+  namespace: {{ include "bootnode.namespace" . }}
+spec:
+  selector:
+    app: {{ include "bootnode.fullname" . }}-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+  type: ClusterIP
+{{- end }}
