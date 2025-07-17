@@ -801,8 +801,7 @@ mod tests {
         // Create multiple addresses
         let addresses: Vec<Address> = (0..5)
             .map(|i| {
-                Address::from_str(&format!("0x{i}000000000000000000000000000000000000000"))
-                    .unwrap()
+                Address::from_str(&format!("0x{i}000000000000000000000000000000000000000")).unwrap()
             })
             .collect();
 

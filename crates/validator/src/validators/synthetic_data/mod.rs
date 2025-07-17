@@ -270,9 +270,7 @@ impl SyntheticDataValidator<WalletProvider> {
         let _: () = con
             .zadd("incomplete_groups", group_key, new_deadline)
             .await
-            .map_err(|e| {
-                Error::msg(format!("Failed to update incomplete group deadline: {e}"))
-            })?;
+            .map_err(|e| Error::msg(format!("Failed to update incomplete group deadline: {e}")))?;
 
         debug!(
             "Updated deadline for incomplete group {group_key} to {new_deadline} ({minutes_from_now} minutes from now)"

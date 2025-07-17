@@ -276,9 +276,7 @@ async fn test_group_formation_with_multiple_configs() {
     let _ = plugin.try_form_new_groups().await;
 
     let mut conn = plugin.store.client.get_connection().unwrap();
-    let groups: Vec<String> = conn
-        .keys(format!("{GROUP_KEY_PREFIX}*").as_str())
-        .unwrap();
+    let groups: Vec<String> = conn.keys(format!("{GROUP_KEY_PREFIX}*").as_str()).unwrap();
     assert_eq!(groups.len(), 2);
 
     // Verify group was created
