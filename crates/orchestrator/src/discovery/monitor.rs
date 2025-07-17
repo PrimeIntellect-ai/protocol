@@ -3,6 +3,7 @@ use crate::models::node::NodeStatus;
 use crate::models::node::OrchestratorNode;
 use crate::plugins::StatusUpdatePlugin;
 use crate::store::core::StoreContext;
+use crate::store::NodeStore;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
 use alloy::primitives::Address;
 use alloy::primitives::U256;
@@ -447,8 +448,6 @@ impl DiscoveryMonitor {
         }
     }
 }
-
-use crate::store::NodeStore;
 
 async fn enrich_nodes_without_location(
     node_store: Arc<NodeStore>,

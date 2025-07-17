@@ -41,7 +41,7 @@ impl ValidatorHealth {
 }
 
 pub struct Validator {
-    synthetic_validator: Option<SyntheticDataValidator<WalletProvider>>, // TOOD: does this need to be optional?
+    synthetic_validator: Option<SyntheticDataValidator<WalletProvider>>, // TODO: does this need to be optional?
     provider: WalletProvider,
     contracts: Contracts<WalletProvider>,
     hardware_validator: HardwareValidator,

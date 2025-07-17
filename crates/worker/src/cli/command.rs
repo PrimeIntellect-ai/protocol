@@ -865,8 +865,6 @@ pub async fn execute_command(
                 std::process::exit(1);
             }
 
-            // discovery_updater.start_auto_update(node_config);
-
             if recover_last_state {
                 info!("Recovering from previous state: {recover_last_state}");
                 heartbeat.activate_heartbeat_if_endpoint_exists().await;
