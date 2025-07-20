@@ -8,7 +8,6 @@ mod p2p;
 mod state;
 mod utils;
 
-pub use cli::execute_command;
 pub use cli::Cli;
 pub use utils::logging::setup_logging;
 

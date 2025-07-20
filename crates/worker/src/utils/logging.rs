@@ -4,8 +4,7 @@ use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
 use url::Url;
 
-use crate::cli::command::Commands;
-use crate::cli::Cli;
+use crate::cli::{Cli, Commands};
 use anyhow::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::macros::format_description;
