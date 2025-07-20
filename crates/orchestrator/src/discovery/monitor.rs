@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 struct NodeFetcher {
@@ -362,7 +363,7 @@ impl DiscoveryMonitor {
         })
     }
 
-    pub async fn run(self) {
+    pub async fn run(self, cancellation_token: CancellationToken) {
         use futures::StreamExt as _;
 
         let Self {
@@ -443,6 +444,10 @@ impl DiscoveryMonitor {
                             error!("Task failed while enriching nodes: {e}");
                         }
                     }
+                }
+                _ = cancellation_token.cancelled() => {
+                    error!("Shutdown signal received, stopping discovery monitor");
+                    break;
                 }
             }
         }

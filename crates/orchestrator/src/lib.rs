@@ -1,4 +1,5 @@
 mod api;
+mod cli;
 mod discovery;
 mod metrics;
 mod models;
@@ -11,6 +12,7 @@ mod store;
 mod utils;
 
 pub use api::server::start_server;
+pub use cli::Cli;
 pub use discovery::monitor::DiscoveryMonitor;
 pub use metrics::sync_service::MetricsSyncService;
 pub use metrics::webhook_sender::MetricsWebhookSender;
