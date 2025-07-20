@@ -1,9 +1,12 @@
+mod cli;
+mod handler;
 mod metrics;
 mod p2p;
 mod store;
 mod validator;
 mod validators;
 
+pub use cli::Cli;
 pub use metrics::export_metrics;
 pub use metrics::MetricsContext;
 pub use p2p::Service as P2PService;
