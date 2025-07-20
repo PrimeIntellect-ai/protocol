@@ -1,16 +1,17 @@
 use clap::Parser;
+use shared::utils::signal::trigger_cancellation_on_signal;
 use std::panic;
 use std::sync::Arc;
-use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use worker::TaskHandles;
-use worker::{execute_command, setup_logging, Cli};
+use worker::{setup_logging, Cli};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // TODO: see if there are any better DS to handle this
     let task_handles: TaskHandles = Arc::new(Mutex::new(Vec::<JoinHandle<()>>::new()));
 
     let cli = Cli::parse();
@@ -20,6 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Set up panic hook to log panics
+    // TODO: this could be shared via a util module/crate
     panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
             .location()
@@ -40,37 +42,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }));
 
-    let mut sigterm = signal(SignalKind::terminate())?;
-    let mut sigint = signal(SignalKind::interrupt())?;
-    let mut sighup = signal(SignalKind::hangup())?;
-    let mut sigquit = signal(SignalKind::quit())?;
-
     let cancellation_token = CancellationToken::new();
-    let signal_token = cancellation_token.clone();
-    let command_token = cancellation_token.clone();
-    let signal_handle = tokio::spawn(async move {
-        tokio::select! {
-            _ = sigterm.recv() => {
-                log::info!("Received termination signal");
-            }
-            _ = sigint.recv() => {
-                log::info!("Received interrupt signal");
-            }
-            _ = sighup.recv() => {
-                log::info!("Received hangup signal");
-            }
-            _ = sigquit.recv() => {
-                log::info!("Received quit signal");
-            }
-        }
-        signal_token.cancel();
-    });
+    let signal_handle = trigger_cancellation_on_signal(cancellation_token.clone())?;
     task_handles.lock().await.push(signal_handle);
 
     let task_handles_clone = task_handles.clone();
 
+    let command_token = cancellation_token.clone();
     tokio::select! {
-        cmd_result = execute_command(&cli.command, command_token, task_handles_clone) => {
+        cmd_result = cli.run(command_token, task_handles_clone) => {
             if let Err(e) = cmd_result {
                 log::error!("Command execution error: {e}");
             }
@@ -80,6 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // TODO: what happens if lock is held by another task?
     let mut handles = task_handles.lock().await;
 
     for handle in handles.iter() {
