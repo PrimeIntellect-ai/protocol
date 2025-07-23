@@ -87,6 +87,8 @@ impl WorkerClient {
             peer_id,
             multiaddrs,
             sender_address: None, // Will be filled from our wallet automatically
+            is_sender_validator: false,
+            is_sender_pool_owner: false,
             response_tx: None,
         };
 
@@ -228,6 +230,8 @@ fn message_to_pyobject(message: Message) -> PyObject {
         "peer_id": message.peer_id,
         "multiaddrs": message.multiaddrs,
         "sender_address": message.sender_address,
+        "is_sender_validator": message.is_sender_validator,
+        "is_sender_pool_owner": message.is_sender_pool_owner,
     });
 
     Python::with_gil(|py| crate::utils::json_parser::json_to_pyobject(py, &json_value))

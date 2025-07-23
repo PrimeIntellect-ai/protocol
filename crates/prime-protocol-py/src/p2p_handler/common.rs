@@ -67,6 +67,8 @@ pub async fn send_message_with_auth(
         peer_id,
         multiaddrs,
         sender_address: Some(auth_manager.wallet_address()),
+        is_sender_validator: false,
+        is_sender_pool_owner: false,
         response_tx: None,
     };
 

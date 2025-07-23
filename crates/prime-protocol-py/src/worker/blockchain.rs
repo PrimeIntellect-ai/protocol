@@ -1,11 +1,12 @@
 use alloy::primitives::utils::format_ether;
-use alloy::primitives::U256;
+use alloy::primitives::{Address, U256};
 use anyhow::{Context, Result};
 use prime_core::operations::compute_node::ComputeNodeOperations;
 use prime_core::operations::provider::ProviderOperations;
 use shared::web3::contracts::core::builder::{ContractBuilder, Contracts};
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::{Wallet, WalletProvider};
+use std::sync::Arc;
 use url::Url;
 
 use crate::constants::{BLOCKCHAIN_OPERATION_TIMEOUT, DEFAULT_COMPUTE_UNITS};
@@ -25,6 +26,7 @@ pub struct BlockchainService {
     config: BlockchainConfig,
     provider_wallet: Option<Wallet>,
     node_wallet: Option<Wallet>,
+    contracts: Option<Contracts<WalletProvider>>,
 }
 
 impl BlockchainService {
@@ -36,6 +38,7 @@ impl BlockchainService {
             config,
             provider_wallet: None,
             node_wallet: None,
+            contracts: None,
         })
     }
 
@@ -56,6 +59,7 @@ impl BlockchainService {
         // Store the wallets
         self.provider_wallet = Some(provider_wallet.clone());
         self.node_wallet = Some(node_wallet.clone());
+        self.contracts = Some(contracts.clone());
 
         self.wait_for_active_pool(&contracts).await?;
         self.ensure_provider_registered(&provider_wallet, &contracts)
@@ -330,5 +334,120 @@ impl BlockchainService {
 
         log::info!("Successfully joined compute pool with tx: {}", result);
         Ok(())
+    }
+
+    /// Get all validator addresses from the PrimeNetwork contract
+    pub async fn get_validator_addresses(&self) -> Arc<std::collections::HashSet<Address>> {
+        let contracts = match self.contracts.as_ref() {
+            Some(contracts) => contracts,
+            None => {
+                log::error!("Contracts not initialized");
+                return Arc::new(std::collections::HashSet::new());
+            }
+        };
+
+        match contracts.prime_network.get_validator_role().await {
+            Ok(validators) => {
+                log::info!(
+                    "Fetched {} validator addresses from chain",
+                    validators.len()
+                );
+                let validator_set: std::collections::HashSet<Address> = validators
+                    .into_iter()
+                    .inspect(|&addr| {
+                        log::debug!("Validator address: {:?}", addr);
+                    })
+                    .collect();
+                log::info!("Validator addresses: {:?}", validator_set);
+                Arc::new(validator_set)
+            }
+            Err(e) => {
+                log::error!("Failed to get validator addresses: {}", e);
+                Arc::new(std::collections::HashSet::new())
+            }
+        }
+    }
+
+    /// Get the pool owner address for the current compute pool
+    pub async fn get_pool_owner_address(&self) -> Option<Address> {
+        let contracts = match self.contracts.as_ref() {
+            Some(contracts) => contracts,
+            None => {
+                log::error!("Contracts not initialized");
+                return None;
+            }
+        };
+
+        log::info!(
+            "Fetching pool owner for pool ID: {}",
+            self.config.compute_pool_id
+        );
+
+        match contracts
+            .compute_pool
+            .get_pool_info(U256::from(self.config.compute_pool_id))
+            .await
+        {
+            Ok(pool_info) => {
+                log::info!(
+                    "Pool {} owner address: {:?}",
+                    self.config.compute_pool_id,
+                    pool_info.creator
+                );
+                log::info!(
+                    "Pool {} owner address (checksummed): {}",
+                    self.config.compute_pool_id,
+                    pool_info.creator
+                );
+                Some(pool_info.creator)
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to get pool info for pool {}: {}",
+                    self.config.compute_pool_id,
+                    e
+                );
+                None
+            }
+        }
+    }
+
+    /// Get the compute manager address for the current compute pool
+    pub async fn get_compute_manager_address(&self) -> Option<Address> {
+        let contracts = match self.contracts.as_ref() {
+            Some(contracts) => contracts,
+            None => {
+                log::error!("Contracts not initialized");
+                return None;
+            }
+        };
+
+        match contracts
+            .compute_pool
+            .get_pool_info(U256::from(self.config.compute_pool_id))
+            .await
+        {
+            Ok(pool_info) => {
+                log::info!(
+                    "Pool {} compute manager address: {:?}",
+                    self.config.compute_pool_id,
+                    pool_info.compute_manager_key
+                );
+                log::info!(
+                    "Pool {} compute manager address (checksummed): {}",
+                    self.config.compute_pool_id,
+                    pool_info.compute_manager_key
+                );
+                Some(pool_info.compute_manager_key)
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to get pool info for pool {}: {}",
+                    self.config.compute_pool_id,
+                    e
+                );
+                None
+            }
+        }
     }
 }

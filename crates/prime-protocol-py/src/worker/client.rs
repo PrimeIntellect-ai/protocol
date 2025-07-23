@@ -4,6 +4,7 @@ use crate::p2p_handler::auth::AuthenticationManager;
 use crate::p2p_handler::message_processor::{MessageProcessor, MessageProcessorConfig};
 use crate::worker::blockchain::{BlockchainConfig, BlockchainService};
 use crate::worker::p2p_handler::{Message, MessageType, Service as P2PService};
+use alloy::primitives::Address;
 use p2p::{Keypair, PeerId};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -23,6 +24,10 @@ pub struct WorkerClientCore {
     user_message_tx: Option<Sender<Message>>,
     user_message_rx: Option<Arc<Mutex<Receiver<Message>>>>,
     message_processor_handle: Option<JoinHandle<()>>,
+    // Validator and pool owner info
+    validator_addresses: Option<Arc<std::collections::HashSet<Address>>>,
+    pool_owner_address: Option<Address>,
+    compute_manager_address: Option<Address>,
 }
 
 /// Configuration for the worker client
@@ -101,6 +106,9 @@ impl WorkerClientCore {
             user_message_tx: Some(user_message_tx),
             user_message_rx: Some(Arc::new(Mutex::new(user_message_rx))),
             message_processor_handle: None,
+            validator_addresses: None,
+            pool_owner_address: None,
+            compute_manager_address: None,
         })
     }
 
@@ -109,6 +117,7 @@ impl WorkerClientCore {
         log::info!("Starting WorkerClient");
 
         self.initialize_blockchain().await?;
+        self.initialize_validator_and_pool_info().await?;
         self.initialize_auth_manager()?;
         self.start_p2p_service().await?;
         self.start_message_processor().await?;
@@ -153,7 +162,6 @@ impl WorkerClientCore {
                 // Check if it's an invite and process it automatically
                 if let MessageType::General { ref data } = message.message_type {
                     if let Ok(invite) = serde_json::from_slice::<p2p::InviteRequest>(data) {
-                        println!("Received invite from peer: {}", message.peer_id);
                         log::info!("Received invite from peer: {}", message.peer_id);
 
                         // Check if invite has expired
@@ -238,6 +246,33 @@ impl WorkerClientCore {
         })?;
 
         self.blockchain_service = Some(blockchain_service);
+        Ok(())
+    }
+
+    async fn initialize_validator_and_pool_info(&mut self) -> Result<()> {
+        let blockchain_service = self.blockchain_service.as_ref().ok_or_else(|| {
+            PrimeProtocolError::InvalidConfig("Blockchain service not initialized".to_string())
+        })?;
+
+        let validator_addresses = blockchain_service.get_validator_addresses().await;
+        self.validator_addresses = Some(validator_addresses);
+
+        let pool_owner_address = blockchain_service.get_pool_owner_address().await;
+        self.pool_owner_address = pool_owner_address;
+
+        let compute_manager_address = blockchain_service.get_compute_manager_address().await;
+        self.compute_manager_address = compute_manager_address;
+
+        log::info!(
+            "Validator addresses: {:?}",
+            self.validator_addresses.as_ref().map(|s| s.len())
+        );
+        log::info!("Pool owner address: {:?}", self.pool_owner_address);
+        log::info!(
+            "Compute manager address: {:?}",
+            self.compute_manager_address
+        );
+
         Ok(())
     }
 
@@ -348,6 +383,20 @@ impl WorkerClientCore {
             })?
             .clone();
 
+        let validator_addresses = self
+            .validator_addresses
+            .as_ref()
+            .ok_or_else(|| {
+                PrimeProtocolError::InvalidConfig("Validator addresses not initialized".to_string())
+            })?
+            .clone();
+
+        let pool_owner_address = self.pool_owner_address.ok_or_else(|| {
+            PrimeProtocolError::InvalidConfig("Pool owner address not initialized".to_string())
+        })?;
+
+        let compute_manager_address = self.compute_manager_address;
+
         Ok(MessageProcessorConfig {
             auth_manager,
             message_queue_rx,
@@ -355,6 +404,9 @@ impl WorkerClientCore {
             outbound_tx,
             authenticated_peers,
             cancellation_token: self.cancellation_token.clone(),
+            validator_addresses,
+            pool_owner_address: Some(pool_owner_address),
+            compute_manager_address,
         })
     }
 

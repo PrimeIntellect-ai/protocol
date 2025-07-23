@@ -1,6 +1,7 @@
 use crate::error::Result;
 use crate::p2p_handler::auth::AuthenticationManager;
 use crate::p2p_handler::{Message, MessageType};
+use alloy::primitives::Address;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -19,6 +20,9 @@ pub struct MessageProcessorConfig {
     pub outbound_tx: Arc<Mutex<Sender<Message>>>,
     pub authenticated_peers: Arc<RwLock<HashMap<String, String>>>,
     pub cancellation_token: CancellationToken,
+    pub validator_addresses: Arc<std::collections::HashSet<Address>>,
+    pub pool_owner_address: Option<Address>,
+    pub compute_manager_address: Option<Address>,
 }
 
 /// Handles processing of incoming P2P messages
@@ -29,6 +33,9 @@ pub struct MessageProcessor {
     outbound_tx: Arc<Mutex<Sender<Message>>>,
     authenticated_peers: Arc<RwLock<HashMap<String, String>>>,
     cancellation_token: CancellationToken,
+    validator_addresses: Arc<std::collections::HashSet<Address>>,
+    pool_owner_address: Option<Address>,
+    compute_manager_address: Option<Address>,
 }
 
 impl MessageProcessor {
@@ -39,6 +46,9 @@ impl MessageProcessor {
         outbound_tx: Arc<Mutex<Sender<Message>>>,
         authenticated_peers: Arc<RwLock<HashMap<String, String>>>,
         cancellation_token: CancellationToken,
+        validator_addresses: Arc<std::collections::HashSet<Address>>,
+        pool_owner_address: Option<Address>,
+        compute_manager_address: Option<Address>,
     ) -> Self {
         Self {
             auth_manager,
@@ -47,6 +57,9 @@ impl MessageProcessor {
             outbound_tx,
             authenticated_peers,
             cancellation_token,
+            validator_addresses,
+            pool_owner_address,
+            compute_manager_address,
         }
     }
 
@@ -59,6 +72,9 @@ impl MessageProcessor {
             config.outbound_tx,
             config.authenticated_peers,
             config.cancellation_token,
+            config.validator_addresses,
+            config.pool_owner_address,
+            config.compute_manager_address,
         )
     }
 
@@ -109,6 +125,8 @@ impl MessageProcessor {
             peer_id,
             multiaddrs,
             sender_address,
+            is_sender_validator,
+            is_sender_pool_owner,
             response_tx,
         } = message;
 
@@ -139,7 +157,9 @@ impl MessageProcessor {
                     },
                     peer_id,
                     multiaddrs,
-                    sender_address,
+                    sender_address: sender_address.clone(),
+                    is_sender_validator: self.is_address_validator(&sender_address),
+                    is_sender_pool_owner: self.is_address_pool_owner(&sender_address),
                     response_tx: None,
                 };
                 self.handle_auth_response(msg, challenge, signature).await
@@ -169,7 +189,9 @@ impl MessageProcessor {
                     message_type: MessageType::General { data },
                     peer_id,
                     multiaddrs,
-                    sender_address,
+                    sender_address: sender_address.clone(),
+                    is_sender_validator: self.is_address_validator(&sender_address),
+                    is_sender_pool_owner: self.is_address_pool_owner(&sender_address),
                     response_tx: None,
                 };
                 self.user_message_tx.send(msg).await.map_err(|e| {
@@ -237,6 +259,8 @@ impl MessageProcessor {
             peer_id: message.peer_id.clone(),
             multiaddrs: message.multiaddrs,
             sender_address: Some(self.auth_manager.wallet_address()),
+            is_sender_validator: false, // We're sending this message, so we check our own address
+            is_sender_pool_owner: false, // We're sending this message, so we check our own address
             response_tx: None,
         };
 
@@ -316,5 +340,62 @@ impl MessageProcessor {
         }
 
         Ok(())
+    }
+
+    /// Check if an address is a validator
+    fn is_address_validator(&self, address: &Option<String>) -> bool {
+        if let Some(addr_str) = address {
+            // Parse the string address to an Address type
+            match Address::from_str(addr_str) {
+                Ok(addr) => {
+                    let is_validator = self.validator_addresses.contains(&addr);
+                    log::debug!(
+                        "Checking if {} is a validator: {} (validator set has {} addresses)",
+                        addr_str,
+                        is_validator,
+                        self.validator_addresses.len()
+                    );
+                    is_validator
+                }
+                Err(e) => {
+                    log::warn!("Failed to parse address {}: {}", addr_str, e);
+                    false
+                }
+            }
+        } else {
+            log::debug!("No sender address provided, cannot check validator status");
+            false
+        }
+    }
+
+    /// Check if an address is the pool owner
+    fn is_address_pool_owner(&self, address: &Option<String>) -> bool {
+        if let Some(addr_str) = address {
+            // Parse the string address to an Address type
+            match Address::from_str(addr_str) {
+                Ok(addr) => {
+                    // Check if it's the pool creator OR the compute manager
+                    let is_creator = self.pool_owner_address == Some(addr);
+                    let is_compute_manager = self.compute_manager_address == Some(addr);
+                    let is_owner = is_creator || is_compute_manager;
+
+                    log::debug!(
+                        "Checking if {} is pool owner/manager: {} (pool owner: {:?}, compute manager: {:?})",
+                        addr_str,
+                        is_owner,
+                        self.pool_owner_address,
+                        self.compute_manager_address
+                    );
+                    is_owner
+                }
+                Err(e) => {
+                    log::warn!("Failed to parse address {}: {}", addr_str, e);
+                    false
+                }
+            }
+        } else {
+            log::debug!("No sender address provided, cannot check pool owner status");
+            false
+        }
     }
 }

@@ -229,6 +229,8 @@ impl ValidatorClient {
             peer_id,
             multiaddrs,
             sender_address: None,
+            is_sender_validator: true, // Validator is sending this message
+            is_sender_pool_owner: false,
             response_tx: None,
         };
 
@@ -450,6 +452,9 @@ impl ValidatorClient {
             outbound_tx: outbound_tx.clone(),
             authenticated_peers,
             cancellation_token,
+            validator_addresses: Arc::new(std::collections::HashSet::new()), // Validator doesn't need to check other validators
+            pool_owner_address: None, // Validator doesn't need pool owner info
+            compute_manager_address: None, // Validator doesn't need this
         };
 
         let message_processor = MessageProcessor::from_config(config);

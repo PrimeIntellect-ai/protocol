@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Example usage of the Prime Protocol Validator Client to continuously validate nodes."""
+"""Example usage of the Prime Protocol Validator Client."""
 
 import os
 import logging
 import time
-from typing import List
 from primeprotocol import ValidatorClient
 
 # Configure logging
@@ -18,86 +17,116 @@ def main():
     private_key = os.getenv("PRIVATE_KEY_VALIDATOR")
     discovery_urls_str = os.getenv("DISCOVERY_URLS", "http://localhost:8089")
     discovery_urls = [url.strip() for url in discovery_urls_str.split(",")]
-
-    # Validation loop configuration - validate every 10 seconds
-    validation_interval = 10
+    p2p_port = int(os.getenv("VALIDATOR_P2P_PORT", "8665"))
     
     if not private_key:
-        print("Error: VALIDATOR_PRIVATE_KEY environment variable is required")
+        print("Error: PRIVATE_KEY_VALIDATOR environment variable is required")
         return
     
-    try:
-        # Initialize the validator client
-        print(f"Initializing validator client...")
-        print(f"RPC URL: {rpc_url}")
-        print(f"Discovery URLs: {discovery_urls}")
-        print(f"Validation interval: {validation_interval} seconds")
-        
-        validator = ValidatorClient(
-            rpc_url=rpc_url,
-            private_key=private_key,
-            discovery_urls=discovery_urls,
-        )
-        print("Starting validator client...")
-        validator.start()
-        print("Validator client started")
-        
-        # Continuous validation loop
-        print("\nStarting continuous validation loop...")
-        print("Press Ctrl+C to stop the validator")
-        
-        while True:
-            try:
-                print(f"\n{'='*50}")
-                print(f"Starting validation cycle at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-                print(f"{'='*50}")
-                
-                # List all non-validated nodes
-                print("Fetching non-validated nodes from discovery service...")
-                non_validated_nodes = validator.list_non_validated_nodes()
-                
-                if not non_validated_nodes:
-                    print("No non-validated nodes found")
-                else:
-                    print(f"Found {len(non_validated_nodes)} non-validated nodes")
-                    
-                    for node in non_validated_nodes:
-                        print(f"Processing node {node.id}...")
-                        if node.is_validated is False:
-                            print(f"  Validating node {node.id}...")
-                            validator.validate_node(node.id, node.provider_address)
-                            print(f"  ✓ Node {node.id} validated successfully")
-                        else:
-                            print(f"  ℹ Node {node.id} is already validated")
-                
-                # Get summary statistics
-                all_nodes = validator.list_all_nodes_dict()
-                validated_count = sum(1 for node in all_nodes if node['is_validated'])
-                non_validated_count = len(all_nodes) - validated_count
-                
-                print(f"\nValidation cycle summary:")
-                print(f"  Total nodes: {len(all_nodes)}")
-                print(f"  Validated: {validated_count}")
-                print(f"  Non-validated: {non_validated_count}")
-                
-                # Wait before next validation cycle
-                print(f"\nWaiting {validation_interval} seconds before next validation cycle...")
-                time.sleep(validation_interval)
-                
-            except KeyboardInterrupt:
-                print("\n\nReceived interrupt signal. Shutting down validator...")
-                break
-            except Exception as e:
-                logging.error(f"Error during validation cycle: {e}")
-                print(f"Waiting {validation_interval} seconds before retrying...")
-                time.sleep(validation_interval)
-        
-        print("Validator stopped")
+    print(f"Initializing validator client...")
+    print(f"RPC URL: {rpc_url}")
+    print(f"Discovery URLs: {discovery_urls}")
+    print(f"P2P Port: {p2p_port}")
     
-    except Exception as e:
-        logging.error(f"Fatal error: {e}")
-        raise
-
+    # Initialize and start the validator
+    validator = ValidatorClient(
+        rpc_url=rpc_url,
+        private_key=private_key,
+        discovery_urls=discovery_urls,
+    )
+    
+    print("Starting validator client...")
+    validator.start(p2p_port=p2p_port)
+    print(f"Validator started with peer ID: {validator.get_peer_id()}")
+    
+    print("\nStarting validator loop...")
+    print("Press Ctrl+C to stop\n")
+    
+    try:
+        while True:
+            print(f"{'='*50}")
+            print(f"Cycle at {time.strftime('%H:%M:%S')}")
+            
+            # Check for messages first
+            print("Checking for any pending messages...")
+            message = validator.get_next_message()
+            while message:
+                peer_id = message['peer_id']
+                msg_data = message.get('message', {})
+                
+                if msg_data.get('type') == 'general':
+                    data = bytes(msg_data.get('data', []))
+                    sender_type = "VALIDATOR" if message.get('is_sender_validator') else \
+                                 "POOL_OWNER" if message.get('is_sender_pool_owner') else \
+                                 "WORKER"
+                    print(f"  📨 From {peer_id[:16]}... ({sender_type}): {data}")
+                elif msg_data.get('type') == 'authentication_complete':
+                    print(f"  ✓ Auth complete with {peer_id[:16]}...")
+                else:
+                    print(f"  📋 {msg_data.get('type')} from {peer_id[:16]}...")
+                
+                # Check for more messages
+                message = validator.get_next_message()
+            
+            # 1. Validate any non-validated nodes
+            non_validated = validator.list_non_validated_nodes()
+            if non_validated:
+                print(f"\nValidating {len(non_validated)} nodes...")
+                for node in non_validated:
+                    try:
+                        print(f"  ✅ Validating {node.id[:8]}...")
+                        validator.validate_node(node.id, node.provider_address)
+                    except Exception as e:
+                        print(f"  ❌ Error validating {node.id[:8]}: {e}")
+            else:
+                print("\nNo nodes to validate")
+            
+            # 2. Send messages to validated nodes
+            all_nodes = validator.list_all_nodes_dict()
+            validated = [n for n in all_nodes if n.get('is_validated') and n.get('worker_p2p_id')]
+            
+            if validated:
+                print(f"\nMessaging {len(validated)} validated nodes...")
+                for node in validated:
+                    try:
+                        validator.send_message(
+                            peer_id=node['worker_p2p_id'],
+                            multiaddrs=node.get('worker_p2p_addresses', []),
+                            data=b"Hello from validator!",
+                        )
+                        print(f"  💬 Sent to {node['id'][:8]}...")
+                    except Exception as e:
+                        print(f"  ❌ Error messaging {node['id'][:8]}: {e}")
+            
+            # 3. Check for more messages throughout the wait period
+            print(f"\nWaiting 10 seconds (checking for messages)...")
+            end_time = time.time() + 10
+            messages_during_wait = 0
+            
+            while time.time() < end_time:
+                message = validator.get_next_message()
+                if message:
+                    peer_id = message['peer_id']
+                    msg_data = message.get('message', {})
+                    
+                    if msg_data.get('type') == 'general':
+                        data = bytes(msg_data.get('data', []))
+                        sender_type = "VALIDATOR" if message.get('is_sender_validator') else \
+                                     "POOL_OWNER" if message.get('is_sender_pool_owner') else \
+                                     "WORKER"
+                        print(f"  📨 From {peer_id[:16]}... ({sender_type}): {data}")
+                        messages_during_wait += 1
+                else:
+                    time.sleep(0.1)
+            
+            if messages_during_wait > 0:
+                print(f"Received {messages_during_wait} messages during wait")
+            print()
+            
+    except KeyboardInterrupt:
+        print("\n\nShutting down validator...")
+        validator.stop()
+        print("Validator stopped")
 
 if __name__ == "__main__":
     main()

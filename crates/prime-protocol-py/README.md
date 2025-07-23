@@ -1,5 +1,11 @@
 # Prime Protocol Python SDK
 
+## Features
+
+- Worker Client 
+- Validator Client
+- Orchestrator Client
+
 ## Local Development Setup
 Startup the local dev chain with contracts using the following Make cmd from the base folder:
 ```bash
@@ -64,15 +70,21 @@ uv run examples/orchestrator.py
 You should see that the orchestrator invites the worker node that you started in the earlier step and keeps sending messages via p2p to this node. 
 
 ## TODOs:
-- [ ] restarting node - no longer getting messages (since p2p id changed)?
 - [ ] can validator send message? (special validation message)
+- [ ] can the worker send messages as response to the validator / orchestrator?
 - [ ] can orchestrator send message?
 - [ ] whitelist using python api?
 - [ ] borrow bug?
 - [ ] restart keeps increasing provider stake?
 - [ ] p2p cleanup
+- [ ] I keep forgetting to run make build
+- [ ] what about formatting?
+- 09, in main
+    validator.stop()
+    ^^^^^^^^^^^^^^
+AttributeError: 'builtins.ValidatorClient' object has no attribute 'stop'
 
 ## Known Limitations:
 1. Orchestrator can no longer send messages to a node when the worker node restarts.
 This is because the discovery info is not refreshed when the node was already active in the pool. This will change when introducing a proper DHT layer.
-Simply run `make down` and restart the setup from scatch.
+Shortcut here is to simply reset the discovery service using: `redis-cli -p 6380 "FLUSHALL"`

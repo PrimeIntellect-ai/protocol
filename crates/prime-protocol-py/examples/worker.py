@@ -26,6 +26,9 @@ def main():
     port = int(os.getenv("PORT", 8003))
     client = WorkerClient(pool_id, rpc_url, private_key_provider, private_key_node, port)
     
+    # Track known peer addresses
+    known_peers = {}
+    
     def signal_handler(sig, frame):
         logging.info("Received interrupt signal, shutting down gracefully...")
         try:
@@ -64,11 +67,48 @@ def main():
                 message = client.get_next_message()
                 if message:
                     msg_data = message.get('message', {})
+                    peer_id = message['peer_id']
+                    multiaddrs = message.get('multiaddrs', [])
+                    
+                    # Determine sender type
+                    sender_type = "worker"
+                    if message.get('is_sender_validator'):
+                        sender_type = "VALIDATOR"
+                    elif message.get('is_sender_pool_owner'):
+                        sender_type = "POOL_OWNER"
+                    
                     if msg_data.get('type') == 'general':
                         data = bytes(msg_data.get('data', []))
-                        print(f"Message from {message['peer_id']}: {data}")
+                        print(f"\n[{time.strftime('%H:%M:%S')}] Message from {peer_id} ({sender_type}): {data}")
+                        print(f"  Multiaddrs received: {multiaddrs}")
+                        
+                        # Check if it's an error message
+                        if data.startswith(b"ERROR:"):
+                            print(f"  ⚠️  Received error: {data}")
+                            continue
+                        
+                        # Respond to validators and pool owners
+                        if sender_type in ["VALIDATOR", "POOL_OWNER"]:
+                            try:
+                                response_msg = f"Hello {sender_type}! Worker received: {data.decode('utf-8', errors='ignore')}"
+                                
+                                print(f"  Attempting to respond to {peer_id}...")
+                                print(f"  Response message: {response_msg}")
+                                
+                                # Send response using empty multiaddrs (peer should already be connected)
+                                client.send_message(
+                                    peer_id=peer_id,
+                                    multiaddrs=[],  # Empty - peer already connected
+                                    data=response_msg.encode()
+                                )
+                                print(f"  ✓ Response sent to {sender_type}")
+                            except Exception as e:
+                                print(f"  ✗ Error sending response: {e}")
+                                print(f"     Error type: {type(e).__name__}")
+                    elif msg_data.get('type') == 'authentication_complete':
+                        print(f"\n[{time.strftime('%H:%M:%S')}] ✓ Authentication complete with {peer_id} ({sender_type})")
                     else:
-                        print(f"Message from {message['peer_id']}: type={msg_data.get('type')}")
+                        print(f"\n[{time.strftime('%H:%M:%S')}] Message from {peer_id} ({sender_type}): type={msg_data.get('type')}")
                         
                 time.sleep(0.1)  # Small delay to prevent busy waiting
             except KeyboardInterrupt:

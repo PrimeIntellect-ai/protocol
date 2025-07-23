@@ -67,10 +67,13 @@ impl OrchestratorClient {
             let rpc_url_parsed = Url::parse(&rpc_url).map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid RPC URL: {}", e))
             })?;
-            Some(
-                Wallet::new(&key, rpc_url_parsed)
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?,
-            )
+            let w = Wallet::new(&key, rpc_url_parsed)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+
+            let wallet_address = w.wallet.default_signer().address().to_string();
+            log::info!("Orchestrator wallet address: {}", wallet_address);
+
+            Some(w)
         } else {
             None
         };
@@ -194,7 +197,12 @@ impl OrchestratorClient {
             message_type: MessageType::General { data },
             peer_id,
             multiaddrs,
-            sender_address: None,
+            sender_address: self
+                .wallet
+                .as_ref()
+                .map(|w| w.wallet.default_signer().address().to_string()),
+            is_sender_validator: false,
+            is_sender_pool_owner: false, // This will be determined by the receiver
             response_tx: None,
         };
 
@@ -389,6 +397,8 @@ impl OrchestratorClient {
                     peer_id,
                     multiaddrs,
                     sender_address: Some(wallet.wallet.default_signer().address().to_string()),
+                    is_sender_validator: false,
+                    is_sender_pool_owner: false, // This will be determined by the receiver
                     response_tx: None,
                 };
 
@@ -672,8 +682,12 @@ impl OrchestratorClient {
 
         let (user_message_tx, user_message_rx) = tokio::sync::mpsc::channel::<Message>(1000);
 
-        let (p2p_service, outbound_tx, message_queue_rx, authenticated_peers) =
-            P2PService::new(keypair, port, cancellation_token.clone(), wallet_address)?;
+        let (p2p_service, outbound_tx, message_queue_rx, authenticated_peers) = P2PService::new(
+            keypair,
+            port,
+            cancellation_token.clone(),
+            wallet_address.clone(),
+        )?;
 
         let peer_id = p2p_service.node.peer_id();
         let outbound_tx = Arc::new(Mutex::new(outbound_tx));
@@ -689,7 +703,12 @@ impl OrchestratorClient {
             user_message_tx,
             outbound_tx: outbound_tx.clone(),
             authenticated_peers,
-            cancellation_token,
+            cancellation_token: cancellation_token.clone(),
+            validator_addresses: Arc::new(std::collections::HashSet::new()), // Orchestrator doesn't need validator info
+            pool_owner_address: wallet_address
+                .as_ref()
+                .and_then(|addr| alloy::primitives::Address::from_str(addr).ok()), // Parse orchestrator's address
+            compute_manager_address: None, // Orchestrator doesn't need this
         };
 
         let message_processor = MessageProcessor::from_config(config);

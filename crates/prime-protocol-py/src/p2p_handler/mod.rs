@@ -50,6 +50,8 @@ pub struct Message {
     pub peer_id: String,
     pub multiaddrs: Vec<String>,
     pub sender_address: Option<String>, // Ethereum address of the sender
+    pub is_sender_validator: bool,      // Whether the sender is a validator
+    pub is_sender_pool_owner: bool,     // Whether the sender is the pool owner
     #[serde(skip)]
     pub response_tx: Option<tokio::sync::oneshot::Sender<p2p::Response>>, // For sending responses to auth requests
 }
@@ -326,7 +328,9 @@ impl Service {
                     peer_id: peer_id.to_string(),
                     multiaddrs: vec![], // TODO: Extract multiaddrs from peer info
                     sender_address: Some(sender_address),
-                    response_tx: None, // General messages don't need response channels
+                    is_sender_validator: false, // Will be populated by message processor
+                    is_sender_pool_owner: false, // Will be populated by message processor
+                    response_tx: None,          // General messages don't need response channels
                 };
 
                 if let Err(e) = message_queue_tx.send(message).await {
@@ -359,6 +363,8 @@ impl Service {
                             peer_id: peer_id.to_string(),
                             multiaddrs: vec![],
                             sender_address: None,
+                            is_sender_validator: false,
+                            is_sender_pool_owner: false,
                             response_tx: Some(response_tx), // Pass the sender for response
                         };
 
@@ -392,6 +398,8 @@ impl Service {
                             peer_id: peer_id.to_string(),
                             multiaddrs: vec![],
                             sender_address: None,
+                            is_sender_validator: false,
+                            is_sender_pool_owner: false,
                             response_tx: Some(response_tx), // Pass the sender for response
                         };
 
@@ -456,6 +464,8 @@ impl Service {
                             peer_id: peer_id.to_string(),
                             multiaddrs: vec![],
                             sender_address: None,
+                            is_sender_validator: false,
+                            is_sender_pool_owner: false,
                             response_tx: None,
                         };
 
@@ -474,6 +484,8 @@ impl Service {
                                     peer_id: peer_id.to_string(),
                                     multiaddrs: vec![],
                                     sender_address: None,
+                                    is_sender_validator: false,
+                                    is_sender_pool_owner: false,
                                     response_tx: None,
                                 };
 
@@ -513,6 +525,8 @@ mod tests {
             peer_id: "12D3KooWExample".to_string(),
             multiaddrs: vec!["/ip4/127.0.0.1/tcp/4001".to_string()],
             sender_address: Some("0x1234567890123456789012345678901234567890".to_string()),
+            is_sender_validator: false,
+            is_sender_pool_owner: false,
             response_tx: None,
         };
 
