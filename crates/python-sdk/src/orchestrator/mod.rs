@@ -18,7 +18,7 @@ use shared::discovery::fetch_nodes_from_discovery_urls;
 
 // Add imports for invite functionality
 use alloy::primitives::Address;
-use prime_core::invite::{
+use operations::invite::{
     admin::{generate_invite_expiration, generate_invite_nonce, generate_invite_signature},
     common::InviteBuilder,
 };

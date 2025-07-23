@@ -8,15 +8,15 @@ members = [
     "crates/p2p",
     "crates/dev-utils",
     "crates/python-sdk",
-    "crates/prime-core",
+    "crates/operations",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 shared = { path = "crates/shared" }
 p2p = { path = "crates/p2p" }
+operations = { path = "crates/operations" }
 
-prime-core = { path = "crates/prime-core" }
 actix-web = "4.9.0"
 clap = { version = "4.5.27", features = ["derive"] }
 serde = { version = "1.0.219", features = ["derive"] }

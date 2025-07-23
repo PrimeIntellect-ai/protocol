@@ -7,11 +7,11 @@ use anyhow::{bail, Result};
 use futures::stream;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
-use p2p::InviteRequestUrl;
-use prime_core::invite::{
+use operations::invite::{
     admin::{generate_invite_expiration, generate_invite_nonce, generate_invite_signature},
     common::InviteBuilder,
 };
+use p2p::InviteRequestUrl;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;

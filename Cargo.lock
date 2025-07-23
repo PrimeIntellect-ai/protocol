@@ -6181,6 +6181,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "operations"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "alloy",
+ "alloy-provider",
+ "anyhow",
+ "env_logger",
+ "futures-util",
+ "hex",
+ "log",
+ "p2p",
+ "rand 0.8.5",
+ "redis",
+ "serde",
+ "serde_json",
+ "shared",
+ "subtle",
+ "tokio",
+ "tokio-util",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6203,8 +6228,8 @@ dependencies = [
  "hex",
  "log",
  "mockito",
+ "operations",
  "p2p",
- "prime-core",
  "prometheus 0.14.0",
  "rand 0.9.1",
  "redis",
@@ -6711,31 +6736,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prime-core"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "alloy",
- "alloy-provider",
- "anyhow",
- "env_logger",
- "futures-util",
- "hex",
- "log",
- "p2p",
- "rand 0.8.5",
- "redis",
- "serde",
- "serde_json",
- "shared",
- "subtle",
- "tokio",
- "tokio-util",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "primeorder"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7002,8 +7002,8 @@ dependencies = [
  "futures",
  "hex",
  "log",
+ "operations",
  "p2p",
- "prime-core",
  "pyo3",
  "pyo3-log",
  "pythonize",
@@ -10478,8 +10478,8 @@ dependencies = [
  "libc",
  "log",
  "nvml-wrapper",
+ "operations",
  "p2p",
- "prime-core",
  "rand 0.8.5",
  "rand 0.9.1",
  "reqwest 0.12.15",

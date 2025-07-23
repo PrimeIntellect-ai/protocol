@@ -1,8 +1,8 @@
 use alloy::primitives::utils::format_ether;
 use alloy::primitives::{Address, U256};
 use anyhow::{Context, Result};
-use prime_core::operations::compute_node::ComputeNodeOperations;
-use prime_core::operations::provider::ProviderOperations;
+use operations::operations::compute_node::ComputeNodeOperations;
+use operations::operations::provider::ProviderOperations;
 use shared::web3::contracts::core::builder::{ContractBuilder, Contracts};
 use shared::web3::contracts::structs::compute_pool::PoolStatus;
 use shared::web3::wallet::{Wallet, WalletProvider};

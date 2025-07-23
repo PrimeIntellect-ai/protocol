@@ -165,7 +165,7 @@ impl WorkerClientCore {
                         log::info!("Received invite from peer: {}", message.peer_id);
 
                         // Check if invite has expired
-                        if let Ok(true) = prime_core::invite::worker::is_invite_expired(&invite) {
+                        if let Ok(true) = operations::invite::worker::is_invite_expired(&invite) {
                             log::warn!("Received expired invite from peer: {}", message.peer_id);
                             return Some(message); // Return it so user can see the expired invite
                         }

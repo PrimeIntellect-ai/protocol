@@ -1,5 +1,5 @@
 [package]
-name = "prime-core"
+name = "operations"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 workspace = true
 
 [lib]
-name = "prime_core"
+name = "operations"
 path = "src/lib.rs"
 
 [dependencies]

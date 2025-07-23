@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.25.1", features = ["extension-module"] }
 thiserror = "1.0"
 shared = { workspace = true }
-prime-core = { workspace = true }
+operations = { workspace = true }
 p2p = { workspace = true }
 alloy = { workspace = true }
 alloy-provider = { workspace = true }
