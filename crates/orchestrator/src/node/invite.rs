@@ -3,19 +3,17 @@ use crate::models::node::OrchestratorNode;
 use crate::p2p::InviteRequest as InviteRequestWithMetadata;
 use crate::store::core::StoreContext;
 use crate::utils::loop_heartbeats::LoopHeartbeats;
-use alloy::primitives::utils::keccak256 as keccak;
-use alloy::primitives::U256;
-use alloy::signers::Signer;
 use anyhow::{bail, Result};
 use futures::stream;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
-use p2p::InviteRequest;
+use operations::invite::{
+    admin::{generate_invite_expiration, generate_invite_nonce, generate_invite_signature},
+    common::InviteBuilder,
+};
 use p2p::InviteRequestUrl;
 use shared::web3::wallet::Wallet;
 use std::sync::Arc;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 use tokio::sync::mpsc::Sender;
 use tokio::time::{interval, Duration};
 
@@ -89,29 +87,15 @@ impl NodeInviter {
         nonce: [u8; 32],
         expiration: [u8; 32],
     ) -> Result<[u8; 65]> {
-        let domain_id: [u8; 32] = U256::from(self.domain_id).to_be_bytes();
-        let pool_id: [u8; 32] = U256::from(self.pool_id).to_be_bytes();
-
-        let digest = keccak(
-            [
-                &domain_id,
-                &pool_id,
-                node.address.as_slice(),
-                &nonce,
-                &expiration,
-            ]
-            .concat(),
-        );
-
-        let signature = self
-            .wallet
-            .signer
-            .sign_message(digest.as_slice())
-            .await?
-            .as_bytes()
-            .to_owned();
-
-        Ok(signature)
+        generate_invite_signature(
+            &self.wallet,
+            self.domain_id,
+            self.pool_id,
+            node.address,
+            nonce,
+            expiration,
+        )
+        .await
     }
 
     async fn send_invite(&self, node: &OrchestratorNode) -> Result<(), anyhow::Error> {
@@ -122,28 +106,20 @@ impl NodeInviter {
         let p2p_addresses = node.worker_p2p_addresses.as_ref().unwrap();
 
         // Generate random nonce and expiration
-        let nonce: [u8; 32] = rand::random();
-        let expiration: [u8; 32] = U256::from(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|e| anyhow::anyhow!("System time error: {}", e))?
-                .as_secs()
-                + 1000,
-        )
-        .to_be_bytes();
+        let nonce = generate_invite_nonce();
+        let expiration = generate_invite_expiration(Some(1000))?;
 
         let invite_signature = self.generate_invite(node, nonce, expiration).await?;
-        let payload = InviteRequest {
-            invite: hex::encode(invite_signature),
-            pool_id: self.pool_id,
-            url: self.url.clone(),
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|e| anyhow::anyhow!("System time error: {}", e))?
-                .as_secs(),
-            expiration,
-            nonce,
+
+        // Build the invite request using the builder
+        let builder = match &self.url {
+            InviteRequestUrl::MasterUrl(url) => InviteBuilder::with_url(self.pool_id, url.clone()),
+            InviteRequestUrl::MasterIpPort(ip, port) => {
+                InviteBuilder::with_ip_port(self.pool_id, ip.clone(), *port)
+            }
         };
+
+        let payload = builder.build(invite_signature, nonce, expiration)?;
 
         info!("Sending invite to node: {p2p_id}");
 

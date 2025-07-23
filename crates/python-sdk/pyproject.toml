@@ -1,0 +1,37 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "primeprotocol"
+description = "Simple Python bindings for Prime Protocol client"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+keywords = ["prime", "protocol"]
+authors = [
+  {name = "Prime Protocol", email = "jannik@primeintellect.ai"}
+]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dynamic = ["version"]
+
+[project.urls]
+"Homepage" = "https://github.com/primeprotocol/protocol"
+"Bug Tracker" = "https://github.com/primeprotocol/protocol/issues"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "primeprotocol" 

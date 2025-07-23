@@ -145,7 +145,7 @@ impl MetricsStore {
         task_id: &str,
     ) -> Result<HashMap<String, f64>> {
         let mut con = self.redis.client.get_multiplexed_async_connection().await?;
-        let pattern = format!("{}:*", ORCHESTRATOR_NODE_METRICS_STORE);
+        let pattern = format!("{ORCHESTRATOR_NODE_METRICS_STORE}:*");
 
         // Scan all node keys
         let mut iter: redis::AsyncIter<String> = con.scan_match(&pattern).await?;

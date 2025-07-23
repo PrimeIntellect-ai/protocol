@@ -6,9 +6,8 @@ use crate::console::Console;
 use crate::docker::taskbridge::TaskBridge;
 use crate::docker::DockerService;
 use crate::metrics::store::MetricsStore;
-use crate::operations::compute_node::ComputeNodeOperations;
 use crate::operations::heartbeat::service::HeartbeatService;
-use crate::operations::provider::ProviderOperations;
+use crate::operations::node_monitor::NodeMonitor;
 use crate::services::discovery::DiscoveryService;
 use crate::services::discovery_updater::DiscoveryUpdater;
 use crate::state::system_state::SystemState;
@@ -20,6 +19,8 @@ use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
 use clap::{Parser, Subcommand};
 use log::{error, info};
+use operations::operations::compute_node::ComputeNodeOperations;
+use operations::operations::provider::ProviderOperations;
 use shared::models::node::ComputeRequirements;
 use shared::models::node::Node;
 use shared::web3::contracts::core::builder::ContractBuilder;
@@ -294,12 +295,10 @@ pub async fn execute_command(
 
             let provider_ops_cancellation = cancellation_token.clone();
 
-            let compute_node_state = state.clone();
             let compute_node_ops = ComputeNodeOperations::new(
                 &provider_wallet_instance,
                 &node_wallet_instance,
                 contracts.clone(),
-                compute_node_state,
             );
 
             let discovery_urls = vec![discovery_url
@@ -606,7 +605,7 @@ pub async fn execute_command(
                     .retry_register_provider(
                         required_stake,
                         *funding_retry_count,
-                        cancellation_token.clone(),
+                        Some(cancellation_token.clone()),
                     )
                     .await
                 {
@@ -709,7 +708,7 @@ pub async fn execute_command(
             let heartbeat = match heartbeat_service.clone() {
                 Ok(service) => service,
                 Err(e) => {
-                    error!("❌ Heartbeat service is not available: {e}");
+                    error!("❌ Heartbeat service is not available: {e:?}");
                     std::process::exit(1);
                 }
             };
@@ -821,8 +820,13 @@ pub async fn execute_command(
             provider_ops.start_monitoring(provider_ops_cancellation);
 
             let pool_id = state.get_compute_pool_id();
-            if let Err(err) = compute_node_ops.start_monitoring(cancellation_token.clone(), pool_id)
-            {
+            let node_monitor = NodeMonitor::new(
+                provider_wallet_instance.clone(),
+                node_wallet_instance.clone(),
+                contracts.clone(),
+                state.clone(),
+            );
+            if let Err(err) = node_monitor.start_monitoring(cancellation_token.clone(), pool_id) {
                 error!("❌ Failed to start node monitoring: {err}");
                 std::process::exit(1);
             }
@@ -1031,7 +1035,6 @@ pub async fn execute_command(
             /*
              Initialize dependencies - services, contracts, operations
             */
-
             let contracts = ContractBuilder::new(provider_wallet_instance.provider())
                 .with_compute_registry()
                 .with_ai_token()

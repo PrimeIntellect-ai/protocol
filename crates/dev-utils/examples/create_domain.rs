@@ -59,6 +59,6 @@ async fn main() -> Result<()> {
         .await;
     println!("Creating domain: {}", args.domain_name);
     println!("Validation logic: {}", args.validation_logic);
-    println!("Transaction: {:?}", tx);
+    println!("Transaction: {tx:?}");
     Ok(())
 }

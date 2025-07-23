@@ -119,7 +119,7 @@ mod tests {
         provider.add_mapping_file("sha256", "file.txt").await;
         provider.add_file("file.txt", "content").await;
         let map_file_link = provider.resolve_mapping_for_sha("sha256").await.unwrap();
-        println!("map_file_link: {}", map_file_link);
+        println!("map_file_link: {map_file_link}");
         assert_eq!(map_file_link, "file.txt");
 
         assert_eq!(

@@ -1,0 +1,32 @@
+[package]
+name = "operations"
+version = "0.1.0"
+edition = "2021"
+
+[lints]
+workspace = true
+
+[lib]
+name = "operations"
+path = "src/lib.rs"
+
+[dependencies]
+shared = { workspace = true }
+p2p = { workspace = true }
+alloy = { workspace = true }
+alloy-provider = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+actix-web = { workspace = true }
+anyhow = { workspace = true }
+futures-util = { workspace = true }
+hex = { workspace = true }
+uuid = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+redis = { workspace = true, features = ["aio", "tokio-comp"] }
+rand_v8 = { workspace = true }
+env_logger = { workspace = true }
+subtle = "2.6.1"

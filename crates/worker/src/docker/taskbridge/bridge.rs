@@ -565,7 +565,7 @@ mod tests {
             "test_label2": 20.0,
         });
         let sample_metric = serde_json::to_string(&data)?;
-        debug!("Sending {:?}", sample_metric);
+        debug!("Sending {sample_metric:?}");
         let msg = format!("{}{}", sample_metric, "\n");
         stream.write_all(msg.as_bytes()).await?;
         stream.flush().await?;
@@ -616,7 +616,7 @@ mod tests {
             "output/input_flops": 2500.0,
         });
         let sample_metric = serde_json::to_string(&json)?;
-        debug!("Sending {:?}", sample_metric);
+        debug!("Sending {sample_metric:?}");
         let msg = format!("{}{}", sample_metric, "\n");
         stream.write_all(msg.as_bytes()).await?;
         stream.flush().await?;
@@ -626,8 +626,7 @@ mod tests {
         let all_metrics = metrics_store.get_all_metrics().await;
         assert!(
             all_metrics.is_empty(),
-            "Expected metrics to be empty but found: {:?}",
-            all_metrics
+            "Expected metrics to be empty but found: {all_metrics:?}"
         );
 
         bridge_handle.abort();

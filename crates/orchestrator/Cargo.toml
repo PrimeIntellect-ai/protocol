@@ -9,6 +9,7 @@ workspace = true
 [dependencies]
 p2p = { workspace = true}
 shared = { workspace = true }
+operations = { workspace = true }
 
 actix-web = { workspace = true }
 alloy = { workspace = true }

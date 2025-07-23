@@ -29,6 +29,7 @@ impl<P: alloy_provider::Provider> ComputePool<P> {
             .function("getComputePool", &[pool_id.into()])?
             .call()
             .await?;
+
         let pool_info_tuple: &[DynSolValue] =
             pool_info_response.first().unwrap().as_tuple().unwrap();
 
@@ -388,8 +389,6 @@ impl ComputePool<WalletProvider> {
         pool_id: u32,
         node: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Ejecting node");
-
         let arg_pool_id: U256 = U256::from(pool_id);
 
         let result = self
