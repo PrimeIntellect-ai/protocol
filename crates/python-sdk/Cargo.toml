@@ -1,5 +1,5 @@
 [package]
-name = "prime-protocol-py"
+name = "python-sdk"
 version = "0.1.0"
 authors = ["Prime Protocol"]
 edition = "2021"

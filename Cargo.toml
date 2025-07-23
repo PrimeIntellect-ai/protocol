@@ -7,7 +7,7 @@ members = [
     "crates/orchestrator",
     "crates/p2p",
     "crates/dev-utils",
-    "crates/prime-protocol-py",
+    "crates/python-sdk",
     "crates/prime-core",
 ]
 resolver = "2"
