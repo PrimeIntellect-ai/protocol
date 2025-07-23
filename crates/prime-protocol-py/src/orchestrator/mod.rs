@@ -314,7 +314,6 @@ impl OrchestratorClient {
         orchestrator_url: Option<String>,
         expiration_seconds: u64,
     ) -> PyResult<()> {
-        println!("invite_node");
         let rt = self.get_or_create_runtime()?;
 
         let wallet = self.wallet.as_ref().ok_or_else(|| {
@@ -343,13 +342,9 @@ impl OrchestratorClient {
             ))
         })?;
 
-        println!("worker_addr: {:?}", worker_addr);
-
         let wallet = wallet.clone();
         let outbound_tx = outbound_tx.clone();
         let auth_manager = auth_manager.clone();
-
-        println!("invite_node 2");
 
         py.allow_threads(|| {
             rt.block_on(async {
@@ -403,14 +398,11 @@ impl OrchestratorClient {
                 };
 
                 // Send the invite
-                println!("sending invite");
                 crate::p2p_handler::send_message_with_auth(message, &auth_manager, &outbound_tx)
                     .await
                     .map_err(|e| {
                         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
                     })?;
-
-                println!("invite sent");
 
                 Ok(())
             })

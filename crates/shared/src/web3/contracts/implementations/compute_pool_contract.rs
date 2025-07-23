@@ -61,9 +61,6 @@ impl<P: alloy_provider::Provider> ComputePool<P> {
             _ => panic!("Unknown status value: {status}"),
         };
 
-        println!("Mapped status: {mapped_status:?}");
-        println!("Returning pool info");
-
         let pool_info = PoolInfo {
             pool_id,
             domain_id,
@@ -392,8 +389,6 @@ impl ComputePool<WalletProvider> {
         pool_id: u32,
         node: Address,
     ) -> Result<FixedBytes<32>, Box<dyn std::error::Error>> {
-        println!("Ejecting node");
-
         let arg_pool_id: U256 = U256::from(pool_id);
 
         let result = self

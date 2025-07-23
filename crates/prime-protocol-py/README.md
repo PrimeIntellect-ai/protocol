@@ -70,19 +70,9 @@ uv run examples/orchestrator.py
 You should see that the orchestrator invites the worker node that you started in the earlier step and keeps sending messages via p2p to this node. 
 
 ## TODOs:
-- [ ] can validator send message? (special validation message)
-- [ ] can the worker send messages as response to the validator / orchestrator?
-- [ ] can orchestrator send message?
-- [ ] whitelist using python api?
-- [ ] borrow bug?
 - [ ] restart keeps increasing provider stake?
-- [ ] p2p cleanup
 - [ ] I keep forgetting to run make build
 - [ ] what about formatting?
-- 09, in main
-    validator.stop()
-    ^^^^^^^^^^^^^^
-AttributeError: 'builtins.ValidatorClient' object has no attribute 'stop'
 
 ## Known Limitations:
 1. Orchestrator can no longer send messages to a node when the worker node restarts.
