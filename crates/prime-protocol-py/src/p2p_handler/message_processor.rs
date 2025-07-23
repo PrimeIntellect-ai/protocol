@@ -39,6 +39,7 @@ pub struct MessageProcessor {
 }
 
 impl MessageProcessor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         auth_manager: Arc<AuthenticationManager>,
         message_queue_rx: Arc<Mutex<Receiver<Message>>>,
