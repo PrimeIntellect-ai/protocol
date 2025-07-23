@@ -44,7 +44,13 @@ pub enum MessageType {
     AuthenticationComplete,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+impl Default for MessageType {
+    fn default() -> Self {
+        MessageType::General { data: vec![] }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Message {
     pub message_type: MessageType,
     pub peer_id: String,

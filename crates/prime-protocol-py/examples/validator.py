@@ -46,29 +46,14 @@ def main():
         while True:
             print(f"{'='*50}")
             print(f"Cycle at {time.strftime('%H:%M:%S')}")
-            
-            # Check for messages first
-            print("Checking for any pending messages...")
+            # Check for a single message
             message = validator.get_next_message()
-            while message:
-                peer_id = message['peer_id']
+            print(f"Message: {message}")
+            if message:
                 msg_data = message.get('message', {})
-                
                 if msg_data.get('type') == 'general':
                     data = bytes(msg_data.get('data', []))
-                    sender_type = "VALIDATOR" if message.get('is_sender_validator') else \
-                                 "POOL_OWNER" if message.get('is_sender_pool_owner') else \
-                                 "WORKER"
-                    print(f"  📨 From {peer_id[:16]}... ({sender_type}): {data}")
-                elif msg_data.get('type') == 'authentication_complete':
-                    print(f"  ✓ Auth complete with {peer_id[:16]}...")
-                else:
-                    print(f"  📋 {msg_data.get('type')} from {peer_id[:16]}...")
-                
-                # Check for more messages
-                message = validator.get_next_message()
-            
-            # 1. Validate any non-validated nodes
+                    print(f"Message payload: {data}")
             non_validated = validator.list_non_validated_nodes()
             if non_validated:
                 print(f"\nValidating {len(non_validated)} nodes...")
@@ -98,34 +83,14 @@ def main():
                     except Exception as e:
                         print(f"  ❌ Error messaging {node['id'][:8]}: {e}")
             
-            # 3. Check for more messages throughout the wait period
-            print(f"\nWaiting 10 seconds (checking for messages)...")
-            end_time = time.time() + 10
-            messages_during_wait = 0
-            
-            while time.time() < end_time:
-                message = validator.get_next_message()
-                if message:
-                    peer_id = message['peer_id']
-                    msg_data = message.get('message', {})
-                    
-                    if msg_data.get('type') == 'general':
-                        data = bytes(msg_data.get('data', []))
-                        sender_type = "VALIDATOR" if message.get('is_sender_validator') else \
-                                     "POOL_OWNER" if message.get('is_sender_pool_owner') else \
-                                     "WORKER"
-                        print(f"  📨 From {peer_id[:16]}... ({sender_type}): {data}")
-                        messages_during_wait += 1
-                else:
-                    time.sleep(0.1)
-            
-            if messages_during_wait > 0:
-                print(f"Received {messages_during_wait} messages during wait")
+            # Wait before next cycle
+            print(f"\nWaiting 10 seconds...")
+            time.sleep(10)
             print()
             
     except KeyboardInterrupt:
         print("\n\nShutting down validator...")
-        validator.stop()
+        # ValidatorClient doesn't have a stop() method
         print("Validator stopped")
 
 if __name__ == "__main__":

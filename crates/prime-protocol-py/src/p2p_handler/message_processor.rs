@@ -107,7 +107,6 @@ impl MessageProcessor {
                         }
                         Err(_) => continue, // Timeout, continue loop
                     };
-
                     log::debug!("Received message: {:?}", message);
 
                     if let Err(e) = self.process_message(message).await {
@@ -125,9 +124,8 @@ impl MessageProcessor {
             peer_id,
             multiaddrs,
             sender_address,
-            is_sender_validator,
-            is_sender_pool_owner,
             response_tx,
+            ..
         } = message;
 
         match message_type {

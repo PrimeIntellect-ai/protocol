@@ -18,6 +18,7 @@ def main():
     discovery_urls_str = os.getenv("DISCOVERY_URLS", "http://localhost:8089")
     discovery_urls = [url.strip() for url in discovery_urls_str.split(",")]
     pool_id = int(os.getenv("POOL_ID", "0"))
+    p2p_port = int(os.getenv("ORCHESTRATOR_P2P_PORT", "8180"))
     
     if not private_key:
         print("Error: PRIVATE_KEY_ORCHESTRATOR environment variable is required")
@@ -27,6 +28,7 @@ def main():
     print(f"RPC URL: {rpc_url}")
     print(f"Discovery URLs: {discovery_urls}")
     print(f"Pool ID: {pool_id}")
+    print(f"P2P Port: {p2p_port}")
     
     # Initialize and start the orchestrator
     orchestrator = OrchestratorClient(
@@ -36,59 +38,29 @@ def main():
     )
     
     print("Starting orchestrator client...")
-    orchestrator.start(p2p_port=8180)
-    print("Orchestrator client started")
-    
-    # Wait for P2P to initialize
-    time.sleep(5)
+    orchestrator.start(p2p_port=p2p_port)
+    print(f"Orchestrator started with peer ID: {orchestrator.get_peer_id()}")
     
     print("\nStarting orchestrator loop...")
     print("Press Ctrl+C to stop\n")
-    
-    # Track nodes in our pool
-    pool_node_ids = set()
     
     try:
         while True:
             print(f"{'='*50}")
             print(f"Cycle at {time.strftime('%H:%M:%S')}")
             
-            # Check for any pending messages first
-            print("Checking for pending messages...")
+            # Check for a single message
             message = orchestrator.get_next_message()
-            while message:
-                peer_id = message['peer_id']
-                msg_data = message.get('message', {})
-                
-                if msg_data.get('type') == 'general':
-                    data = bytes(msg_data.get('data', []))
-                    sender_type = "VALIDATOR" if message.get('is_sender_validator') else \
-                                 "POOL_OWNER" if message.get('is_sender_pool_owner') else \
-                                 "WORKER"
-                    print(f"  📨 From {peer_id[:16]}... ({sender_type}): {data}")
-                elif msg_data.get('type') == 'authentication_complete':
-                    print(f"  ✓ Auth complete with {peer_id[:16]}...")
-                else:
-                    print(f"  📋 {msg_data.get('type')} from {peer_id[:16]}...")
-                
-                # Check for more messages
-                message = orchestrator.get_next_message()
+            print(f"Got message - python orchestrator: {message}")
             
-            # Get nodes in the pool
+            # 1. Invite validated but inactive nodes
             pool_nodes = orchestrator.list_nodes_for_pool(pool_id)
-            print(f"\nFound {len(pool_nodes)} nodes in pool {pool_id}")
+            validated_inactive = [n for n in pool_nodes if n.is_validated and not n.is_active and n.worker_p2p_id]
             
-            # Update our tracking of pool nodes
-            pool_node_ids = {node.worker_p2p_id for node in pool_nodes if node.worker_p2p_id}
-            
-            # Process each node
-            for node in pool_nodes:
-                if not node.worker_p2p_id:
-                    continue
-                    
-                try:
-                    if not node.is_active and node.is_validated:
-                        # Invite inactive but validated nodes
+            if validated_inactive:
+                print(f"\nInviting {len(validated_inactive)} validated inactive nodes...")
+                for node in validated_inactive:
+                    try:
                         print(f"  📨 Inviting {node.id[:8]}...")
                         orchestrator.invite_node(
                             peer_id=node.worker_p2p_id,
@@ -99,45 +71,28 @@ def main():
                             orchestrator_url=None,
                             expiration_seconds=1000
                         )
-                    elif node.is_active:
-                        # Send message to active nodes
-                        print(f"  💬 Messaging {node.id[:8]}...")
+                    except Exception as e:
+                        print(f"  ❌ Error inviting {node.id[:8]}: {e}")
+            
+            # 2. Send messages to active nodes
+            active_nodes = [n for n in pool_nodes if n.is_active and n.worker_p2p_id]
+            
+            if active_nodes:
+                print(f"\nMessaging {len(active_nodes)} active nodes...")
+                for node in active_nodes:
+                    try:
                         orchestrator.send_message(
                             peer_id=node.worker_p2p_id,
                             multiaddrs=node.worker_p2p_addresses,
                             data=b"Hello from orchestrator!",
                         )
-                except Exception as e:
-                    print(f"  ❌ Error with {node.id[:8]}: {e}")
+                        print(f"  💬 Sent to {node.id[:8]}...")
+                    except Exception as e:
+                        print(f"  ❌ Error messaging {node.id[:8]}: {e}")
             
-            # Check for messages throughout the wait period
-            print(f"\nWaiting 30 seconds (checking for messages)...")
-            end_time = time.time() + 30
-            messages_during_wait = 0
-            
-            while time.time() < end_time:
-                message = orchestrator.get_next_message()
-                if message:
-                    peer_id = message['peer_id']
-                    msg_data = message.get('message', {})
-                    
-                    if msg_data.get('type') == 'general':
-                        data = bytes(msg_data.get('data', []))
-                        sender_type = "VALIDATOR" if message.get('is_sender_validator') else \
-                                     "POOL_OWNER" if message.get('is_sender_pool_owner') else \
-                                     "WORKER"
-                        
-                        # Check if message is from a pool node
-                        if peer_id in pool_node_ids:
-                            print(f"  📨 From pool node {peer_id[:16]}... ({sender_type}): {data}")
-                        else:
-                            print(f"  📨 From external {peer_id[:16]}... ({sender_type}): {data}")
-                        messages_during_wait += 1
-                else:
-                    time.sleep(0.1)
-            
-            if messages_during_wait > 0:
-                print(f"Received {messages_during_wait} messages during wait")
+            # Wait before next cycle
+            print(f"\nWaiting 10 seconds...")
+            time.sleep(10)
             print()
             
     except KeyboardInterrupt:
