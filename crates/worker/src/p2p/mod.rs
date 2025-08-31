@@ -4,6 +4,7 @@ use futures::stream::FuturesUnordered;
 use p2p::InviteRequestUrl;
 use p2p::Node;
 use p2p::NodeBuilder;
+use p2p::P2PHandle;
 use p2p::PeerId;
 use p2p::Response;
 use p2p::{IncomingMessage, Libp2pIncomingMessage, OutgoingMessage};
@@ -43,16 +44,15 @@ impl Service {
         provider_wallet: Wallet,
         cancellation_token: CancellationToken,
     ) -> Result<Self> {
-        let (node, incoming_messages, outgoing_messages) =
-            build_p2p_node(keypair, port, cancellation_token.clone())
-                .context("failed to build p2p node")?;
+        let (node, p2p_handle) = build_p2p_node(keypair, port, cancellation_token.clone())
+            .context("failed to build p2p node")?;
         Ok(Self {
             node,
-            incoming_messages,
+            incoming_messages: p2p_handle.incoming_receiver,
             cancellation_token,
             context: Context::new(
                 wallet,
-                outgoing_messages,
+                p2p_handle.outgoing_sender,
                 validator_addresses,
                 docker_service,
                 heartbeat_service,
@@ -111,8 +111,8 @@ fn build_p2p_node(
     keypair: p2p::Keypair,
     port: u16,
     cancellation_token: CancellationToken,
-) -> Result<(Node, Receiver<IncomingMessage>, Sender<OutgoingMessage>)> {
-    let (node, incoming_message_rx, outgoing_message_tx) = NodeBuilder::new()
+) -> Result<(Node, P2PHandle)> {
+    let (node, p2p_handle) = NodeBuilder::new()
         .with_keypair(keypair)
         .with_port(port)
         .with_authentication()
@@ -123,7 +123,7 @@ fn build_p2p_node(
         .with_cancellation_token(cancellation_token)
         .try_build()
         .context("failed to build p2p node")?;
-    Ok((node, incoming_message_rx, outgoing_message_tx))
+    Ok((node, p2p_handle))
 }
 
 #[derive(Clone)]

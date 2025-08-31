@@ -257,13 +257,7 @@ impl NodeBuilder {
         self
     }
 
-    pub fn try_build(
-        self,
-    ) -> Result<(
-        Node,
-        tokio::sync::mpsc::Receiver<IncomingMessage>,
-        tokio::sync::mpsc::Sender<OutgoingMessage>,
-    )> {
+    pub fn try_build(self) -> Result<(Node, P2PHandle)> {
         let Self {
             port,
             mut listen_addrs,
@@ -315,8 +309,7 @@ impl NodeBuilder {
                 outgoing_message_rx,
                 cancellation_token: cancellation_token.unwrap_or_default(),
             },
-            incoming_message_rx,
-            outgoing_message_tx,
+            P2PHandle::new(incoming_message_rx, outgoing_message_tx),
         ))
     }
 }
@@ -341,11 +334,10 @@ mod test {
 
     #[tokio::test]
     async fn two_nodes_can_connect_and_do_request_response() {
-        let (node1, mut incoming_message_rx1, outgoing_message_tx1) =
-            NodeBuilder::new().with_get_task_logs().try_build().unwrap();
+        let (node1, mut p2p_handle1) = NodeBuilder::new().with_get_task_logs().try_build().unwrap();
         let node1_peer_id = node1.peer_id();
 
-        let (node2, mut incoming_message_rx2, outgoing_message_tx2) = NodeBuilder::new()
+        let (node2, mut p2p_handle2) = NodeBuilder::new()
             .with_get_task_logs()
             .with_bootnodes(node1.multiaddrs())
             .try_build()
@@ -360,11 +352,12 @@ mod test {
 
         // send request from node1->node2
         let request = message::Request::GetTaskLogs;
-        outgoing_message_tx1
+        p2p_handle1
+            .outgoing_sender
             .send(request.into_outgoing_message(node2_peer_id, vec![]))
             .await
             .unwrap();
-        let message = incoming_message_rx2.recv().await.unwrap();
+        let message = p2p_handle2.incoming_receiver.recv().await.unwrap();
         assert_eq!(message.peer, node1_peer_id);
         let libp2p::request_response::Message::Request {
             request_id: _,
@@ -378,11 +371,12 @@ mod test {
         // send response from node2->node1
         let response =
             message::Response::GetTaskLogs(message::GetTaskLogsResponse::Ok("logs".to_string()));
-        outgoing_message_tx2
+        p2p_handle2
+            .outgoing_sender
             .send(response.into_outgoing_message(channel))
             .await
             .unwrap();
-        let message = incoming_message_rx1.recv().await.unwrap();
+        let message = p2p_handle1.incoming_receiver.recv().await.unwrap();
         assert_eq!(message.peer, node2_peer_id);
         let libp2p::request_response::Message::Response {
             request_id: _,

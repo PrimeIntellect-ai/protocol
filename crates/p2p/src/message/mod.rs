@@ -8,6 +8,24 @@ mod hardware_challenge;
 pub use hardware_challenge::*;
 
 #[derive(Debug)]
+pub struct P2PHandle {
+    pub incoming_receiver: tokio::sync::mpsc::Receiver<IncomingMessage>,
+    pub outgoing_sender: tokio::sync::mpsc::Sender<OutgoingMessage>,
+}
+
+impl P2PHandle {
+    pub fn new(
+        incoming_receiver: tokio::sync::mpsc::Receiver<IncomingMessage>,
+        outgoing_sender: tokio::sync::mpsc::Sender<OutgoingMessage>,
+    ) -> Self {
+        Self {
+            incoming_receiver,
+            outgoing_sender,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct IncomingMessage {
     pub peer: PeerId,
     pub message: libp2p::request_response::Message<Request, Response>,

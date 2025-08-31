@@ -109,13 +109,18 @@ fn build_p2p_node(
     cancellation_token: CancellationToken,
     protocols: Protocols,
 ) -> Result<(Node, Receiver<IncomingMessage>, Sender<OutgoingMessage>)> {
-    NodeBuilder::new()
+    let builder = NodeBuilder::new()
         .with_keypair(keypair)
         .with_port(port)
         .with_authentication()
         .with_protocols(protocols)
         .with_cancellation_token(cancellation_token)
-        .try_build()
+        .try_build()?;
+    Ok((
+        builder.0,
+        builder.1.incoming_receiver,
+        builder.1.outgoing_sender,
+    ))
 }
 
 #[derive(Clone)]
