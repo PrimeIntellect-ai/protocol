@@ -5,9 +5,9 @@
   <h3>Decentralized Compute Infrastructure for AI</h3>
 </div>
 
-> ⚠️ **IMPORTANT**: This project is still under active development. Currently, you can only run the protocol locally - connecting to public RPCs is not yet supported. Please check back later for updates. See our [FAQ](#frequently-asked-questions) for details.
+A peer-to-peer compute protocol for decentralized AI development at scale. This protocol implementation powered distributed training runs including [synthetic-2](https://app.primeintellect.ai/intelligence/synthetic-2) and [intellect-2](https://app.primeintellect.ai/intelligence/intellect-2).
 
-Prime Network is a peer-to-peer compute and intelligence network that enables decentralized AI development at scale. This repository contains the core infrastructure for contributing compute resources to the network, including workers, validators, and the coordination layer.
+This repository contains the core infrastructure for coordinating compute resources across a distributed network, including workers, validators, and the orchestration layer.
 
 ## 📚 Table of Contents
 - [System Architecture](#system-architecture)
@@ -20,7 +20,7 @@ Prime Network is a peer-to-peer compute and intelligence network that enables de
 - [License](#license)
 
 ## System Architecture
-The Prime Protocol follows a modular architecture designed for decentralized AI compute:
+The protocol follows a modular architecture designed for decentralized AI compute:
 
 <div align="center">
   <img src="docs/assets/overview.png" alt="Prime Protocol System Architecture" width="800"/>
@@ -60,11 +60,11 @@ curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/protocol/develop/c
 
 ## Frequently Asked Questions
 
-#### Q: What is Prime Protocol?
-**A:** Prime Protocol is a peer-to-peer compute and intelligence network that enables decentralized AI development at scale. It provides infrastructure for contributing compute resources to the network through workers, validators, and a coordination layer.
+#### Q: What is this protocol?
+**A:** This is a peer-to-peer compute protocol implementation for decentralized AI development at scale. It provides infrastructure for coordinating compute resources across a distributed network through workers, validators, and an orchestration layer. This protocol powered distributed training runs including [synthetic-2](https://app.primeintellect.ai/intelligence/synthetic-2) and [intellect-2](https://app.primeintellect.ai/intelligence/intellect-2).
 
-#### Q: Is Prime Protocol ready for production use?
-**A:** No, Prime Protocol is still under active development. Currently, you can only run the protocol locally. 
+#### Q: Can I run this protocol locally?
+**A:** Yes, you can run the protocol locally for development and testing purposes. 
 
 #### Q: What environment variables do I need for local development?
 **A:** We have provided an .env.example file with the required variables. 
